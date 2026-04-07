@@ -1,0 +1,132 @@
+SCORM Export Troubleshooting and Fix Guide for Antigravity
+
+This document provides the exact technical specifications and a direct prompt you can feed into Antigravity to fix the issue where your SCORM exports are generating as empty shells without interactions, media, or game modes.
+
+
+
+
+
+
+
+Why Your SCORM Files Are Exporting Empty
+
+When an AI-generated course exports as an "empty shell" (just text and headers, but no interactions or media), it is almost always caused by one of three architectural failures in how the AI packaged the .zip file:
+
+
+
+1. Missing or Disconnected JavaScript API Wrapper
+SCORM is fundamentally a JavaScript standard. All communication between your course and the LMS is handled by a JavaScript API adapter. If your course relies on complex interactions (like drag-and-drop or Jeopardy games) but fails to initialize the SCORM API correctly using LMSInitialize(), the LMS will often block the local JavaScript from running entirely, resulting in a static, broken page [1].
+
+
+
+2. Relative Path Failures in imsmanifest.xml
+The imsmanifest.xml file is the blueprint of your course. Every single asset — every image, CSS file, and JavaScript file that makes your game modes work — must be explicitly listed in this manifest. If your React/Vue build process bundles your interactions into a generic assets/ folder but the manifest does not correctly map those relative paths, the LMS will drop them during import [2].
+
+
+
+3. The "React/SPA Routing" Problem
+If your course is built as a Single Page Application (SPA), standard routing often breaks inside an LMS iframe. SCORM expects a flat file structure. If your game modes rely on URL routing (e.g., /course/module-1/jeopardy), the LMS will fail to load them. All interactions must be bundled to run off a single index.html entry point without requiring server-side routing [3].
+
+
+
+
+
+
+
+The Required SCORM 1.2 File Structure
+
+To fix this, Antigravity needs to enforce this exact structure when generating the .zip file [2] [4]:
+
+
+
+scorm-package.zip/
+
+│
+
+├── imsmanifest.xml           # The core blueprint (MUST be at the root level)
+
+├── adlcp_rootv1p2.xsd        # Required SCORM 1.2 schema definition file
+
+├── ims_xml.xsd               # Required SCORM 1.2 schema definition file
+
+├── imscp_rootv1p1p2.xsd      # Required SCORM 1.2 schema definition file
+
+├── imsmd_rootv1p2p1.xsd      # Required SCORM 1.2 schema definition file
+
+│
+
+├── index.html                # The main entry point for the course
+
+├── scorm_api_wrapper.js      # The JavaScript file that handles LMSInitialize() and LMSFinish()
+
+│
+
+├── css/
+
+│   └── styles.css            # All styling, including game mode layouts
+
+│
+
+├── js/
+
+│   ├── interactions.js       # The logic for drag-and-drop, flashcards, etc.
+
+│   └── game_modes.js         # The logic for Jeopardy, Millionaire, etc.
+
+│
+
+└── media/
+
+    ├── images/               # All visual assets
+
+    └── audio/                # All sound effects (e.g., for game modes)
+
+
+
+
+
+
+
+The Prompt to Feed into Antigravity
+
+Copy the text below exactly and paste it into the Antigravity agent chat. Ensure the reasoning model is set to Claude Sonnet 4.6 (thinking).
+
+
+
+Prompt for Antigravity:
+
+
+
+"Our application's SCORM export function is failing. The generated .zip files are loading in the LMS as empty shells — the text and headers appear, but all interactive components, game modes (like Jeopardy), and media are missing or broken. 
+
+
+
+We need to completely refactor the SCORM packaging logic. Please review our current SCORM export service and implement the following strict requirements:
+
+
+
+Implement pipwerks SCORM API Wrapper: Integrate the industry-standard pipwerks SCORM API wrapper. Ensure that pipwerks.SCORM.init() is called immediately when index.html loads, before any interactive components or game modes attempt to render. If the API fails to initialize, gracefully degrade but log the error.
+
+Fix the imsmanifest.xml Resource Mapping: The manifest must explicitly list every single compiled asset. Update the packaging script so that it recursively scans the build output directory and creates a <file href="..."/> entry in the manifest for every .js, .css, .png, and .svg file. The game modes will not load if their specific JavaScript chunks are missing from the manifest.
+
+Include Required XSD Schema Files: Ensure the packaging script automatically injects the required SCORM 1.2 XML schema definition files (adlcp_rootv1p2.xsd, ims_xml.xsd, imscp_rootv1p1p2.xsd, imsmd_rootv1p2p1.xsd) into the root of the .zip file alongside imsmanifest.xml.
+
+Flatten SPA Routing: If the exported course is a React/Vue SPA, ensure it is built using Hash Routing (HashRouter) instead of Browser Routing (BrowserRouter). LMS iframes will block standard URL path changes, which is likely why the game modes are failing to render when clicked.
+
+
+
+Please write the updated packaging script and explain the changes made to the manifest generation logic."
+
+
+
+
+
+
+
+References
+
+[1] https://scorm.com/scorm-explained/technical-scorm/scorm-12-overview-for-developers/
+[2] https://scorm.com/scorm-explained/technical-scorm/content-packaging/
+[3] https://scormtodoc.com/guides/scorm-troubleshooting-guide
+[4] https://scorm.com/scorm-explained/technical-scorm/content-packaging/xml-schema-definition-files/
+

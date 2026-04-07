@@ -1,0 +1,282 @@
+<?xml version="1.0" encoding="utf-8"?>
+<tincan xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://projecttincan.com/tincan.xsd">
+	<activities>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539" type="http://adlnet.gov/expapi/activities/course">
+			<name lang="und">10013539 Playfair Course Starter 091619f</name>
+			<description lang="und" />
+			<launch lang="und">index_lms.html</launch>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/6W0w89a9VUj" type="http://adlnet.gov/expapi/activities/objective">
+			<name lang="und">10013539 Playfair Course Starter 091619f</name>
+			<description lang="und">10013539 Playfair Course Starter 091619f</description>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/5d1b5JCx3AR" type="http://adlnet.gov/expapi/activities/module">
+			<name lang="und">Welcome Layout.</name>
+			<description lang="und">Welcome Layout.</description>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/6c4SPFDrELk" type="http://adlnet.gov/expapi/activities/module">
+			<name lang="und">TitleLayout.</name>
+			<description lang="und">TitleLayout.</description>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/5duWkiqRWAd" type="http://adlnet.gov/expapi/activities/module">
+			<name lang="und">50/50 Layout.</name>
+			<description lang="und">50/50 Layout.</description>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/6KeqwqWiRD2" type="http://adlnet.gov/expapi/activities/module">
+			<name lang="und">70/30 Layout.</name>
+			<description lang="und">70/30 Layout.</description>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/5V9ADi7xCM6" type="http://adlnet.gov/expapi/activities/module">
+			<name lang="und">3-Column Layout.</name>
+			<description lang="und">3-Column Layout.</description>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/6Sxh5J4x171" type="http://adlnet.gov/expapi/activities/module">
+			<name lang="und">Major PointLayout.</name>
+			<description lang="und">Major PointLayout.</description>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/6Y2RPHbRw7z" type="http://adlnet.gov/expapi/activities/module">
+			<name lang="und">Facts &amp; Figures.</name>
+			<description lang="und">Facts &amp; Figures.</description>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/654TBjg9Lcr" type="http://adlnet.gov/expapi/activities/module">
+			<name lang="und">Org Chart.</name>
+			<description lang="und">Org Chart.</description>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/6GzR9LgzK8z" type="http://adlnet.gov/expapi/activities/module">
+			<name lang="und">Summary Layout.</name>
+			<description lang="und">Summary Layout.</description>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/6oQO6yuPwYk" type="http://adlnet.gov/expapi/activities/module">
+			<name lang="und">ContactLayout.</name>
+			<description lang="und">ContactLayout.</description>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/5gw4gJNVr6G" type="http://adlnet.gov/expapi/activities/module">
+			<name lang="und">Process Flow
+Click to Reveal.</name>
+			<description lang="und">Process Flow
+Click to Reveal.</description>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/5tNN7vu55Pk" type="http://adlnet.gov/expapi/activities/module">
+			<name lang="und">ConversationalDrag and Drop.</name>
+			<description lang="und">ConversationalDrag and Drop.</description>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/6D1ZVz9ABP3" type="http://adlnet.gov/expapi/activities/module">
+			<name lang="und">Timeline.</name>
+			<description lang="und">Timeline.</description>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/6SOiYU9Jmzv" type="http://adlnet.gov/expapi/activities/module">
+			<name lang="und">Conversation Rater.</name>
+			<description lang="und">Conversation Rater.</description>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/6WZvrMxvWGk" type="http://adlnet.gov/expapi/activities/module">
+			<name lang="und">Text Entry.</name>
+			<description lang="und">Text Entry.</description>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/6qcmpdrl07t" type="http://adlnet.gov/expapi/activities/module">
+			<name lang="und">1-to-Many Scenario.</name>
+			<description lang="und">1-to-Many Scenario.</description>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/5zAFefm2MT7" type="http://adlnet.gov/expapi/activities/module">
+			<name lang="und">Pyramid.</name>
+			<description lang="und">Pyramid.</description>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/6OGXRCgFbLq" type="http://adlnet.gov/expapi/activities/module">
+			<name lang="und">Click to Reveal.</name>
+			<description lang="und">Click to Reveal.</description>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/6rAlkpE6sTO" type="http://adlnet.gov/expapi/activities/module">
+			<name lang="und">Knowledge Check.</name>
+			<description lang="und">Knowledge Check.</description>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/6rAlkpE6sTO/6h545zTeBsv" type="http://adlnet.gov/expapi/activities/cmi.interaction">
+			<name lang="und">Knowledge Check.</name>
+			<description lang="und">Knowledge Check.</description>
+			<interactionType>choice</interactionType>
+			<correctResponsePatterns>
+				<correctResponsePattern>choice_5zCD1Ltd2JN</correctResponsePattern>
+				<correctResponsePattern>choice_6TAm5AlGp23</correctResponsePattern>
+				<correctResponsePattern>choice_5nJzjC7hNnB</correctResponsePattern>
+				<correctResponsePattern>choice_6cXMnAloyEi</correctResponsePattern>
+				<correctResponsePattern>choice_6rHi60QUL6c</correctResponsePattern>
+			</correctResponsePatterns>
+			<choices>
+				<component>
+					<id>choice_5zCD1Ltd2JN</id>
+					<description lang="und">Answer1</description>
+				</component>
+				<component>
+					<id>choice_6TAm5AlGp23</id>
+					<description lang="und">Answer2</description>
+				</component>
+				<component>
+					<id>choice_5nJzjC7hNnB</id>
+					<description lang="und">Answer3</description>
+				</component>
+				<component>
+					<id>choice_6cXMnAloyEi</id>
+					<description lang="und">Answer4</description>
+				</component>
+				<component>
+					<id>choice_6rHi60QUL6c</id>
+					<description lang="und">Answer5</description>
+				</component>
+			</choices>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/6eyVnJu4E9n" type="http://adlnet.gov/expapi/activities/module">
+			<name lang="und">PlayfairQuiz.</name>
+			<description lang="und">PlayfairQuiz.</description>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/645gjmawBJX" type="http://adlnet.gov/expapi/activities/module">
+			<name lang="und">This slide is a true/false question featuring text. You can add your question here.</name>
+			<description lang="und">This slide is a true/false question featuring text. You can add your question here.</description>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/645gjmawBJX/60T0TVAxutD" type="http://adlnet.gov/expapi/activities/cmi.interaction">
+			<name lang="und">This slide is a true/false question featuring text. You can add your question here.</name>
+			<description lang="und">This slide is a true/false question featuring text. You can add your question here.</description>
+			<interactionType>choice</interactionType>
+			<correctResponsePatterns>
+				<correctResponsePattern>choice_6UDbaVab623</correctResponsePattern>
+			</correctResponsePatterns>
+			<choices>
+				<component>
+					<id>choice_6ZggXvTaI1O</id>
+					<description lang="und">False</description>
+				</component>
+				<component>
+					<id>choice_6UDbaVab623</id>
+					<description lang="und">True (Correct)</description>
+				</component>
+			</choices>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/6Pj0lVFweu6" type="http://adlnet.gov/expapi/activities/module">
+			<name lang="und">This slide is a multiple choice question featuring text. You can add your question here.</name>
+			<description lang="und">This slide is a multiple choice question featuring text. You can add your question here.</description>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/6Pj0lVFweu6/5ZWHxRfP1Am" type="http://adlnet.gov/expapi/activities/cmi.interaction">
+			<name lang="und">This slide is a multiple choice question featuring text. You can add your question here.</name>
+			<description lang="und">This slide is a multiple choice question featuring text. You can add your question here.</description>
+			<interactionType>choice</interactionType>
+			<correctResponsePatterns>
+				<correctResponsePattern>choice_5umE5cg9BdE</correctResponsePattern>
+			</correctResponsePatterns>
+			<choices>
+				<component>
+					<id>choice_5umE5cg9BdE</id>
+					<description lang="und">Correct</description>
+				</component>
+				<component>
+					<id>choice_5idhxbnvw5U</id>
+					<description lang="und">Incorrect</description>
+				</component>
+				<component>
+					<id>choice_69rYSyLXuQp</id>
+					<description lang="und">Incorrect</description>
+				</component>
+				<component>
+					<id>choice_6pXCae0VmLG</id>
+					<description lang="und">Incorrect</description>
+				</component>
+			</choices>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/5mhE0EDlBwG" type="http://adlnet.gov/expapi/activities/module">
+			<name lang="und">This slide is a multiple response question featuring text. You can add your question here.</name>
+			<description lang="und">This slide is a multiple response question featuring text. You can add your question here.</description>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/5mhE0EDlBwG/5r0YS7gbWGW" type="http://adlnet.gov/expapi/activities/cmi.interaction">
+			<name lang="und">This slide is a multiple response question featuring text. You can add your question here.</name>
+			<description lang="und">This slide is a multiple response question featuring text. You can add your question here.</description>
+			<interactionType>choice</interactionType>
+			<correctResponsePatterns>
+				<correctResponsePattern>choice_6jAoXeFV93u</correctResponsePattern>
+				<correctResponsePattern>choice_62U9Wm81zpG</correctResponsePattern>
+				<correctResponsePattern>choice_63IaGNXSPhm</correctResponsePattern>
+			</correctResponsePatterns>
+			<choices>
+				<component>
+					<id>choice_6jAoXeFV93u</id>
+					<description lang="und">Correct</description>
+				</component>
+				<component>
+					<id>choice_62U9Wm81zpG</id>
+					<description lang="und">Correct</description>
+				</component>
+				<component>
+					<id>choice_63IaGNXSPhm</id>
+					<description lang="und">Correct</description>
+				</component>
+				<component>
+					<id>choice_6eOtOi1FlrR</id>
+					<description lang="und">Incorrect</description>
+				</component>
+				<component>
+					<id>choice_6LIDiZvTzTk</id>
+					<description lang="und">Incorrect</description>
+				</component>
+			</choices>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/6rIu2e0evtz" type="http://adlnet.gov/expapi/activities/module">
+			<name lang="und">This slide is a matching multiple choice question featuring text. You can add your question here.</name>
+			<description lang="und">This slide is a matching multiple choice question featuring text. You can add your question here.</description>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/6rIu2e0evtz/6MujstoMdOF" type="http://adlnet.gov/expapi/activities/cmi.interaction">
+			<name lang="und">This slide is a matching multiple choice question featuring text. You can add your question here.</name>
+			<description lang="und">This slide is a matching multiple choice question featuring text. You can add your question here.</description>
+			<interactionType>matching</interactionType>
+			<correctResponsePatterns>
+				<correctResponsePattern>statement_6SiYLyIxJPS[.]choice_6SiYLyIxJPS</correctResponsePattern>
+				<correctResponsePattern>statement_6bQOOVNVHux[.]choice_6bQOOVNVHux</correctResponsePattern>
+				<correctResponsePattern>statement_6cEimEjzDHO[.]choice_6cEimEjzDHO</correctResponsePattern>
+				<correctResponsePattern>statement_6VKhASh3Nyp[.]choice_6VKhASh3Nyp</correctResponsePattern>
+			</correctResponsePatterns>
+			<source>
+				<component>
+					<id>statement_6SiYLyIxJPS</id>
+					<description lang="und">a</description>
+				</component>
+				<component>
+					<id>statement_6bQOOVNVHux</id>
+					<description lang="und">b</description>
+				</component>
+				<component>
+					<id>statement_6cEimEjzDHO</id>
+					<description lang="und">c</description>
+				</component>
+				<component>
+					<id>statement_6VKhASh3Nyp</id>
+					<description lang="und">d</description>
+				</component>
+			</source>
+			<target>
+				<component>
+					<id>choice_6SiYLyIxJPS</id>
+					<description lang="und">A</description>
+				</component>
+				<component>
+					<id>choice_6bQOOVNVHux</id>
+					<description lang="und">B</description>
+				</component>
+				<component>
+					<id>choice_6cEimEjzDHO</id>
+					<description lang="und">C</description>
+				</component>
+				<component>
+					<id>choice_6VKhASh3Nyp</id>
+					<description lang="und">D</description>
+				</component>
+			</target>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/5sezbJAvBRt" type="http://adlnet.gov/expapi/activities/module">
+			<name lang="und">This is a fill in the blank question. Fill in the blank that follows with the word blank:</name>
+			<description lang="und">This is a fill in the blank question. Fill in the blank that follows with the word blank:</description>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/5sezbJAvBRt/5aAFAOTXpw9" type="http://adlnet.gov/expapi/activities/cmi.interaction">
+			<name lang="und">This is a fill in the blank question. Fill in the blank that follows with the word blank:</name>
+			<description lang="und">This is a fill in the blank question. Fill in the blank that follows with the word blank:</description>
+			<interactionType>fill-in</interactionType>
+		</activity>
+		<activity id="http://elearningbrothers.com/xAPItmp/PLAYFAIR/10013539/6E6Jr7f1C8y" type="http://adlnet.gov/expapi/activities/module">
+			<name lang="und">Results Slide</name>
+			<description lang="und">Results Slide</description>
+		</activity>
+	</activities>
+</tincan>

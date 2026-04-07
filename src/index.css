@@ -1,0 +1,177 @@
+@import "tailwindcss";
+
+/* Override branching scenario correct path indicator globally */
+[data-correct-path="true"] {
+  border-left-width: 2px !important;
+  border-left-color: var(--branch-border, #ccfbf1) !important;
+}
+
+[data-correct-path="true"]:hover {
+  border-left-color: var(--branch-accent, #0f766e) !important;
+}
+
+/* Hide Internal assessable controls for Submit flow wrapper */
+.drag-drop-nimbus-wrapper button[aria-label="Check answer"],
+.drag-drop-nimbus-wrapper button[aria-label="Reset"] {
+  display: none !important;
+}
+
+/* Dynamic Theming System for eLearning Components */
+.theme-light {
+  --component-bg: #ffffff;
+  --component-border: #e2e8f0;
+  --component-text: #334155;
+  --component-accent: #4f46e5;
+  --component-hover: #f8fafc;
+}
+
+.theme-dark {
+  --component-bg: #0f172a;
+  --component-border: #334155;
+  --component-text: #f8fafc;
+  --component-accent: #818cf8;
+  --component-hover: #1e293b;
+}
+
+.theme-unified {
+  --component-bg: #fdf2f8;
+  --component-border: #fbcfe8;
+  --component-text: #831843;
+  --component-accent: #db2777;
+  --component-hover: #fce7f3;
+}
+
+/* ── Dark-mode CSS overrides for external @zomako/elearning-components ──
+   Applied via .interaction-dark-override wrapper when theme !== 'light'.
+   Uses concrete dark colors — NOT transparent — to preserve component structure. */
+
+.interaction-dark-override {
+  color-scheme: dark;
+  color: #e2e8f0;
+}
+
+/* ── Text: force light colours everywhere ── */
+.interaction-dark-override p,
+.interaction-dark-override span,
+.interaction-dark-override h1, .interaction-dark-override h2,
+.interaction-dark-override h3, .interaction-dark-override h4,
+.interaction-dark-override li, .interaction-dark-override label,
+.interaction-dark-override strong, .interaction-dark-override em {
+  color: #e2e8f0 !important;
+}
+.interaction-dark-override [class*="text-gray"],
+.interaction-dark-override [class*="text-slate"] {
+  color: #94a3b8 !important;
+}
+.interaction-dark-override [class*="text-indigo"],
+.interaction-dark-override [class*="text-blue"],
+.interaction-dark-override [class*="text-purple"] {
+  color: #a5b4fc !important;
+}
+
+/* ── Card/panel surfaces: dark slate, NOT transparent ── */
+.interaction-dark-override [class*="bg-white"] {
+  background-color: #1e293b !important;
+}
+.interaction-dark-override [class*="bg-gray-50"],
+.interaction-dark-override [class*="bg-gray-100"],
+.interaction-dark-override [class*="bg-slate-50"],
+.interaction-dark-override [class*="bg-slate-100"] {
+  background-color: #1e293b !important;
+}
+.interaction-dark-override [class*="bg-indigo-50"],
+.interaction-dark-override [class*="bg-indigo-100"] {
+  background-color: rgba(99,102,241,0.15) !important;
+}
+
+/* ── Borders ── */
+.interaction-dark-override [class*="border-gray"],
+.interaction-dark-override [class*="border-slate-2"],
+.interaction-dark-override [class*="border-slate-3"] {
+  border-color: rgba(100, 116, 139, 0.35) !important;
+}
+
+/* ── Buttons (accordion triggers, timeline steps) ── */
+.interaction-dark-override button {
+  background-color: rgba(30, 41, 59, 0.85) !important;
+  border-color: rgba(100, 116, 139, 0.3) !important;
+  color: #e2e8f0 !important;
+}
+.interaction-dark-override button:hover {
+  background-color: rgba(51, 65, 85, 0.95) !important;
+  border-color: rgba(99, 102, 241, 0.5) !important;
+}
+
+/* ── Timeline: active/selected step highlight ── */
+.interaction-dark-override button[class*="active"],
+.interaction-dark-override button[aria-selected="true"],
+.interaction-dark-override button[aria-pressed="true"],
+.interaction-dark-override [class*="active"] button,
+.interaction-dark-override li[class*="active"],
+.interaction-dark-override [class*="step"][class*="active"],
+.interaction-dark-override [class*="selected"] {
+  background-color: rgba(99, 102, 241, 0.25) !important;
+  border-color: rgba(99, 102, 241, 0.7) !important;
+  color: #c7d2fe !important;
+  box-shadow: 0 0 0 2px rgba(99,102,241,0.3) !important;
+}
+
+/* Timeline connector line */
+.interaction-dark-override [class*="border-l"],
+.interaction-dark-override [class*="border-r"] {
+  border-color: rgba(99, 102, 241, 0.35) !important;
+}
+
+/* Timeline dots */
+.interaction-dark-override [class*="rounded-full"] {
+  border-color: rgba(99, 102, 241, 0.6) !important;
+  background-color: rgba(30, 41, 59, 0.9) !important;
+}
+.interaction-dark-override [class*="rounded-full"][class*="bg-indigo"],
+.interaction-dark-override [class*="rounded-full"][class*="bg-blue"] {
+  background-color: rgba(99, 102, 241, 0.7) !important;
+}
+
+/* ── Matching: draggable items and droppable targets ── */
+.interaction-dark-override [draggable="true"],
+.interaction-dark-override [class*="draggable"],
+.interaction-dark-override [class*="drag-item"] {
+  background-color: #1e3a5f !important;
+  border-color: rgba(99, 102, 241, 0.4) !important;
+  color: #bfdbfe !important;
+}
+.interaction-dark-override [class*="droppable"],
+.interaction-dark-override [class*="drop-target"],
+.interaction-dark-override [role="listitem"],
+.interaction-dark-override [role="option"] {
+  background-color: rgba(15, 23, 42, 0.7) !important;
+  border-color: rgba(100, 116, 139, 0.35) !important;
+  color: #e2e8f0 !important;
+}
+
+/* ── Drag & Drop: source items and target zones ── */
+.interaction-dark-override [class*="drop-zone"],
+.interaction-dark-override [class*="target-zone"] {
+  background-color: rgba(15, 23, 42, 0.6) !important;
+  border-color: rgba(99, 102, 241, 0.3) !important;
+}
+.interaction-dark-override input {
+  background-color: rgba(30, 41, 59, 0.9) !important;
+  border-color: rgba(100, 116, 139, 0.4) !important;
+  color: #e2e8f0 !important;
+}
+
+/* ── Feedback states for matched/correct items ── */
+.interaction-dark-override [class*="correct"],
+.interaction-dark-override [class*="success"] {
+  background-color: rgba(16, 185, 129, 0.2) !important;
+  border-color: rgba(16, 185, 129, 0.5) !important;
+  color: #6ee7b7 !important;
+}
+.interaction-dark-override [class*="incorrect"],
+.interaction-dark-override [class*="error"] {
+  background-color: rgba(239, 68, 68, 0.15) !important;
+  border-color: rgba(239, 68, 68, 0.4) !important;
+  color: #fca5a5 !important;
+}
+

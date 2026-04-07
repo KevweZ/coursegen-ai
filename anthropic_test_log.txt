@@ -1,0 +1,5 @@
+[FAIL] claude-3-7-sonnet-20250219: 404 {"type":"error","error":{"type":"not_found_error","message":"model: claude-3-7-sonnet-20250219"},"request_id":"req_011CZfaWpXq4xhogsynQ7p7v"}
+[FAIL] claude-3-5-sonnet-20241022: 404 {"type":"error","error":{"type":"not_found_error","message":"model: claude-3-5-sonnet-20241022"},"request_id":"req_011CZfaWrBJPvVzYDxXp5vSX"}
+[FAIL] claude-3-5-sonnet-20240620: 404 {"type":"error","error":{"type":"not_found_error","message":"model: claude-3-5-sonnet-20240620"},"request_id":"req_011CZfaWsGHdWU9sosWVfgjY"}
+[FAIL] claude-3-sonnet-20240229: 404 {"type":"error","error":{"type":"not_found_error","message":"model: claude-3-sonnet-20240229"},"request_id":"req_011CZfaWtMmZcJBARz5XABwc"}
+[FAIL] claude-3-haiku-20240307: 404 {"type":"error","error":{"type":"not_found_error","message":"model: claude-3-haiku-20240307"},"request_id":"req_011CZfaWuah6ggTrq9MT5m67"}

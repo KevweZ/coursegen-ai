@@ -1,0 +1,272 @@
+﻿=== DESIGN DOCTRINE ===
+Step-by-Step Guide: Setting Up Anthropic API and Dual-Model Routing in Antigravity
+
+This guide provides the exact steps to purchase Anthropic API credits, configure your application to use Claude models, and instruct Antigravity to implement a dual-model routing strategy (Sonnet 4.6 for complex tasks, Haiku 4.5 for simple tasks).
+
+
+
+There is an important distinction to clarify before beginning: You do not need to configure an API key for Antigravity itself to use Claude. Antigravity has Claude Sonnet 4.6 and Opus 4.6 built-in as native reasoning models for its own agentic operations [1]. The API key you are purchasing is for your application to use when it runs in production and generates courses for your users.
+
+
+
+
+
+
+
+Part 1: Purchasing the Anthropic API
+
+Follow these steps to create an account, add billing, and generate the API key that your eLearning platform will use to call Claude.
+
+
+
+Create a Developer Account: Navigate to console.anthropic.com [2]. Note that this is the developer console, which is entirely separate from a consumer claude.ai Pro account. You must sign up here even if you already pay for Claude Pro [3].
+
+Add a Payment Method: Once logged in, look at the left-hand navigation menu. Click on Settings, then click on Billing [4]. Click the Add payment method button and enter your credit card information [4].
+
+Purchase Initial Credits: Anthropic operates on a prepaid credit system for new accounts. You must purchase credits before the API key will work [3]. It is recommended to start by purchasing $20 to $50 in credits to cover your initial development and testing phase.
+
+Set Spending Limits (Crucial Step): To protect yourself from unexpected costs during development, stay in the Settings menu and click on Limits [4]. Set a monthly spending limit (a hard cap, e.g., $100) and configure a notification threshold so you receive an email when you reach 80% of your limit [4].
+
+Generate the API Key: In the left navigation menu, click on API Keys [3]. Click the Create Key button. Give the key a recognizable name (e.g., "eLearning-App-Prod"). Copy the key immediately ΓÇö it will only be shown to you once [3]. Store this key securely, as you will need to paste it into your application's environment variables.
+
+
+
+
+
+
+
+Part 2: Configuring Your App in Antigravity
+
+Now that you have your API key, you need to instruct Antigravity to update your application's codebase to use Anthropic instead of Gemini, and to implement the routing strategy.
+
+
+
+Step 1: Add the API Key to Your Environment
+
+In Antigravity, open your project's environment file (usually .env or .env.local). Add the following line, replacing the placeholder with the actual key you copied from the Anthropic Console:
+ANTHROPIC_API_KEY=sk-ant-api03-...
+
+
+
+Step 2: Prompt Antigravity to Implement the Routing Architecture
+
+You need to tell the Antigravity agent to rewrite your backend API calls. Open the Antigravity Agent chat panel, ensure the reasoning model is set to Claude Sonnet 4.6 (thinking) [1], and paste the following prompt exactly as written:
+
+
+
+Prompt for Antigravity Agent:
+"I need to migrate our application's AI generation backend from Google Gemini to the Anthropic API. I have already added ANTHROPIC_API_KEY to the .env file.
+
+
+
+Please implement a dual-model routing architecture using the official Anthropic SDK (@anthropic-ai/sdk). The architecture must follow these rules:
+
+
+
+Create a centralized AI service file (e.g., ai-service.ts or anthropic-client.ts) that initializes the Anthropic client.
+
+Implement a routing function that selects the model based on the task type.
+
+Use claude-sonnet-4-6 for all complex, structural tasks. This includes: generating the initial course outline, drafting ABCD learning objectives, determining the pedagogical structure for K-12 vs. Corporate, creating the JSON schemas for game templates (like Jeopardy), and generating the SCORM imsmanifest.xml files.
+
+Use claude-haiku-4-5-20251001 for all high-volume, repetitive content generation. This includes: writing the actual text for individual slides, generating the 50 multiple-choice questions, writing the Jeopardy clues, and creating flashcard pairs based on the outline.
+
+Update the existing course generation endpoints to call this new routing service instead of the old Gemini service. Ensure all prompts are formatted correctly for Claude's Messages API structure."
+
+
+
+Step 3: Review and Test
+
+Antigravity will generate an implementation plan and write the code. Because you are using the Sonnet 4.6 reasoning model inside Antigravity, it will be highly capable of executing this architectural shift.
+
+
+
+Once the code is written, test the course generation feature in your app. The 429 RESOURCE_EXHAUSTED errors you were experiencing with Gemini's free tier will disappear, and the app will now intelligently route complex logic to Sonnet and bulk text generation to Haiku, optimizing both performance and cost.
+
+
+
+References
+
+[1] https://antigravity.google/docs/models
+[2] https://console.anthropic.com
+[3] https://scuti.asia/antigravity-claude-code-integration-overview-setup-and-sample-app/
+[4] https://crazyrouter.com/blog/anthropic-billing-guide-claude-api-costs
+
+
+
+=== INTERACTIONS DOCTRINE ===
+eLearning Interactions: K-12 vs. Corporate Design
+
+A Comparative Analysis of Digital Interactivity
+
+
+
+While the underlying mechanics of eLearning interactionsΓÇösuch as drag-and-drops, hotspots, and click-to-revealsΓÇöare technically identical across platforms, their pedagogical application differs drastically depending on the audience. In corporate instructional design, interactions are primarily used to assess knowledge, simulate workplace tasks, or organize dense information. In K-12 education, interactions serve a much broader purpose: they are essential tools for maintaining attention, scaffolding cognitive development, and fostering exploration.
+
+
+
+This document explores how common eLearning interactions are adapted for K-12 learners compared to corporate professionals, and what unique interactive elements are required for K-12 platforms.
+
+
+
+The Cognitive Divide: Why Interactions Differ
+
+The differences in interaction design stem directly from the cognitive and developmental differences between adults and children [1].
+
+
+
+Attention Span and Cognitive Load: Adult learners can generally sustain attention through longer, more complex modules, provided the content is relevant to their goals [2]. Children, particularly in elementary and middle school, have significantly shorter attention spans and lower working memory capacities. Consequently, K-12 eLearning relies heavily on "micro-interactions"ΓÇöfrequent, low-stakes activities designed to reset attention and prevent cognitive overload [3].
+
+Motivation: Adults are intrinsically motivated by career advancement or problem-solving. Children are largely extrinsically motivated. Therefore, K-12 interactions must be inherently engaging, often relying on gamification, bright visuals, and immediate feedback to sustain interest [1].
+
+Motor Skills: For early learners (ages 4-8), fine motor skills are still developing. While an adult can easily navigate nested menus or small click targets, young children require larger interaction zones and simpler gestures (like tapping or broad swiping) [4].
+
+
+
+Adapting Standard Interactions for K-12
+
+Common corporate interactions like drag-and-drops and hotspots are widely used in K-12, but their design and purpose shift significantly.
+
+
+
+1. Drag-and-Drop Activities
+
+Corporate Use: Often used for process ordering (e.g., "Drag the steps of the sales cycle into the correct order") or matching terms to definitions. The focus is on accuracy and assessing comprehension.
+
+K-12 Use: Drag-and-drop is a foundational interaction for younger students, heavily utilized for sorting, categorizing, and pattern recognition [5]. For example, an elementary student might drag images of animals into "mammal" and "reptile" buckets. The interaction is less about assessment and more about active, hands-on learning [5]. K-12 drag-and-drops also require larger target areas and more forgiving "snap-to" functionality to accommodate developing motor skills.
+
+
+
+2. Hotspots (Click to Reveal)
+
+Corporate Use: Used to declutter screens and organize dense information. An adult learner might click hotspots on a software screenshot to read detailed tooltips about each feature.
+
+K-12 Use: Hotspots are used for exploration and discovery. Instead of reading dense text, a student might click hotspots on a diagram of the solar system to trigger short audio clips, animations, or fun facts [5]. The goal is to encourage curiosity rather than simply hiding text.
+
+
+
+3. Accordions and Tabs
+
+Corporate Use: Highly common in corporate ID to chunk heavy text and allow learners to control the pace of their reading.
+
+K-12 Use: Rarely used in early elementary eLearning, as young children may lack the reading stamina or navigational intuition to click through text-heavy accordions. In middle and high school, they are used sparingly, often incorporating images or icons rather than just text labels.
+
+
+
+4. Flashcards
+
+Corporate Use: Used for rote memorization of compliance terms, product specs, or foreign languages.
+
+K-12 Use: Flashcards are highly gamified. They often include audio pronunciation, visual cues, and "spaced repetition" algorithms to help students master sight words or math facts [5].
+
+
+
+Unique K-12 Interaction Types
+
+Beyond adapting corporate interactions, K-12 eLearning platforms rely on several interaction types that are either rare or entirely absent in typical corporate training.
+
+
+
+1. Virtual Labs and Simulations
+
+While corporate training uses "scenario-based learning" to simulate interpersonal workplace situations (e.g., handling an angry customer), K-12 STEM education relies heavily on virtual laboratories [5]. These interactive environments allow students to manipulate variablesΓÇösuch as adjusting the incline of a ramp to test gravity, or mixing digital chemicalsΓÇöto see real-time, cause-and-effect results [5]. Platforms like PhET Interactive Simulations are staples in K-12 design.
+
+
+
+2. Storytelling and Animated Characters
+
+Corporate eLearning generally avoids animated mascots, favoring realistic scenarios or professional avatars. In K-12 (especially K-5), narrative-driven interactions are crucial [6]. A course might be guided by an animated character who asks questions, provides hints, and celebrates successes. Students interact with the content through the narrative, helping the character solve a problem rather than just answering a quiz question [6].
+
+
+
+3. Gamification Mechanics
+
+While corporate eLearning might use a simple leaderboard or badge system, K-12 eLearning integrates deep gamification. Interactions are tied to game mechanics such as [7]:
+
+Earning currency to customize digital avatars.
+
+Unlocking levels or new mini-games upon mastering a concept.
+
+Health points or "lives" that allow students a safe space to fail and try again.
+
+
+
+4. Collaborative and Social Interactions
+
+Corporate eLearning is usually an isolated, asynchronous experience. K-12 eLearning, particularly post-pandemic, emphasizes peer-to-peer interaction [8]. Platforms integrate digital whiteboards (like Jamboard), shared coding environments (like Scratch), or interactive discussion boards where students can collaborate, peer-review, and solve problems together in real-time [8].
+
+
+
+Summary Comparison of Interactions
+
+Interaction Type
+
+Corporate ID Application
+
+K-12 Pedagogical Application
+
+Drag and Drop
+
+Process ordering, matching terms
+
+Sorting, categorizing, pattern recognition; requires larger drop zones
+
+Hotspots
+
+Decluttering screens, software tooltips
+
+Exploration, discovery, triggering audio/animations
+
+Accordions/Tabs
+
+Text chunking, learner-paced reading
+
+Used sparingly; often replaced by visual menus or avoided for young learners
+
+Flashcards
+
+Rote memorization of terms/specs
+
+Gamified sight-word/math fact practice with audio cues
+
+Simulations
+
+Interpersonal scenario branching (soft skills)
+
+Virtual STEM labs, manipulating physics/chemistry variables
+
+Gamification
+
+Basic badges, completion certificates
+
+Avatar customization, leveling up, in-game currency
+
+Social/Peer
+
+Rare; mostly isolated learning
+
+Highly integrated; shared whiteboards, peer review, collaborative projects
+
+Conclusion for Platform Developers
+
+When building an eLearning platform to serve both audiences, developers must ensure that the authoring tools are flexible enough to support both paradigms. A drag-and-drop tool, for instance, must allow a corporate ID to create a strict, graded process-ordering activity, while simultaneously allowing a kindergarten teacher to create a forgiving, visually rich, ungraded sorting game with audio feedback. Furthermore, incorporating features like virtual lab templates, avatar systems, and collaborative workspaces will be essential for capturing the K-12 market.
+
+
+
+
+
+
+
+References
+
+[1] eLearning Industry. "Is eLearning For Adults That Much Different From eLearning For Children?" https://elearningindustry.com/is-elearning-for-adults-that-much-different-from-elearning-for-children
+[2] SHIFT eLearning. "Levels of Interactivity in eLearning: Which one do you need?" https://www.shiftelearning.com/blog/bid/190140/Levels-of-Interactivity-in-eLearning-Which-one-do-you-need
+[3] eLearning Industry. "Corporate Vs. Educational eLearning: WhatΓÇÖs The Big Difference?" https://elearningindustry.com/corporate-vs-educational-elearning-big-difference
+[4] Educational Initiatives. "Design considerations for creating engaging learning content for kids." https://ei.study/design-considerations-for-creating-engaging-learning-content-for-kids/
+[5] Mitr Media. "Designing Interactive eLearning Content for STEM Education in K-12 Schools." https://www.mitrmedia.com/resources/blogs/designing-interactive-elearning-content-for-stem-education-in-k-12-schools/
+[6] Mitr Media. "Understanding the K12 Learner: Creating Age-Appropriate STEM Content." https://www.mitrmedia.com/resources/blogs/understanding-the-k12-learner-creating-age-appropriate-stem-content/
+[7] A Pass Education. "Gamification for Learning: 6 Strategies for K-12 Publishers." https://apasseducation.com/education-blog/gamification-for-learning-6-strategies-for-k-12-publishers/
+[8] Eduwik. "Social learning apps for KΓÇæ12 collaboration." https://eduwik.com/social-learning-apps-for-k%E2%80%9112-collaboration/
+
+
+
