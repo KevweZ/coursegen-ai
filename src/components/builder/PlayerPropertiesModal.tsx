@@ -324,25 +324,7 @@ export function PlayerPropertiesModal({ config, onChange, onClose }: Props) {
           {/* ─ LEFT: Settings Panel ─ */}
           <div className="w-72 border-r border-slate-800 overflow-y-auto p-5 shrink-0">
 
-            <SectionTitle>Player Style</SectionTitle>
-            <div className="grid grid-cols-2 gap-2 mb-1">
-              {(['modern', 'classic'] as const).map(style => (
-                <button
-                  key={style}
-                  onClick={() => update({ playerStyle: style })}
-                  className={cn(
-                    'flex flex-col items-center gap-1.5 p-3 rounded-xl border text-xs font-bold capitalize transition-all',
-                    local.playerStyle === style
-                      ? 'border-indigo-500 bg-indigo-600/20 text-indigo-300'
-                      : 'border-slate-700 bg-slate-800/50 text-slate-400 hover:border-slate-500'
-                  )}
-                >
-                  <Monitor className={cn('w-5 h-5', local.playerStyle === style ? 'text-indigo-400' : 'text-slate-500')} />
-                  {style}
-                  {local.playerStyle === style && <Check className="w-3 h-3 text-indigo-400" />}
-                </button>
-              ))}
-            </div>
+
 
             <SectionTitle>Theme</SectionTitle>
             <select
@@ -444,7 +426,6 @@ export function PlayerPropertiesModal({ config, onChange, onClose }: Props) {
             {/* Config summary chips */}
             <div className="flex flex-wrap gap-2">
               {[
-                { label: local.playerStyle, color: 'text-indigo-300 bg-indigo-500/10 border-indigo-500/20' },
                 { label: local.theme + ' theme', color: 'text-slate-300 bg-slate-700/50 border-slate-600' },
                 { label: local.tocPosition.replace(/-/g, ' '), color: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20' },
                 ...(local.tocStartsCollapsed ? [{ label: 'TOC collapsed', color: 'text-amber-300 bg-amber-500/10 border-amber-500/20' }] : []),

@@ -50,8 +50,8 @@ export default function CarouselPanel({ cards = [], title }: Props) {
       )}
 
       {/* ── Carousel Track — overflow-hidden keeps side cards invisible ── */}
-      <div className="relative w-full" style={{ height: 220 }}>
-        <div className="absolute inset-0 overflow-hidden rounded-2xl">
+      <div className="relative w-full flex justify-center" style={{ height: 220 }}>
+        <div className="absolute inset-0 max-w-[500px] w-full mx-auto overflow-hidden rounded-2xl shadow-xl">
           <AnimatePresence initial={false} custom={dir} mode="popLayout">
             <motion.div
               key={activeCard.id}
@@ -109,10 +109,10 @@ export default function CarouselPanel({ cards = [], title }: Props) {
           <button
             key={i}
             onClick={() => goTo(i, i > activeIndex ? 1 : -1)}
-            className="transition-all rounded-full"
+            className="transition-all rounded-full flex-shrink-0 cursor-pointer hover:opacity-80"
             style={{
-              width: i === activeIndex ? 24 : 8,
-              height: 8,
+               width: i === activeIndex ? 36 : 14,
+               height: 14,
               background: i === activeIndex
                 ? (card.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length])
                 : '#475569',

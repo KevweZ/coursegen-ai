@@ -58,6 +58,11 @@ import {
   DragAndDropActivity, 
   BranchingScenario 
 } from '@zomako/elearning-components/dist/elearning-components.es.js';
+import { 
+  AccordionPreview, HotspotPreview, BranchingPreview, MultipleChoicePreview, 
+  SortingPreview, MatchingPreview, DragDropPreview, TimelinePreview, DropTargetsPreview,
+  GamePreview 
+} from './components/interactions/ExtraPreviews';
 import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft } from './services/aiService';
 import { createScormPackage } from './services/scormService';
 import { FlashcardGrid } from './components/FlashcardGrid';
@@ -1797,81 +1802,11 @@ export default function App() {
                  </div>
                  <div className="flex-1 overflow-y-auto p-8 bg-slate-900 custom-scrollbar theme-dark InteractionPreviewBodyWrapper">
                      <div className="w-full min-h-[420px] flex flex-wrap items-start justify-center gap-6 py-6 px-2">
-                         {previewModalOption === 'Multiple Choice' && (
-                           <div className="w-full max-w-lg">
-                              <div className="space-y-4 w-full">
-                                <p className="font-bold text-lg text-white mb-2">Which of the following is a primary benefit of microlearning?</p>
-                                {[
-                                  { id: 'a', text: 'Higher cognitive load per session' },
-                                  { id: 'b', text: 'Focused, bite-sized content targeting one concept at a time', correct: true },
-                                  { id: 'c', text: 'Replaces all formal training programs entirely' },
-                                  { id: 'd', text: 'Requires no assessment or feedback loops' }
-                                ].map((opt, i) => (
-                                  <button key={i} className={`w-full text-left p-4 rounded-xl border-2 transition-colors flex items-center gap-3 ${(opt as any).correct ? 'border-indigo-500 bg-indigo-500/10 text-white' : 'border-slate-700 bg-slate-800 text-slate-200 hover:border-indigo-500'}`}>
-                                     <div className={`w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center ${(opt as any).correct ? 'border-indigo-500 bg-indigo-500' : 'border-slate-500'}`}>
-                                       {(opt as any).correct && <div className="w-2 h-2 bg-white rounded-full" />}
-                                     </div>
-                                     <span className="font-medium text-sm">{opt.text}</span>
-                                  </button>
-                                ))}
-                              </div>
-                              <div className="mt-4"><button className="px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm w-full transition-colors">Submit Answer</button></div>
-                           </div>
-                         )}
+                         {previewModalOption === 'Multiple Choice' && <MultipleChoicePreview />}
                          {previewModalOption === 'Multiple Answers' && <MultipleAnswersPreviewDemo />}
-                         {previewModalOption === 'Drag & Drop' && (
-                           <div className="w-full max-w-2xl space-y-4">
-                             <p className="text-white font-bold text-lg">Classify each item by dragging it to the correct zone:</p>
-                             <div className="flex flex-wrap gap-3 p-4 bg-slate-800 rounded-xl border border-slate-700 mb-2">
-                               <span className="text-xs text-slate-400 font-bold uppercase w-full mb-1">Items to classify:</span>
-                               {['Social Security Number','Public Press Release','Employee Salary Data','Marketing Brochure'].map(item => (
-                                 <div key={item} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold cursor-grab shadow-lg">{item}</div>
-                               ))}
-                             </div>
-                             <div className="grid grid-cols-2 gap-4">
-                               {[{label:'🔒 Confidential', color:'border-red-500/50 bg-red-500/10'},{label:'📢 Public', color:'border-green-500/50 bg-green-500/10'}].map(zone => (
-                                 <div key={zone.label} className={`p-6 rounded-xl border-2 border-dashed ${zone.color} min-h-[100px] flex items-center justify-center text-slate-300 font-bold`}>{zone.label}</div>
-                               ))}
-                             </div>
-                           </div>
-                         )}
-                         {previewModalOption === 'Hotspot' && (
-                           <div className="w-full max-w-xl">
-                             <p className="text-white font-bold text-lg mb-4">Click numbered hotspots to explore each part:</p>
-                             <div className="relative w-full h-[300px] bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl border border-slate-700 overflow-hidden">
-                               <div className="absolute inset-0 flex items-center justify-center">
-                                 <div className="w-48 h-48 bg-indigo-500/10 rounded-full border border-indigo-500/30 flex items-center justify-center">
-                                   <div className="w-28 h-28 bg-indigo-500/20 rounded-full border border-indigo-500/40 flex items-center justify-center">
-                                     <div className="w-14 h-14 bg-indigo-500/40 rounded-full border border-indigo-500/60 flex items-center justify-center text-indigo-300 font-bold text-xs">Core</div>
-                                   </div>
-                                 </div>
-                               </div>
-                               {([{x:'15%',y:'20%',n:1,label:'Outer Layer'},{x:'70%',y:'15%',n:2,label:'Data Flow'},{x:'80%',y:'65%',n:3,label:'Security Zone'},{x:'20%',y:'70%',n:4,label:'Access Control'}] as any[]).map((dot: any) => (
-                                 <div key={dot.n} className="absolute group cursor-pointer" style={{left:dot.x, top:dot.y}}>
-                                   <div className="w-8 h-8 bg-indigo-500 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-indigo-500/50 animate-pulse group-hover:scale-110 transition-transform">{dot.n}</div>
-                                   <div className="absolute left-10 top-0 bg-slate-900 border border-indigo-500/50 text-white text-xs font-bold px-2 py-1 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10">{dot.label}</div>
-                                 </div>
-                               ))}
-                             </div>
-                           </div>
-                         )}
-                         {previewModalOption === 'Accordion' && (
-                           <div className="w-full max-w-2xl space-y-2">
-                             <p className="text-white font-bold text-lg mb-4">Security Principles — click to expand:</p>
-                             {([
-                               {title:'🔒 Confidentiality', content:'Ensuring only authorized parties can access sensitive information. Implemented through encryption, access controls, and need-to-know policies.', open:true},
-                               {title:'✅ Integrity', content:'Safeguarding the accuracy and completeness of data. Prevents unauthorized modification.'},
-                               {title:'⚡ Availability', content:'Ensuring systems and data are accessible when needed by authorized users.'}
-                             ] as any[]).map((item: any, i: number) => (
-                               <div key={i} className="rounded-xl overflow-hidden border border-slate-700">
-                                 <div className={item.open ? 'bg-indigo-600 text-white p-4 font-bold flex items-center justify-between' : 'bg-slate-800 text-slate-300 p-4 font-bold flex items-center justify-between hover:bg-slate-750'}>
-                                   <span>{item.title}</span><span className="text-lg">{item.open ? '−' : '+'}</span>
-                                 </div>
-                                 {item.open && <div className="bg-slate-800/50 p-4 text-slate-300 text-sm leading-relaxed">{item.content}</div>}
-                               </div>
-                             ))}
-                           </div>
-                         )}
+                         {previewModalOption === 'Drag & Drop' && <DragDropPreview />}
+                         {previewModalOption === 'Hotspot' && <HotspotPreview />}
+                         {previewModalOption === 'Accordion' && <AccordionPreview />}
                          {previewModalOption === 'Flashcards' && (
                            <div className="w-full max-w-3xl">
                               <FlashcardGrid cards={[
@@ -1881,78 +1816,11 @@ export default function App() {
                               ]} theme="unified" />
                            </div>
                          )}
-                         {previewModalOption === 'Matching' && (
-                            <div className="w-full max-w-2xl">
-                              <p className="text-white font-bold text-lg mb-4">Match each term to its definition:</p>
-                              <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-3">
-                                  <p className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-2">Terms</p>
-                                  {['Phishing','Malware','Ransomware','Zero-day'].map(term => (
-                                    <div key={term} className="p-3 bg-indigo-600 rounded-xl text-white font-bold text-sm text-center cursor-pointer hover:bg-indigo-500 transition-colors">{term}</div>
-                                  ))}
-                                </div>
-                                <div className="space-y-3">
-                                  <p className="text-xs font-bold text-purple-400 uppercase tracking-widest mb-2">Definitions</p>
-                                  {['Malicious code targeting systems','Deceptive messages to steal credentials','Encrypts files and demands payment','Exploit before patch is available'].map(def => (
-                                    <div key={def} className="p-3 bg-purple-600/30 border border-purple-500/40 rounded-xl text-slate-300 text-sm cursor-pointer hover:border-purple-400 transition-colors">{def}</div>
-                                  ))}
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                          {previewModalOption === 'Timeline' && (
-                            <TimelinePreviewDemo />
-                          )}
-                         {previewModalOption === 'Sorting' && (
-                           <div className="w-full max-w-md">
-                             <p className="text-white font-bold text-lg mb-4">Drag items into the correct order (Bloom's Taxonomy):</p>
-                             <div className="space-y-2">
-                               {['Remember','Understand','Apply','Analyze','Evaluate','Create'].map((level, i) => (
-                                 <div key={level} className="flex items-center gap-3 p-3 bg-slate-800 border border-slate-700 rounded-xl cursor-grab hover:border-indigo-500 transition-colors">
-                                   <span className="text-slate-500 font-bold w-6 text-center">⠿</span>
-                                   <span className="text-white font-medium text-sm">{level}</span>
-                                   <span className="ml-auto text-xs text-indigo-400 font-bold">Level {i+1}</span>
-                                 </div>
-                               ))}
-                             </div>
-                           </div>
-                         )}
-                         {previewModalOption === 'Drop Targets' && (
-                           <div className="w-full max-w-2xl">
-                             <p className="text-white font-bold text-lg mb-4">Drop each regulation into the correct compliance category:</p>
-                             <div className="flex flex-wrap gap-2 p-4 bg-slate-800/50 rounded-xl border border-slate-700 mb-4">
-                               {['HIPAA','GDPR','SOX','PCI-DSS','FERPA'].map(item => (
-                                 <div key={item} className="px-3 py-2 bg-indigo-600 rounded-lg text-white text-sm font-bold cursor-grab shadow-md">{item}</div>
-                               ))}
-                             </div>
-                             <div className="grid grid-cols-3 gap-3">
-                               {([{label:'Healthcare',icon:'🏥'},{label:'Financial',icon:'💰'},{label:'Education',icon:'🎓'}] as any[]).map((zone: any) => (
-                                 <div key={zone.label} className={`p-4 rounded-xl border-2 border-dashed border-slate-600 bg-slate-800/50 min-h-[100px] flex flex-col items-center justify-center gap-2 text-slate-400 hover:border-indigo-500 transition-colors`}>
-                                   <span className="text-2xl">{zone.icon}</span>
-                                   <span className="text-xs font-bold uppercase">{zone.label}</span>
-                                 </div>
-                               ))}
-                             </div>
-                           </div>
-                         )}
-                         {previewModalOption === 'Branching' && (
-                           <div className="w-full max-w-2xl">
-                             <div className="bg-slate-800 rounded-2xl border border-slate-700 p-6 mb-4">
-                               <p className="text-xs text-indigo-400 font-bold uppercase tracking-widest mb-2">📖 Scenario</p>
-                               <p className="text-white font-bold text-lg leading-snug">You receive an urgent email from your CEO requesting an immediate $50,000 wire transfer. What do you do?</p>
-                             </div>
-                             <div className="grid grid-cols-2 gap-4">
-                               <div className="p-4 bg-red-600/20 border-2 border-red-500/50 rounded-xl hover:border-red-400 cursor-pointer transition-all text-center">
-                                 <p className="text-white font-bold mb-1">⚠️ Wire the funds immediately</p>
-                                 <p className="text-red-400 text-xs mt-2">Outcome: Successful phishing attack — $50K lost</p>
-                               </div>
-                               <div className="p-4 bg-green-600/20 border-2 border-green-500/50 rounded-xl hover:border-green-400 cursor-pointer transition-all text-center">
-                                 <p className="text-white font-bold mb-1">✅ Verify via direct phone call first</p>
-                                 <p className="text-green-400 text-xs mt-2">Outcome: Attack prevented — Incident reported</p>
-                               </div>
-                             </div>
-                           </div>
-                         )}
+                         {previewModalOption === 'Matching' && <MatchingPreview />}
+                         {previewModalOption === 'Timeline' && <TimelinePreview />}
+                         {previewModalOption === 'Sorting' && <SortingPreview />}
+                         {previewModalOption === 'Drop Targets' && <DropTargetsPreview />}
+                         {previewModalOption === 'Branching' && <BranchingPreview />}
                          {previewModalOption === 'Tabs (Horizontal)' && (
                             <div className="w-full max-w-2xl">
                               <TabbedHorizontal tabs={[
@@ -1995,115 +1863,8 @@ export default function App() {
                          )}
 
                          {/* ===== GAMIFICATION TEMPLATE PREVIEWS ===== */}
-                         {(previewModalOption === 'Knowledge Board' || previewModalOption === 'Knowledge Board (Jeopardy)') && (
-                           <div className="w-full max-w-3xl">
-                             <p className="text-indigo-400 font-black text-2xl text-center mb-6 tracking-wider">KNOWLEDGE BOARD</p>
-                             <div className="grid grid-cols-4 gap-2">
-                               {['Security','Privacy','Compliance','Ethics'].map(cat => (
-                                 <div key={cat} className="bg-indigo-800 text-white text-center p-3 rounded-t-lg font-bold text-sm">{cat}</div>
-                               ))}
-                               {[100,200,300].flatMap(pts => ['Security','Privacy','Compliance','Ethics'].map(cat => (
-                                  <div key={String(cat)+pts} className="bg-indigo-700 hover:bg-indigo-600 border border-indigo-600 text-yellow-300 font-black text-xl text-center p-4 rounded-lg cursor-pointer transition-all">{'$' + pts}</div>
-                               )))}
-                             </div>
-                           </div>
-                         )}
-                         {previewModalOption === 'Millionaire Challenge' && (
-                           <div className="w-full max-w-2xl">
-                             <div className="bg-gradient-to-b from-blue-900 to-blue-950 rounded-2xl p-6 border border-blue-700">
-                               <p className="text-yellow-400 font-bold text-xs uppercase tracking-widest text-center mb-4">Question 3 of 15 — $1,000</p>
-                               <p className="text-white font-bold text-xl text-center mb-6">Which regulation governs healthcare data privacy in the United States?</p>
-                               <div className="grid grid-cols-2 gap-3">
-                                 {[{l:'A',t:'GDPR'},{l:'B',t:'HIPAA'},{l:'C',t:'SOX'},{l:'D',t:'FERPA'}].map(opt => (
-                                   <div key={opt.l} className={`p-3 rounded-xl border flex items-center gap-3 cursor-pointer transition-colors ${opt.l==='B'?'bg-orange-500/30 border-orange-400':'bg-blue-800 border-blue-600 hover:border-blue-400'}`}>
-                                     <span className="font-black text-yellow-300 w-6">{opt.l}:</span>
-                                     <span className="text-white font-bold">{opt.t}</span>
-                                   </div>
-                                 ))}
-                               </div>
-                               <div className="flex justify-center gap-4 mt-4">
-                                 {['50:50','📞 Phone','👥 Audience'].map(l => <button key={l} className="px-3 py-1 bg-yellow-500 text-black font-bold rounded-full text-xs">{l}</button>)}
-                               </div>
-                             </div>
-                           </div>
-                         )}
-                         {previewModalOption === 'Ranked Survey' && (
-                           <div className="w-full max-w-2xl">
-                             <div className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden">
-                               <div className="bg-blue-700 p-4 text-center">
-                                 <p className="text-yellow-300 font-black text-xl tracking-wider">SURVEY SAYS...</p>
-                                 <p className="text-white font-bold mt-2 text-sm">"Name a reason employees skip required training"</p>
-                               </div>
-                               <div className="p-4 space-y-3">
-                                 {[{a:'Too time-consuming',pct:36},{a:'Content not relevant',pct:28},{a:'Poor reminders',pct:19},{a:'Competing deadlines',pct:17}].map((item,i) => (
-                                   <div key={i} className="flex items-center gap-3">
-                                     <span className="text-yellow-400 font-black w-6">{i+1}</span>
-                                     <div className="flex-1 relative bg-blue-900 rounded-lg overflow-hidden h-9 flex items-center">
-                                       <div className="bg-blue-600 h-full" style={{width:item.pct+'%'}}></div>
-                                       <span className="absolute left-3 text-white text-sm font-bold z-10">{item.a}</span>
-                                     </div>
-                                     <span className="text-yellow-300 font-black w-10 text-right">{item.pct}%</span>
-                                   </div>
-                                 ))}
-                               </div>
-                             </div>
-                           </div>
-                         )}
-                         {previewModalOption === 'Digital Escape Room' && (
-                           <div className="w-full max-w-md text-center">
-                             <div className="bg-slate-800 rounded-2xl border border-amber-600/50 p-8 space-y-5">
-                               <div className="w-20 h-20 mx-auto bg-amber-500/20 rounded-full flex items-center justify-center">
-                                 <span className="text-5xl">🔒</span>
-                               </div>
-                               <div>
-                                 <p className="text-amber-400 font-black text-lg uppercase tracking-widest">Stage 1: The Phishing Lab</p>
-                                 <p className="text-slate-300 text-sm mt-2 leading-relaxed">A suspicious email has arrived. Identify the phishing indicators to unlock the next stage and escape!</p>
-                               </div>
-                               <div className="flex justify-center gap-2 mt-2">
-                                 {[1,2,3,4].map(n => <div key={n} className={`w-12 h-12 rounded-lg border-2 font-bold text-xl flex items-center justify-center ${n===1?'border-indigo-500 bg-indigo-500/20 text-white':'border-slate-700 bg-slate-900 text-slate-600'}`}>{n===1?'?':'-'}</div>)}
-                               </div>
-                               <div className="flex justify-center gap-2">
-                                 {['Stage 1','Stage 2','Stage 3'].map((s,i) => <div key={s} className={`w-3 h-3 rounded-full ${i===0?'bg-amber-500':'bg-slate-700'}`} />)}
-                               </div>
-                             </div>
-                           </div>
-                         )}
-                         {previewModalOption === 'Spin the Wheel' && (
-                           <div className="w-full max-w-sm text-center">
-                             <p className="text-white font-bold text-lg mb-4">Spin for a random category!</p>
-                             <div className="relative w-56 h-56 mx-auto mb-6">
-                               <svg viewBox="0 0 200 200" className="w-full h-full drop-shadow-xl">
-                                 {[{c:'#6366f1',l:'Security'},{c:'#8b5cf6',l:'Privacy'},{c:'#06b6d4',l:'Ethics'},{c:'#10b981',l:'Compliance'},{c:'#f59e0b',l:'Data'},{c:'#ef4444',l:'Access'}].map((seg, i) => {
-                                   const angle = (i * 60 - 90) * Math.PI/180;
-                                   const angle2 = ((i+1)*60 - 90) * Math.PI/180;
-                                   const x1=100+95*Math.cos(angle), y1=100+95*Math.sin(angle);
-                                   const x2=100+95*Math.cos(angle2), y2=100+95*Math.sin(angle2);
-                                   const mx=100+55*Math.cos((angle+angle2)/2), my=100+55*Math.sin((angle+angle2)/2);
-                                   return (<g key={i}><path d={`M100,100 L${x1},${y1} A95,95 0 0,1 ${x2},${y2} Z`} fill={seg.c} stroke="#1e293b" strokeWidth="2"/><text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="9" fontWeight="bold">{seg.l}</text></g>);
-                                 })}
-                                 <circle cx="100" cy="100" r="12" fill="white"/>
-                                 <polygon points="100,0 95,20 105,20" fill="white"/>
-                               </svg>
-                             </div>
-                             <button className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-black rounded-2xl shadow-lg hover:shadow-indigo-500/40 transition-all hover:scale-105">SPIN!</button>
-                           </div>
-                         )}
-                         {previewModalOption === 'Price Estimator' && (
-                           <div className="w-full max-w-lg">
-                             <div className="bg-slate-800 rounded-2xl border border-slate-700 p-6 space-y-4">
-                               <p className="text-yellow-400 font-black text-xl text-center">PRICE ESTIMATOR</p>
-                               <div className="bg-slate-900 rounded-xl p-4 text-center">
-                                 <p className="text-white font-bold mb-1">Average cost of a data breach for a mid-sized company</p>
-                                 <p className="text-slate-400 text-sm">Hint: It's more expensive than most annual training budgets</p>
-                               </div>
-                               <div className="grid grid-cols-3 gap-2">
-                                 {['$500K','$1M','$5M','$10M','$50M','Custom'].map(v => (
-                                   <button key={v} className={`py-2 bg-slate-700 hover:bg-indigo-600 text-slate-300 hover:text-white text-sm font-bold rounded-lg transition-colors ${v==='$5M'?'bg-indigo-600 text-white':''}`}>{v}</button>
-                                 ))}
-                               </div>
-                               <button className="w-full py-3 bg-gradient-to-r from-yellow-500 to-orange-500 text-black font-black rounded-xl hover:shadow-lg transition-all">LOCK IN PRICE</button>
-                             </div>
-                           </div>
+                         {(['Knowledge Board', 'Knowledge Board (Jeopardy)', 'Millionaire Challenge', 'Ranked Survey', 'Digital Escape Room', 'Spin the Wheel', 'Price Estimator'].includes(previewModalOption)) && (
+                            <GamePreview option={previewModalOption} />
                          )}
                      </div>
                   </div>
