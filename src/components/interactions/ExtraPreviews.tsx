@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2, AlertCircle, LayoutList, GripVertical } from 'lucide-react';
-import GameContainer from '../game-templates/core/GameContainer';
+import { GameContainer } from '../game-templates/core/GameContainer';
 
 export function AccordionPreview() {
   const [openIdx, setOpenIdx] = useState<number>(0);
@@ -432,7 +432,7 @@ export function GamePreview({ option }: { option: string }) {
   return (
     <div className="w-full max-w-4xl h-[600px] bg-slate-900 rounded-xl overflow-hidden border border-slate-700 shadow-2xl relative">
       <div className="absolute inset-0 overflow-y-auto custom-scrollbar flex items-center justify-center p-4">
-         <GameContainer template={templateId} payload={payload} onComplete={() => {}} />
+         <GameContainer payload={{ templateType: templateId, ...payload }} />
       </div>
     </div>
   );

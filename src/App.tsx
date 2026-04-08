@@ -68,7 +68,7 @@ import { createScormPackage } from './services/scormService';
 import { FlashcardGrid } from './components/FlashcardGrid';
 import { OutlinePreview } from './components/builder/OutlinePreview';
 import { PlayerPropertiesModal, PlayerConfig, defaultPlayerConfig } from './components/builder/PlayerPropertiesModal';
-import { CourseOutline, Slide } from './types/course';
+import { CourseOutline, Slide, TerminalObjectiveGroup } from './types/course';
 import { extractTextFromFile, extractImagesFromFile, SourceImage } from './lib/fileProcessor';
 import { generateGameTemplate } from './services/aiGameService';
 import { GameContainer } from './components/game-templates/core/GameContainer';
@@ -216,7 +216,7 @@ export default function App() {
   const [pendingPathway, setPendingPathway] = useState<'corporate' | 'k12' | null>(null);
   const [pendingPreset, setPendingPreset] = useState<'quick' | 'standard' | 'comprehensive' | null>(null);
   const [courseDescription, setCourseDescription] = useState('');
-  const [learningObjectives, setLearningObjectives] = useState<string[]>([]);
+  const [learningObjectives, setLearningObjectives] = useState<(string | TerminalObjectiveGroup)[]>([{ terminalObjective: '', enablingObjectives: [''] }]);
   const [objectiveFormat, setObjectiveFormat] = useState<string>('ABC');
   const [slideCount, setSlideCount] = useState(14);
   const [interactionTypes, setInteractionTypes] = useState<string[]>([]);
@@ -570,9 +570,18 @@ export default function App() {
                         setStep('details');
                         setAdminDropdownOpen(false);
                         if (!courseTitle) {
-                          setCourseTitle('Demo Course: Advanced Cybersecurity');
-                          setCourseDescription('An AI-generated course covering cybersecurity principles, threat vectors, and incident response strategies.');
-                          setLearningObjectives(['Identify common cybersecurity threats', 'Apply the NIST framework to risk assessment', 'Respond to security incidents effectively']);
+                          if (pathway === 'k12') {
+                             setCourseTitle('Demo Course: Primary Ecosystems');
+                             setCourseDescription('An engaging science unit exploring evaporation, condensation, and precipitation through interactive models.');
+                             setLearningObjectives(['Students will identify ecosystem components | I can name parts of an ecosystem', 'Students will map a food chain | I can draw a simple food chain', 'Students will explain human impact | I can tell how people affect nature']);
+                          } else {
+                             setCourseTitle('Demo Course: Advanced Cybersecurity');
+                             setCourseDescription('An AI-generated course covering cybersecurity principles, threat vectors, and incident response strategies.');
+                             setLearningObjectives([{ 
+                                terminalObjective: 'Identify and respond to common cybersecurity threats effectively using industry-standard frameworks.', 
+                                enablingObjectives: ['Identify common cybersecurity threats', 'Apply the NIST framework to risk assessment', 'Respond to security incidents effectively'] 
+                             }]);
+                          }
                         }
                       }}
                       className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-indigo-500/10 hover:text-white text-sm font-medium transition-all text-left"
@@ -733,7 +742,20 @@ export default function App() {
                                   const p = pendingPathway;
                                   setPendingPathway(null);
                                   setPathway(p);
-                                  if (courseTitle || prompt) {
+                                  if (courseTitle && courseTitle.startsWith('Demo Course')) {
+                                    if (p === 'k12') {
+                                       setCourseTitle('Demo Course: Primary Ecosystems');
+                                       setCourseDescription('An engaging science unit exploring evaporation, condensation, and precipitation through interactive models.');
+                                       setLearningObjectives(['Students will identify ecosystem components | I can name parts of an ecosystem', 'Students will map a food chain | I can draw a simple food chain', 'Students will explain human impact | I can tell how people affect nature']);
+                                    } else {
+                                       setCourseTitle('Demo Course: Advanced Cybersecurity');
+                                       setCourseDescription('An AI-generated course covering cybersecurity principles, threat vectors, and incident response strategies.');
+                                       setLearningObjectives([{ 
+                                          terminalObjective: 'Identify and respond to common cybersecurity threats effectively using industry-standard frameworks.', 
+                                          enablingObjectives: ['Identify common cybersecurity threats', 'Apply the NIST framework to risk assessment', 'Respond to security incidents effectively'] 
+                                       }]);
+                                    }
+                                  } else if (courseTitle || prompt) {
                                     await handleSuggestObjectives();
                                   }
                                 }}
@@ -866,7 +888,30 @@ export default function App() {
                               <button
                                 key={fmt}
                                 onClick={() => {
-                                  if (fmt !== objectiveFormat && learningObjectives.length > 0) {
+                                  if (courseTitle === 'Demo Course: Advanced Cybersecurity') {
+                                    setObjectiveFormat(fmt);
+                                    if (fmt === 'AB') {
+                                       setLearningObjectives([{ 
+                                         terminalObjective: 'The learner will identify and respond to common cybersecurity threats.', 
+                                         enablingObjectives: ['The learner will identify common cybersecurity threats.', 'The learner will apply the NIST framework to risk assessment.', 'The learner will respond to security incidents effectively.'] 
+                                       }]);
+                                    } else if (fmt === 'ABC') {
+                                       setLearningObjectives([{ 
+                                         terminalObjective: 'Given a simulated network environment, the learner will identify and respond to common cybersecurity threats.', 
+                                         enablingObjectives: ['Given a list of attack vectors, the learner will identify common cybersecurity threats.', 'Given a risk scenario, the learner will apply the NIST framework.', 'Given an active breach, the learner will respond to security incidents.'] 
+                                       }]);
+                                    } else if (fmt === 'ABCD') {
+                                       setLearningObjectives([{ 
+                                         terminalObjective: 'Given a simulated network environment, the learner will identify and respond to common cybersecurity threats with 100% accuracy.', 
+                                         enablingObjectives: ['Given a list of attack vectors, the learner will identify common cybersecurity threats with zero false positives.', 'Given a risk scenario, the learner will apply the NIST framework according to federal guidelines.', 'Given an active breach, the learner will respond to security incidents within a 15-minute SLA.'] 
+                                       }]);
+                                    } else {
+                                       setLearningObjectives([{ 
+                                         terminalObjective: 'Identify and respond to common cybersecurity threats effectively using industry-standard frameworks.', 
+                                         enablingObjectives: ['Identify common cybersecurity threats', 'Apply the NIST framework to risk assessment', 'Respond to security incidents effectively'] 
+                                       }]);
+                                    }
+                                  } else if (fmt !== objectiveFormat && learningObjectives.length > 0) {
                                     if (window.confirm(`Optimize current objectives for the ${fmt} format?`)) {
                                       setObjectiveFormat(fmt);
                                       handleSuggestObjectives();
@@ -897,26 +942,96 @@ export default function App() {
                             </button>
                           </div>
                         )}
-                       <div className="p-6 space-y-3">
-                         {learningObjectives.map((obj, i) => (
-                           <div key={i} className="flex gap-3 items-start group">
-                             <div className="mt-2.5 w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0 shadow-[0_0_8px_rgba(99,102,241,0.8)]" />
-                             <textarea 
-                               rows={2}
-                               value={obj} 
-                               onChange={(e) => {
-                                 const newObjs = [...learningObjectives];
-                                 newObjs[i] = e.target.value;
-                                 setLearningObjectives(newObjs);
-                               }}
-                               className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white focus:border-indigo-500 focus:bg-slate-900 outline-none transition-all placeholder-slate-600 font-medium whitespace-pre-wrap resize-none"
-                               placeholder="e.g., Understand the core principles of..."
-                             />
-                             <button onClick={() => setLearningObjectives(learningObjectives.filter((_, idx) => idx !== i))} className="p-2.5 mt-1 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded-xl transition-all opacity-0 group-hover:opacity-100"><Trash2 className="w-5 h-5"/></button>
-                           </div>
-                         ))}
-                         <button onClick={() => setLearningObjectives([...learningObjectives, ''])} className="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 font-bold px-4 py-2 hover:bg-indigo-500/10 rounded-lg transition-all text-sm"><Plus className="w-4 h-4"/> Add Objective</button>
-                       </div>
+                       <div className="p-6 space-y-4">
+                          {learningObjectives.map((obj, i) => {
+                            const isString = typeof obj === 'string';
+                            if (isString) {
+                              const strObj = obj as string;
+                              return (
+                                <div key={i} className="flex gap-3 items-start group">
+                                  <div className="mt-2.5 w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0 shadow-[0_0_8px_rgba(99,102,241,0.8)]" />
+                                  <textarea 
+                                    rows={2}
+                                    value={strObj} 
+                                    onChange={(e) => {
+                                      const newObjs = [...learningObjectives];
+                                      newObjs[i] = e.target.value;
+                                      setLearningObjectives(newObjs);
+                                    }}
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white focus:border-indigo-500 focus:bg-slate-900 outline-none transition-all placeholder-slate-600 font-medium whitespace-pre-wrap resize-none"
+                                    placeholder="e.g., Understand the core principles of..."
+                                  />
+                                  <button onClick={() => setLearningObjectives(learningObjectives.filter((_, idx) => idx !== i))} className="p-2.5 mt-1 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded-xl transition-all opacity-0 group-hover:opacity-100"><Trash2 className="w-5 h-5"/></button>
+                                </div>
+                              );
+                            } else {
+                              const tObj = obj as TerminalObjectiveGroup;
+                              return (
+                                <div key={i} className="bg-slate-950/50 border border-indigo-500/20 rounded-xl p-4 space-y-3 relative group">
+                                  <div className="flex gap-3 items-start">
+                                     <div className="mt-2.5 w-2 h-2 rounded-full bg-indigo-400 shrink-0 shadow-[0_0_8px_rgba(129,140,248,0.8)]" />
+                                     <div className="flex-1 space-y-1">
+                                       <p className="text-xs font-bold text-indigo-400 uppercase tracking-wider">Terminal Objective</p>
+                                       <textarea 
+                                          rows={2}
+                                          value={tObj.terminalObjective} 
+                                          onChange={(e) => {
+                                            const newObjs = [...learningObjectives];
+                                            const currentObj = newObjs[i] as TerminalObjectiveGroup;
+                                            newObjs[i] = { ...currentObj, terminalObjective: e.target.value };
+                                            setLearningObjectives(newObjs);
+                                          }}
+                                          className="w-full bg-indigo-950/30 border border-indigo-500/30 rounded-lg px-3 py-2 text-white focus:border-indigo-500 outline-none transition-all placeholder-slate-600 font-bold whitespace-pre-wrap resize-none"
+                                          placeholder="e.g., The learner will design a marketing brochure..."
+                                       />
+                                     </div>
+                                     <button onClick={() => setLearningObjectives(learningObjectives.filter((_, idx) => idx !== i))} className="p-2 mt-6 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all opacity-0 group-hover:opacity-100 absolute top-0 right-2"><Trash2 className="w-4 h-4"/></button>
+                                  </div>
+                                  
+                                  <div className="pl-6 space-y-2">
+                                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Enabling Objectives</p>
+                                    {tObj.enablingObjectives.map((enablingObj, eIdx) => (
+                                      <div key={eIdx} className="flex gap-2 items-start group/enabling">
+                                        <div className="mt-2 text-slate-600 shrink-0">↳</div>
+                                        <textarea 
+                                          rows={1}
+                                          value={enablingObj} 
+                                          onChange={(e) => {
+                                            const newObjs = [...learningObjectives];
+                                            const currentObj = newObjs[i] as TerminalObjectiveGroup;
+                                            const newEnabling = [...currentObj.enablingObjectives];
+                                            newEnabling[eIdx] = e.target.value;
+                                            newObjs[i] = { ...currentObj, enablingObjectives: newEnabling };
+                                            setLearningObjectives(newObjs);
+                                          }}
+                                          className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-300 focus:border-slate-500 outline-none transition-all placeholder-slate-700 text-sm whitespace-pre-wrap resize-none"
+                                          placeholder="e.g., Identify the target audience..."
+                                        />
+                                        <button onClick={() => {
+                                           const newObjs = [...learningObjectives];
+                                           const currentObj = newObjs[i] as TerminalObjectiveGroup;
+                                           const newEnabling = currentObj.enablingObjectives.filter((_, idx) => idx !== eIdx);
+                                           newObjs[i] = { ...currentObj, enablingObjectives: newEnabling };
+                                           setLearningObjectives(newObjs);
+                                        }} className="p-1.5 mt-0.5 text-slate-600 hover:text-red-400 rounded-md transition-all opacity-0 group-hover/enabling:opacity-100"><Trash2 className="w-3.5 h-3.5"/></button>
+                                      </div>
+                                    ))}
+                                    <button onClick={() => {
+                                       const newObjs = [...learningObjectives];
+                                       const currentObj = newObjs[i] as TerminalObjectiveGroup;
+                                       newObjs[i] = { ...currentObj, enablingObjectives: [...currentObj.enablingObjectives, ''] };
+                                       setLearningObjectives(newObjs);
+                                    }} className="flex items-center gap-1.5 text-slate-500 hover:text-indigo-400 font-bold px-2 py-1 hover:bg-indigo-500/10 rounded-md transition-all text-xs ml-5 mt-1"><Plus className="w-3 h-3"/> Add Enabling Objective</button>
+                                  </div>
+                                </div>
+                              );
+                            }
+                          })}
+                          <div className="flex gap-3">
+                             <button onClick={() => setLearningObjectives([...learningObjectives, ''])} className="flex items-center gap-2 text-slate-400 hover:text-slate-300 font-bold px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-all text-sm"><Plus className="w-4 h-4"/> Add Custom String</button>
+                             <button onClick={() => setLearningObjectives([...learningObjectives, { terminalObjective: '', enablingObjectives: [''] }])} className="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 font-bold px-4 py-2 bg-indigo-500/10 border border-indigo-500/30 hover:bg-indigo-500/30 rounded-lg transition-all text-sm"><Plus className="w-4 h-4"/> Add Terminal Framework</button>
+                          </div>
+                        </div>
                      </div>
 
                      {/* Configuration Grid */}

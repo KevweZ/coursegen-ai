@@ -1,7 +1,12 @@
+export interface TerminalObjectiveGroup {
+  terminalObjective: string;
+  enablingObjectives: string[];
+}
+
 export interface CourseOutline {
   title: string;
   description: string;
-  learningObjectives: string[];
+  learningObjectives: (string | TerminalObjectiveGroup)[];
   modules: Module[];
   settings?: CourseSettings;
   visualTheme?: string;

@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { CourseOutline } from "../types/course";
+import { CourseOutline, TerminalObjectiveGroup } from "../types/course";
 
 // @ts-ignore
 const rawKey = import.meta.env.VITE_ANTHROPIC_API_KEY || import.meta.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY || "";
@@ -8,7 +8,7 @@ const anthropic = new Anthropic({ apiKey: rawKey.replace(/['"]/g, '').trim(), da
 export interface CourseOutlineDraft {
   title: string;
   description: string;
-  learningObjectives: string[];
+  learningObjectives: (string | TerminalObjectiveGroup)[];
   visualTheme: string;
   modules: {
     id: string;
@@ -153,7 +153,7 @@ export interface FileAnalysisResult {
   recommendedPreset: 'quick' | 'standard' | 'comprehensive';
   recommendedObjectiveFormat: 'AB' | 'ABC' | 'ABCD' | 'k12_ican';
   recommendedInteractions: string[];
-  objectives: string[];
+  objectives: TerminalObjectiveGroup[];
   objectivesInferred: boolean;
   detectedStructure: string;
   possibleModules: string[];
@@ -175,7 +175,7 @@ export async function analyzeUploadedFile(
   5. Suggest a recommended Preset: "quick" (<10 slides), "standard" (10-25), or "comprehensive" (25+).
   6. Recommend an objectiveFormat: "AB" (quick courses), "ABC" (standard), or "ABCD" (comprehensive). If it is a K-12/child audience, MUST suggest "k12_ican".
   7. Classify Content Types and Map Interactions. E.g. Concepts -> "flashcards", Processes -> "timeline", Comparisons -> "accordion", Matching -> "drag-drop-activity". Return an array of these recommended interaction strings.
-  8. GENERATE OBJECTIVES: You MUST default to ABCD format. Generate 4-6 objectives using Audience (The learner), Behavior (actionable verb), Condition (given X scenario), and Degree (e.g. 90% accuracy). Use Bloom's taxonomy verbs. OVERRIDE vague verbs like "understand".
+  8. GENERATE OBJECTIVES: You MUST default to ABCD format. Generate 2-4 Terminal Objectives (the "big picture" outcome). For each Terminal Objective, generate 2-4 Enabling Objectives (the specific knowledge/stepping stones to reach the terminal outcome).
   
   OUTPUT FORMAT: Return ONLY raw JSON:
   {
@@ -187,7 +187,7 @@ export async function analyzeUploadedFile(
     "recommendedPreset": "quick|standard|comprehensive",
     "recommendedObjectiveFormat": "AB|ABC|ABCD|k12_ican",
     "recommendedInteractions": ["string"],
-    "objectives": ["string"],
+    "objectives": [{"terminalObjective": "string", "enablingObjectives": ["string"]}],
     "objectivesInferred": true,
     "detectedStructure": "string",
     "possibleModules": ["string"]
@@ -201,8 +201,8 @@ export async function analyzeUploadedFile(
 }
 
 export async function suggestLearningObjectives(
-  title: string, description: string, pathway: 'corporate' | 'k12', courseType: 'quick' | 'standard' | 'comprehensive', manualFormat: 'AB' | 'ABC' | 'ABCD' | 'k12_ican', existingObjectives?: string[]
-): Promise<string[]> {
+  title: string, description: string, pathway: 'corporate' | 'k12', courseType: 'quick' | 'standard' | 'comprehensive', manualFormat: 'AB' | 'ABC' | 'ABCD' | 'k12_ican', existingObjectives?: (string | TerminalObjectiveGroup)[]
+): Promise<TerminalObjectiveGroup[]> {
   const { getPresetConfig } = await import('../lib/presetEngine');
   const preset = getPresetConfig(pathway, courseType);
   const isK12 = pathway === 'k12';
@@ -226,19 +226,21 @@ export async function suggestLearningObjectives(
   CRITICAL CONSTRAINTS:
   1. COUNT: Generate ${countRange} objective(s). NEVER generate fewer than ${countMin} or more than ${countMax}.
   2. STRATEGY: ${preset.objectiveGenStrategy}
-  3. FORMAT REQUIRED: ${manualFormat}.
+  3. FORMAT REQUIRED: ${manualFormat}. IMPORTANT: BOTH the overall Terminal Objective AND every single Enabling Objective MUST individually and strictly adhere to this format string.
      - ABCD: "Given [condition], the [audience] will [behavior] to [degree standard]."
      - ABC: "Given [condition], the [audience] will [behavior]."
      - AB: "The learner will [behavior] [specific outcome]."
   4. VERBS: Use precise Bloom's verbs (Identify, Describe, Demonstrate, Compare, Analyze). NEVER: "understand", "learn about", "be familiar with".
   5. BLOOM'S DISTRIBUTION: ${courseType === 'quick' ? 'Knowledge + Comprehension only' : courseType === 'standard' ? 'Mix Knowledge, Comprehension, Application' : 'Mix Application, Analysis, Synthesis, Evaluation'}.
-  6. VALIDATION: Count your objectives before returning. If count is outside [${countMin}, ${countMax}], fix it.
+  6. TERMINAL VS ENABLING: Instead of a flat list, group the objectives. A "Terminal Objective" is the big picture goal. "Enabling Objectives" are the smaller steps needed to reach it. Ensure EACH Terminal Objective has 2-4 Enabling Objectives.
+  7. VALIDATION: Count your Terminal Objectives before returning. If the count is outside [${countMin}, ${countMax}], fix it.
 
-  OUTPUT FORMAT: Return ONLY raw JSON: { "objectives": ["string1", "string2"] }`;
+  OUTPUT FORMAT: Return ONLY raw JSON: { "objectives": [{ "terminalObjective": "string", "enablingObjectives": ["string1", "string2"] }] }`;
 
+  const existingStringified = JSON.stringify(existingObjectives || []);
   const userPrompt = existingObjectives && existingObjectives.length > 0
-    ? `Optimize these existing objectives (keep count at ${countRange}) for the course titled "${title}" with context: "${description}". Existing: ${existingObjectives.join('; ')}`
-    : `Generate ${countRange} new learning objective(s) for the course titled "${title}" with context: "${description}".`;
+    ? `Optimize these existing objectives (keep count at ${countRange} Terminal Objectives) for the course titled "${title}" with context: "${description}". Existing: ${existingStringified}`
+    : `Generate ${countRange} new Terminal Objective(s) containing Enabling Objectives for the course titled "${title}" with context: "${description}".`;
 
   const text = await executeAnthropicAI('complex', systemInstruction, userPrompt);
   const parsedData = parseJsonSafely(text) || { objectives: [] };
@@ -252,7 +254,7 @@ export async function suggestLearningObjectives(
 
 export async function generateCourseOutline(
   prompt: string, 
-  objectives: string[],
+  objectives: (string | TerminalObjectiveGroup)[],
   configParams: {
     courseType: 'quick' | 'standard' | 'comprehensive';
     interactionTypes: string[];
@@ -313,8 +315,8 @@ export async function generateCourseOutline(
     ? `\n\nIMPORTANT: This course is being CONVERTED from an uploaded source document. Use the source material below as the primary content reference. Apply instructional design best practices: chunk dense content, convert lecture-style material into interactive learning segments, and apply progressive disclosure.\nConversion Preferences: ${(configParams.conversionPreferences || []).join(', ') || 'Default conversion'}\n\nSOURCE MATERIAL (first 4000 chars):\n${configParams.sourceContent.slice(0, 4000)}`
     : '';
 
-  const userPrompt = `Draft the outline for a ${isK12 ? "K-12 Educational Lesson" : "Corporate Training Course"}. Topic: "${prompt}".
-    Learning Objectives: ${objectives.join(" ; ")}
+    const userPrompt = `Draft the outline for a ${isK12 ? "K-12 Educational Lesson" : "Corporate Training Course"}. Topic: "${prompt}".
+    Learning Objectives: ${JSON.stringify(objectives)}
     Total Target Slide Count: ~${configParams.slideCount || 10}
     AVAILABLE VISUAL THEMES: ${availableThemes.length > 0 ? availableThemes.join(", ") : "Neutral"}
     IMPORTANT AI DIRECTIVE: You must ONLY select a visualTheme if the course topic has a STRONG, LITERAL semantic match to that specific theme (e.g. use "Rigs" only for oil/gas/industrial topics, use "Forest" only for nature topics). If there is NO strong semantic match, you MUST default to "Neutral". Do not guess or select unrelated themes!${conversionNote}`;
