@@ -1,8 +1,26 @@
 import React, { useState } from 'react';
 import { FamilyFeudPayload, FamilyFeudAnswer } from '../../../types/game';
-import { CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
+import { CheckCircle2, XCircle, AlertCircle, Lightbulb, X } from 'lucide-react';
 
 interface Props { payload: FamilyFeudPayload; }
+
+// Generate mixed hints: real answers + decoys
+function buildHints(answers: FamilyFeudAnswer[], revealedIds: Set<string>): string[] {
+  const real = answers
+    .filter(a => !revealedIds.has(a.id))
+    .map(a => a.text);
+  const decoys = [
+    'Insider threat', 'Zero-day exploit', 'Social engineering', 'VPN misconfiguration',
+    'Weak firewall', 'Unpatched software', 'Shadow IT', 'Accidental deletion',
+    'Cloud misconfiguration', 'Supply chain attack',
+  ].filter(d => !answers.some(a => a.text.toLowerCase() === d.toLowerCase()));
+  // Mix real (up to 3) with decoys (up to 5)
+  const picked = [
+    ...real.slice(0, 3),
+    ...decoys.sort(() => Math.random() - 0.5).slice(0, 5),
+  ].sort(() => Math.random() - 0.5);
+  return picked;
+}
 
 export function FamilyFeudGame({ payload }: Props) {
   const { gamePayload } = payload;
@@ -16,12 +34,14 @@ export function FamilyFeudGame({ payload }: Props) {
   const [totalScore, setTotalScore] = useState(0);
   const [lastFeedback, setLastFeedback] = useState<{ type: 'hit' | 'miss' | 'dup'; text: string } | null>(null);
   const [roundComplete, setRoundComplete] = useState(false);
+  const [showHints, setShowHints] = useState(false);
 
   const currentRound = rounds[roundIndex];
   if (!currentRound) return <div className="p-8 text-center text-slate-400">No rounds available.</div>;
 
   const answers: FamilyFeudAnswer[] = currentRound.answers || [];
   const allRevealed = answers.every(a => revealedIds.has(a.id));
+  const hints = buildHints(answers, revealedIds);
 
   function normalise(s: string) {
     return s.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
@@ -31,7 +51,6 @@ export function FamilyFeudGame({ payload }: Props) {
     const guess = normalise(inputValue);
     if (!guess) return;
 
-    // Check already revealed
     const alreadyRevealedMatch = answers.find(a =>
       revealedIds.has(a.id) && (normalise(a.text) === guess || (a.synonyms || []).some(syn => normalise(syn) === guess))
     );
@@ -41,7 +60,6 @@ export function FamilyFeudGame({ payload }: Props) {
       return;
     }
 
-    // Check unrevealed answers
     const match = answers.find(a =>
       !revealedIds.has(a.id) && (normalise(a.text) === guess || (a.synonyms || []).some(syn => normalise(syn) === guess))
     );
@@ -57,7 +75,7 @@ export function FamilyFeudGame({ payload }: Props) {
     } else {
       const newStrikes = strikes + 1;
       setStrikes(newStrikes);
-      setLastFeedback({ type: 'miss', text: `✗ Strike ${newStrikes}/${maxStrikes}` });
+      setLastFeedback({ type: 'miss', text: `✗ Strike ${newStrikes}/${maxStrikes} — not on the board!` });
       if (newStrikes >= maxStrikes) setRoundComplete(true);
     }
     setInputValue('');
@@ -71,20 +89,54 @@ export function FamilyFeudGame({ payload }: Props) {
       setLastFeedback(null);
       setRoundComplete(false);
       setInputValue('');
+      setShowHints(false);
     }
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
+      {/* Hints Popup */}
+      {showHints && (
+        <div className="absolute inset-0 z-50 bg-slate-900/95 backdrop-blur-sm rounded-xl p-6 flex flex-col gap-4 border border-indigo-500/40 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-yellow-400 font-black text-lg">
+              <Lightbulb className="w-5 h-5" /> Possible Answers
+            </div>
+            <button onClick={() => setShowHints(false)} className="p-1 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <p className="text-slate-400 text-xs italic">Some of these are on the board — but not all! Can you guess which ones?</p>
+          <div className="grid grid-cols-2 gap-2">
+            {hints.map((hint, i) => (
+              <div key={i} className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-300 text-sm font-medium">
+                {hint}
+              </div>
+            ))}
+          </div>
+          <button onClick={() => setShowHints(false)} className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg transition-colors text-sm mt-2">
+            Got it — back to the game!
+          </button>
+        </div>
+      )}
+
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-start">
         <div>
           <p className="text-slate-400 text-sm font-bold">ROUND {roundIndex + 1} of {rounds.length}</p>
           <h3 className="text-xl font-black text-white mt-1">{currentRound.prompt}</h3>
         </div>
-        <div className="text-right">
+        <div className="text-right flex flex-col items-end gap-2">
           <div className="text-3xl font-black text-indigo-400">{totalScore}</div>
           <div className="text-xs text-slate-500 font-bold">TOTAL POINTS</div>
+          {!roundComplete && (
+            <button
+              onClick={() => setShowHints(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/30 font-bold text-xs rounded-lg transition-colors"
+            >
+              <Lightbulb className="w-3.5 h-3.5" /> Hints
+            </button>
+          )}
         </div>
       </div>
 

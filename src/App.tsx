@@ -1091,7 +1091,7 @@ export default function App() {
                           </div>
                         </div>
                         <div className="p-6">
-                           <p className="text-xs text-blue-400 font-bold tracking-widest uppercase mb-6">CLICK TO SELECT • HOVER FOR PREVIEW</p>
+                           <p className="text-xs text-blue-400 font-bold tracking-widest uppercase mb-6">CLICK TO SELECT • CLICK ON EYE ICON TO PREVIEW</p>
                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                              {[
                                { id: 'multiple-choice', label: 'Multiple Choice' },
@@ -1139,7 +1139,7 @@ export default function App() {
                            </div>
                         </div>
                          <div className="p-6">
-                           <p className="text-xs text-orange-400 font-bold tracking-widest uppercase mb-5">CLICK TO SELECT • EYE ICON TO PREVIEW</p>
+                           <p className="text-xs text-orange-400 font-bold tracking-widest uppercase mb-5">CLICK TO SELECT • CLICK ON EYE ICON TO PREVIEW</p>
                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                             {getRecommendedGames(pathway, preset).map((gt: any) => {
                               const isSelected = gameTemplateIds.includes(gt.id);
@@ -1910,7 +1910,6 @@ export default function App() {
                      <div className="w-full min-h-[420px] flex flex-wrap items-start justify-center gap-6 py-6 px-2">
                          {previewModalOption === 'Multiple Choice' && <MultipleChoicePreview />}
                          {previewModalOption === 'Multiple Answers' && <MultipleAnswersPreviewDemo />}
-                         {previewModalOption === 'Drag & Drop' && <DragDropPreview />}
                          {previewModalOption === 'Hotspot' && <HotspotPreview />}
                          {previewModalOption === 'Accordion' && <AccordionPreview />}
                          {previewModalOption === 'Flashcards' && (
@@ -1969,8 +1968,8 @@ export default function App() {
                          )}
 
                          {/* ===== GAMIFICATION TEMPLATE PREVIEWS ===== */}
-                         {(['Knowledge Board', 'Knowledge Board (Jeopardy)', 'Millionaire Challenge', 'Ranked Survey', 'Digital Escape Room', 'Spin the Wheel', 'Price Estimator'].includes(previewModalOption)) && (
-                            <GamePreview option={previewModalOption} />
+                         {(['Knowledge Board (Jeopardy)', 'Millionaire Challenge', 'Ranked Survey (Family Feud)', 'Digital Escape Room', 'Spin the Wheel', 'Price Estimator'].includes(previewModalOption || '')) && (
+                            <GamePreview option={previewModalOption || ''} />
                          )}
                      </div>
                   </div>

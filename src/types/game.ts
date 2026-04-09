@@ -25,6 +25,7 @@ export interface JeopardyQuestion {
   value: number; // e.g., 100, 200, 300
   prompt: string;
   correctAnswer: string;
+  options?: string[]; // When provided, renders as multiple choice instead of text input
   hint?: string;
   isDailyDouble?: boolean;
 }

@@ -426,30 +426,139 @@ export function TimelinePreview({ isPreview = true }: { isPreview?: boolean }) {
 
 export function GamePreview({ option }: { option: string }) {
   const templateMap: Record<string, string> = {
-    'Knowledge Board': 'jeopardy',
     'Knowledge Board (Jeopardy)': 'jeopardy',
     'Millionaire Challenge': 'millionaire',
-    'Ranked Survey': 'survey-says',
+    'Ranked Survey (Family Feud)': 'family-feud',
     'Digital Escape Room': 'escape-room',
-    'Spin the Wheel': 'wheel-of-fortune',
-    'Price Estimator': 'price-is-right'
+    'Spin the Wheel': 'spin-wheel',
+    'Price Estimator': 'price-is-right',
   };
   const templateId = templateMap[option];
-  if (!templateId) return <div>No preview available</div>;
+  if (!templateId) return (
+    <div className="flex items-center gap-3 p-6 text-amber-400 bg-amber-900/20 rounded-xl border border-amber-500/30 w-full">
+      <span className="font-bold">No preview available for "{option}"</span>
+    </div>
+  );
 
-  let payload: any = {};
-  if (templateId === 'jeopardy') payload = { title: 'Security Jeopardy', columns: [{ category: 'Phishing', questions: [{ points: 100, prompt: 'What is phishing?', type: 'multiple_choice', options: [{id:'a', text:'Bad', isCorrect:true}, {id:'b', text:'Good', isCorrect:false}] }] }] };
-  if (templateId === 'millionaire') payload = { title: 'Security Millionaire', questions: [{ prompt: 'Which of the following is true?', options: [{id:'a', text:'A', isCorrect:true}, {id:'b', text:'B'}], difficultyLevel: 1 }] };
-  if (templateId === 'escape-room') payload = { theme: 'Cyber Security', rooms: [{ title: 'The Lobby', narrative: 'Escape the lobby', challenges: [{ prompt: 'What is 2+2?', type: 'text', correctAnswers: ['4'] }]}] };
-  if (templateId === 'survey-says') payload = { pollGroups: [{ prompt: 'Name a security threat', totalRespondents: 100, answers: [{ text: 'Phishing', points: 50 }, { text: 'Malware', points: 30 }] }] };
-  if (templateId === 'wheel-of-fortune') payload = { categories: ['Security', 'Privacy', 'Compliance'], questions: [{ prompt: 'What is privacy?', category: 'Privacy', answer: { text: 'Data protection' } }] };
-  if (templateId === 'price-is-right') payload = { title: 'Guess the Penalty', items: [{ name: 'GDPR Fine', description: 'Max fine', actualPrice: 20000000 }] };
+  const base = {
+    audienceType: 'corporate' as const,
+    difficultyLevel: 'standard' as const,
+    instructions: 'This is a demo preview.',
+    scoringEnabled: true,
+    timerEnabled: false,
+  };
+
+  let payload: any;
+
+  if (templateId === 'jeopardy') {
+    payload = {
+      ...base, templateType: 'jeopardy', title: 'Security Knowledge Board',
+      gamePayload: {
+        deductPointsOnWrong: false,
+        categories: [
+          {
+            id: 'c1', name: 'Phishing',
+            questions: [
+              { id: 'q1', value: 100, prompt: 'What is phishing?', correctAnswer: 'A social engineering attack using fake messages to steal credentials.', options: ['A social engineering attack using fake messages to steal credentials.', 'A type of firewall bypass technique', 'An encrypted data transfer protocol', 'A physical security vulnerability'], hint: 'It involves deception via email or messages.' },
+              { id: 'q2', value: 200, prompt: 'Which is a red flag of a phishing email?', correctAnswer: 'Urgent language or suspicious sender domain', options: ['Urgent language or suspicious sender domain', 'Company logo in the header', 'Plain-text formatting only', 'Short subject line'] },
+            ]
+          },
+          {
+            id: 'c2', name: 'Passwords',
+            questions: [
+              { id: 'q3', value: 100, prompt: 'What is the recommended minimum password length?', correctAnswer: 'At least 12 characters', options: ['At least 4 characters', 'At least 8 characters', 'At least 12 characters', 'At least 20 characters'] },
+              { id: 'q4', value: 200, prompt: 'What does MFA stand for?', correctAnswer: 'Multi-Factor Authentication', options: ['Multi-Factor Authentication', 'Managed Firewall Access', 'Mobile File Archiver', 'Manual Feedback Analysis'] },
+            ]
+          },
+        ]
+      }
+    };
+  } else if (templateId === 'millionaire') {
+    payload = {
+      ...base, templateType: 'millionaire', title: 'Security Millionaire',
+      gamePayload: {
+        lifelines: [
+          { type: '5050', available: true },
+          { type: 'phone-friend', available: true },
+          { type: 'ask-audience', available: true },
+        ],
+        questions: [
+          { id: 'q1', value: 100, prompt: 'Which of these is a safe email practice?', options: ['Click all links', 'Verify sender before clicking', 'Share passwords freely', 'Ignore security alerts'], correctAnswer: 'Verify sender before clicking', isSafeHaven: false },
+          { id: 'q2', value: 500, prompt: 'What does HTTPS indicate on a website?', options: ['High Traffic Protocol', 'Encrypted connection', 'Fast loading site', 'Government-only site'], correctAnswer: 'Encrypted connection', isSafeHaven: true },
+          { id: 'q3', value: 1000, prompt: 'What is the "principle of least privilege"?', options: ['Give all users admin access', 'Only grant access needed for a job role', 'Block all internet access', 'Require 10-character passwords'], correctAnswer: 'Only grant access needed for a job role', isSafeHaven: false },
+        ]
+      }
+    };
+  } else if (templateId === 'family-feud') {
+    payload = {
+      ...base, templateType: 'family-feud', title: 'Security Family Feud',
+      gamePayload: {
+        maxStrikesPerRound: 3,
+        rounds: [
+          {
+            id: 'r1', prompt: 'Name a common type of cybersecurity threat.',
+            answers: [
+              { id: 'a1', text: 'Phishing', points: 45, synonyms: ['email scam', 'social engineering'] },
+              { id: 'a2', text: 'Malware', points: 30, synonyms: ['virus', 'ransomware', 'spyware'] },
+              { id: 'a3', text: 'Data breach', points: 15, synonyms: ['hack', 'leak'] },
+              { id: 'a4', text: 'Password attack', points: 10, synonyms: ['brute force', 'credential stuffing'] },
+            ]
+          }
+        ]
+      }
+    };
+  } else if (templateId === 'escape-room') {
+    payload = {
+      ...base, templateType: 'escape-room', title: 'Cyber Security Escape Room',
+      gamePayload: {
+        scenarioIntro: 'A suspicious email was opened. You have 10 minutes to contain the breach before it spreads across the network.',
+        successOutro: 'Breach contained! You saved the network.',
+        stages: [
+          {
+            id: 's1', title: 'The Lobby',
+            narrativeText: 'You receive an alert. A phishing email was clicked. Find the employee who clicked it.',
+            clues: ['Check email logs', 'Look at the sender domain', 'The email arrived at 9:04 AM'],
+            lock: { id: 'l1', type: 'code', prompt: 'Enter the department code shown in the email logs to isolate the workstation.', correctAnswer: '7734', hint: 'The department code is in the email footer.' }
+          },
+          {
+            id: 's2', title: 'The Server Room',
+            narrativeText: 'You find the compromised workstation. Now you must identify the malware type.',
+            clues: ['The malware encrypts files', 'It demands a payment', 'Files now have a .locked extension'],
+            lock: { id: 'l2', type: 'choice', prompt: 'What type of malware is this?', correctAnswer: 'ransomware', hint: 'It encrypts files and demands payment.' }
+          }
+        ]
+      }
+    };
+  } else if (templateId === 'spin-wheel') {
+    payload = {
+      ...base, templateType: 'spin-wheel', title: 'Security Spin the Wheel',
+      gamePayload: {
+        spinsAllowed: 5,
+        segments: [
+          { id: 'seg1', label: 'Passwords', color: '#6366f1', questionPool: [{ prompt: 'How long should a strong password be?', correctAnswer: '12+ characters', options: ['4+ characters', '8+ characters', '12+ characters', '20+ characters'] }] },
+          { id: 'seg2', label: 'Phishing', color: '#ec4899', questionPool: [{ prompt: 'What is spear phishing?', correctAnswer: 'Targeted attack on a specific person', options: ['Mass spam emails', 'Targeted attack on a specific person', 'Malware via USB drive', 'SQL injection attack'] }] },
+          { id: 'seg3', label: 'Privacy', color: '#f59e0b', questionPool: [{ prompt: 'What does GDPR stand for?', correctAnswer: 'General Data Protection Regulation', options: ['General Data Privacy Rules', 'General Data Protection Regulation', 'Global Digital Privacy Regulation', 'Government Data Privacy Rules'] }] },
+          { id: 'seg4', label: 'Compliance', color: '#10b981', questionPool: [{ prompt: 'What is the purpose of SOC 2?', correctAnswer: 'Auditing security controls of service organizations', options: ['Filing annual tax returns', 'Auditing security controls of service organizations', 'Managing employee performance reviews', 'Processing vendor contracts'] }] },
+        ]
+      }
+    };
+  } else if (templateId === 'price-is-right') {
+    payload = {
+      ...base, templateType: 'price-is-right', title: 'Guess the Compliance Penalty',
+      gamePayload: {
+        showcaseVariant: false,
+        items: [
+          { id: 'i1', name: 'GDPR Maximum Fine', description: 'The maximum penalty for serious GDPR violations in the EU.', correctValue: 20000000, toleranceRange: 2000000, explanation: 'GDPR max fine is €20M or 4% of global turnover, whichever is higher.' },
+          { id: 'i2', name: 'Average Data Breach Cost (2024)', description: 'The average total cost of a data breach globally in 2024.', correctValue: 4880000, toleranceRange: 500000, explanation: 'IBM reports the average breach cost is approximately $4.88M in 2024.' },
+        ]
+      }
+    };
+  }
 
   return (
-    <div className="w-full max-w-4xl h-[600px] bg-slate-900 rounded-xl overflow-hidden border border-slate-700 shadow-2xl relative">
-      <div className="absolute inset-0 overflow-y-auto custom-scrollbar flex items-center justify-center p-4">
-         <GameContainer payload={{ templateType: templateId, ...payload }} />
-      </div>
+    <div className="w-full max-w-4xl bg-slate-900 rounded-xl overflow-hidden border border-slate-700 shadow-2xl">
+      <GameContainer payload={payload} />
     </div>
   );
 }
+
