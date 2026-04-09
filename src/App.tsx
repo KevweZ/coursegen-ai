@@ -733,7 +733,7 @@ export default function App() {
                           <div className="bg-slate-900 border border-slate-700 rounded-2xl p-8 w-full max-w-sm shadow-2xl space-y-5">
                             <h3 className="text-white font-extrabold text-xl">Change Audience Pathway?</h3>
                             <p className="text-slate-400 text-sm leading-relaxed">
-                              Switching to <strong className="text-white">{pendingPathway === 'k12' ? 'K-12 Education' : 'Corporate Training'}</strong> will regenerate your course description and learning objectives to match that audience's specifications.
+                              Switching to <strong className="text-white">{pendingPathway === 'k12' ? 'K-12 Education' : 'Adult Learning'}</strong> will regenerate your course description and learning objectives to match that audience's specifications.
                             </p>
                             <div className="flex gap-3 pt-2">
                               <button onClick={() => setPendingPathway(null)} className="flex-1 px-4 py-2.5 rounded-xl border border-slate-700 text-slate-300 font-bold text-sm hover:bg-slate-800 transition-all">Cancel</button>
@@ -804,7 +804,7 @@ export default function App() {
                          </div>
                        </div>
                        <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 w-full sm:w-auto">
-                         <button onClick={() => { if (pathway !== 'corporate') setPendingPathway('corporate'); }} className={`flex-1 sm:w-32 py-2 rounded-lg text-sm font-bold transition-all ${pathway === 'corporate' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}>Corporate Training</button>
+                         <button onClick={() => { if (pathway !== 'corporate') setPendingPathway('corporate'); }} className={`flex-1 sm:w-32 py-2 rounded-lg text-sm font-bold transition-all ${pathway === 'corporate' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}>Adult Learning</button>
                          <button onClick={() => { if (pathway !== 'k12') setPendingPathway('k12'); }} className={`flex-1 sm:w-32 py-2 rounded-lg text-sm font-bold transition-all ${pathway === 'k12' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}>K-12 Education</button>
                        </div>
                      </div>
