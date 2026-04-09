@@ -98,7 +98,7 @@ export function JeopardyGame({ payload }: Props) {
           <div className="flex items-center gap-1.5 mb-0.5">
             <Target className={cn('w-3.5 h-3.5', goalReached ? 'text-emerald-400' : 'text-amber-400')} />
             <span className={cn('text-xs font-black uppercase tracking-widest', goalReached ? 'text-emerald-400' : 'text-amber-400')}>
-              Target (80%)
+              Target Score
             </span>
           </div>
           <span className={cn('text-3xl font-black', goalReached ? 'text-emerald-300' : 'text-white')}>
@@ -127,6 +127,15 @@ export function JeopardyGame({ payload }: Props) {
         <span>$0</span>
         <span className="text-amber-500">Target: ${targetScore.toLocaleString()} ({progressPct}%)</span>
         <span>${maxScore.toLocaleString()}</span>
+      </div>
+
+      {/* Difficulty legend */}
+      <div className="flex items-center gap-3 flex-wrap text-[10px] font-bold text-slate-500 bg-slate-800/60 border border-slate-700/50 rounded-lg px-3 py-2">
+        <span className="uppercase tracking-widest shrink-0">⭐ Difficulty:</span>
+        <span className="text-emerald-400">★☆☆☆ Beginner</span>
+        <span className="text-yellow-400">★★☆☆ Intermediate</span>
+        <span className="text-orange-400">★★★☆ Advanced</span>
+        <span className="text-red-400">★★★★ Expert</span>
       </div>
 
       {/* ── Grid ── */}
