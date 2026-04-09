@@ -34,39 +34,36 @@ export function AccordionPreview() {
 export function HotspotPreview() {
   const [openN, setOpenN] = useState<number | null>(null);
   const dots = [
-    { x: '15%', y: '20%', n: 1, label: 'Outer Layer' },
-    { x: '70%', y: '15%', n: 2, label: 'Data Flow' },
-    { x: '80%', y: '65%', n: 3, label: 'Security Zone' },
-    { x: '20%', y: '70%', n: 4, label: 'Access Control' }
+    { x: '12%', y: '45%', n: 1, label: 'California' },
+    { x: '46%', y: '75%', n: 2, label: 'Texas' },
+    { x: '78%', y: '85%', n: 3, label: 'Florida' },
+    { x: '82%', y: '28%', n: 4, label: 'New York' }
   ];
   return (
     <div className="w-full max-w-xl select-none">
-      <p className="text-white font-bold text-lg mb-4">Click numbered hotspots to explore each part:</p>
-      <div className="relative w-full h-[300px] bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl border border-slate-700 overflow-hidden">
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="w-48 h-48 bg-indigo-500/10 rounded-full border border-indigo-500/30 flex items-center justify-center">
-            <div className="w-28 h-28 bg-indigo-500/20 rounded-full border border-indigo-500/40 flex items-center justify-center">
-              <div className="w-14 h-14 bg-indigo-500/40 rounded-full border border-indigo-500/60 flex items-center justify-center text-indigo-300 font-bold text-xs">Core</div>
+      <p className="text-white font-bold text-lg mb-4">Click hotspots to view state specific data:</p>
+      <div className="relative w-full aspect-[4/3] bg-slate-900 rounded-2xl border border-slate-700 overflow-hidden flex items-center justify-center p-4">
+        {/* Simplified high-quality outline of the contiguous US */}
+        <img src="https://upload.wikimedia.org/wikipedia/commons/1/1a/Blank_US_Map_(states_only).svg" alt="USA Map" className="absolute inset-0 w-full h-full object-contain opacity-50 p-2 pointer-events-none" style={{ filter: "invert(0.5) sepia(1) hue-rotate(180deg) saturate(300%)" }} />
+        <div className="absolute inset-0">
+          {dots.map((dot) => (
+            <div key={dot.n} className="absolute z-10" style={{ left: dot.x, top: dot.y }}>
+              <button
+                onClick={() => setOpenN(openN === dot.n ? null : dot.n)}
+                className={`relative z-20 w-8 h-8 rounded-full flex items-center justify-center text-white font-extrabold text-sm shadow-xl transition-all ${openN === dot.n ? 'bg-pink-500 scale-125 ring-4 ring-pink-500/30' : 'bg-indigo-600 hover:bg-pink-500 hover:scale-110 animate-pulse'}`}
+              >
+                {dot.n}
+              </button>
+              <AnimatePresence>
+                {openN === dot.n && (
+                  <motion.div initial={{ opacity: 0, scale: 0.8, x: 20 }} animate={{ opacity: 1, scale: 1, x: 40 }} exit={{ opacity: 0, scale: 0.8, x: 20 }} className="absolute -top-1 left-0 bg-slate-900 border-2 border-pink-500 text-white text-xs font-bold px-3 py-2 rounded-xl whitespace-nowrap shadow-2xl z-30">
+                    {dot.label}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
-          </div>
+          ))}
         </div>
-        {dots.map((dot) => (
-          <div key={dot.n} className="absolute z-10" style={{ left: dot.x, top: dot.y }}>
-            <button
-              onClick={() => setOpenN(openN === dot.n ? null : dot.n)}
-              className={`relative z-20 w-10 h-10 rounded-full flex items-center justify-center text-white font-extrabold text-sm shadow-xl transition-all ${openN === dot.n ? 'bg-pink-500 scale-125 ring-4 ring-pink-500/30' : 'bg-indigo-600 hover:bg-pink-500 hover:scale-110 animate-pulse'}`}
-            >
-              {dot.n}
-            </button>
-            <AnimatePresence>
-              {openN === dot.n && (
-                <motion.div initial={{ opacity: 0, scale: 0.8, x: 20 }} animate={{ opacity: 1, scale: 1, x: 45 }} exit={{ opacity: 0, scale: 0.8, x: 20 }} className="absolute -top-1 left-0 bg-slate-900 border-2 border-pink-500 text-white text-xs font-bold px-3 py-2 rounded-xl whitespace-nowrap shadow-2xl">
-                  {dot.label}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        ))}
       </div>
     </div>
   );
@@ -80,7 +77,7 @@ export function BranchingPreview() {
         {step === 0 ? (
           <motion.div key="intro" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
             <div className="bg-slate-800 rounded-2xl border border-slate-700 p-6 mb-4 shadow-xl">
-              <p className="text-xs text-indigo-400 font-bold uppercase tracking-widest mb-2">📖 Scenario</p>
+              <p className="text-xs text-indigo-400 font-bold uppercase tracking-widest mb-2">📖 Scenario Start</p>
               <p className="text-white font-bold text-lg leading-snug">You receive an urgent email from your CEO requesting an immediate $50,000 wire transfer. What do you do?</p>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -93,18 +90,40 @@ export function BranchingPreview() {
             </div>
           </motion.div>
         ) : step === 1 ? (
-          <motion.div key="fail" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-red-900/40 border border-red-500/50 p-8 rounded-2xl text-center">
+          <motion.div key="fail1" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-red-900/40 border border-red-500/50 p-8 rounded-2xl text-center">
             <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
             <p className="text-white font-bold text-xl mb-2">Costly Mistake!</p>
             <p className="text-red-200 text-sm mb-6">You fell for a Business Email Compromise (BEC) scam. The company lost $50,000.</p>
             <button onClick={() => setStep(0)} className="px-5 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg transition-colors">Retry Scenario</button>
           </motion.div>
-        ) : (
+        ) : step === 2 ? (
+          <motion.div key="step2" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+            <div className="bg-slate-800 rounded-2xl border border-slate-700 p-6 mb-4 shadow-xl">
+              <p className="text-xs text-indigo-400 font-bold uppercase tracking-widest mb-2">📖 Continued Scenario</p>
+              <p className="text-white font-bold text-lg leading-snug">The CEO confirms he never sent the email. However, the attacker realizes you paused and sends a threatening follow-up email from a "vendor". What now?</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div onClick={() => setStep(3)} className="p-4 bg-slate-800 hover:bg-slate-700 border-2 border-slate-700 hover:border-slate-500 rounded-xl cursor-pointer transition-all text-center">
+                <p className="text-white font-bold">✅ Isolate and Forward to IT Sec</p>
+              </div>
+              <div onClick={() => setStep(4)} className="p-4 bg-slate-800 hover:bg-slate-700 border-2 border-slate-700 hover:border-slate-500 rounded-xl cursor-pointer transition-all text-center">
+                <p className="text-white font-bold">⚠️ Reply demanding verification</p>
+              </div>
+            </div>
+          </motion.div>
+        ) : step === 3 ? (
           <motion.div key="success" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-emerald-900/40 border border-emerald-500/50 p-8 rounded-2xl text-center">
             <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-4" />
             <p className="text-white font-bold text-xl mb-2">Disaster Averted!</p>
-            <p className="text-emerald-200 text-sm mb-6">By verifying out-of-band, you thwarted a targeted spear-phishing attack.</p>
+            <p className="text-emerald-200 text-sm mb-6">By reporting immediately, IT locked the compromised vendor channel and thwarted the attack entirely.</p>
             <button onClick={() => setStep(0)} className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg transition-colors">Restart Scenario</button>
+          </motion.div>
+        ) : (
+          <motion.div key="fail2" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-red-900/40 border border-red-500/50 p-8 rounded-2xl text-center">
+            <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+            <p className="text-white font-bold text-xl mb-2">Dangerous Engagement</p>
+            <p className="text-red-200 text-sm mb-6">Replying to the attacker verified your email is active and opened a vector for a payload deployment.</p>
+            <button onClick={() => setStep(0)} className="px-5 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg transition-colors">Retry Scenario</button>
           </motion.div>
         )}
       </AnimatePresence>
@@ -243,88 +262,74 @@ export function MatchingPreview() {
   );
 }
 
-export function DragDropPreview() {
-  const [items, setItems] = useState(['Social Security Number', 'Public Press Release', 'Employee Salary Data', 'Marketing Brochure']);
-  const [confidential, setConfidential] = useState<string[]>([]);
-  const [publicList, setPublicList] = useState<string[]>([]);
-
-  const moveTo = (item: string, target: 'confidential'|'public') => {
-    setItems(items.filter(i => i !== item));
-    if (target === 'confidential') setConfidential([...confidential, item]);
-    if (target === 'public') setPublicList([...publicList, item]);
-  };
-
-  return (
-    <div className="w-full max-w-2xl space-y-4 select-none">
-      <p className="text-white font-bold text-lg">Classify each item by clicking to assign:</p>
-      
-      {items.length > 0 && (
-        <div className="flex flex-wrap gap-3 p-4 bg-slate-800 rounded-xl border border-slate-700 mb-2">
-          <span className="text-xs text-slate-400 font-bold uppercase w-full mb-1">Unassigned Items:</span>
-          {items.map(item => (
-            <div key={item} className="group relative px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold shadow-lg transition-colors pr-10">
-              {item}
-              <div className="absolute right-0 top-0 bottom-0 flex">
-                 <button onClick={() => moveTo(item, 'confidential')} className="w-6 bg-red-500 hover:bg-red-400 text-[10px] rounded-l-sm" title="Move to Confidential">C</button>
-                 <button onClick={() => moveTo(item, 'public')} className="w-6 bg-green-500 hover:bg-green-400 text-[10px] rounded-r-lg" title="Move to Public">P</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {items.length === 0 && (
-        <div className="p-4 bg-emerald-900/30 border border-emerald-500 text-emerald-400 rounded-xl text-center font-bold mb-4">
-          All items classified! <button onClick={() => { setItems(['Social Security Number', 'Public Press Release', 'Employee Salary Data', 'Marketing Brochure']); setConfidential([]); setPublicList([]); }} className="text-white ml-2 underline text-xs">Reset</button>
-        </div>
-      )}
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="p-4 rounded-xl border-2 border-dashed border-red-500/50 bg-red-500/10 min-h-[140px] flex flex-col gap-2">
-           <p className="text-slate-300 font-bold mb-2 flex items-center justify-center border-b border-red-500/20 pb-2">🔒 Confidential</p>
-           {confidential.map(i => <div key={i} className="text-xs font-bold bg-slate-800 text-white p-2 rounded">{i}</div>)}
-        </div>
-        <div className="p-4 rounded-xl border-2 border-dashed border-green-500/50 bg-green-500/10 min-h-[140px] flex flex-col gap-2">
-           <p className="text-slate-300 font-bold mb-2 flex items-center justify-center border-b border-green-500/20 pb-2">📢 Public</p>
-           {publicList.map(i => <div key={i} className="text-xs font-bold bg-slate-800 text-white p-2 rounded">{i}</div>)}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function DropTargetsPreview() {
-  const [items, setItems] = useState(['HIPAA', 'GDPR', 'SOX', 'PCI-DSS', 'FERPA']);
-  const [zones, setZones] = useState<{ Healthcare: string[]; Financial: string[]; Education: string[] }>({ Healthcare: [], Financial: [], Education: [] });
+  const [items, setItems] = useState<{id: string, text: string, dropped: string | null}>([
+    {id: '1', text: 'HIPAA', dropped: null}, {id: '2', text: 'GDPR', dropped: null},
+    {id: '3', text: 'SOX', dropped: null}, {id: '4', text: 'PCI-DSS', dropped: null},
+    {id: '5', text: 'FERPA', dropped: null}
+  ]);
+  const correctMap: Record<string, string> = { 'HIPAA': 'Healthcare', 'GDPR': 'Financial', 'SOX': 'Financial', 'PCI-DSS': 'Financial', 'FERPA': 'Education' };
+  
+  const [wrongFlash, setWrongFlash] = useState<string | null>(null);
 
-  const moveTo = (item: string, target: 'Healthcare' | 'Financial' | 'Education') => {
-    setItems(items.filter(i => i !== item));
-    setZones({ ...zones, [target]: [...zones[target], item] });
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    e.dataTransfer.setData('text/plain', id);
   };
+
+  const handleDrop = (e: React.DragEvent, zone: string) => {
+    e.preventDefault();
+    const itemId = e.dataTransfer.getData('text/plain');
+    const item = items.find(i => i.id === itemId);
+    if (!item) return;
+
+    if (correctMap[item.text] !== zone) {
+          setWrongFlash(zone);
+          setTimeout(() => setWrongFlash(null), 500);
+          return;
+       }
+    setItems(items.map(i => i.id === itemId ? { ...i, dropped: zone } : i));
+  };
+
+  // Click-based fallback setup for accessibility
+  const moveTo = (itemText: string, target: string) => {
+    const item = items.find(i => i.text === itemText);
+    if (!item) return;
+    if (correctMap[item.text] !== target) {
+      setWrongFlash(target);
+      setTimeout(() => setWrongFlash(null), 500);
+      return;
+    }
+    setItems(items.map(i => i.text === itemText ? { ...i, dropped: target } : i));
+  };
+
+  const zones: Record<string, any[]> = { Healthcare: [], Financial: [], Education: [] };
+  items.filter(i => i.dropped).forEach(i => zones[i.dropped!].push(i));
+  const bank = items.filter(i => !i.dropped);
 
   return (
     <div className="w-full max-w-2xl select-none">
-      <p className="text-white font-bold text-lg mb-4">Drop each regulation into the correct compliance category:</p>
+      <p className="text-white font-bold text-lg mb-4">Drag `&` Drop regulations to the correct category:</p>
       <div className="flex flex-wrap gap-2 p-4 bg-slate-800/50 rounded-xl border border-slate-700 mb-4 min-h-[70px]">
-        {items.map(item => (
-          <div key={item} className="group relative px-6 py-2 bg-indigo-600 rounded-lg text-white text-sm font-bold shadow-md pr-20 overflow-hidden">
-            {item}
+        {bank.map(item => (
+          <div key={item.id} draggable onDragStart={(e) => handleDragStart(e, item.id)} className="group relative px-6 py-2 bg-indigo-600 rounded-lg text-white text-sm font-bold shadow-md pr-20 overflow-hidden cursor-grab active:cursor-grabbing hover:bg-indigo-500 transition-colors">
+            {item.text}
             <div className="absolute right-0 top-0 bottom-0 flex opacity-0 group-hover:opacity-100 transition-opacity translate-x-2 group-hover:translate-x-0">
-               <button onClick={() => moveTo(item, 'Healthcare')}  className="w-6 bg-red-500 hover:bg-red-400 text-xs px-1">🏥</button>
-               <button onClick={() => moveTo(item, 'Financial')}   className="w-6 bg-yellow-600 hover:bg-yellow-500 text-xs px-1">💰</button>
-               <button onClick={() => moveTo(item, 'Education')}   className="w-6 bg-green-600 hover:bg-green-500 text-xs px-1">🎓</button>
+               <button onClick={() => moveTo(item.text, 'Healthcare')}  className="w-6 bg-red-500 hover:bg-red-400 text-xs px-1">🏥</button>
+               <button onClick={() => moveTo(item.text, 'Financial')}   className="w-6 bg-yellow-600 hover:bg-yellow-500 text-xs px-1">💰</button>
+               <button onClick={() => moveTo(item.text, 'Education')}   className="w-6 bg-green-600 hover:bg-green-500 text-xs px-1">🎓</button>
             </div>
           </div>
         ))}
-        {items.length === 0 && <p className="text-emerald-400 font-bold m-auto">All sorted!</p>}
+        {bank.length === 0 && <p className="text-emerald-400 font-bold m-auto animate-pulse">All sorted properly!</p>}
       </div>
       <div className="grid grid-cols-3 gap-3">
         {(['Healthcare', 'Financial', 'Education'] as const).map((zone) => (
-          <div key={zone} className="p-4 rounded-xl border-2 border-dashed border-slate-600 bg-slate-800/50 min-h-[140px] flex flex-col items-center gap-2 transition-colors hover:border-indigo-500">
+          <div key={zone} onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDrop(e, zone)} className={`p-4 rounded-xl border-2 border-dashed bg-slate-800/50 min-h-[140px] flex flex-col items-center gap-2 transition-all ${wrongFlash === zone ? 'border-red-500 bg-red-500/20' : 'border-slate-600 hover:border-indigo-500'}`}>
+            {wrongFlash === zone && <AlertCircle className="w-8 h-8 text-red-500 absolute" />}
             <span className="text-2xl">{zone === 'Healthcare' ? '🏥' : zone === 'Financial' ? '💰' : '🎓'}</span>
             <span className="text-xs font-bold uppercase text-slate-400">{zone}</span>
             <div className="w-full mt-2 space-y-1">
-              {zones[zone].map(i => <div key={i} className="text-xs font-bold bg-indigo-600 text-white p-1.5 text-center rounded w-full line-clamp-1">{i}</div>)}
+              {zones[zone].map(i => <div key={i.id} className="text-xs font-bold bg-indigo-600 text-white p-1.5 text-center rounded w-full line-clamp-1">{i.text}</div>)}
             </div>
           </div>
         ))}
@@ -333,15 +338,15 @@ export function DropTargetsPreview() {
   );
 }
 
-export function TimelinePreview() {
+export function TimelinePreview({ isPreview = true }: { isPreview?: boolean }) {
   const [openStep, setOpenStep] = useState<number | null>(null);
   const [layout, setLayout] = useState<'vertical' | 'horizontal'>('horizontal');
   const steps = [
-    { n: 1, title: 'Preparation', content: 'Establish IR policies, train teams.', color: 'bg-blue-500', border: 'border-blue-500/50' },
-    { n: 2, title: 'Identification', content: 'Detect security incidents using alerts.', color: 'bg-yellow-500', border: 'border-yellow-500/50' },
-    { n: 3, title: 'Containment', content: 'Limit the damage and prevent spread.', color: 'bg-orange-500', border: 'border-orange-500/50' },
-    { n: 4, title: 'Eradication', content: 'Remove root cause — patch systems.', color: 'bg-red-500', border: 'border-red-500/50' },
-    { n: 5, title: 'Recovery', content: 'Restore systems to normal operations.', color: 'bg-green-500', border: 'border-green-500/50' },
+    { n: 1, title: 'Preparation', content: 'Establish IR policies, train teams.', color: 'bg-blue-500', border: 'border-blue-500' },
+    { n: 2, title: 'Identification', content: 'Detect security incidents using alerts.', color: 'bg-yellow-500', border: 'border-yellow-500' },
+    { n: 3, title: 'Containment', content: 'Limit the damage and prevent spread.', color: 'bg-orange-500', border: 'border-orange-500' },
+    { n: 4, title: 'Eradication', content: 'Remove root cause — patch systems.', color: 'bg-red-500', border: 'border-red-500' },
+    { n: 5, title: 'Recovery', content: 'Restore systems to normal operations.', color: 'bg-green-500', border: 'border-green-500' },
   ];
 
   return (
@@ -351,10 +356,12 @@ export function TimelinePreview() {
           <p className="text-white font-bold text-lg">Incident Timeline</p>
           <p className="text-slate-400 text-xs font-medium">Click steps to reveal details</p>
         </div>
-        <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700">
-          <button onClick={() => setLayout('vertical')} className={`px-3 py-1 text-xs font-bold rounded-md transition-colors ${layout === 'vertical' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><LayoutList className="w-4 h-4" /></button>
-          <button onClick={() => setLayout('horizontal')} className={`px-3 py-1 text-xs font-bold rounded-md transition-colors ${layout === 'horizontal' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><GripVertical className="w-4 h-4 rotate-90" /></button>
-        </div>
+        {isPreview && (
+          <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700">
+            <button onClick={(e) => { e.stopPropagation(); e.preventDefault(); setLayout("vertical"); }} className={`px-3 py-1 text-xs font-bold rounded-md transition-colors ${layout === 'vertical' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><LayoutList className="w-4 h-4" /></button>
+            <button onClick={(e) => { e.stopPropagation(); e.preventDefault(); setLayout("horizontal"); }} className={`px-3 py-1 text-xs font-bold rounded-md transition-colors ${layout === 'horizontal' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><GripVertical className="w-4 h-4 rotate-90" /></button>
+          </div>
+        )}
       </div>
 
       <div className={`relative ${layout === 'horizontal' ? 'flex items-start justify-between min-h-[160px] pt-4' : ''}`}>
@@ -370,12 +377,12 @@ export function TimelinePreview() {
             const isOpen = openStep === i;
             if (layout === 'horizontal') {
               return (
-                <div key={i} className="flex flex-col items-center flex-1 cursor-pointer" onClick={() => setOpenStep(isOpen ? null : i)}>
-                  <div className={`w-8 h-8 rounded-full ${step.color} flex items-center justify-center text-white font-bold text-sm shadow-lg z-10 mb-2 transition-transform ${isOpen ? 'scale-125 ring-4 ring-white/20' : 'hover:scale-110'}`}>{step.n}</div>
+                <div key={i} className="flex flex-col items-center flex-1 cursor-pointer relative" onClick={() => setOpenStep(isOpen ? null : i)}>
+                  <motion.div layoutId={`tl-dot-${i}`} className={`w-8 h-8 rounded-full ${step.color} flex items-center justify-center text-white font-bold text-sm shadow-lg z-10 mb-2 transition-transform ${isOpen ? 'scale-125 ring-4 ring-white/20' : 'hover:scale-110'}`}>{step.n}</motion.div>
                   <span className="font-bold text-xs text-center text-slate-200 mb-2 h-8">{step.title}</span>
                   <AnimatePresence>
                      {isOpen && (
-                       <motion.div initial={{ opacity: 0, scale: 0.9, y: -10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 10 }} className="absolute top-24 left-4 right-4 bg-slate-800 border border-slate-600 rounded-xl p-4 text-sm text-white shadow-2xl z-20 pointer-events-none">
+                       <motion.div layoutId={`tl-box-${i}`} initial={{ opacity: 0, scale: 0.8, y: -20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.8, y: -20, transition:{duration:0.15} }} className={`absolute top-16 left-1/2 -translate-x-1/2 w-48 bg-slate-900 border-2 ${step.border} rounded-xl p-4 text-sm text-white shadow-2xl z-20 pointer-events-none`}>
                          <span className="font-bold border-b border-slate-600 pb-1 mb-2 block w-full">{step.title}</span>
                          {step.content}
                        </motion.div>
@@ -387,7 +394,7 @@ export function TimelinePreview() {
 
             return (
               <div key={i}>
-                <button onClick={() => setOpenStep(isOpen ? null : i)} className={`w-full relative flex items-center gap-4 pl-14 pr-4 py-3 rounded-xl border transition-all text-left group ${isOpen ? `${step.border} bg-slate-800 text-white` : 'border-slate-700 bg-slate-800/50 text-slate-300 hover:border-slate-600 hover:bg-slate-800'}`}>
+                <button onClick={() => setOpenStep(isOpen ? null : i)} className={`w-full relative flex items-center gap-4 pl-14 pr-4 py-3 rounded-xl border transition-all text-left group ${isOpen ? '${step.border} bg-slate-800 text-white' : 'border-slate-700 bg-slate-800/50 text-slate-300 hover:border-slate-600 hover:bg-slate-800'}`}>
                   <div className={`absolute left-3 w-8 h-8 rounded-full ${step.color} flex items-center justify-center text-white font-bold text-sm shadow-lg shrink-0`}>{step.n}</div>
                   <span className="font-bold text-sm flex-1">{step.title}</span>
                   <span className="text-slate-500 text-xs group-hover:text-slate-300 transition-colors">{isOpen ? '▲ Close' : '▼ Details'}</span>

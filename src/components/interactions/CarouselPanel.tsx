@@ -1,6 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 export interface CarouselCard {
   id: string;
@@ -15,140 +15,152 @@ interface Props {
   title?: string;
 }
 
-const DEFAULT_COLORS = ['#6366f1', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#f43f5e'];
+const DEFAULT_COLORS = ['#fbbf24', '#f87171', '#38bdf8', '#c084fc', '#4ade80'];
+const DARK_COLORS = ['#b45309', '#991b1b', '#0369a1', '#6b21a8', '#166534'];
 
 export default function CarouselPanel({ cards = [], title }: Props) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [expanded, setExpanded] = useState(false);
-  const [dir, setDir] = useState(0); // -1 left, 1 right
 
   if (!cards.length) return null;
-
-  const total = cards.length;
-  const goTo = (idx: number, d: number) => {
-    setDir(d);
-    setActiveIndex((idx + total) % total);
-    setExpanded(false);
-  };
-  const prev = () => goTo(activeIndex - 1, -1);
-  const next = () => goTo(activeIndex + 1, 1);
-
   const activeCard = cards[activeIndex];
-  const cardColor = activeCard.color || DEFAULT_COLORS[activeIndex % DEFAULT_COLORS.length];
 
-  // Slide variants — smooth x-slide with no overflow
-  const variants = {
-    enter: (d: number) => ({ x: d > 0 ? '100%' : '-100%', opacity: 0, scale: 0.95 }),
-    center: { x: 0, opacity: 1, scale: 1 },
-    exit: (d: number) => ({ x: d > 0 ? '-100%' : '100%', opacity: 0, scale: 0.95 }),
+  const getPosition = (index: number) => {
+    let diff = index - activeIndex;
+    if (diff < -1) return -2;
+    if (diff > 1) return 2;
+    return diff;
   };
 
   return (
-    <div className="w-full flex flex-col items-center gap-4 select-none">
+    <div className="w-full flex flex-col items-center gap-6 select-none bg-slate-900 overflow-hidden py-6 rounded-2xl border border-slate-800 shadow-xl">
       {title && (
-        <p className="text-slate-400 text-sm font-bold text-center uppercase tracking-widest">{title}</p>
+        <div className="w-full px-8 text-left">
+          <p className="text-white text-lg font-bold bg-slate-800 inline-block px-4 py-2 border border-slate-700 rounded-md">
+            {title}
+          </p>
+        </div>
       )}
 
-      {/* ── Carousel Track — overflow-hidden keeps side cards invisible ── */}
-      <div className="relative w-full flex justify-center" style={{ height: 220 }}>
-        <div className="absolute inset-0 max-w-[500px] w-full mx-auto overflow-hidden rounded-2xl shadow-xl">
-          <AnimatePresence initial={false} custom={dir} mode="popLayout">
-            <motion.div
-              key={activeCard.id}
-              custom={dir}
-              variants={variants}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              transition={{ type: 'spring', stiffness: 320, damping: 30, mass: 0.8 }}
-              className="absolute inset-0 rounded-2xl overflow-hidden border border-white/10 shadow-2xl cursor-pointer"
-              style={{ background: cardColor }}
-              onClick={() => activeCard.expandedContent && setExpanded(!expanded)}
-            >
-              <div className="w-full h-full flex flex-col p-5">
-                {/* Card header */}
-                <div className="border border-white/30 rounded-xl px-3 py-1.5 mb-2 self-start">
-                  <h3 className="text-white font-extrabold text-base">{activeCard.label}</h3>
-                </div>
-                {activeCard.description && (
-                  <div className="border border-white/20 rounded-xl px-3 py-2 mb-3 flex-1 overflow-hidden">
-                    <p className="text-white/80 text-xs leading-relaxed line-clamp-4">{activeCard.description}</p>
+      {/* Main card stage */}
+      <div className="relative w-full h-[320px] flex items-center justify-center pt-8">
+        <AnimatePresence>
+          {cards.map((card, i) => {
+            const pos = getPosition(i);
+            const isCenter = pos === 0;
+            const cardColor = card.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length];
+            const darkColor = DARK_COLORS[i % DARK_COLORS.length];
+            if (pos < -1 || pos > 1) return null;
+
+            return (
+              <motion.div
+                key={card.id}
+                layout
+                initial={{ opacity: 0, x: pos * 300, scale: 0.8 }}
+                animate={{ 
+                  opacity: 1, 
+                  x: pos * 240, 
+                  scale: isCenter ? 1 : 0.85,
+                  zIndex: isCenter ? 30 : 10,
+                  filter: isCenter ? 'brightness(1)' : 'brightness(0.6)'
+                }}
+                exit={{ opacity: 0, scale: 0.5, transition: { duration: 0.2 } }}
+                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                className={`absolute w-[400px] rounded-2xl shadow-2xl border border-white/20 overflow-hidden flex flex-col ${isCenter ? 'cursor-default' : 'cursor-pointer'}`}
+                style={{ background: cardColor, minHeight: isCenter && expanded ? 280 : 180 }}
+                onClick={() => {
+                  if (!isCenter) {
+                    setActiveIndex(i);
+                    setExpanded(false);
+                  }
+                }}
+              >
+                <motion.div layout="position" className="p-6 flex-1 flex flex-col">
+                  {/* Inner bordered label */}
+                  <div className="border border-white/50 px-4 py-2 w-max mb-4 inline-block shadow-sm" style={{ borderColor: 'rgba(255,255,255,0.6)' }}>
+                    <h3 className="text-white font-bold text-xl drop-shadow-md">{card.label}</h3>
                   </div>
-                )}
-                {activeCard.expandedContent && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setExpanded(true); }}
-                    className="self-center bg-white/20 hover:bg-white/30 border border-white/40 text-white font-bold text-xs px-4 py-1 rounded-lg transition-all"
-                  >
-                    MORE...
-                  </button>
-                )}
-              </div>
-            </motion.div>
-          </AnimatePresence>
+                  
+                  {card.description && (
+                     <div className="bg-white/10 border border-white/20 p-3 flex-1 mb-4">
+                       <p className="text-white/90 text-sm">{card.description}</p>
+                     </div>
+                  )}
+
+                  {isCenter && card.expandedContent && !expanded && (
+                    <motion.button
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      onClick={(e) => { e.stopPropagation(); setExpanded(true); }}
+                      className="self-center bg-white hover:bg-slate-100 text-slate-900 font-extrabold text-xs px-6 py-2 shadow-lg transition-colors"
+                    >
+                      MORE...
+                    </motion.button>
+                  )}
+
+                  {/* Expanded chunk */}
+                  <AnimatePresence>
+                     {isCenter && expanded && card.expandedContent && (
+                       <motion.div
+                         initial={{ opacity: 0, height: 0 }}
+                         animate={{ opacity: 1, height: 'auto' }}
+                         exit={{ opacity: 0, height: 0 }}
+                         className="flex-1 mt-2 border-t border-white/30 pt-4"
+                       >
+                         <p className="text-white font-bold mb-2">Expanded Information:</p>
+                         <p className="text-white/80 text-sm whitespace-pre-wrap">{card.expandedContent}</p>
+                         <button onClick={() => setExpanded(false)} className="mt-4 text-white text-xs underline font-bold opacity-80 hover:opacity-100">Collapse</button>
+                       </motion.div>
+                     )}
+                  </AnimatePresence>
+
+                </motion.div>
+                
+                {/* Visual generic diagram icon in corner */}
+                <div className="absolute -bottom-6 -right-6 opacity-30 text-white transform -rotate-12 pointer-events-none">
+                  <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    <line x1="3" y1="9" x2="21" y2="9"/>
+                    <line x1="9" y1="21" x2="9" y2="9"/>
+                  </svg>
+                </div>
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
+
+        {/* Outer navigation arrows mapping to array bounds */}
+        <div className="absolute inset-x-4 top-1/2 -translate-y-1/2 flex items-center justify-between pointer-events-none z-40">
+           {activeIndex > 0 ? (
+             <button onClick={() => { setActiveIndex(activeIndex - 1); setExpanded(false); }} className="w-12 h-12 bg-black/60 rounded-full flex items-center justify-center text-white pointer-events-auto hover:bg-black/80 transition-colors shadow-2xl backdrop-blur-md">
+               <ChevronLeft className="w-6 h-6" />
+             </button>
+           ) : <div/>}
+           {activeIndex < cards.length - 1 ? (
+             <button onClick={() => { setActiveIndex(activeIndex + 1); setExpanded(false); }} className="w-12 h-12 bg-black/60 rounded-full flex items-center justify-center text-white pointer-events-auto hover:bg-black/80 transition-colors shadow-2xl backdrop-blur-md">
+               <ChevronRight className="w-6 h-6" />
+             </button>
+           ) : <div/>}
         </div>
 
-        {/* Side arrow overlays */}
-        <button
-          onClick={prev}
-          className="absolute left-2 top-1/2 -translate-y-1/2 z-20 w-9 h-9 rounded-full bg-black/40 hover:bg-black/60 flex items-center justify-center text-white shadow-lg transition-all"
-        >
-          <ChevronLeft className="w-5 h-5" />
-        </button>
-        <button
-          onClick={next}
-          className="absolute right-2 top-1/2 -translate-y-1/2 z-20 w-9 h-9 rounded-full bg-black/40 hover:bg-black/60 flex items-center justify-center text-white shadow-lg transition-all"
-        >
-          <ChevronRight className="w-5 h-5" />
-        </button>
       </div>
 
-      {/* ── Dot indicators ── */}
-      <div className="flex items-center gap-2">
-        {cards.map((card, i) => (
-          <button
-            key={i}
-            onClick={() => goTo(i, i > activeIndex ? 1 : -1)}
-            className="transition-all rounded-full flex-shrink-0 cursor-pointer hover:opacity-80"
-            style={{
-               width: i === activeIndex ? 36 : 14,
-               height: 14,
-              background: i === activeIndex
-                ? (card.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length])
-                : '#475569',
-            }}
-          />
-        ))}
+      {/* Navigation Circles underneath */}
+      <div className="flex items-center gap-6 mt-8 z-50">
+        {cards.map((card, i) => {
+          const isActive = i === activeIndex;
+          const bg = card.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length];
+          return (
+            <button
+              key={i}
+              onClick={() => { setActiveIndex(i); setExpanded(false); }}
+              className={`w-10 h-10 rounded-full border-[3px] ${isActive ? 'border-white scale-125' : 'border-transparent'} shadow-xl transition-all hover:scale-110`}
+              style={{ background: isActive ? bg : '#1e293b' }}
+            />
+          );
+        })}
       </div>
-
-      {/* ── Expanded Content Panel ── */}
-      <AnimatePresence>
-        {expanded && activeCard.expandedContent && (
-          <motion.div
-            initial={{ opacity: 0, y: -10, scaleY: 0.9, originY: 0 }}
-            animate={{ opacity: 1, y: 0, scaleY: 1 }}
-            exit={{ opacity: 0, y: -10, scaleY: 0.9 }}
-            transition={{ duration: 0.22 }}
-            className="w-full rounded-2xl overflow-hidden border border-white/10 shadow-2xl"
-            style={{ background: cardColor }}
-          >
-            <div className="flex items-center justify-between px-5 pt-4 pb-2 border-b border-white/20">
-              <div className="border border-white/30 rounded-xl px-3 py-1 inline-block">
-                <h3 className="text-white font-extrabold text-sm">{activeCard.label}</h3>
-              </div>
-              <button
-                onClick={() => setExpanded(false)}
-                className="w-7 h-7 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="px-5 py-4 max-h-48 overflow-y-auto custom-scrollbar">
-              <p className="text-white/90 text-sm leading-relaxed whitespace-pre-wrap">{activeCard.expandedContent}</p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      
     </div>
   );
 }

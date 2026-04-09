@@ -79,7 +79,7 @@ export function getPresetConfig(pathway: PathwayId, presetId: PresetId): PresetC
           objectiveCountMin: 3,
           objectiveCountMax: 4,
           // Corporate Standard: Drag & Drop, Sorting, Hotspots, Multiple Choice
-          interactions: ['quiz', 'drag-drop-activity', 'sorting', 'hotspot'],
+          interactions: ['quiz', 'sorting', 'hotspot'],
           includeModuleTitleSlides: true,
           includeObjectiveSlides: true,
           includeKnowledgeChecks: true,
@@ -104,7 +104,7 @@ export function getPresetConfig(pathway: PathwayId, presetId: PresetId): PresetC
           objectiveCountMin: 5,
           objectiveCountMax: 7,
           // Corporate Comprehensive: Branching, Timeline, Matching, Drag & Drop
-          interactions: ['quiz', 'branching', 'timeline', 'matching', 'drag-drop-activity', 'accordion', 'flashcards'],
+          interactions: ['quiz', 'branching', 'timeline', 'matching', 'accordion', 'flashcards'],
           includeModuleTitleSlides: true,
           includeObjectiveSlides: true,
           includeKnowledgeChecks: true,
@@ -158,7 +158,7 @@ export function getPresetConfig(pathway: PathwayId, presetId: PresetId): PresetC
           objectiveCountMin: 2,
           objectiveCountMax: 3,
           // K-12 Standard: Drag & Drop, Hotspots, Multiple Choice
-          interactions: ['quiz', 'drag-drop-activity', 'hotspot', 'matching'],
+          interactions: ['quiz', 'hotspot', 'matching'],
           includeModuleTitleSlides: true,
           includeObjectiveSlides: true,
           includeKnowledgeChecks: true,
@@ -183,7 +183,7 @@ export function getPresetConfig(pathway: PathwayId, presetId: PresetId): PresetC
           objectiveCountMin: 4,
           objectiveCountMax: 6,
           // K-12 Comprehensive: Branching (Choose Your Own Adventure), Sorting, Drop Targets, Timeline
-          interactions: ['quiz', 'branching', 'sorting', 'drag-drop-activity', 'timeline', 'accordion', 'flashcards'],
+          interactions: ['quiz', 'branching', 'sorting', 'timeline', 'accordion', 'flashcards'],
           includeModuleTitleSlides: true,
           includeObjectiveSlides: true,
           includeKnowledgeChecks: true,

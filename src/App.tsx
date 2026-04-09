@@ -60,7 +60,7 @@ import {
 } from '@zomako/elearning-components/dist/elearning-components.es.js';
 import { 
   AccordionPreview, HotspotPreview, BranchingPreview, MultipleChoicePreview, 
-  SortingPreview, MatchingPreview, DragDropPreview, TimelinePreview, DropTargetsPreview,
+  SortingPreview, MatchingPreview, TimelinePreview, DropTargetsPreview,
   GamePreview 
 } from './components/interactions/ExtraPreviews';
 import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft } from './services/aiService';
@@ -1096,7 +1096,6 @@ export default function App() {
                              {[
                                { id: 'multiple-choice', label: 'Multiple Choice' },
                                { id: 'multiple-answers', label: 'Multiple Answers' },
-                               { id: 'drag-drop', label: 'Drag & Drop' },
                                { id: 'hotspot', label: 'Hotspot' },
                                { id: 'accordion', label: 'Accordion' },
                                { id: 'flashcards', label: 'Flashcards' },
@@ -1465,15 +1464,6 @@ export default function App() {
                                })()}
 
                                {/* EXTERNAL COMPONENTS (zomako + interactions) */}
-                               {currentSlide?.type === 'drag-drop-activity' && (
-                                  <div className="space-y-6 w-full">
-                                     <h2 className={cn('text-3xl font-extrabold', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
-                                     <ReactMarkdown className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')}>{sanitizeContent(currentSlide.content)}</ReactMarkdown>
-                                     <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : '')}>
-                                        <DragAndDropActivity {...(currentSlide.data || currentSlide.interactions?.[0] || {})} />
-                                     </div>
-                                  </div>
-                               )}
                                {currentSlide?.type === 'matching' && (
                                   <div className="space-y-6 w-full">
                                      <h2 className={cn('text-3xl font-extrabold', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>

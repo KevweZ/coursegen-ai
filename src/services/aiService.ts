@@ -283,9 +283,9 @@ export async function generateCourseOutline(
   1. ${configParams.includeModuleTitleSlides !== false ? "Title Slide (type: content)" : "NO title slide"}
   2. ${configParams.includeObjectiveSlides !== false ? "Objectives Slide (type: content)" : "NO objectives slide"}
   3. Content & Interaction Slides — use the SPECIFIC allowed interaction type as the slide type. Allowed interaction types: ${configParams.interactionTypes.join(", ")}. Map them to slide types like this:
-     - accordion, flashcards, timeline, sorting, matching, drag-drop-activity, branching → use the exact string as the slide 'type'
+     - accordion, flashcards, timeline, sorting, matching, branching → use the exact string as the slide 'type'
      - tabbed-horizontal, tabbed-vertical, folder-explorer, carousel-panel → use the exact string as the slide 'type'
-     - choice or drag-drop → use type: "quiz" with interactions array
+     - choice → use type: "quiz" with interactions array
   4. ${isK12 && configParams.k12config?.includeFormative ? "Formative Assessment / Exit Ticket slide (type: quiz or interaction)" : configParams.includeKnowledgeChecks !== false ? "Knowledge Check Slides (type: quiz)" : "NO knowledge check slides"}
   5. ${configParams.includeSummarySlides !== false ? "Summary Slide (type: content)" : "NO summary slide"}
   
@@ -302,7 +302,7 @@ export async function generateCourseOutline(
         "id": "uuid",
         "title": "Module Title",
         "slides": [
-          { "id": "uuid", "type": "content|quiz|accordion|flashcards|timeline|sorting|matching|drag-drop-activity|branching|game-template", "title": "Slide Title", "gameType": "optional_string" }
+          { "id": "uuid", "type": "content|quiz|accordion|flashcards|timeline|sorting|matching|branching|game-template", "title": "Slide Title", "gameType": "optional_string" }
         ]
       }
     ]
@@ -455,7 +455,6 @@ export async function hydrateCourseContent(
   - timeline: { events: [{ id: string, year: string, title: string, content: string }] }
   - sorting: { items: [{ id: string, content: string }], correctOrder: string[] }
   - matching: { items: [{ id: string, content: string, matchId: string }], targets: [{ id: string, content: string }] }
-  - drag-drop-activity: { items: [{ id: string, content: string }], targets: [{ id: string, label: string, accepts: ["*"] }] }
   - branching: { nodes: { [id]: { id, type: 'scenario'|'ending', title, content, isDeadEnd: boolean, feedback: string, choices: [{ id, text, nextNodeId, isCorrectPath: boolean }] } }, startNodeId: string }
   - quiz interactions: [{ type: 'multiple-choice', questionText: string, options: [{ id, text, isCorrect: boolean }], feedback: string }]
   - jeopardy: { templateType: 'jeopardy', instructions: string, categories: [{ id, name, questions: [{ id, value: number, prompt: string, correctAnswer: string, isDailyDouble: boolean }] }] }
@@ -509,7 +508,6 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     if (slide.type === 'hotspot' && !slide.data?.hotspots?.length) slide.type = 'content';
     else if (isMissingData('accordion', 'items')) slide.type = 'content';
     else if (isMissingData('flashcards', 'cards')) slide.type = 'content';
-    else if (slide.type === 'drag-drop-activity' && (!slide.data?.items || !slide.data?.targets)) slide.type = 'content';
     else if (slide.type === 'quiz' && !slide.interactions?.length) slide.type = 'content';
     else if (slide.type === 'game-template' && !slide.data?.templateType) {
       slide.type = 'content';

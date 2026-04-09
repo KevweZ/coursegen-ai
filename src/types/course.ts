@@ -50,9 +50,7 @@ export type SlideType =
   | 'flashcards' 
   | 'timeline' 
   | 'sorting' 
-  | 'matching' 
-  | 'drag-drop-activity' 
-  | 'branching'
+  | 'matching' | 'branching'
   | 'hotspot'
   | 'game-template';
 
@@ -155,7 +153,7 @@ export interface Outcome {
 }
 
 export interface Interaction {
-  type: 'choice' | 'drag-drop' | 'hotspot';
+  type: 'choice'  | 'hotspot';
   question: string;
   options: string[];
   correctAnswer: string | number;
