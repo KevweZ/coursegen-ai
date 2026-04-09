@@ -24,6 +24,7 @@ const FOLDER_COLORS = [
 
 export default function FolderExplorer({ folderLabel, items = [] }: Props) {
   const [openItemId, setOpenItemId] = useState<string | null>(null);
+  const [flashReturn, setFlashReturn] = useState(false);
 
   if (!items.length) return null;
   const visibleItems = items.slice(0, 4);
@@ -60,7 +61,7 @@ export default function FolderExplorer({ folderLabel, items = [] }: Props) {
               </div>
 
               {/* Back generic papers */}
-              {[1, 2].map(pi => (
+              {!isOpen && [1, 2].map(pi => (
                 <div
                   key={pi}
                   className="absolute left-1/2 -translate-x-1/2 rounded-t-sm"
@@ -75,22 +76,30 @@ export default function FolderExplorer({ folderLabel, items = [] }: Props) {
               ))}
 
               {/* Main floating paper connecting layoutId */}
-              <div className="absolute inset-x-0 bottom-full h-8 flex justify-center -mb-7 z-[2] pointer-events-none">
-                <AnimatePresence>
-                  {!isOpen && (
+              <AnimatePresence>
+                {!isOpen && (
+                  <div className="absolute inset-x-0 top-2 flex justify-center z-[2] pointer-events-none">
                     <motion.div
                       layoutId={`paper-${item.id}`}
                       className="rounded-t-sm"
                       style={{ width: '80%', background: colors.paper, boxShadow: '0 -1px 4px rgba(0,0,0,0.1)' }}
-                      initial={{ height: 9, y: 0 }}
-                      animate={{ height: 9, y: 0 }}
-                      whileHover={{ height: 25, y: -16 }}
+                      initial={{ height: 24, y: 0 }}
+                      animate={{ height: 24, y: 0 }}
+                      whileHover={{ height: 40, y: -16 }}
                       transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-                      onClick={(e) => { e.stopPropagation(); setOpenItemId(item.id); }}
+                      onClick={(e: any) => {
+                        e.stopPropagation();
+                        if (openItemId) {
+                          setFlashReturn(true);
+                          setTimeout(() => setFlashReturn(false), 800);
+                          return;
+                        }
+                        setOpenItemId(item.id);
+                      }}
                     />
-                  )}
-                </AnimatePresence>
-              </div>
+                  </div>
+                )}
+              </AnimatePresence>
 
               <div
                 className="relative z-10 rounded-b-xl rounded-tr-xl shadow-2xl flex flex-col items-center justify-end pt-6 pb-4"
@@ -99,7 +108,15 @@ export default function FolderExplorer({ folderLabel, items = [] }: Props) {
                   minHeight: 140,
                   boxShadow: `0 10px 28px -6px ${colors.back}99, inset 0 1px 0 rgba(255,255,255,0.18)`,
                 }}
-                onClick={() => setOpenItemId(isOpen ? null : item.id)}
+                onClick={(e) => {
+    e.stopPropagation();
+    if (openItemId && !isOpen) {
+      setFlashReturn(true);
+      setTimeout(() => setFlashReturn(false), 800);
+      return;
+    }
+    setOpenItemId(isOpen ? null : item.id);
+  }}
               >
                 <div className="absolute top-0 left-0 right-0 h-8 rounded-t-xl opacity-20 pointer-events-none" style={{ background: 'linear-gradient(180deg,rgba(255,255,255,0.7),transparent)' }} />
                 <FileText className="w-5 h-5 text-white/40 mb-1" />
@@ -133,7 +150,7 @@ export default function FolderExplorer({ folderLabel, items = [] }: Props) {
                 </div>
                 <button
                   onClick={() => setOpenItemId(null)}
-                  className="flex items-center gap-1.5 bg-white/20 hover:bg-white/35 text-white font-bold text-xs px-3 py-1 rounded-lg transition-colors shrink-0"
+                  className={`flex items-center gap-1.5 ${flashReturn ? 'bg-red-500 animate-pulse text-white scale-110' : 'bg-white/20 hover:bg-white/35 text-white'} font-bold text-xs px-3 py-1 rounded-lg transition-all shrink-0 duration-300`}
                 >
                   <CornerDownLeft className="w-3.5 h-3.5" /> Return
                 </button>

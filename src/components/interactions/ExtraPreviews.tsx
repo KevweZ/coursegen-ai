@@ -55,11 +55,20 @@ export function HotspotPreview() {
                 {dot.n}
               </button>
               <AnimatePresence>
-                {openN === dot.n && (
-                  <motion.div initial={{ opacity: 0, scale: 0.8, x: 20 }} animate={{ opacity: 1, scale: 1, x: 40 }} exit={{ opacity: 0, scale: 0.8, x: 20 }} className="absolute -top-1 left-0 bg-slate-900 border-2 border-pink-500 text-white text-xs font-bold px-3 py-2 rounded-xl whitespace-nowrap shadow-2xl z-30">
-                    {dot.label}
-                  </motion.div>
-                )}
+                {openN === dot.n && (() => {
+                  const isRight = parseInt(dot.x) > 60;
+                  return (
+                    <motion.div 
+                      key="tooltip"
+                      initial={{ opacity: 0, scale: 0.8, x: isRight ? -20 : 20 }} 
+                      animate={{ opacity: 1, scale: 1, x: isRight ? -40 : 40 }} 
+                      exit={{ opacity: 0, scale: 0.8, x: isRight ? -20 : 20 }} 
+                      className={`absolute -top-1 ${isRight ? 'right-0' : 'left-0'} bg-slate-900 border-2 border-pink-500 text-white text-xs font-bold px-3 py-2 rounded-xl whitespace-nowrap shadow-2xl z-30`}
+                    >
+                      {dot.label}
+                    </motion.div>
+                  );
+                })()}
               </AnimatePresence>
             </div>
           ))}
@@ -263,7 +272,7 @@ export function MatchingPreview() {
 }
 
 export function DropTargetsPreview() {
-  const [items, setItems] = useState<{id: string, text: string, dropped: string | null}>([
+  const [items, setItems] = useState<{id: string, text: string, dropped: string | null}[]>([
     {id: '1', text: 'HIPAA', dropped: null}, {id: '2', text: 'GDPR', dropped: null},
     {id: '3', text: 'SOX', dropped: null}, {id: '4', text: 'PCI-DSS', dropped: null},
     {id: '5', text: 'FERPA', dropped: null}
@@ -377,12 +386,12 @@ export function TimelinePreview({ isPreview = true }: { isPreview?: boolean }) {
             const isOpen = openStep === i;
             if (layout === 'horizontal') {
               return (
-                <div key={i} className="flex flex-col items-center flex-1 cursor-pointer relative" onClick={() => setOpenStep(isOpen ? null : i)}>
-                  <motion.div layoutId={`tl-dot-${i}`} className={`w-8 h-8 rounded-full ${step.color} flex items-center justify-center text-white font-bold text-sm shadow-lg z-10 mb-2 transition-transform ${isOpen ? 'scale-125 ring-4 ring-white/20' : 'hover:scale-110'}`}>{step.n}</motion.div>
+                <div key={i} className="flex flex-col items-center flex-1 cursor-pointer relative" onClick={(e) => { e.stopPropagation(); setOpenStep(isOpen ? null : i); }}>
+                  <motion.div className={`w-8 h-8 rounded-full ${step.color} flex items-center justify-center text-white font-bold text-sm shadow-lg z-10 mb-2 transition-transform ${isOpen ? 'scale-125 ring-4 ring-white/20' : 'hover:scale-110'}`}>{step.n}</motion.div>
                   <span className="font-bold text-xs text-center text-slate-200 mb-2 h-8">{step.title}</span>
                   <AnimatePresence>
                      {isOpen && (
-                       <motion.div layoutId={`tl-box-${i}`} initial={{ opacity: 0, scale: 0.8, y: -20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.8, y: -20, transition:{duration:0.15} }} className={`absolute top-16 left-1/2 -translate-x-1/2 w-48 bg-slate-900 border-2 ${step.border} rounded-xl p-4 text-sm text-white shadow-2xl z-20 pointer-events-none`}>
+                       <motion.div initial={{ opacity: 0, scale: 0.5, y: -30, originY: 0 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.5, y: -30, originY: 0, transition:{duration:0.15} }} className={`absolute top-16 left-1/2 -translate-x-1/2 w-48 bg-slate-900 border-2 ${step.border} rounded-xl p-4 text-sm text-white shadow-2xl z-20 pointer-events-none`}>
                          <span className="font-bold border-b border-slate-600 pb-1 mb-2 block w-full">{step.title}</span>
                          {step.content}
                        </motion.div>
@@ -394,7 +403,7 @@ export function TimelinePreview({ isPreview = true }: { isPreview?: boolean }) {
 
             return (
               <div key={i}>
-                <button onClick={() => setOpenStep(isOpen ? null : i)} className={`w-full relative flex items-center gap-4 pl-14 pr-4 py-3 rounded-xl border transition-all text-left group ${isOpen ? '${step.border} bg-slate-800 text-white' : 'border-slate-700 bg-slate-800/50 text-slate-300 hover:border-slate-600 hover:bg-slate-800'}`}>
+                <button onClick={(e) => { e.stopPropagation(); setOpenStep(isOpen ? null : i); }} className={`w-full relative flex items-center gap-4 pl-14 pr-4 py-3 rounded-xl border transition-all text-left group ${isOpen ? '${step.border} bg-slate-800 text-white' : 'border-slate-700 bg-slate-800/50 text-slate-300 hover:border-slate-600 hover:bg-slate-800'}`}>
                   <div className={`absolute left-3 w-8 h-8 rounded-full ${step.color} flex items-center justify-center text-white font-bold text-sm shadow-lg shrink-0`}>{step.n}</div>
                   <span className="font-bold text-sm flex-1">{step.title}</span>
                   <span className="text-slate-500 text-xs group-hover:text-slate-300 transition-colors">{isOpen ? '▲ Close' : '▼ Details'}</span>
