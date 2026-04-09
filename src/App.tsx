@@ -78,6 +78,7 @@ import { GameTemplateType } from './types/game';
 import { usePlayer } from './lib/usePlayer';
 import { PlayerBar } from './components/player/PlayerBar';
 import { getRecommendedGames } from './lib/gameEngine';
+import { DUMMY_COURSE } from './lib/dummyCourse';
 import { FloatingImageCanvas } from './components/FloatingImageCanvas';
 import { FloatingImage } from './types/course';
 import TabbedHorizontal from './components/interactions/TabbedContentHorizontal';
@@ -602,6 +603,22 @@ export default function App() {
                         <Eye className="w-4 h-4 text-emerald-400" /> Course Preview
                       </button>
                     )}
+                    <div className="border-t border-slate-800 my-1" />
+                    {/* ── Preview Mode (Sandbox) ── */}
+                    <button
+                      onClick={() => {
+                        setCourse(DUMMY_COURSE);
+                        setCurrentSlideIndex(0);
+                        setQuizState({});
+                        setTheme('dark');
+                        setViewMode('desktop');
+                        setStep('preview');
+                        setAdminDropdownOpen(false);
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-purple-500/10 hover:text-purple-300 text-sm font-medium transition-all text-left"
+                    >
+                      <Sparkles className="w-4 h-4 text-purple-400" /> Preview Mode
+                    </button>
                     <div className="border-t border-slate-800 my-1" />
                     <button onClick={() => { setShowPlayerProperties(true); setAdminDropdownOpen(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-indigo-500/10 hover:text-white text-sm font-medium transition-all text-left">
                       <Settings2 className="w-4 h-4 text-orange-400" /> Player Properties
