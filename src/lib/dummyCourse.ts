@@ -47,7 +47,7 @@ export const DUMMY_COURSE: CourseOutline = {
           type: 'content',
           title: 'Understanding the Player Layout',
           content: `## Player Architecture\n\nThe CourseGEN player is composed of several key layers:\n\n- **Slide Canvas** — The central content area that renders each slide type\n- **Player Bar** — The bottom navigation with play/pause, seekbar, and slide controls\n- **Edit Drawer** — The right-side panel for modifying slide text and audio\n- **Theme System** — Dark, Light, and Unified color modes\n\n## Navigation\n\nUse the **Previous** and **Next** buttons in the player bar, or click directly on the seekbar to jump to any slide. The current slide position is tracked in real time.`,
-          narration: 'The CourseGEN player is built from four key layers: the slide canvas, the player bar, the edit drawer, and the theme system. Let's explore each one.',
+          narration: 'The CourseGEN player is built from four key layers: the slide canvas, the player bar, the edit drawer, and the theme system. Let\'s explore each one.',
           voiceOverText: 'The CourseGEN player is built from four key layers: the slide canvas, the player bar, the edit drawer, and the theme system.',
           imagePlaceholder: true,
           mediaPrompt: 'Clean diagram showing the layers of an eLearning player interface',

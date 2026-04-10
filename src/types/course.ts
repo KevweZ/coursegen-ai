@@ -41,7 +41,10 @@ export interface Module {
 }
 
 export type SlideType = 
+  | 'title'
   | 'content' 
+  | 'key-takeaways'
+  | 'summary'
   | 'quiz' 
   | 'interaction' 
   | 'intro' 

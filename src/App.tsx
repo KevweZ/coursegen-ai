@@ -86,6 +86,9 @@ import TabbedVertical from './components/interactions/TabbedContentVertical';
 import FolderExplorer from './components/interactions/FolderExplorer';
 import CarouselPanel from './components/interactions/CarouselPanel';import ReactMarkdown from 'react-markdown';
 import { cn } from './lib/utils';
+import { SlideEditorBar } from './components/player/SlideEditorBar';
+import { CourseNavSidebar } from './components/player/CourseNavSidebar';
+import { RichTextEditor } from './components/player/RichTextEditor';
 
 const renderInstructionalText = (children: React.ReactNode, theme: string, isList: boolean = false) => {
   let textToParse = '';
@@ -208,6 +211,10 @@ export default function App() {
   const [quizState, setQuizState] = useState<Record<string, any>>({});
   // Admin quick-nav
   const [adminDropdownOpen, setAdminDropdownOpen] = useState(false);
+  // Original course snapshot for Reset Layout
+  const [originalCourse, setOriginalCourse] = useState<any>(null);
+  // Per-slide floating images map: slideId -> FloatingImage[]
+  const [floatingImagesMap, setFloatingImagesMap] = useState<Record<string, FloatingImage[]>>({});
 
   // Course Details State
   const [pathway, setPathway] = useState<'corporate' | 'k12'>('corporate');
@@ -376,6 +383,7 @@ export default function App() {
       setProgress(100);
       await new Promise(r => setTimeout(r, 300));
       setCourse(finalCourse);
+      setOriginalCourse(finalCourse);
       setStep('preview');
     } catch (e: any) {
       clearInterval(progressInterval);
@@ -529,7 +537,7 @@ export default function App() {
         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay"></div>
       </div>
 
-      <header className="relative z-50 border-b border-slate-800/80 bg-slate-900/50 backdrop-blur-xl">
+      <header className="relative z-[600] border-b border-slate-800/80 bg-slate-900/50 backdrop-blur-xl">
         <div className="container mx-auto px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3 relative group cursor-pointer" onClick={() => setStep('home')}>
             <div className="w-10 h-10 bg-indigo-500/10 rounded-xl flex items-center justify-center border border-indigo-500/20 group-hover:scale-105 group-hover:bg-indigo-500/20 transition-all">
@@ -608,10 +616,13 @@ export default function App() {
                     <button
                       onClick={() => {
                         setCourse(DUMMY_COURSE);
+                        setOriginalCourse(DUMMY_COURSE);
                         setCurrentSlideIndex(0);
                         setQuizState({});
                         setTheme('dark');
                         setViewMode('desktop');
+                        setFloatingImagesMap({});
+                        setCourseBg(null);
                         setStep('preview');
                         setAdminDropdownOpen(false);
                       }}
@@ -626,7 +637,7 @@ export default function App() {
                   </div>
                 </div>
               )}
-              {adminDropdownOpen && <div className="fixed inset-0 z-[499]" onClick={() => setAdminDropdownOpen(false)} />}
+              {adminDropdownOpen && <div className="fixed inset-0 z-[599]" onClick={() => setAdminDropdownOpen(false)} />}
             </div>
           </div>
         </div>
@@ -1271,50 +1282,73 @@ export default function App() {
 
           {step === 'preview' && course && (
             <motion.div key="preview" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="w-full min-h-screen bg-slate-900 absolute top-0 left-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] bg-opacity-20 z-50 overflow-hidden flex flex-col">
-              <div className="h-16 px-6 bg-slate-900 border-b border-slate-800 flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-4">
-                  <button onClick={() => setStep('home')} className="p-2 -ml-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors">
+              {/* ── Preview Top Bar ── */}
+              <div className="h-14 px-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between shrink-0 gap-2">
+                <div className="flex items-center gap-3 min-w-0">
+                  <button onClick={() => setStep('home')} className="p-2 -ml-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0">
                     <ChevronLeft className="w-5 h-5" />
                   </button>
-                  <h1 className="text-white font-bold text-lg">{course.title}</h1>
+                  <h1 className="text-white font-bold text-base truncate">{course.title}</h1>
                 </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                   {/* Desktop/Mobile Toggle */}
-                   <button onClick={() => setViewMode(viewMode === 'desktop' ? 'mobile' : 'desktop')} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 text-sm font-medium">
-                     {viewMode === 'desktop' ? <Monitor className="w-4 h-4"/> : <Smartphone className="w-4 h-4"/>}
-                     <span className="hidden sm:inline">{viewMode === 'desktop' ? 'Desktop' : 'Mobile'}</span>
-                   </button>
-                   {/* Theme Toggle */}
-                   <button onClick={() => setTheme(t => t === 'dark' ? 'light' : t === 'light' ? 'unified' : 'dark')} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 text-sm font-medium">
-                     {theme === 'dark' ? '🌑' : theme === 'light' ? '☀️' : '💜'}
-                     <span className="hidden sm:inline capitalize">{theme}</span>
-                   </button>
-                   {/* Edit Slide */}
-                   <button onClick={() => { setEditingSlide(currentSlide); setEditDrawerOpen(true); setEditDrawerTab('text'); }} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-indigo-700 hover:bg-indigo-800/30 text-indigo-300 text-sm font-medium">
-                     <Edit3 className="w-4 h-4"/> <span className="hidden sm:inline">Edit Slide</span>
-                   </button>
-                   {/* Export SCORM */}
-                   <button onClick={exportScorm} className="flex items-center gap-2 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-sm transition-colors shadow-lg shadow-indigo-500/20">
-                     <Download className="w-4 h-4" /> Export SCORM
-                   </button>
-                   {/* Discard button */}
-                   <button onClick={() => { setCourse(null); setStep('home'); }} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-red-800/60 hover:bg-red-900/20 text-red-400 text-sm font-medium">
-                     <X className="w-4 h-4"/> <span className="hidden sm:inline">Discard</span>
-                   </button>
+                <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+                  {/* Desktop/Mobile Toggle */}
+                  <button onClick={() => setViewMode(viewMode === 'desktop' ? 'mobile' : 'desktop')} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-medium">
+                    {viewMode === 'desktop' ? <Monitor className="w-3.5 h-3.5"/> : <Smartphone className="w-3.5 h-3.5"/>}
+                    <span className="hidden md:inline">{viewMode === 'desktop' ? 'Desktop' : 'Mobile'}</span>
+                  </button>
+                  {/* Theme Toggle */}
+                  <button onClick={() => setTheme(t => t === 'dark' ? 'light' : t === 'light' ? 'unified' : 'dark')} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-medium">
+                    {theme === 'dark' ? '🌑' : theme === 'light' ? '☀️' : '💜'}
+                    <span className="hidden md:inline capitalize">{theme}</span>
+                  </button>
+                  {/* Export SCORM */}
+                  <button onClick={exportScorm} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs transition-colors shadow-lg shadow-indigo-500/20">
+                    <Download className="w-3.5 h-3.5" /> <span className="hidden md:inline">Export SCORM</span>
+                  </button>
+                  {/* Discard */}
+                  <button onClick={() => { setCourse(null); setStep('home'); }} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-red-800/60 hover:bg-red-900/20 text-red-400 text-xs font-medium">
+                    <X className="w-3.5 h-3.5"/><span className="hidden md:inline">Discard</span>
+                  </button>
                 </div>
               </div>
-              
-              <div className={cn("w-full relative flex flex-col items-center justify-start bg-cover bg-center before:absolute before:inset-0 before:bg-slate-900/50 py-8 px-4 md:p-8 rounded-3xl min-h-[calc(100vh-8rem)]")} style={{ backgroundImage: courseBg ? `url('${courseBg}')` : undefined }}>
-                 <div className={cn(`theme-${theme}`, "bg-white/70 backdrop-blur-md shadow-2xl transition-all duration-500 flex flex-col relative z-10 w-full overflow-hidden", viewMode === 'desktop' ? "max-w-5xl h-[85vh] md:rounded-2xl border border-white/30 my-auto" : "max-w-[375px] h-[667px] mt-8 rounded-[3rem] border-[8px] border-gray-800 bg-white/90")}>
-                    <div className={cn("flex-1 p-6 md:p-12 pb-8 overflow-y-auto custom-scrollbar w-full", theme === 'light' ? "bg-white/50 text-slate-900" : "bg-slate-900/80 text-white")}>
-                       <AnimatePresence mode="wait">
-                         <motion.div key={currentSlide?.id || currentSlideIndex} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="w-full relative min-h-full">
-                           
-                           {/* Dynamic Content Layers */}
-                           <div className="w-[120%] h-[120%] absolute -top-[10%] -left-[10%] pointer-events-none opacity-[0.03] bg-[url('https://grainy-gradients.vercel.app/noise.svg')] mix-blend-overlay"></div>
-                           
-                           <div className="relative z-10 w-full flex flex-col md:flex-row gap-8">
-                             <div className="flex-1 w-full flex flex-col justify-center min-h-[50vh]">
+
+              {/* ── Body: Sidebar + Main Player Area ── */}
+              <div className="flex flex-row flex-1 min-h-0 overflow-hidden">
+                {/* Course Navigation Sidebar */}
+                <CourseNavSidebar
+                  modules={course.modules}
+                  currentSlideIndex={currentSlideIndex}
+                  allSlides={allSlides}
+                  onNavigate={(idx) => { setCurrentSlideIndex(idx); }}
+                  theme={theme}
+                />
+
+                {/* Main slide area */}
+                <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
+                  {/* Background canvas */}
+                  <div
+                    className={cn("flex-1 flex items-center justify-center bg-cover bg-center relative overflow-hidden")}
+                    style={{ backgroundImage: courseBg ? `url('${courseBg}')` : undefined }}
+                  >
+                    {courseBg && <div className="absolute inset-0 bg-slate-900/50 pointer-events-none" />}
+
+                  {/* Slide frame */}
+                  <div className={cn(`theme-${theme}`, "shadow-2xl transition-all duration-500 flex flex-col relative z-10 overflow-hidden",
+                    viewMode === 'desktop'
+                      ? 'w-full max-w-5xl mx-auto my-4 h-[calc(100vh-260px)] md:rounded-2xl border border-white/20'
+                      : 'w-[375px] h-[667px] my-4 rounded-[3rem] border-[8px] border-gray-800',
+                    theme === 'light' ? 'bg-white' : theme === 'unified' ? 'bg-indigo-950' : 'bg-slate-900'
+                  )}>
+                    <div className={cn("flex-1 p-4 md:p-8 pb-4 overflow-y-auto custom-scrollbar w-full",
+                      theme === 'light' ? 'bg-white text-slate-900' : theme === 'unified' ? 'bg-indigo-950 text-slate-100' : 'bg-slate-900 text-white'
+                    )}>
+                      <AnimatePresence mode="wait">
+                        <motion.div key={currentSlide?.id || currentSlideIndex} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="w-full relative min-h-full">
+                          {/* Dynamic Content Layers */}
+                          <div className="w-[120%] h-[120%] absolute -top-[10%] -left-[10%] pointer-events-none opacity-[0.03] bg-[url('https://grainy-gradients.vercel.app/noise.svg')] mix-blend-overlay"></div>
+
+                          <div className="relative z-10 w-full flex flex-col md:flex-row gap-8">
+                            <div className="flex-1 w-full flex flex-col justify-center min-h-[50vh]">
                                {/* TITLE SLIDE */}
                                {currentSlide?.type === 'title' && (
                                  <div className="w-full h-full flex flex-col justify-center items-center text-center space-y-6">
@@ -1648,11 +1682,23 @@ export default function App() {
                              </div>
                            )}
 
-                         </motion.div>
+                        </motion.div>
                        </AnimatePresence>
-                    </div>
+
+                       {/* Floating images on this slide */}
+                       <FloatingImageCanvas
+                         images={floatingImagesMap[currentSlide?.id] || []}
+                         isAuthoring={true}
+                         onChange={(imgs) => setFloatingImagesMap(prev => ({ ...prev, [currentSlide?.id]: imgs }))}
+                         onRemove={(id) => setFloatingImagesMap(prev => ({
+                           ...prev,
+                           [currentSlide?.id]: (prev[currentSlide?.id] || []).filter(i => i.id !== id)
+                         }))}
+                       />
+                    </div>{/* end slide content scroll area */}
+
                     {/* Learner Player Navigation Bar */}
-                    <div className={cn("w-full z-[100] shrink-0 border-t backdrop-blur-md relative", theme === 'light' ? 'bg-white/80 border-slate-200' : 'bg-slate-900 border-slate-800')}>
+                    <div className={cn("w-full z-[100] shrink-0 border-t backdrop-blur-md relative", theme === 'light' ? 'bg-white/80 border-slate-200' : theme === 'unified' ? 'bg-indigo-950 border-indigo-800' : 'bg-slate-900 border-slate-800')}>
                       <PlayerBar
                         player={player}
                         currentSlideIndex={currentSlideIndex}
@@ -1662,12 +1708,50 @@ export default function App() {
                         onNext={() => setCurrentSlideIndex(prev => Math.min(allSlides.length - 1, prev + 1))}
                         theme={theme}
                       />
-                    </div>
-                  </div>
-                </div>
-          </motion.div>
-        )}
-        </AnimatePresence>
+                     </div>{/* end PlayerBar */}
+                  </div>{/* end slide frame */}
+                  </div>{/* end bg canvas */}
+
+                  {/* ── Slide Editor Bar ── */}
+                  <SlideEditorBar
+                    theme={theme}
+                    onEditSlide={() => { setEditingSlide(currentSlide); setEditDrawerOpen(true); setEditDrawerTab('text'); }}
+                    onChangeBg={(file) => {
+                      const url = URL.createObjectURL(file);
+                      setCourseBg(url);
+                    }}
+                    onResetLayout={() => {
+                      if (originalCourse) {
+                        setCourse(originalCourse);
+                        setCurrentSlideIndex(0);
+                        setQuizState({});
+                        setFloatingImagesMap({});
+                        setCourseBg(null);
+                      }
+                    }}
+                    onUploadImage={(files) => {
+                      const newImgs: FloatingImage[] = Array.from(files).map((f, i) => ({
+                        id: `fi-${Date.now()}-${i}`,
+                        url: URL.createObjectURL(f),
+                        x: 40 + i * 20,
+                        y: 40 + i * 20,
+                        width: 320,
+                        height: 240,
+                      }));
+                      setFloatingImagesMap(prev => ({
+                        ...prev,
+                        [currentSlide?.id]: [...(prev[currentSlide?.id] || []), ...newImgs],
+                      }));
+                    }}
+                    onOpenSourceImages={() => setShowImageGalleryForSlide(currentSlide?.id || null)}
+                    onOpenPlayerProperties={() => setShowPlayerProperties(true)}
+                  />
+                </div>{/* end main slide column */}
+              </div>{/* end sidebar+main row */}
+           </motion.div>
+         )}
+         </AnimatePresence>
+
 
         {/* Source Image Gallery Modal */}
         <AnimatePresence>
@@ -1767,19 +1851,18 @@ export default function App() {
                       </div>
                       <div className="space-y-2">
                         <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest flex items-center justify-between">
-                          <span>On-Screen Text <span className="normal-case font-normal text-slate-600">(Markdown supported)</span></span>
-                          <span className="text-slate-600 normal-case font-normal">{(editingSlide.content || '').length} chars</span>
+                          <span>On-Screen Text <span className="normal-case font-normal text-slate-600">(Rich Text)</span></span>
                         </label>
-                        <textarea
-                          rows={10}
+                        <RichTextEditor
+                          key={editingSlide.id}
                           value={editingSlide.content || ''}
-                          onChange={(e) => setEditingSlide({ ...editingSlide, content: e.target.value })}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-indigo-500 outline-none transition-all font-medium resize-none text-sm leading-relaxed"
-                          placeholder="Slide content... Markdown is supported.&#10;&#10;Use **bold**, *italic*, - bullet points, etc."
+                          onChange={(html) => setEditingSlide({ ...editingSlide, content: html })}
+                          placeholder="Slide content... Use the toolbar for bold, italic, colors, and lists."
                         />
                       </div>
                     </>
                   )}
+
 
                   {editDrawerTab === 'audio' && (
                     <>
