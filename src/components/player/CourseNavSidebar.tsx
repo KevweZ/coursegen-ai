@@ -16,6 +16,7 @@ interface Props {
   allSlides: Slide[];
   onNavigate: (index: number) => void;
   theme: 'dark' | 'light' | 'unified';
+  tocNumbering?: 'icons' | 'roman';
 }
 
 const SLIDE_TYPE_ICON: Record<string, string> = {
@@ -25,7 +26,17 @@ const SLIDE_TYPE_ICON: Record<string, string> = {
   summary: '📋', 'game-template': '🎮', intro: '🎬', outro: '🏁',
 };
 
-export function CourseNavSidebar({ modules, currentSlideIndex, allSlides, onNavigate, theme }: Props) {
+function toRoman(n: number): string {
+  const vals = [1000,900,500,400,100,90,50,40,10,9,5,4,1];
+  const syms = ['M','CM','D','CD','C','XC','L','XL','X','IX','V','IV','I'];
+  let result = '';
+  for (let i = 0; i < vals.length; i++) {
+    while (n >= vals[i]) { result += syms[i]; n -= vals[i]; }
+  }
+  return result;
+}
+
+export function CourseNavSidebar({ modules, currentSlideIndex, allSlides, onNavigate, theme, tocNumbering = 'icons' }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [expandedModules, setExpandedModules] = useState<Set<string>>(() => new Set(modules.map(m => m.id)));
 
@@ -145,7 +156,10 @@ export function CourseNavSidebar({ modules, currentSlideIndex, allSlides, onNavi
                     isActive ? activeRow : inactiveRow
                   )}
                 >
-                  <span className="text-base shrink-0">{SLIDE_TYPE_ICON[slide.type] || '📄'}</span>
+                  {tocNumbering === 'roman'
+                    ? <span className="text-sm font-black font-serif italic shrink-0 w-6 text-center">{toRoman(globalIdx + 1)}</span>
+                    : <span className="text-base shrink-0">{SLIDE_TYPE_ICON[slide.type] || '\ud83d\udcc4'}</span>
+                  }
                   <span className="text-sm leading-snug line-clamp-2 font-medium">{slide.title}</span>
                 </button>
               );

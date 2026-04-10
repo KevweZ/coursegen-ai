@@ -20,6 +20,7 @@ export interface PlayerConfig {
   theme: PlayerTheme;
   tocPosition: TOCPosition;
   tocStartsCollapsed: boolean;
+  tocNumbering: 'icons' | 'roman';
   showTitle: boolean;
   courseTitle: string;
   showPlayPause: boolean;
@@ -31,7 +32,7 @@ export interface PlayerConfig {
   showPrevNext: boolean;
   allowFullscreen: boolean;
   logoUrl: string | null;
-  playerResolution: '16:9' | '4:3';
+  playerResolution: '16:9' | '4:3' | 'full';
 }
 
 export const defaultPlayerConfig: PlayerConfig = {
@@ -39,6 +40,7 @@ export const defaultPlayerConfig: PlayerConfig = {
   theme: 'dark',
   tocPosition: 'sidebar-left',
   tocStartsCollapsed: false,
+  tocNumbering: 'icons',
   showTitle: true,
   courseTitle: 'My Course',
   showPlayPause: true,
@@ -207,9 +209,14 @@ function LivePlayerPreview({ config }: { config: PlayerConfig }) {
 
   return (
     <div className={cn(
-      'flex flex-col w-full h-full rounded-xl overflow-hidden border shadow-2xl text-xs',
-      isLight ? 'bg-white border-gray-200' : 'bg-slate-900 border-slate-700'
-    )}>
+      'flex flex-col rounded-xl overflow-hidden border shadow-2xl text-xs transition-all duration-300',
+      isLight ? 'bg-white border-gray-200' : 'bg-slate-900 border-slate-700',
+      // Preview frame reflects ratio
+      config.playerResolution === 'full' ? 'w-full h-full' :
+      config.playerResolution === '4:3'  ? 'w-[80%] mx-auto' : 'w-full',
+    )}
+    style={config.playerResolution === '4:3' ? { aspectRatio: '4/3' } : config.playerResolution === '16:9' ? { aspectRatio: '16/9' } : undefined}
+    >
       <TopBar />
       <div className="flex flex-1 min-h-0">
         {config.tocPosition === 'sidebar-left' && !config.tocStartsCollapsed && <SidebarCol side="left" />}
@@ -358,6 +365,37 @@ export function PlayerPropertiesModal({ config, onChange, onClose }: Props) {
               />
             </div>
 
+            <div className="mt-3">
+              <div className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500 mb-2">Slide Numbering Style</div>
+              <div className="flex rounded-lg border border-slate-700 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => update({ tocNumbering: 'icons' })}
+                  className={cn(
+                    'flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold transition-colors',
+                    local.tocNumbering === 'icons'
+                      ? 'bg-indigo-600/30 text-indigo-300 border-r border-indigo-600/40'
+                      : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border-r border-slate-700'
+                  )}
+                >
+                  <span>🎯</span> Icons
+                </button>
+                <button
+                  type="button"
+                  onClick={() => update({ tocNumbering: 'roman' })}
+                  className={cn(
+                    'flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold transition-colors',
+                    local.tocNumbering === 'roman'
+                      ? 'bg-indigo-600/30 text-indigo-300'
+                      : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                  )}
+                >
+                  <span className="font-serif italic font-black">I II III</span> Roman
+                </button>
+              </div>
+              <p className="text-[9px] text-slate-600 mt-1">Controls what appears next to each slide title in the Table of Contents</p>
+            </div>
+
             <SectionTitle>Title & Branding</SectionTitle>
             <Toggle
               checked={local.showTitle}
@@ -375,33 +413,32 @@ export function PlayerPropertiesModal({ config, onChange, onClose }: Props) {
             )}
 
             <SectionTitle>Aspect Ratio &amp; Resolution</SectionTitle>
-            <div className="grid grid-cols-2 gap-2 mb-1">
+            <div className="grid grid-cols-3 gap-2 mb-1">
               {([
-                { ratio: '16:9' as const, res: '1920 × 1080', label: 'Widescreen', desc: 'Standard HD — recommended for most monitors' },
-                { ratio: '4:3'  as const, res: '1024 × 768',  label: 'Classic',    desc: 'Traditional ratio — common in older LMS players' },
-              ]).map(({ ratio, res, label, desc }) => (
+                { ratio: '16:9' as const, res: '1920×1080', label: 'Widescreen', icon: '▐▐▐▐▐▐▐' },
+                { ratio: '4:3'  as const, res: '1024×768',  label: 'Classic',    icon: '▐▐▐▐▐' },
+                { ratio: 'full' as const, res: 'Full viewport', label: 'Max Size', icon: '■' },
+              ]).map(({ ratio, res, label, icon }) => (
                 <button
                   key={ratio}
                   type="button"
                   onClick={() => update({ playerResolution: ratio })}
                   className={cn(
-                    'flex flex-col items-center gap-1 px-3 py-3 rounded-xl border text-xs font-bold transition-all',
+                    'flex flex-col items-center gap-1 px-2 py-3 rounded-xl border text-xs font-bold transition-all',
                     local.playerResolution === ratio
                       ? 'border-indigo-500 bg-indigo-600/20 text-indigo-300'
                       : 'border-slate-700 bg-slate-800/40 text-slate-400 hover:border-slate-500 hover:text-slate-200'
                   )}
                 >
-                  {/* Tiny aspect ratio box */}
                   <div className={cn(
                     'border-2 rounded flex items-center justify-center shrink-0',
                     local.playerResolution === ratio ? 'border-indigo-400' : 'border-slate-600',
-                    ratio === '16:9' ? 'w-12 h-[27px]' : 'w-10 h-[30px]'
+                    ratio === '16:9' ? 'w-12 h-[27px]' : ratio === '4:3' ? 'w-10 h-[30px]' : 'w-12 h-[27px] bg-indigo-500/10'
                   )}>
-                    <span className="text-[9px] font-black opacity-60">{ratio}</span>
+                    <span className="text-[8px] font-black opacity-60">{ratio === 'full' ? '⛶' : ratio}</span>
                   </div>
-                  <span className="font-black">{label}</span>
+                  <span className="font-black text-[10px]">{label}</span>
                   <span className={cn('text-[9px] font-normal text-center leading-tight', local.playerResolution === ratio ? 'text-indigo-400/70' : 'text-slate-600')}>{res}</span>
-                  <span className={cn('text-[9px] font-normal text-center leading-tight hidden xl:block', local.playerResolution === ratio ? 'text-indigo-400/50' : 'text-slate-700')}>{desc}</span>
                 </button>
               ))}
             </div>

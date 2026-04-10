@@ -551,11 +551,7 @@ export default function App() {
           </div>
           
           <div className="flex gap-3 items-center">
-            {course && (
-              <button onClick={() => setShowSettings(true)} className="flex items-center gap-2 px-4 py-2 hover:bg-slate-800 rounded-lg text-slate-300 font-medium">
-                <Settings className="w-4 h-4" /> Settings
-              </button>
-            )}
+            {/* Settings button removed — accessed via Admin → Player Properties */}
 
             {/* ── Admin Quick-Nav Dropdown ── */}
             <div className="relative">
@@ -1439,6 +1435,7 @@ export default function App() {
                   allSlides={allSlides}
                   onNavigate={(idx) => { setCurrentSlideIndex(idx); }}
                   theme={theme}
+                  tocNumbering={playerConfig.tocNumbering}
                 />
 
                 {/* Main slide area */}
@@ -1455,6 +1452,8 @@ export default function App() {
                     viewMode === 'desktop'
                       ? playerConfig.playerResolution === '4:3'
                         ? 'mx-auto my-4 md:rounded-2xl border border-white/20'
+                        : playerConfig.playerResolution === 'full'
+                        ? 'w-full h-full'
                         : 'w-full max-w-5xl mx-auto my-4 h-[calc(100vh-260px)] md:rounded-2xl border border-white/20'
                       : 'w-[375px] h-[667px] my-4 rounded-[3rem] border-[8px] border-gray-800',
                     theme === 'light' ? 'bg-white' : theme === 'unified' ? 'bg-indigo-950' : 'bg-slate-900'
@@ -1797,10 +1796,7 @@ export default function App() {
                              </div>
                            )}
 
-                        </motion.div>
-                       </AnimatePresence>
-
-                       {/* Floating images on this slide */}
+                       {/* Floating images — inside scroll so they scroll with content */}
                        <FloatingImageCanvas
                          images={floatingImagesMap[currentSlide?.id] || []}
                          isAuthoring={true}
@@ -1810,7 +1806,10 @@ export default function App() {
                            [currentSlide?.id]: (prev[currentSlide?.id] || []).filter(i => i.id !== id)
                          }))}
                        />
-                    </div>{/* end slide content scroll area */}
+                        </motion.div>
+                       </AnimatePresence>
+
+                     </div>{/* end slide content scroll area */}
 
                     {/* Learner Player Navigation Bar */}
                     <div className={cn("w-full z-[100] shrink-0 border-t backdrop-blur-md relative", theme === 'light' ? 'bg-white/80 border-slate-200' : theme === 'unified' ? 'bg-indigo-950 border-indigo-800' : 'bg-slate-900 border-slate-800')}>
