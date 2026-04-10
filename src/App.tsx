@@ -1699,17 +1699,8 @@ export default function App() {
 
                            </div>
 
-                           {/* The slide tools */}
+                           {/* Slide media tools — Edit/Reset/Upload are in the top bar */}
                            <div className="absolute top-0 right-0 z-[100] flex flex-wrap max-w-sm justify-end gap-2 shrink-0">
-                             <button onClick={() => setEditingSlide(currentSlide)} className="px-3 py-1.5 text-indigo-300 hover:text-indigo-200 hover:bg-indigo-500/20 rounded-lg transition-colors flex items-center gap-2"><Edit3 className="w-4 h-4"/><span className="text-xs font-bold">Edit Text & Audio</span></button>
-                             <button onClick={() => { handleUpdateSlideMedia(currentSlide.id, { floatingMedia: [], mediaUrl: null, imagePlaceholder: !!currentSlide?.mediaPrompt }); }} className="px-3 py-1.5 text-gray-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-2"><LayoutTemplate className="w-4 h-4"/> <span className="text-xs font-bold">Reset Layout</span></button>
-                             
-                             <label className="px-3 py-1.5 text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/20 rounded-lg transition-colors cursor-pointer flex items-center gap-2" title="Upload Local Image">
-                               <Upload className="w-4 h-4"/>
-                               <span className="text-xs font-bold">Upload</span>
-                               <input type="file" className="hidden" accept="image/*" onChange={(e: any) => { /* missing actual def, safely ignored for now */ }} />
-                             </label>
-
                              {sourceImages.length > 0 && (
                                <button 
                                  onClick={() => setShowImageGalleryForSlide(currentSlide.id)}
