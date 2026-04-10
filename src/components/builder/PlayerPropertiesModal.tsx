@@ -31,6 +31,7 @@ export interface PlayerConfig {
   showPrevNext: boolean;
   allowFullscreen: boolean;
   logoUrl: string | null;
+  playerResolution: '16:9' | '4:3';
 }
 
 export const defaultPlayerConfig: PlayerConfig = {
@@ -49,6 +50,7 @@ export const defaultPlayerConfig: PlayerConfig = {
   showPrevNext: true,
   allowFullscreen: true,
   logoUrl: null,
+  playerResolution: '16:9',
 };
 
 // ─── Props ───────────────────────────────────────────────────────────────────
@@ -372,6 +374,38 @@ export function PlayerPropertiesModal({ config, onChange, onClose }: Props) {
               />
             )}
 
+            <SectionTitle>Aspect Ratio &amp; Resolution</SectionTitle>
+            <div className="grid grid-cols-2 gap-2 mb-1">
+              {([
+                { ratio: '16:9' as const, res: '1920 × 1080', label: 'Widescreen', desc: 'Standard HD — recommended for most monitors' },
+                { ratio: '4:3'  as const, res: '1024 × 768',  label: 'Classic',    desc: 'Traditional ratio — common in older LMS players' },
+              ]).map(({ ratio, res, label, desc }) => (
+                <button
+                  key={ratio}
+                  type="button"
+                  onClick={() => update({ playerResolution: ratio })}
+                  className={cn(
+                    'flex flex-col items-center gap-1 px-3 py-3 rounded-xl border text-xs font-bold transition-all',
+                    local.playerResolution === ratio
+                      ? 'border-indigo-500 bg-indigo-600/20 text-indigo-300'
+                      : 'border-slate-700 bg-slate-800/40 text-slate-400 hover:border-slate-500 hover:text-slate-200'
+                  )}
+                >
+                  {/* Tiny aspect ratio box */}
+                  <div className={cn(
+                    'border-2 rounded flex items-center justify-center shrink-0',
+                    local.playerResolution === ratio ? 'border-indigo-400' : 'border-slate-600',
+                    ratio === '16:9' ? 'w-12 h-[27px]' : 'w-10 h-[30px]'
+                  )}>
+                    <span className="text-[9px] font-black opacity-60">{ratio}</span>
+                  </div>
+                  <span className="font-black">{label}</span>
+                  <span className={cn('text-[9px] font-normal text-center leading-tight', local.playerResolution === ratio ? 'text-indigo-400/70' : 'text-slate-600')}>{res}</span>
+                  <span className={cn('text-[9px] font-normal text-center leading-tight hidden xl:block', local.playerResolution === ratio ? 'text-indigo-400/50' : 'text-slate-700')}>{desc}</span>
+                </button>
+              ))}
+            </div>
+
             <SectionTitle>Player Controls</SectionTitle>
             <div className="space-y-2">
               {([
@@ -427,6 +461,7 @@ export function PlayerPropertiesModal({ config, onChange, onClose }: Props) {
             <div className="flex flex-wrap gap-2">
               {[
                 { label: local.theme + ' theme', color: 'text-slate-300 bg-slate-700/50 border-slate-600' },
+                { label: local.playerResolution + ' · ' + (local.playerResolution === '16:9' ? '1920×1080' : '1024×768'), color: 'text-purple-300 bg-purple-500/10 border-purple-500/20' },
                 { label: local.tocPosition.replace(/-/g, ' '), color: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20' },
                 ...(local.tocStartsCollapsed ? [{ label: 'TOC collapsed', color: 'text-amber-300 bg-amber-500/10 border-amber-500/20' }] : []),
               ].map(chip => (

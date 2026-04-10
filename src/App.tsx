@@ -211,6 +211,8 @@ export default function App() {
   const [quizState, setQuizState] = useState<Record<string, any>>({});
   // Admin quick-nav
   const [adminDropdownOpen, setAdminDropdownOpen] = useState(false);
+  // Theme dropdown in preview top bar
+  const [themeDropdownOpen, setThemeDropdownOpen] = useState(false);
   // Original course snapshot for Reset Layout
   const [originalCourse, setOriginalCourse] = useState<any>(null);
   // Per-slide floating images map: slideId -> FloatingImage[]
@@ -1292,21 +1294,52 @@ export default function App() {
                 </div>
                 <div className="flex items-center gap-1.5 flex-wrap shrink-0">
                   {/* Desktop/Mobile Toggle */}
-                  <button onClick={() => setViewMode(viewMode === 'desktop' ? 'mobile' : 'desktop')} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-medium">
+                  <button
+                    title="Toggle Desktop / Mobile preview"
+                    onClick={() => setViewMode(viewMode === 'desktop' ? 'mobile' : 'desktop')}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-medium"
+                  >
                     {viewMode === 'desktop' ? <Monitor className="w-3.5 h-3.5"/> : <Smartphone className="w-3.5 h-3.5"/>}
                     <span className="hidden lg:inline">{viewMode === 'desktop' ? 'Desktop' : 'Mobile'}</span>
                   </button>
-                  {/* Theme Toggle */}
-                  <button onClick={() => setTheme(t => t === 'dark' ? 'light' : t === 'light' ? 'unified' : 'dark')} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-medium">
-                    {theme === 'dark' ? '🌑' : theme === 'light' ? '☀️' : '💜'}
-                    <span className="hidden lg:inline capitalize">{theme}</span>
-                  </button>
+
+                  {/* Theme Dropdown */}
+                  <div className="relative">
+                    <button
+                      title="Change colour theme"
+                      onClick={() => setThemeDropdownOpen(o => !o)}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-medium"
+                    >
+                      {theme === 'dark' ? '🌑' : theme === 'light' ? '☀️' : '💜'}
+                      <span className="hidden lg:inline capitalize">{theme}</span>
+                      <ChevronDown className="w-3 h-3 opacity-60" />
+                    </button>
+                    {themeDropdownOpen && (
+                      <>
+                        <div className="fixed inset-0 z-[200]" onClick={() => setThemeDropdownOpen(false)} />
+                        <div className="absolute left-0 top-full mt-1 z-[201] bg-slate-800 border border-slate-700 rounded-xl shadow-2xl overflow-hidden min-w-[130px]">
+                          {([['dark','🌑 Dark'],['light','☀️ Light'],['unified','💜 Unified']] as [string,string][]).map(([val, label]) => (
+                            <button
+                              key={val}
+                              onClick={() => { setTheme(val as any); setThemeDropdownOpen(false); }}
+                              className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-medium hover:bg-slate-700 transition-colors ${theme === val ? 'text-indigo-300' : 'text-slate-300'}`}
+                            >
+                              {theme === val && <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0"/>}
+                              {theme !== val && <span className="w-1.5 h-1.5 shrink-0"/>}
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
 
                   {/* ─ Editor buttons divider ─ */}
                   <div className="w-px h-5 bg-slate-700 mx-0.5" />
 
                   {/* Edit Text & Audio */}
                   <button
+                    title="Edit Text & Audio — open the rich-text and narration editor for this slide"
                     onClick={() => { setEditingSlide(currentSlide); setEditDrawerOpen(true); setEditDrawerTab('text'); }}
                     className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-indigo-700/60 hover:bg-indigo-800/30 text-indigo-300 text-xs font-medium"
                   >
@@ -1314,7 +1347,11 @@ export default function App() {
                   </button>
 
                   {/* Change Background */}
-                  <label htmlFor="topbar-bg-upload" className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-pink-700/60 hover:bg-pink-800/20 text-pink-300 text-xs font-medium cursor-pointer">
+                  <label
+                    htmlFor="topbar-bg-upload"
+                    title="Change Background — upload a custom background image for the preview area"
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-pink-700/60 hover:bg-pink-800/20 text-pink-300 text-xs font-medium cursor-pointer"
+                  >
                     <ImageIcon className="w-3.5 h-3.5" /><span className="hidden lg:inline">Change Bg</span>
                     <input id="topbar-bg-upload" type="file" accept="image/*" className="hidden"
                       onChange={e => { const f = e.target.files?.[0]; if (f) { setCourseBg(URL.createObjectURL(f)); e.target.value = ''; } }}
@@ -1323,6 +1360,7 @@ export default function App() {
 
                   {/* Reset Layout */}
                   <button
+                    title="Reset Layout — restore the course to its original generated state (clears all edits)"
                     onClick={() => { if (originalCourse) { setCourse(originalCourse); setCurrentSlideIndex(0); setQuizState({}); setFloatingImagesMap({}); setCourseBg(null); } }}
                     className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-amber-700/60 hover:bg-amber-800/20 text-amber-300 text-xs font-medium"
                   >
@@ -1330,7 +1368,11 @@ export default function App() {
                   </button>
 
                   {/* Upload Image */}
-                  <label htmlFor="topbar-img-upload" className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-emerald-700/60 hover:bg-emerald-800/20 text-emerald-300 text-xs font-medium cursor-pointer">
+                  <label
+                    htmlFor="topbar-img-upload"
+                    title="Upload Image — add images to the current slide (draggable, resizable, croppable)"
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-emerald-700/60 hover:bg-emerald-800/20 text-emerald-300 text-xs font-medium cursor-pointer"
+                  >
                     <Upload className="w-3.5 h-3.5" /><span className="hidden lg:inline">Upload Image</span>
                     <input id="topbar-img-upload" type="file" accept="image/*" multiple className="hidden"
                       onChange={e => {
@@ -1349,6 +1391,7 @@ export default function App() {
 
                   {/* Source Image */}
                   <button
+                    title="Source Image — pick an image extracted from your uploaded source document"
                     onClick={() => setShowImageGalleryForSlide(currentSlide?.id || null)}
                     className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-teal-700/60 hover:bg-teal-800/20 text-teal-300 text-xs font-medium"
                   >
@@ -1357,6 +1400,7 @@ export default function App() {
 
                   {/* Player Properties */}
                   <button
+                    title="Player Properties — configure player controls, TOC position, aspect ratio, and branding"
                     onClick={() => setShowPlayerProperties(true)}
                     className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-orange-700/60 hover:bg-orange-800/20 text-orange-300 text-xs font-medium"
                   >
@@ -1367,14 +1411,23 @@ export default function App() {
                   <div className="w-px h-5 bg-slate-700 mx-0.5" />
 
                   {/* Export SCORM */}
-                  <button onClick={exportScorm} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs transition-colors shadow-lg shadow-indigo-500/20">
+                  <button
+                    title="Export SCORM — download a SCORM 1.2 zip package"
+                    onClick={exportScorm}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs transition-colors shadow-lg shadow-indigo-500/20"
+                  >
                     <Download className="w-3.5 h-3.5" /> <span className="hidden lg:inline">Export SCORM</span>
                   </button>
                   {/* Discard */}
-                  <button onClick={() => { setCourse(null); setStep('home'); }} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-red-800/60 hover:bg-red-900/20 text-red-400 text-xs font-medium">
+                  <button
+                    title="Discard — exit preview and return to the home screen"
+                    onClick={() => { setCourse(null); setStep('home'); }}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-red-800/60 hover:bg-red-900/20 text-red-400 text-xs font-medium"
+                  >
                     <X className="w-3.5 h-3.5"/><span className="hidden lg:inline">Discard</span>
                   </button>
                 </div>
+
               </div>
 
               {/* ── Body: Sidebar + Main Player Area ── */}
@@ -1397,13 +1450,19 @@ export default function App() {
                   >
                     {courseBg && <div className="absolute inset-0 bg-slate-900/50 pointer-events-none" />}
 
-                  {/* Slide frame */}
+                  {/* Slide frame — aspect ratio driven by playerConfig.playerResolution */}
                   <div className={cn(`theme-${theme}`, "shadow-2xl transition-all duration-500 flex flex-col relative z-10 overflow-hidden",
                     viewMode === 'desktop'
-                      ? 'w-full max-w-5xl mx-auto my-4 h-[calc(100vh-260px)] md:rounded-2xl border border-white/20'
+                      ? playerConfig.playerResolution === '4:3'
+                        ? 'mx-auto my-4 md:rounded-2xl border border-white/20'
+                        : 'w-full max-w-5xl mx-auto my-4 h-[calc(100vh-260px)] md:rounded-2xl border border-white/20'
                       : 'w-[375px] h-[667px] my-4 rounded-[3rem] border-[8px] border-gray-800',
                     theme === 'light' ? 'bg-white' : theme === 'unified' ? 'bg-indigo-950' : 'bg-slate-900'
-                  )}>
+                  )}
+                  style={viewMode === 'desktop' && playerConfig.playerResolution === '4:3'
+                    ? { aspectRatio: '4/3', maxWidth: '900px', width: '100%' }
+                    : undefined
+                  }>
                     <div className={cn("flex-1 p-4 md:p-8 pb-4 overflow-y-auto custom-scrollbar w-full",
                       theme === 'light' ? 'bg-white text-slate-900' : theme === 'unified' ? 'bg-indigo-950 text-slate-100' : 'bg-slate-900 text-white'
                     )}>

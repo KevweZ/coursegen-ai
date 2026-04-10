@@ -104,17 +104,17 @@ export function CourseNavSidebar({ modules, currentSlideIndex, allSlides, onNavi
   }
 
   return (
-    <div className={cn('h-full flex flex-col border-r shrink-0 transition-all duration-200', bg)} style={{ width: '14rem', minWidth: '14rem' }}>
+    <div className={cn('h-full flex flex-col border-r shrink-0 transition-all duration-200', bg)} style={{ width: '17.5rem', minWidth: '17.5rem' }}>
       {/* Header */}
-      <div className={cn('flex items-center justify-between px-3 py-3 border-b', headerBg)}>
+      <div className={cn('flex items-center justify-between px-4 py-3 border-b', headerBg)}>
         <div className="flex items-center gap-2">
           <BookOpen className="w-4 h-4 text-indigo-400 shrink-0" />
-          <span className="text-xs font-black uppercase tracking-widest">Course Outline</span>
+          <span className="text-sm font-black uppercase tracking-widest">Course Outline</span>
         </div>
         <div className="flex items-center gap-1">
-          <span className="text-[10px] font-bold text-slate-500 bg-slate-700/50 px-1.5 py-0.5 rounded-full">{allSlides.length} Slides</span>
+          <span className="text-xs font-bold text-slate-500 bg-slate-700/50 px-2 py-0.5 rounded-full">{allSlides.length} Slides</span>
           <button onClick={() => setCollapsed(true)} className="p-1 rounded-lg hover:bg-slate-700/50 transition-colors ml-1" title="Collapse">
-            <ChevronLeft className="w-3.5 h-3.5" />
+            <ChevronLeft className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -126,10 +126,10 @@ export function CourseNavSidebar({ modules, currentSlideIndex, allSlides, onNavi
             {/* Module heading */}
             <button
               onClick={() => toggleModule(mod.id)}
-              className={cn('w-full flex items-center gap-1.5 px-3 py-2 text-left transition-colors', modHeader, 'hover:bg-slate-800/30')}
+              className={cn('w-full flex items-center gap-2 px-4 py-2.5 text-left transition-colors', modHeader, 'hover:bg-slate-800/30')}
             >
-              <ChevronDown className={cn('w-3 h-3 shrink-0 transition-transform', expandedModules.has(mod.id) ? '' : '-rotate-90')} />
-              <span className="text-[9px] font-black uppercase tracking-widest leading-tight">{mod.title}</span>
+              <ChevronDown className={cn('w-3.5 h-3.5 shrink-0 transition-transform', expandedModules.has(mod.id) ? '' : '-rotate-90')} />
+              <span className="text-xs font-black uppercase tracking-wider leading-tight">{mod.title}</span>
             </button>
 
             {/* Slides */}
@@ -141,12 +141,12 @@ export function CourseNavSidebar({ modules, currentSlideIndex, allSlides, onNavi
                   key={slide.id}
                   onClick={() => onNavigate(globalIdx)}
                   className={cn(
-                    'w-full flex items-center gap-2 pl-6 pr-3 py-2 text-left transition-all text-xs',
+                    'w-full flex items-center gap-2.5 pl-7 pr-4 py-2.5 text-left transition-all',
                     isActive ? activeRow : inactiveRow
                   )}
                 >
-                  <span className="text-sm shrink-0">{SLIDE_TYPE_ICON[slide.type] || '📄'}</span>
-                  <span className="leading-tight line-clamp-2 font-medium">{slide.title}</span>
+                  <span className="text-base shrink-0">{SLIDE_TYPE_ICON[slide.type] || '📄'}</span>
+                  <span className="text-sm leading-snug line-clamp-2 font-medium">{slide.title}</span>
                 </button>
               );
             })}
