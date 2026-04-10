@@ -1294,20 +1294,85 @@ export default function App() {
                   {/* Desktop/Mobile Toggle */}
                   <button onClick={() => setViewMode(viewMode === 'desktop' ? 'mobile' : 'desktop')} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-medium">
                     {viewMode === 'desktop' ? <Monitor className="w-3.5 h-3.5"/> : <Smartphone className="w-3.5 h-3.5"/>}
-                    <span className="hidden md:inline">{viewMode === 'desktop' ? 'Desktop' : 'Mobile'}</span>
+                    <span className="hidden lg:inline">{viewMode === 'desktop' ? 'Desktop' : 'Mobile'}</span>
                   </button>
                   {/* Theme Toggle */}
                   <button onClick={() => setTheme(t => t === 'dark' ? 'light' : t === 'light' ? 'unified' : 'dark')} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-medium">
                     {theme === 'dark' ? '🌑' : theme === 'light' ? '☀️' : '💜'}
-                    <span className="hidden md:inline capitalize">{theme}</span>
+                    <span className="hidden lg:inline capitalize">{theme}</span>
                   </button>
+
+                  {/* ─ Editor buttons divider ─ */}
+                  <div className="w-px h-5 bg-slate-700 mx-0.5" />
+
+                  {/* Edit Text & Audio */}
+                  <button
+                    onClick={() => { setEditingSlide(currentSlide); setEditDrawerOpen(true); setEditDrawerTab('text'); }}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-indigo-700/60 hover:bg-indigo-800/30 text-indigo-300 text-xs font-medium"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" /><span className="hidden lg:inline">Edit Text &amp; Audio</span>
+                  </button>
+
+                  {/* Change Background */}
+                  <label htmlFor="topbar-bg-upload" className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-pink-700/60 hover:bg-pink-800/20 text-pink-300 text-xs font-medium cursor-pointer">
+                    <ImageIcon className="w-3.5 h-3.5" /><span className="hidden lg:inline">Change Bg</span>
+                    <input id="topbar-bg-upload" type="file" accept="image/*" className="hidden"
+                      onChange={e => { const f = e.target.files?.[0]; if (f) { setCourseBg(URL.createObjectURL(f)); e.target.value = ''; } }}
+                    />
+                  </label>
+
+                  {/* Reset Layout */}
+                  <button
+                    onClick={() => { if (originalCourse) { setCourse(originalCourse); setCurrentSlideIndex(0); setQuizState({}); setFloatingImagesMap({}); setCourseBg(null); } }}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-amber-700/60 hover:bg-amber-800/20 text-amber-300 text-xs font-medium"
+                  >
+                    <RotateCw className="w-3.5 h-3.5" /><span className="hidden lg:inline">Reset</span>
+                  </button>
+
+                  {/* Upload Image */}
+                  <label htmlFor="topbar-img-upload" className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-emerald-700/60 hover:bg-emerald-800/20 text-emerald-300 text-xs font-medium cursor-pointer">
+                    <Upload className="w-3.5 h-3.5" /><span className="hidden lg:inline">Upload Image</span>
+                    <input id="topbar-img-upload" type="file" accept="image/*" multiple className="hidden"
+                      onChange={e => {
+                        if (e.target.files?.length) {
+                          const newImgs: FloatingImage[] = Array.from(e.target.files).map((f, i) => ({
+                            id: `fi-${Date.now()}-${i}`,
+                            url: URL.createObjectURL(f),
+                            x: 40 + i * 20, y: 40 + i * 20, width: 320, height: 240,
+                          }));
+                          setFloatingImagesMap(prev => ({ ...prev, [currentSlide?.id]: [...(prev[currentSlide?.id] || []), ...newImgs] }));
+                          e.target.value = '';
+                        }
+                      }}
+                    />
+                  </label>
+
+                  {/* Source Image */}
+                  <button
+                    onClick={() => setShowImageGalleryForSlide(currentSlide?.id || null)}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-teal-700/60 hover:bg-teal-800/20 text-teal-300 text-xs font-medium"
+                  >
+                    <Layers className="w-3.5 h-3.5" /><span className="hidden lg:inline">Source Image</span>
+                  </button>
+
+                  {/* Player Properties */}
+                  <button
+                    onClick={() => setShowPlayerProperties(true)}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-orange-700/60 hover:bg-orange-800/20 text-orange-300 text-xs font-medium"
+                  >
+                    <Settings2 className="w-3.5 h-3.5" /><span className="hidden lg:inline">Player Props</span>
+                  </button>
+
+                  {/* ─ Action buttons divider ─ */}
+                  <div className="w-px h-5 bg-slate-700 mx-0.5" />
+
                   {/* Export SCORM */}
                   <button onClick={exportScorm} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs transition-colors shadow-lg shadow-indigo-500/20">
-                    <Download className="w-3.5 h-3.5" /> <span className="hidden md:inline">Export SCORM</span>
+                    <Download className="w-3.5 h-3.5" /> <span className="hidden lg:inline">Export SCORM</span>
                   </button>
                   {/* Discard */}
                   <button onClick={() => { setCourse(null); setStep('home'); }} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-red-800/60 hover:bg-red-900/20 text-red-400 text-xs font-medium">
-                    <X className="w-3.5 h-3.5"/><span className="hidden md:inline">Discard</span>
+                    <X className="w-3.5 h-3.5"/><span className="hidden lg:inline">Discard</span>
                   </button>
                 </div>
               </div>
@@ -1712,40 +1777,6 @@ export default function App() {
                   </div>{/* end slide frame */}
                   </div>{/* end bg canvas */}
 
-                  {/* ── Slide Editor Bar ── */}
-                  <SlideEditorBar
-                    theme={theme}
-                    onEditSlide={() => { setEditingSlide(currentSlide); setEditDrawerOpen(true); setEditDrawerTab('text'); }}
-                    onChangeBg={(file) => {
-                      const url = URL.createObjectURL(file);
-                      setCourseBg(url);
-                    }}
-                    onResetLayout={() => {
-                      if (originalCourse) {
-                        setCourse(originalCourse);
-                        setCurrentSlideIndex(0);
-                        setQuizState({});
-                        setFloatingImagesMap({});
-                        setCourseBg(null);
-                      }
-                    }}
-                    onUploadImage={(files) => {
-                      const newImgs: FloatingImage[] = Array.from(files).map((f, i) => ({
-                        id: `fi-${Date.now()}-${i}`,
-                        url: URL.createObjectURL(f),
-                        x: 40 + i * 20,
-                        y: 40 + i * 20,
-                        width: 320,
-                        height: 240,
-                      }));
-                      setFloatingImagesMap(prev => ({
-                        ...prev,
-                        [currentSlide?.id]: [...(prev[currentSlide?.id] || []), ...newImgs],
-                      }));
-                    }}
-                    onOpenSourceImages={() => setShowImageGalleryForSlide(currentSlide?.id || null)}
-                    onOpenPlayerProperties={() => setShowPlayerProperties(true)}
-                  />
                 </div>{/* end main slide column */}
               </div>{/* end sidebar+main row */}
            </motion.div>
