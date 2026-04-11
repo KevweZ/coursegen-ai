@@ -574,6 +574,37 @@ export default function App() {
                     <p className="text-xs font-bold text-purple-300 uppercase tracking-widest">Sandbox — Dummy Course</p>
                   </div>
                   <div className="p-2 space-y-0.5">
+                    {/* ── Course Details (sandbox) ── */}
+                    <button
+                      onClick={() => {
+                        // Pre-fill details with sandbox dummy data
+                        setCourseTitle('Advanced Workplace Communication');
+                        setCourseDescription('A comprehensive eLearning course covering modern workplace communication strategies, active listening, cross-functional collaboration, and professional writing for remote and hybrid teams.');
+                        setLearningObjectives([{
+                          terminalObjective: 'Apply effective communication strategies across diverse workplace scenarios to improve collaboration and team performance.',
+                          enablingObjectives: [
+                            'Identify barriers to effective workplace communication',
+                            'Apply active listening techniques in team settings',
+                            'Construct clear and professional written correspondence',
+                            'Facilitate productive virtual and in-person meetings',
+                          ],
+                        }]);
+                        setPathway('corporate');
+                        setCourseType('standard');
+                        setPreset('standard');
+                        setIsSandboxMode(true);
+                        setStep('details');
+                        setSandboxDropdownOpen(false);
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-purple-500/10 hover:text-purple-200 text-sm font-medium transition-all text-left"
+                    >
+                      <FileText className="w-4 h-4 text-pink-400 shrink-0" />
+                      <span className="flex-1">Course Details</span>
+                      {step === 'details' && isSandboxMode && (
+                        <span className="text-[9px] font-black uppercase tracking-wider text-purple-400 bg-purple-500/15 px-1.5 py-0.5 rounded-full">● HERE</span>
+                      )}
+                    </button>
+
                     {/* Course Outline (sandbox) */}
                     <button
                       onClick={() => {
