@@ -20,7 +20,7 @@ export interface PlayerConfig {
   theme: PlayerTheme;
   tocPosition: TOCPosition;
   tocStartsCollapsed: boolean;
-  tocNumbering: 'icons' | 'roman';
+  tocNumbering: 'icons' | 'numbered';
   showTitle: boolean;
   courseTitle: string;
   showPlayPause: boolean;
@@ -102,6 +102,7 @@ function LivePlayerPreview({ config }: { config: PlayerConfig }) {
   const accent  = 'text-indigo-400';
 
   const sampleSlides = ['Introduction', 'Module 1: Basics', 'Module 2: Practice', 'Check', 'Summary'];
+  // sampleModuleSlides defined inside return — needed for SidebarCol only
 
   const TOCMenu = ({ direction = 'down' }: { direction?: 'up' | 'down' }) => (
     menuOpen ? (
@@ -183,6 +184,13 @@ function LivePlayerPreview({ config }: { config: PlayerConfig }) {
     </div>
   );
 
+  const sampleModuleSlides = [
+    { label: 'Introduction', num: '1.1' },
+    { label: 'Module 1: Basics', num: '1.2' },
+    { label: 'Module 2: Practice', num: '2.1' },
+    { label: 'Check', num: '2.2' },
+    { label: 'Summary', num: '3.1' },
+  ];
   const SidebarCol = ({ side }: { side: 'left' | 'right' }) => (
     <div
       className={cn('flex flex-col flex-shrink-0 overflow-hidden', sideBg, side === 'left' ? 'border-r' : 'border-l')}
@@ -191,17 +199,21 @@ function LivePlayerPreview({ config }: { config: PlayerConfig }) {
       <div className={cn('px-2 py-1.5 text-[10px] font-extrabold uppercase tracking-widest border-b', isLight ? 'text-gray-500 border-gray-200' : 'text-slate-500 border-slate-800')}>
         Menu
       </div>
-      {sampleSlides.map((s, i) => (
+      {sampleModuleSlides.map((s, i) => (
         <div
-          key={s}
+          key={s.label}
           className={cn(
-            'px-2 py-1 text-[10px] truncate border-l-2 transition-all',
+            'px-2 py-1 text-[10px] truncate border-l-2 transition-all flex items-center gap-1',
             i === 1
               ? 'border-indigo-500 text-indigo-400 font-bold bg-indigo-500/10'
               : cn('border-transparent', isLight ? 'text-gray-600' : 'text-slate-400')
           )}
         >
-          {s}
+          {config.tocNumbering === 'numbered'
+            ? <span className="font-black shrink-0 opacity-60">{s.num}</span>
+            : null
+          }
+          <span className="truncate">{s.label}</span>
         </div>
       ))}
     </div>
@@ -382,15 +394,15 @@ export function PlayerPropertiesModal({ config, onChange, onClose }: Props) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => update({ tocNumbering: 'roman' })}
+                  onClick={() => update({ tocNumbering: 'numbered' })}
                   className={cn(
                     'flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold transition-colors',
-                    local.tocNumbering === 'roman'
+                    local.tocNumbering === 'numbered'
                       ? 'bg-indigo-600/30 text-indigo-300'
                       : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
                   )}
                 >
-                  <span className="font-serif italic font-black">I II III</span> Roman
+                  <span className="font-black text-[10px] tabular-nums">1.1 1.2</span> Numbered
                 </button>
               </div>
               <p className="text-[9px] text-slate-600 mt-1">Controls what appears next to each slide title in the Table of Contents</p>

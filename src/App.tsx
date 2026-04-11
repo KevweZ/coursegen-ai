@@ -209,8 +209,13 @@ export default function App() {
 
   // Player / Game
   const [quizState, setQuizState] = useState<Record<string, any>>({});
-  // Admin quick-nav
-  const [adminDropdownOpen, setAdminDropdownOpen] = useState(false);
+  // Sandbox / Admin dropdowns
+  const [sandboxDropdownOpen, setSandboxDropdownOpen] = useState(false);
+  const [adminDropdownOpen, setAdminDropdownOpen] = useState(false); // kept for compat
+  // Sandbox mode flag (dummy course active)
+  const [isSandboxMode, setIsSandboxMode] = useState(false);
+  // Sandbox outline (derived from DUMMY_COURSE for outline step)
+  const [sandboxOutline, setSandboxOutline] = useState<any>(null);
   // Theme dropdown in preview top bar
   const [themeDropdownOpen, setThemeDropdownOpen] = useState(false);
   // Original course snapshot for Reset Layout
@@ -551,66 +556,57 @@ export default function App() {
           </div>
           
           <div className="flex gap-3 items-center">
-            {/* Settings button removed — accessed via Admin → Player Properties */}
 
-            {/* ── Admin Quick-Nav Dropdown ── */}
+            {/* ── Sandbox Dropdown ── */}
             <div className="relative">
               <button
-                onClick={() => setAdminDropdownOpen(!adminDropdownOpen)}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-500/10 border border-indigo-500/30 hover:bg-indigo-500/20 rounded-lg text-indigo-300 font-bold text-sm transition-all"
+                onClick={() => { setSandboxDropdownOpen(o => !o); }}
+                className="flex items-center gap-2 px-4 py-2 bg-purple-500/10 border border-purple-500/30 hover:bg-purple-500/20 rounded-lg text-purple-300 font-bold text-sm transition-all"
               >
-                <Shield className="w-4 h-4" />
-                Admin
-                <ChevronDown className={`w-3 h-3 transition-transform ${adminDropdownOpen ? 'rotate-180' : ''}`} />
+                <Sparkles className="w-4 h-4" />
+                Sandbox
+                <ChevronDown className={`w-3 h-3 transition-transform ${sandboxDropdownOpen ? 'rotate-180' : ''}`} />
               </button>
-              {adminDropdownOpen && (
-                <div className="absolute right-0 top-full mt-2 w-56 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-[500] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
-                  <div className="px-4 py-2 bg-slate-800/80 border-b border-slate-700">
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Quick Navigation</p>
+              {sandboxDropdownOpen && (
+                <div className="absolute right-0 top-full mt-2 w-64 bg-slate-900 border border-purple-700/40 rounded-xl shadow-2xl z-[500] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+                  <div className="px-4 py-2.5 bg-purple-900/30 border-b border-purple-700/40 flex items-center gap-2">
+                    <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                    <p className="text-xs font-bold text-purple-300 uppercase tracking-widest">Sandbox — Dummy Course</p>
                   </div>
                   <div className="p-2 space-y-0.5">
-                    <button onClick={() => { setStep('home'); setAdminDropdownOpen(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-indigo-500/10 hover:text-white text-sm font-medium transition-all text-left">
-                      <FileUp className="w-4 h-4 text-indigo-400" /> Landing Page
-                    </button>
+                    {/* Course Outline (sandbox) */}
                     <button
                       onClick={() => {
-                        setStep('details');
-                        setAdminDropdownOpen(false);
-                        if (!courseTitle) {
-                          if (pathway === 'k12') {
-                             setCourseTitle('Demo Course: Primary Ecosystems');
-                             setCourseDescription('An engaging science unit exploring evaporation, condensation, and precipitation through interactive models.');
-                             setLearningObjectives(['Students will identify ecosystem components | I can name parts of an ecosystem', 'Students will map a food chain | I can draw a simple food chain', 'Students will explain human impact | I can tell how people affect nature']);
-                          } else {
-                             setCourseTitle('Demo Course: Advanced Cybersecurity');
-                             setCourseDescription('An AI-generated course covering cybersecurity principles, threat vectors, and incident response strategies.');
-                             setLearningObjectives([{ 
-                                terminalObjective: 'Identify and respond to common cybersecurity threats effectively using industry-standard frameworks.', 
-                                enablingObjectives: ['Identify common cybersecurity threats', 'Apply the NIST framework to risk assessment', 'Respond to security incidents effectively'] 
-                             }]);
-                          }
-                        }
+                        // Build a dummy outline from DUMMY_COURSE for the outline step
+                        const dummyOutline = {
+                          title: DUMMY_COURSE.title,
+                          description: DUMMY_COURSE.description,
+                          modules: DUMMY_COURSE.modules.map((mod: any) => ({
+                            id: mod.id,
+                            title: mod.title,
+                            slides: mod.slides.map((s: any) => ({
+                              id: s.id,
+                              title: s.title,
+                              type: s.type,
+                              estimatedMinutes: 3,
+                            })),
+                          })),
+                        };
+                        setSandboxOutline(dummyOutline);
+                        setOutlineDraft(dummyOutline as any);
+                        setIsSandboxMode(true);
+                        setStep('outline');
+                        setSandboxDropdownOpen(false);
                       }}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-indigo-500/10 hover:text-white text-sm font-medium transition-all text-left"
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-purple-500/10 hover:text-purple-200 text-sm font-medium transition-all text-left"
                     >
-                      <FileText className="w-4 h-4 text-pink-400" /> Course Details
+                      <Layers className="w-4 h-4 text-teal-400 shrink-0" />
+                      <span className="flex-1">Course Outline</span>
+                      {step === 'outline' && isSandboxMode && (
+                        <span className="text-[9px] font-black uppercase tracking-wider text-purple-400 bg-purple-500/15 px-1.5 py-0.5 rounded-full">● HERE</span>
+                      )}
                     </button>
-                    <button
-                      onClick={() => {
-                        if (outlineDraft) { setStep('outline'); setAdminDropdownOpen(false); }
-                        else alert('Generate a course outline first from the Course Details page.');
-                      }}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-indigo-500/10 hover:text-white text-sm font-medium transition-all text-left"
-                    >
-                      <Layers className="w-4 h-4 text-teal-400" /> Course Outline
-                    </button>
-                    {course && (
-                      <button onClick={() => { setStep('preview'); setAdminDropdownOpen(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-indigo-500/10 hover:text-white text-sm font-medium transition-all text-left">
-                        <Eye className="w-4 h-4 text-emerald-400" /> Course Preview
-                      </button>
-                    )}
-                    <div className="border-t border-slate-800 my-1" />
-                    {/* ── Preview Mode (Sandbox) ── */}
+                    {/* Course Preview */}
                     <button
                       onClick={() => {
                         setCourse(DUMMY_COURSE);
@@ -620,23 +616,39 @@ export default function App() {
                         setTheme('dark');
                         setViewMode('desktop');
                         setFloatingImagesMap({});
-                        setCourseBg(null);
+                        setCourseBg('/eLearning Template Backgrounds/Neutral/blue background coffee books_01.png');
+                        setIsSandboxMode(true);
                         setStep('preview');
-                        setAdminDropdownOpen(false);
+                        setSandboxDropdownOpen(false);
                       }}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-purple-500/10 hover:text-purple-300 text-sm font-medium transition-all text-left"
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-purple-500/10 hover:text-purple-200 text-sm font-medium transition-all text-left"
                     >
-                      <Sparkles className="w-4 h-4 text-purple-400" /> Preview Mode
+                      <Eye className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span className="flex-1">Course Preview</span>
+                      {step === 'preview' && isSandboxMode && (
+                        <span className="text-[9px] font-black uppercase tracking-wider text-purple-400 bg-purple-500/15 px-1.5 py-0.5 rounded-full">● HERE</span>
+                      )}
                     </button>
                     <div className="border-t border-slate-800 my-1" />
-                    <button onClick={() => { setShowPlayerProperties(true); setAdminDropdownOpen(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-indigo-500/10 hover:text-white text-sm font-medium transition-all text-left">
-                      <Settings2 className="w-4 h-4 text-orange-400" /> Player Properties
+                    {/* Player Properties */}
+                    <button onClick={() => { setShowPlayerProperties(true); setSandboxDropdownOpen(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-purple-500/10 hover:text-purple-200 text-sm font-medium transition-all text-left">
+                      <Settings2 className="w-4 h-4 text-orange-400 shrink-0" /> Player Properties
                     </button>
                   </div>
                 </div>
               )}
-              {adminDropdownOpen && <div className="fixed inset-0 z-[599]" onClick={() => setAdminDropdownOpen(false)} />}
+              {sandboxDropdownOpen && <div className="fixed inset-0 z-[599]" onClick={() => setSandboxDropdownOpen(false)} />}
             </div>
+
+            {/* ── Admin Button (no dropdown for now) ── */}
+            <button
+              onClick={() => { /* Admin panel — reserved for future use */ }}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-500/10 border border-indigo-500/30 hover:bg-indigo-500/20 rounded-lg text-indigo-300 font-bold text-sm transition-all"
+              title="Admin panel — coming soon"
+            >
+              <Shield className="w-4 h-4" />
+              Admin
+            </button>
           </div>
         </div>
       </header>
@@ -1275,7 +1287,42 @@ export default function App() {
           )}
 
           {step === 'outline' && outlineDraft && (
-             <OutlinePreview initialOutline={outlineDraft} isHydrating={isHydrating} progress={progress} onApprove={hydrateCourse} onCancel={() => setStep('details')} error={error} />
+             <OutlinePreview
+               initialOutline={outlineDraft}
+               isHydrating={isHydrating}
+               progress={progress}
+               onApprove={isSandboxMode
+                 ? (reorderedOutline: any) => {
+                     // Sandbox: reorder DUMMY_COURSE slides to match the outline order, no AI
+                     const allDummySlides: any[] = [];
+                     DUMMY_COURSE.modules.forEach((m: any) => m.slides.forEach((s: any) => allDummySlides.push(s)));
+                     const reorderedCourse = {
+                       ...DUMMY_COURSE,
+                       modules: reorderedOutline.modules.map((mod: any, mi: number) => ({
+                         ...DUMMY_COURSE.modules[mi] || DUMMY_COURSE.modules[0],
+                         id: mod.id,
+                         title: mod.title,
+                         slides: mod.slides.map((s: any) => {
+                           const found = allDummySlides.find(ds => ds.id === s.id);
+                           return found || allDummySlides[0];
+                         }),
+                       })),
+                     };
+                     setCourse(reorderedCourse);
+                     setOriginalCourse(reorderedCourse);
+                     setCurrentSlideIndex(0);
+                     setCourseBg('/eLearning Template Backgrounds/Neutral/blue background coffee books_01.png');
+                     setStep('preview');
+                   }
+                 : hydrateCourse
+               }
+               onCancel={() => {
+                 if (isSandboxMode) { setIsSandboxMode(false); setSandboxDropdownOpen(false); setStep('home'); }
+                 else setStep('details');
+               }}
+               error={error}
+               sandboxMode={isSandboxMode}
+             />
           )}
 
           {step === 'preview' && course && (
@@ -1427,7 +1474,7 @@ export default function App() {
               </div>
 
               {/* ── Body: Sidebar + Main Player Area ── */}
-              <div className="flex flex-row flex-1 min-h-0 overflow-hidden">
+              <div className={cn("flex flex-row flex-1 overflow-hidden", playerConfig.playerResolution === 'full' ? 'overflow-x-hidden' : 'min-h-0')}>
                 {/* Course Navigation Sidebar */}
                 <CourseNavSidebar
                   modules={course.modules}
@@ -1453,7 +1500,7 @@ export default function App() {
                       ? playerConfig.playerResolution === '4:3'
                         ? 'mx-auto my-4 md:rounded-2xl border border-white/20'
                         : playerConfig.playerResolution === 'full'
-                        ? 'w-full h-full'
+                        ? 'w-full'
                         : 'w-full max-w-5xl mx-auto my-4 h-[calc(100vh-260px)] md:rounded-2xl border border-white/20'
                       : 'w-[375px] h-[667px] my-4 rounded-[3rem] border-[8px] border-gray-800',
                     theme === 'light' ? 'bg-white' : theme === 'unified' ? 'bg-indigo-950' : 'bg-slate-900'
@@ -1462,7 +1509,8 @@ export default function App() {
                     ? { aspectRatio: '4/3', maxWidth: '900px', width: '100%' }
                     : undefined
                   }>
-                    <div className={cn("flex-1 p-4 md:p-8 pb-4 overflow-y-auto custom-scrollbar w-full",
+                    <div className={cn("flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar w-full",
+                      playerConfig.playerResolution === 'full' ? 'p-6 md:p-12 pb-4 text-lg' : 'p-4 md:p-8 pb-4',
                       theme === 'light' ? 'bg-white text-slate-900' : theme === 'unified' ? 'bg-indigo-950 text-slate-100' : 'bg-slate-900 text-white'
                     )}>
                       <AnimatePresence mode="wait">
@@ -1811,8 +1859,12 @@ export default function App() {
 
                      </div>{/* end slide content scroll area */}
 
-                    {/* Learner Player Navigation Bar */}
-                    <div className={cn("w-full z-[100] shrink-0 border-t backdrop-blur-md relative", theme === 'light' ? 'bg-white/80 border-slate-200' : theme === 'unified' ? 'bg-indigo-950 border-indigo-800' : 'bg-slate-900 border-slate-800')}>
+                    {/* Learner Player Navigation Bar — sticky at bottom in full-screen mode */}
+                    <div className={cn(
+                      "w-full z-[100] shrink-0 border-t backdrop-blur-md",
+                      playerConfig.playerResolution === 'full' ? 'sticky bottom-0' : 'relative',
+                      theme === 'light' ? 'bg-white/80 border-slate-200' : theme === 'unified' ? 'bg-indigo-950 border-indigo-800' : 'bg-slate-900 border-slate-800'
+                    )}>
                       <PlayerBar
                         player={player}
                         currentSlideIndex={currentSlideIndex}

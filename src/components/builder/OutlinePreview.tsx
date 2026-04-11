@@ -11,9 +11,10 @@ interface Props {
   isHydrating: boolean;
   error?: string | null;
   progress?: number;
+  sandboxMode?: boolean;
 }
 
-export function OutlinePreview({ initialOutline, onApprove, onCancel, isHydrating, error, progress = 10 }: Props) {
+export function OutlinePreview({ initialOutline, onApprove, onCancel, isHydrating, error, progress = 10, sandboxMode = false }: Props) {
   const [outline, setOutline] = useState<CourseOutlineDraft>(initialOutline);
   const [draggedItem, setDraggedItem] = useState<{ mIndex: number, sIndex: number } | null>(null);
   const [dragOverItem, setDragOverItem] = useState<{ mIndex: number, sIndex: number } | null>(null);
@@ -72,34 +73,43 @@ export function OutlinePreview({ initialOutline, onApprove, onCancel, isHydratin
     <div className="w-full max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
       
       {/* Header Panel */}
-      <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-700/80 rounded-3xl p-8 shadow-2xl relative overflow-hidden group">
+      <div className={cn("bg-slate-900/80 backdrop-blur-xl border rounded-3xl p-8 shadow-2xl relative overflow-hidden group", sandboxMode ? 'border-purple-700/40' : 'border-slate-700/80')}>
         <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl opacity-50 pointer-events-none"></div>
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-500/20 text-indigo-300 rounded-full text-xs font-bold mb-3 border border-indigo-500/30">
-              <Sparkles className="w-3 h-3" /> Step 1: Structural Approval
+            <div className={cn("inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold mb-3 border", sandboxMode ? 'bg-purple-500/20 text-purple-300 border-purple-500/30' : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30')}>
+              {sandboxMode ? <Sparkles className="w-3 h-3" /> : <Sparkles className="w-3 h-3" />}
+              {sandboxMode ? '🧪 Sandbox — Dummy Course Outline' : 'Step 1: Structural Approval'}
             </div>
             <h1 className="text-3xl font-black text-white tracking-tight mb-2 leading-tight">Review Course Outline</h1>
             <p className="text-sm font-medium text-gray-400 max-w-xl">
-              Drag and drop the items below to rearrange your course layout. When you are ready, click Generate Content to create your full course.
+              {sandboxMode
+                ? 'This is the sandbox dummy course outline. Drag and drop to reorder slides, then click Preview to see the result — no AI generation occurs.'
+                : 'Drag and drop the items below to rearrange your course layout. When you are ready, click Generate Content to create your full course.'
+              }
             </p>
           </div>
           
           <div className="flex flex-col gap-3 shrink-0">
             <button 
-              onClick={() => !isHydrating && onApprove(outline)}
-              disabled={isHydrating}
-              className="bg-indigo-600 border border-indigo-500/50 text-white px-8 py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-500 transition-all shadow-xl shadow-indigo-500/25 disabled:opacity-50"
+              onClick={() => onApprove(outline)}
+              className={cn(
+                "border text-white px-8 py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-xl",
+                sandboxMode
+                  ? 'bg-purple-600 border-purple-500/50 hover:bg-purple-500 shadow-purple-500/25'
+                  : 'bg-indigo-600 border-indigo-500/50 hover:bg-indigo-500 shadow-indigo-500/25 disabled:opacity-50'
+              )}
+              disabled={!sandboxMode && isHydrating}
             >
-              {isHydrating ? <Loader2 className="w-5 h-5 animate-spin" /> : <ChevronRight className="w-5 h-5" />}
-              {isHydrating ? "Generating Course..." : "Generate Course"}
+              {!sandboxMode && isHydrating ? <Loader2 className="w-5 h-5 animate-spin" /> : <ChevronRight className="w-5 h-5" />}
+              {sandboxMode ? 'Preview Sandbox Course' : (isHydrating ? 'Generating Course...' : 'Generate Course')}
             </button>
             <button 
               onClick={onCancel}
-              disabled={isHydrating}
+              disabled={!sandboxMode && isHydrating}
               className="text-gray-400 hover:text-white px-8 py-3 rounded-xl border border-slate-700/50 hover:bg-slate-800 transition-colors text-sm font-bold disabled:opacity-50"
             >
-              Cancel
+              {sandboxMode ? 'Back to Sandbox' : 'Cancel'}
             </button>
           </div>
         </div>

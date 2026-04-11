@@ -16,7 +16,7 @@ interface Props {
   allSlides: Slide[];
   onNavigate: (index: number) => void;
   theme: 'dark' | 'light' | 'unified';
-  tocNumbering?: 'icons' | 'roman';
+  tocNumbering?: 'icons' | 'numbered';
 }
 
 const SLIDE_TYPE_ICON: Record<string, string> = {
@@ -25,16 +25,6 @@ const SLIDE_TYPE_ICON: Record<string, string> = {
   matching: '🔗', hotspot: '📍', branching: '🌿', interaction: '⚙️',
   summary: '📋', 'game-template': '🎮', intro: '🎬', outro: '🏁',
 };
-
-function toRoman(n: number): string {
-  const vals = [1000,900,500,400,100,90,50,40,10,9,5,4,1];
-  const syms = ['M','CM','D','CD','C','XC','L','XL','X','IX','V','IV','I'];
-  let result = '';
-  for (let i = 0; i < vals.length; i++) {
-    while (n >= vals[i]) { result += syms[i]; n -= vals[i]; }
-  }
-  return result;
-}
 
 export function CourseNavSidebar({ modules, currentSlideIndex, allSlides, onNavigate, theme, tocNumbering = 'icons' }: Props) {
   const [collapsed, setCollapsed] = useState(false);
@@ -132,7 +122,7 @@ export function CourseNavSidebar({ modules, currentSlideIndex, allSlides, onNavi
 
       {/* Module + Slide List */}
       <div className="flex-1 overflow-y-auto py-2 custom-scrollbar">
-        {modules.map((mod) => (
+        {modules.map((mod, mi) => (
           <div key={mod.id} className="mb-1">
             {/* Module heading */}
             <button
@@ -144,7 +134,7 @@ export function CourseNavSidebar({ modules, currentSlideIndex, allSlides, onNavi
             </button>
 
             {/* Slides */}
-            {expandedModules.has(mod.id) && mod.slides.map(slide => {
+            {expandedModules.has(mod.id) && mod.slides.map((slide, si) => {
               const globalIdx = getSlideGlobalIndex(slide);
               const isActive = globalIdx === currentSlideIndex;
               return (
@@ -156,9 +146,9 @@ export function CourseNavSidebar({ modules, currentSlideIndex, allSlides, onNavi
                     isActive ? activeRow : inactiveRow
                   )}
                 >
-                  {tocNumbering === 'roman'
-                    ? <span className="text-sm font-black font-serif italic shrink-0 w-6 text-center">{toRoman(globalIdx + 1)}</span>
-                    : <span className="text-base shrink-0">{SLIDE_TYPE_ICON[slide.type] || '\ud83d\udcc4'}</span>
+                  {tocNumbering === 'numbered'
+                    ? <span className="text-xs font-black shrink-0 w-8 text-right pr-1 opacity-70">{mi + 1}.{si + 1}</span>
+                    : <span className="text-base shrink-0">{SLIDE_TYPE_ICON[slide.type] || '📄'}</span>
                   }
                   <span className="text-sm leading-snug line-clamp-2 font-medium">{slide.title}</span>
                 </button>
