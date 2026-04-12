@@ -407,11 +407,11 @@ export default function App() {
 
       // ── 1. Capture + strip "Given [condition], " ──────────────────────────
       // Preserve the original condition so ABC→ABCD doesn't lose specificity
-      let condition = 'course content';
+      let condition = ''; // will be derived from verb if no existing Given
       const givenMatch = s.match(/^Given\s+([^,]+),\s+/i);
       if (givenMatch) {
-        condition = givenMatch[1].trim();            // e.g. "a workplace scenario"
-        s = s.slice(givenMatch[0].length).trim();   // strip the entire "Given ..., " part
+        condition = givenMatch[1].trim();
+        s = s.slice(givenMatch[0].length).trim();
       }
 
       // ── 2. Strip "The learner will " / "the learner will " ────────────────
@@ -421,16 +421,44 @@ export default function App() {
       s = s.replace(/\.+$/, '').trim();
 
       // ── 4. Strip trailing degree / standard clause ────────────────────────
-      // Matches:  "to a measurable standard"
-      //           "to [degree]."
-      //           "with at least 80% accuracy"   ← the previously broken case
-      //           "with 90% accuracy"
-      //           "with no more than one error"
-      // Strategy: greedily remove everything from " to " or " with " to the end
       s = s.replace(/\s+(?:to\s+\S|with\s+\S).+$/i, '').trim();
 
       // ── 5. Strip any trailing period that snuck through ───────────────────
       s = s.replace(/\.+$/, '').trim();
+
+      // ── 6. Derive condition from verb when none was present ───────────────
+      if (!condition) {
+        // Extract the first word (the Bloom's verb) from the core action
+        const verb = s.split(/\s+/)[0]?.toLowerCase() ?? '';
+        const verbConditionMap: Record<string, string> = {
+          // Remembering
+          recall:     'a list of key terms',
+          identify:   'a scenario',
+          define:     'a glossary of terms',
+          list:       'course content',
+          name:       'a labeled diagram',
+          recognize:  'practical examples',
+          state:      'course content',
+          label:      'a diagram or model',
+          match:      'matching items',
+          outline:    'course content',
+          retrieve:   'course content',
+          locate:     'a resource or document',
+          // Understanding
+          describe:   'a written scenario',
+          explain:    'a case study',
+          summarize:  'a written report',
+          classify:   'a set of examples',
+          compare:    'two or more examples',
+          contrast:   'two or more examples',
+          interpret:  'a data set or report',
+          paraphrase: 'a written passage',
+          categorize: 'a set of items',
+          distinguish: 'common challenges',
+          illustrate: 'practical examples',
+        };
+        condition = verbConditionMap[verb] ?? 'relevant examples';
+      }
 
       // ── 6. Re-apply the selected format ──────────────────────────────────
       switch (fmt) {
@@ -1235,7 +1263,7 @@ export default function App() {
                                       <div key={eIdx} className="flex gap-2 items-start group/enabling">
                                         <div className="mt-2 text-slate-600 shrink-0">↳</div>
                                         <textarea 
-                                          rows={1}
+                                          rows={2}
                                           value={enablingObj} 
                                           onChange={(e) => {
                                             const newObjs = [...learningObjectives];
@@ -1245,8 +1273,8 @@ export default function App() {
                                             newObjs[i] = { ...currentObj, enablingObjectives: newEnabling };
                                             setLearningObjectives(newObjs);
                                           }}
-                                          className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-300 focus:border-slate-500 outline-none transition-all placeholder-slate-700 text-sm whitespace-pre-wrap resize-none"
-                                          placeholder="e.g., Identify the target audience..."
+                                          className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-slate-300 focus:border-slate-500 outline-none transition-all placeholder-slate-700 text-sm resize-none"
+                                          placeholder="e.g., The learner will identify the target audience..."
                                         />
                                         <button onClick={() => {
                                            const newObjs = [...learningObjectives];
