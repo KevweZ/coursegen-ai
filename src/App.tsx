@@ -221,6 +221,8 @@ export default function App() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [course, setCourse] = useState<any>(isScormPlayer ? (window as any).__COURSE_DATA__ : null);
+  /** Always-current ref so Save Changes uses the latest course even in stale closures */
+  const courseRef = useRef<any>(null);
   const [outlineDraft, setOutlineDraft] = useState<CourseOutlineDraft | null>(null);
   const [skipOutlineReview, setSkipOutlineReview] = useState(false);
   
@@ -2392,13 +2394,18 @@ export default function App() {
                   </button>
                   <button
                     onClick={() => {
-                      if (course && editingSlideRef.current) {
+                      if (editingSlideRef.current) {
                         const latest = editingSlideRef.current;
-                        const updatedModules = course.modules.map((m: any) => ({
-                          ...m,
-                          slides: m.slides.map((s: any) => s.id === latest.id ? latest : s)
-                        }));
-                        setCourse({ ...course, modules: updatedModules });
+                        setCourse((prevCourse: any) => {
+                          if (!prevCourse) return prevCourse;
+                          return {
+                            ...prevCourse,
+                            modules: prevCourse.modules.map((m: any) => ({
+                              ...m,
+                              slides: m.slides.map((s: any) => s.id === latest.id ? latest : s)
+                            })),
+                          };
+                        });
                       }
                       setEditingSlide(null);
                     }}
