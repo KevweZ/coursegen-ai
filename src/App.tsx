@@ -140,7 +140,18 @@ const sanitizeContent = (content: string) => {
     .trim();
 };
 
+/** Detects whether a string is HTML (from the rich-text editor) vs plain Markdown */
+const isHTML = (str: string) => /<[a-z][\s\S]*>/i.test(str?.trim() ?? '');
+
 const SlideContent = ({ content, theme }: { content: string, theme: string }) => {
+  if (isHTML(content)) {
+    return (
+      <div
+        className={cn('prose max-w-none text-lg lg:text-xl leading-relaxed rich-slide-content', theme !== 'light' ? 'prose-invert text-gray-200' : 'text-gray-800')}
+        dangerouslySetInnerHTML={{ __html: content }}
+      />
+    );
+  }
   return (
     <ReactMarkdown
       className={cn('prose max-w-none text-lg lg:text-xl leading-relaxed', theme !== 'light' ? 'prose-invert' : '')}
@@ -166,6 +177,26 @@ const SlideContent = ({ content, theme }: { content: string, theme: string }) =>
         ),
       }}
     >
+      {content}
+    </ReactMarkdown>
+  );
+};
+
+/**
+ * SmartContent — handles the numerous inline `<ReactMarkdown>` usages in the slide renderer.
+ * Automatically switches between HTML rendering and Markdown based on content type.
+ */
+const SmartContent = ({ content, className, theme }: { content: string; className?: string; theme?: string }) => {
+  if (isHTML(content)) {
+    return (
+      <div
+        className={cn(className, 'rich-slide-content')}
+        dangerouslySetInnerHTML={{ __html: content }}
+      />
+    );
+  }
+  return (
+    <ReactMarkdown className={className}>
       {content}
     </ReactMarkdown>
   );
@@ -1768,7 +1799,7 @@ export default function App() {
                                  return (
                                    <div className="space-y-5 w-full">
                                      <h2 className={cn('text-2xl font-extrabold', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
-                                     {currentSlide.content && <ReactMarkdown className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')}>{sanitizeContent(currentSlide.content)}</ReactMarkdown>}
+                                     {currentSlide.content && <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />}
                                      <p className={cn('font-bold text-lg', theme === 'light' ? 'text-slate-800' : 'text-slate-100')}>{quiz.questionText || quiz.prompt || quiz.question}</p>
                                      <div className="space-y-2.5 w-full">
                                        {quiz.options.map((opt: any, i: number) => {
@@ -1829,7 +1860,7 @@ export default function App() {
                                  return (
                                    <div className="space-y-5 w-full">
                                      <h2 className={cn('text-2xl font-extrabold', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
-                                     {currentSlide.content && <ReactMarkdown className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')}>{sanitizeContent(currentSlide.content)}</ReactMarkdown>}
+                                     {currentSlide.content && <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />}
                                      <p className={cn('font-bold text-lg', theme === 'light' ? 'text-slate-800' : 'text-slate-100')}>{quiz.questionText || quiz.prompt || quiz.question}</p>
                                      <p className={cn('text-xs font-bold uppercase tracking-wider', theme === 'light' ? 'text-indigo-600' : 'text-indigo-400')}>Select all correct answers</p>
                                      <div className="space-y-2.5 w-full">
@@ -1887,7 +1918,7 @@ export default function App() {
                                {currentSlide?.type === 'matching' && (
                                   <div className="space-y-6 w-full">
                                      <h2 className={cn('text-3xl font-extrabold', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
-                                     <ReactMarkdown className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')}>{sanitizeContent(currentSlide.content)}</ReactMarkdown>
+                                     <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                      <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : '')}>
                                         <MatchingActivity {...(currentSlide.data || currentSlide.interactions?.[0] || {})} />
                                      </div>
@@ -1896,7 +1927,7 @@ export default function App() {
                                {currentSlide?.type === 'accordion' && (
                                  <div className="space-y-6 w-full">
                                    <h2 className={cn('text-3xl font-extrabold', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
-                                   <ReactMarkdown className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')}>{sanitizeContent(currentSlide.content)}</ReactMarkdown>
+                                   <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                    <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : '')}>
                                      <Accordion {...(currentSlide.data || currentSlide.interactions?.[0] || {})} />
                                    </div>
@@ -1905,14 +1936,14 @@ export default function App() {
                                {currentSlide?.type === 'flashcards' && (
                                  <div className="space-y-6 w-full">
                                    <h2 className={cn('text-3xl font-extrabold', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
-                                   <ReactMarkdown className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')}>{sanitizeContent(currentSlide.content)}</ReactMarkdown>
+                                   <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                    <FlashcardGrid cards={currentSlide.data?.cards || currentSlide.interactions?.[0]?.cards || []} theme={theme} />
                                  </div>
                                )}
                                {currentSlide?.type === 'timeline' && (
                                   <div className="space-y-6 w-full">
                                     <h2 className={cn('text-3xl font-extrabold', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
-                                    <ReactMarkdown className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')}>{sanitizeContent(currentSlide.content)}</ReactMarkdown>
+                                    <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                     <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : '')}>
                                       <InteractiveTimeline {...(currentSlide.data || currentSlide.interactions?.[0] || {})} />
                                     </div>
@@ -1921,7 +1952,7 @@ export default function App() {
                                {currentSlide?.type === 'sorting' && (
                                   <div className="space-y-6 w-full">
                                      <h2 className={cn('text-3xl font-extrabold', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
-                                     <ReactMarkdown className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')}>{sanitizeContent(currentSlide.content)}</ReactMarkdown>
+                                     <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                      <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : '')}>
                                         <SortingActivity {...(currentSlide.data || currentSlide.interactions?.[0] || {})} />
                                      </div>
@@ -1930,7 +1961,7 @@ export default function App() {
                                {currentSlide?.type === 'branching' && (
                                   <div className="space-y-6 w-full">
                                      <h2 className={cn('text-3xl font-extrabold', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
-                                     <ReactMarkdown className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')}>{sanitizeContent(currentSlide.content)}</ReactMarkdown>
+                                     <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                      <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : '')}>
                                         <BranchingScenario {...(currentSlide.data || currentSlide.interactions?.[0] || {})} />
                                      </div>
@@ -1941,7 +1972,7 @@ export default function App() {
                                {currentSlide?.type === 'tabbed-horizontal' && (
                                  <div className="space-y-6 w-full">
                                    <h2 className={cn('text-3xl font-extrabold', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
-                                   <ReactMarkdown className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')}>{sanitizeContent(currentSlide.content)}</ReactMarkdown>
+                                   <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                    <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : '')}>
                                      <TabbedHorizontal tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []} />
                                    </div>
@@ -1950,7 +1981,7 @@ export default function App() {
                                {currentSlide?.type === 'tabbed-vertical' && (
                                  <div className="space-y-6 w-full">
                                    <h2 className={cn('text-3xl font-extrabold', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
-                                   <ReactMarkdown className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')}>{sanitizeContent(currentSlide.content)}</ReactMarkdown>
+                                   <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                    <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : '')}>
                                      <TabbedVertical tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []} />
                                    </div>
@@ -1959,7 +1990,7 @@ export default function App() {
                                {currentSlide?.type === 'folder-explorer' && (
                                   <div className="space-y-6 w-full">
                                     <h2 className={cn('text-3xl font-extrabold', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
-                                    <ReactMarkdown className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')}>{sanitizeContent(currentSlide.content)}</ReactMarkdown>
+                                    <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                     <div className={cn('overflow-visible', theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : '')}>
                                       <FolderExplorer items={currentSlide.data?.items || currentSlide.interactions?.[0]?.items || []} />
                                     </div>
@@ -1968,7 +1999,7 @@ export default function App() {
                                {currentSlide?.type === 'carousel-panel' && (
                                  <div className="space-y-6 w-full">
                                    <h2 className={cn('text-3xl font-extrabold', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
-                                   <ReactMarkdown className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')}>{sanitizeContent(currentSlide.content)}</ReactMarkdown>
+                                   <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                    <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : '')}>
                                      <CarouselPanel cards={currentSlide.data?.cards || currentSlide.data?.items || currentSlide.interactions?.[0]?.cards || currentSlide.interactions?.[0]?.items || []} />
                                    </div>
@@ -1986,7 +2017,7 @@ export default function App() {
                                {['hotspot', 'drop-targets', 'memory-match'].includes(currentSlide?.type) && (
                                   <div className="space-y-6 w-full">
                                      <h2 className={cn('text-3xl font-extrabold', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
-                                     <ReactMarkdown className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')}>{sanitizeContent(currentSlide.content)}</ReactMarkdown>
+                                     <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                      <div className="p-8 border-2 border-dashed border-indigo-400/50 bg-indigo-500/10 rounded-2xl text-center">
                                        <Gamepad2 className="w-12 h-12 text-indigo-400 mx-auto mb-4 opacity-50" />
                                        <p className="text-xl font-bold text-indigo-300">[{currentSlide.type}] interaction is under construction.</p>
