@@ -389,43 +389,59 @@ export default function App() {
       }
     }
   };
-
-
 /**
    * Client-side objective reformatter.
-   * Strips any existing Given.../to... wrappers and re-applies the target format.
-   * This runs synchronously so format buttons give instant feedback even without API access.
+   * Extracts the core "verb + outcome" from any AB/ABC/ABCD formatted string,
+   * then re-wraps it cleanly in the target format.
+   *
+   * Strip order:  Given[condition],  →  The learner will  →  trailing .  →  trailing degree clause  →  trailing .
+   * Reapply:       AB / ABC / ABCD wrappers
    */
   const reformatObjectivesClientSide = (
     objectives: (string | TerminalObjectiveGroup)[],
     fmt: string
   ): TerminalObjectiveGroup[] => {
-    const applyFormat = (raw: string): string => {
-      // Strip existing format wrappers to get the core action
-      let core = raw.trim();
-      // Remove leading "Given [...], " prefix
-      core = core.replace(/^Given [^,]+,\s*/i, '');
-      // Remove leading "The learner will "
-      core = core.replace(/^The learner will\s*/i, '');
-      // Remove trailing degree clause " to [a measurable standard]." / " with X% accuracy." etc.
-      core = core.replace(/\s+(to\s+[^.]+|with\s+\d+%[^.]*)\.?$/i, '');
-      core = core.replace(/\.+$/, '').trim();
 
-      // Re-apply the selected format
+    const applyFormat = (raw: string): string => {
+      let s = raw.trim();
+
+      // ── 1. Capture + strip "Given [condition], " ──────────────────────────
+      // Preserve the original condition so ABC→ABCD doesn't lose specificity
+      let condition = 'course content';
+      const givenMatch = s.match(/^Given\s+([^,]+),\s+/i);
+      if (givenMatch) {
+        condition = givenMatch[1].trim();            // e.g. "a workplace scenario"
+        s = s.slice(givenMatch[0].length).trim();   // strip the entire "Given ..., " part
+      }
+
+      // ── 2. Strip "The learner will " / "the learner will " ────────────────
+      s = s.replace(/^[Tt]he learner will\s+/i, '').trim();
+
+      // ── 3. Strip trailing period ──────────────────────────────────────────
+      s = s.replace(/\.+$/, '').trim();
+
+      // ── 4. Strip trailing degree / standard clause ────────────────────────
+      // Matches:  "to a measurable standard"
+      //           "to [degree]."
+      //           "with at least 80% accuracy"   ← the previously broken case
+      //           "with 90% accuracy"
+      //           "with no more than one error"
+      // Strategy: greedily remove everything from " to " or " with " to the end
+      s = s.replace(/\s+(?:to\s+\S|with\s+\S).+$/i, '').trim();
+
+      // ── 5. Strip any trailing period that snuck through ───────────────────
+      s = s.replace(/\.+$/, '').trim();
+
+      // ── 6. Re-apply the selected format ──────────────────────────────────
       switch (fmt) {
         case 'AB':
-          return `The learner will ${core}.`;
-        case 'ABC': {
-          // Derive a simple condition from the core verb phrase
-          const condition = 'Given course content';
-          return `${condition}, the learner will ${core}.`;
-        }
-        case 'ABCD': {
-          const condition = 'Given course content';
-          return `${condition}, the learner will ${core} with at least 80% accuracy.`;
-        }
+          return `The learner will ${s}.`;
+        case 'ABC':
+          return `Given ${condition}, the learner will ${s}.`;
+        case 'ABCD':
+          return `Given ${condition}, the learner will ${s} with at least 80% accuracy.`;
         default:
-          return `The learner will ${core}.`;
+          return `The learner will ${s}.`;
       }
     };
 
@@ -439,6 +455,8 @@ export default function App() {
       };
     });
   };
+
+
 
   const handleSuggestObjectives = async () => {
     if (!prompt && !courseTitle) return;
