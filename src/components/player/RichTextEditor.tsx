@@ -1,8 +1,12 @@
 /**
  * RichTextEditor — Tiptap-based WYSIWYG editor for slide text editing.
  * Supports Bold, Italic, Underline, color swatches, and plain text export.
+ *
+ * IMPORTANT: Incoming `value` may be either raw Markdown or HTML.
+ * We convert Markdown → HTML before passing to Tiptap so that **bold**
+ * becomes <strong>bold</strong> etc., preventing mixed-syntax output.
  */
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
@@ -22,14 +26,61 @@ const COLORS = [
   { label: 'Black',   value: '#000000' },
 ];
 
+/**
+ * Converts a Markdown string to basic HTML understood by Tiptap.
+ * If the value is already HTML (contains tags) it is returned as-is.
+ */
+function markdownToHtml(md: string): string {
+  if (!md) return '';
+  // If it's already HTML, don't double-convert
+  if (/<[a-z][\s\S]*>/i.test(md.trim())) return md;
+
+  let html = md
+    // Headings (##, ###)
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    // Bold + Italic (***text***)
+    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+    // Bold (**text**)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    // Italic (*text*)
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    // Horizontal rule
+    .replace(/^---$/gm, '<hr />')
+    // Unordered list items (- item or * item)
+    .replace(/^[*-] (.+)$/gm, '<li>$1</li>')
+    // Ordered list items (1. item)
+    .replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+
+  // Wrap consecutive <li> in <ul>
+  html = html.replace(/(<li>[\s\S]+?<\/li>)(\n<li>[\s\S]+?<\/li>)*/g, (match) => `<ul>${match}</ul>`);
+
+  // Wrap plain text lines in <p> (lines not already wrapped in a block tag)
+  html = html
+    .split('\n')
+    .map(line => {
+      const trimmed = line.trim();
+      if (!trimmed) return '';
+      if (/^<(h[1-6]|ul|ol|li|hr|p|blockquote)/i.test(trimmed)) return trimmed;
+      return `<p>${trimmed}</p>`;
+    })
+    .filter(Boolean)
+    .join('\n');
+
+  return html || `<p>${md}</p>`;
+}
+
 interface Props {
-  value: string;          // HTML string
+  value: string;          // Markdown or HTML string
   onChange: (html: string) => void;
   placeholder?: string;
   minRows?: number;
 }
 
 export function RichTextEditor({ value, onChange, placeholder = 'Edit slide content...', minRows = 8 }: Props) {
+  const initialHtml = markdownToHtml(value);
+
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -37,7 +88,7 @@ export function RichTextEditor({ value, onChange, placeholder = 'Edit slide cont
       TextStyle,
       Color,
     ],
-    content: value || '',
+    content: initialHtml,
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
     },
@@ -48,6 +99,17 @@ export function RichTextEditor({ value, onChange, placeholder = 'Edit slide cont
       },
     },
   });
+
+  // Sync editor content when value prop changes externally (different slide opened)
+  useEffect(() => {
+    if (!editor) return;
+    const current = editor.getHTML();
+    const incoming = markdownToHtml(value);
+    // Only update if genuinely different to avoid cursor jumping
+    if (current !== incoming) {
+      editor.commands.setContent(incoming, false);
+    }
+  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!editor) return null;
 
