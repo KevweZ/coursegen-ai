@@ -1,18 +1,24 @@
 /**
  * RichTextEditor — Tiptap-based WYSIWYG editor for slide text editing.
- * Supports Bold, Italic, Underline, color swatches, and plain text export.
  *
- * IMPORTANT: Incoming `value` may be either raw Markdown or HTML.
- * We convert Markdown → HTML before passing to Tiptap so that **bold**
- * becomes <strong>bold</strong> etc., preventing mixed-syntax output.
+ * Key design decisions:
+ * - markdownToHtml() converts Markdown → HTML before loading into Tiptap
+ *   so existing **bold** etc. render correctly in the editor from the start.
+ * - isInternalUpdate ref prevents the useEffect content-sync from calling
+ *   setContent() when the change came from inside the editor (toolbar button /
+ *   typing), which was previously resetting formatting commands immediately.
+ * - Heading dropdown lets the user choose Normal / H1 / H2 / H3.
  */
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import { TextStyle } from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
-import { Bold, Italic, Underline as UnderlineIcon, List, ListOrdered, Heading2, Minus } from 'lucide-react';
+import {
+  Bold, Italic, Underline as UnderlineIcon,
+  List, ListOrdered, Minus, ChevronDown,
+} from 'lucide-react';
 import { cn } from '../../lib/utils';
 
 const COLORS = [
@@ -26,37 +32,35 @@ const COLORS = [
   { label: 'Black',   value: '#000000' },
 ];
 
+const HEADING_OPTIONS = [
+  { label: 'Normal',    value: 0 },
+  { label: 'Heading 1', value: 1 },
+  { label: 'Heading 2', value: 2 },
+  { label: 'Heading 3', value: 3 },
+] as const;
+
 /**
  * Converts a Markdown string to basic HTML understood by Tiptap.
  * If the value is already HTML (contains tags) it is returned as-is.
  */
 function markdownToHtml(md: string): string {
   if (!md) return '';
-  // If it's already HTML, don't double-convert
   if (/<[a-z][\s\S]*>/i.test(md.trim())) return md;
 
   let html = md
-    // Headings (##, ###)
     .replace(/^### (.+)$/gm, '<h3>$1</h3>')
     .replace(/^## (.+)$/gm, '<h2>$1</h2>')
     .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    // Bold + Italic (***text***)
     .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
-    // Bold (**text**)
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    // Italic (*text*)
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    // Horizontal rule
     .replace(/^---$/gm, '<hr />')
-    // Unordered list items (- item or * item)
     .replace(/^[*-] (.+)$/gm, '<li>$1</li>')
-    // Ordered list items (1. item)
     .replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
 
-  // Wrap consecutive <li> in <ul>
-  html = html.replace(/(<li>[\s\S]+?<\/li>)(\n<li>[\s\S]+?<\/li>)*/g, (match) => `<ul>${match}</ul>`);
+  html = html.replace(/(<li>[\s\S]+?<\/li>)(\n<li>[\s\S]+?<\/li>)*/g,
+    (match) => `<ul>${match}</ul>`);
 
-  // Wrap plain text lines in <p> (lines not already wrapped in a block tag)
   html = html
     .split('\n')
     .map(line => {
@@ -72,7 +76,7 @@ function markdownToHtml(md: string): string {
 }
 
 interface Props {
-  value: string;          // Markdown or HTML string
+  value: string;
   onChange: (html: string) => void;
   placeholder?: string;
   minRows?: number;
@@ -80,16 +84,15 @@ interface Props {
 
 export function RichTextEditor({ value, onChange, placeholder = 'Edit slide content...', minRows = 8 }: Props) {
   const initialHtml = markdownToHtml(value);
+  /** True while a change is coming FROM inside the editor (prevents useEffect loop) */
+  const isInternalUpdate = useRef(false);
+  const [headingOpen, setHeadingOpen] = useState(false);
 
   const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Underline,
-      TextStyle,
-      Color,
-    ],
+    extensions: [StarterKit, Underline, TextStyle, Color],
     content: initialHtml,
     onUpdate: ({ editor }) => {
+      isInternalUpdate.current = true;
       onChange(editor.getHTML());
     },
     editorProps: {
@@ -100,39 +103,106 @@ export function RichTextEditor({ value, onChange, placeholder = 'Edit slide cont
     },
   });
 
-  // Sync editor content when value prop changes externally (different slide opened)
+  /**
+   * Sync the editor when `value` changes externally (opening a different slide).
+   * Skip the sync when the change came from within the editor itself
+   * (isInternalUpdate flag) — otherwise formatting commands are immediately undone.
+   */
   useEffect(() => {
     if (!editor) return;
-    const current = editor.getHTML();
-    const incoming = markdownToHtml(value);
-    // Only update if genuinely different to avoid cursor jumping
-    if (current !== incoming) {
-      editor.commands.setContent(incoming, false);
+    if (isInternalUpdate.current) {
+      isInternalUpdate.current = false;
+      return;
     }
+    const incoming = markdownToHtml(value);
+    // Always sync on external changes (slide switch)
+    editor.commands.setContent(incoming, false);
   }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!editor) return null;
 
-  const ToolBtn = ({ onClick, active, title, children }: { onClick: () => void; active?: boolean; title: string; children: React.ReactNode }) => (
+  /** Which heading level is active (0 = paragraph) */
+  const activeHeading =
+    HEADING_OPTIONS.find(h => h.value !== 0 && editor.isActive('heading', { level: h.value }))
+    ?? HEADING_OPTIONS[0]; // Normal
+
+  const ToolBtn = ({
+    onClick, active, title, children,
+  }: { onClick: () => void; active?: boolean; title: string; children: React.ReactNode }) => (
     <button
       type="button"
-      onClick={onClick}
+      onMouseDown={e => {
+        // Prevent the editor from losing focus when clicking toolbar buttons
+        e.preventDefault();
+        onClick();
+      }}
       title={title}
       className={cn(
         'p-1.5 rounded-lg transition-colors text-sm font-bold',
         active
           ? 'bg-indigo-500/30 text-indigo-300'
-          : 'text-slate-400 hover:bg-slate-700 hover:text-white'
+          : 'text-slate-400 hover:bg-slate-700 hover:text-white',
       )}
     >
       {children}
     </button>
   );
 
+  const applyHeading = (level: number) => {
+    setHeadingOpen(false);
+    if (level === 0) {
+      editor.chain().focus().setParagraph().run();
+    } else {
+      editor.chain().focus().toggleHeading({ level: level as 1 | 2 | 3 }).run();
+    }
+  };
+
   return (
     <div className="flex flex-col gap-2">
       {/* Formatting toolbar */}
       <div className="flex items-center gap-0.5 flex-wrap bg-slate-800 border border-slate-700 rounded-xl px-2 py-1.5">
+
+        {/* ── Heading dropdown ── */}
+        <div className="relative">
+          <button
+            type="button"
+            onMouseDown={e => { e.preventDefault(); setHeadingOpen(v => !v); }}
+            title="Heading level"
+            className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-bold text-slate-400 hover:bg-slate-700 hover:text-white transition-colors"
+          >
+            <span className="min-w-[46px] text-left">{activeHeading.label}</span>
+            <ChevronDown className="w-3 h-3 opacity-60" />
+          </button>
+          {headingOpen && (
+            <>
+              <div className="fixed inset-0 z-[499]" onMouseDown={() => setHeadingOpen(false)} />
+              <div className="absolute top-full left-0 mt-1 w-32 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-[500] overflow-hidden">
+                {HEADING_OPTIONS.map(h => (
+                  <button
+                    key={h.value}
+                    type="button"
+                    onMouseDown={e => { e.preventDefault(); applyHeading(h.value); }}
+                    className={cn(
+                      'w-full text-left px-3 py-2 text-xs font-bold transition-colors',
+                      activeHeading.value === h.value
+                        ? 'bg-indigo-500/20 text-indigo-300'
+                        : 'text-slate-300 hover:bg-slate-800',
+                      h.value === 1 && 'text-base',
+                      h.value === 2 && 'text-sm',
+                      h.value === 3 && 'text-xs',
+                    )}
+                  >
+                    {h.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="w-px h-5 bg-slate-600 mx-1" />
+
+        {/* ── Inline marks ── */}
         <ToolBtn title="Bold (Ctrl+B)" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()}>
           <Bold className="w-3.5 h-3.5" />
         </ToolBtn>
@@ -142,10 +212,10 @@ export function RichTextEditor({ value, onChange, placeholder = 'Edit slide cont
         <ToolBtn title="Underline (Ctrl+U)" active={editor.isActive('underline')} onClick={() => editor.chain().focus().toggleUnderline().run()}>
           <UnderlineIcon className="w-3.5 h-3.5" />
         </ToolBtn>
+
         <div className="w-px h-5 bg-slate-600 mx-1" />
-        <ToolBtn title="Heading" active={editor.isActive('heading', { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>
-          <Heading2 className="w-3.5 h-3.5" />
-        </ToolBtn>
+
+        {/* ── Lists ── */}
         <ToolBtn title="Bullet List" active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()}>
           <List className="w-3.5 h-3.5" />
         </ToolBtn>
@@ -155,23 +225,29 @@ export function RichTextEditor({ value, onChange, placeholder = 'Edit slide cont
         <ToolBtn title="Horizontal Rule" active={false} onClick={() => editor.chain().focus().setHorizontalRule().run()}>
           <Minus className="w-3.5 h-3.5" />
         </ToolBtn>
+
         <div className="w-px h-5 bg-slate-600 mx-1" />
-        {/* Color swatches */}
+
+        {/* ── Color swatches ── */}
         <span className="text-[10px] text-slate-500 font-bold mr-1">COLOR</span>
         {COLORS.map(c => (
           <button
             key={c.value}
             type="button"
             title={c.label}
-            onClick={() => editor.chain().focus().setColor(c.value).run()}
+            onMouseDown={e => { e.preventDefault(); editor.chain().focus().setColor(c.value).run(); }}
             className="w-5 h-5 rounded-full border-2 border-transparent hover:border-white transition-all shrink-0"
-            style={{ backgroundColor: c.value, outline: editor.isActive('textStyle', { color: c.value }) ? '2px solid #6366f1' : 'none', outlineOffset: '2px' }}
+            style={{
+              backgroundColor: c.value,
+              outline: editor.isActive('textStyle', { color: c.value }) ? '2px solid #6366f1' : 'none',
+              outlineOffset: '2px',
+            }}
           />
         ))}
         <button
           type="button"
           title="Remove color"
-          onClick={() => editor.chain().focus().unsetColor().run()}
+          onMouseDown={e => { e.preventDefault(); editor.chain().focus().unsetColor().run(); }}
           className="text-[10px] text-slate-500 hover:text-slate-300 ml-1 font-bold"
         >
           ✕
