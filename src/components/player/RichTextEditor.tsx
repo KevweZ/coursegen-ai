@@ -232,7 +232,7 @@ export function RichTextEditor({ value, onChange, placeholder = 'Edit slide cont
       </div>
 
       <div
-        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white focus-within:border-indigo-500 transition-all overflow-y-auto"
+        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white focus-within:border-indigo-500 transition-all overflow-y-auto tiptap-editor-wrapper"
         style={{ minHeight: `${minRows * 1.75}rem` }}
       >
         <EditorContent editor={editor} />

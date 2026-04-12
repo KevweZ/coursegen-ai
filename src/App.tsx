@@ -244,6 +244,8 @@ export default function App() {
   
   // Edit Drawer
   const [editDrawerOpen, setEditDrawerOpen] = useState(false);
+  /** Always-current ref so Save Changes captures the latest editingSlide even after async edits */
+  const editingSlideRef = useRef<any>(null);
   const [editDrawerTab, setEditDrawerTab] = useState<'text'|'audio'>('text');
 
   // Player / Game
@@ -1561,7 +1563,7 @@ export default function App() {
                   {/* Edit Text & Audio */}
                   <button
                     title="Edit Text & Audio — open the rich-text and narration editor for this slide"
-                    onClick={() => { setEditingSlide(currentSlide); setEditDrawerOpen(true); setEditDrawerTab('text'); }}
+                    onClick={() => { editingSlideRef.current = currentSlide; setEditingSlide(currentSlide); setEditDrawerOpen(true); setEditDrawerTab('text'); }}
                     className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-indigo-700/60 hover:bg-indigo-800/30 text-indigo-300 text-xs font-medium"
                   >
                     <Edit3 className="w-3.5 h-3.5" /><span className="hidden lg:inline">Edit Text &amp; Audio</span>
@@ -2266,7 +2268,11 @@ export default function App() {
                         <RichTextEditor
                           key={editingSlide.id}
                           value={editingSlide.content || ''}
-                          onChange={(html) => setEditingSlide({ ...editingSlide, content: html })}
+                          onChange={(html) => {
+                            const updated = { ...(editingSlideRef.current ?? editingSlide), content: html };
+                            editingSlideRef.current = updated;
+                            setEditingSlide(updated);
+                          }}
                           placeholder="Slide content... Use the toolbar for bold, italic, colors, and lists."
                         />
                       </div>
@@ -2379,17 +2385,18 @@ export default function App() {
                 {/* Footer */}
                 <div className="px-5 py-4 border-t border-slate-800 bg-slate-800/40 flex gap-3 flex-shrink-0">
                   <button
-                    onClick={() => setEditingSlide(null)}
+                    onClick={() => { editingSlideRef.current = null; setEditingSlide(null); }}
                     className="flex-1 px-4 py-2.5 rounded-xl border border-slate-700 text-slate-300 font-bold text-sm hover:bg-slate-800 transition-all"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={() => {
-                      if (course && editingSlide) {
+                      if (course && editingSlideRef.current) {
+                        const latest = editingSlideRef.current;
                         const updatedModules = course.modules.map((m: any) => ({
                           ...m,
-                          slides: m.slides.map((s: any) => s.id === editingSlide.id ? editingSlide : s)
+                          slides: m.slides.map((s: any) => s.id === latest.id ? latest : s)
                         }));
                         setCourse({ ...course, modules: updatedModules });
                       }

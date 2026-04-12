@@ -175,3 +175,69 @@
   color: #fca5a5 !important;
 }
 
+
+/* -- Tiptap Rich Text Editor — Visual Styles -- */
+/* These styles render headings, lists, and formatting visually inside the editor */
+.tiptap-editor-wrapper .ProseMirror h1 {
+  font-size: 1.875rem; /* text-3xl */
+  font-weight: 800;
+  line-height: 1.2;
+  margin-bottom: 0.75rem;
+  color: #f1f5f9;
+}
+.tiptap-editor-wrapper .ProseMirror h2 {
+  font-size: 1.5rem; /* text-2xl */
+  font-weight: 700;
+  line-height: 1.3;
+  margin-bottom: 0.5rem;
+  color: #e2e8f0;
+}
+.tiptap-editor-wrapper .ProseMirror h3 {
+  font-size: 1.25rem; /* text-xl */
+  font-weight: 600;
+  line-height: 1.4;
+  margin-bottom: 0.5rem;
+  color: #cbd5e1;
+}
+.tiptap-editor-wrapper .ProseMirror ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin: 0.5rem 0;
+}
+.tiptap-editor-wrapper .ProseMirror ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+  margin: 0.5rem 0;
+}
+.tiptap-editor-wrapper .ProseMirror li {
+  margin: 0.25rem 0;
+  color: #e2e8f0;
+}
+.tiptap-editor-wrapper .ProseMirror li > p {
+  margin: 0;
+}
+.tiptap-editor-wrapper .ProseMirror p {
+  margin-bottom: 0.5rem;
+}
+.tiptap-editor-wrapper .ProseMirror hr {
+  border-color: rgba(148, 163, 184, 0.2);
+  margin: 1rem 0;
+}
+.tiptap-editor-wrapper .ProseMirror strong {
+  font-weight: 700;
+  color: #f8fafc;
+}
+.tiptap-editor-wrapper .ProseMirror em {
+  font-style: italic;
+  color: #cbd5e1;
+}
+.tiptap-editor-wrapper .ProseMirror u {
+  text-decoration: underline;
+}
+.tiptap-editor-wrapper .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: #475569;
+  pointer-events: none;
+  height: 0;
+}
