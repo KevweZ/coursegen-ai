@@ -239,6 +239,9 @@ export default function App() {
   const [interactionTypes, setInteractionTypes] = useState<string[]>([]);
   const [gameTemplateIds, setGameTemplateIds] = useState<string[]>([]);
   const [voiceOverEnabled, setVoiceOverEnabled] = useState(true);
+  const [ttsVoice, setTtsVoice] = useState<string>('alloy');
+  // Per-slide TTS regeneration state
+  const [regenSlideId, setRegenSlideId] = useState<string | null>(null);
   const [soundEffectsEnabled, setSoundEffectsEnabled] = useState(true);
   const [includeObjectiveSlides, setIncludeObjectiveSlides] = useState(true);
   const [includeSummarySlides, setIncludeSummarySlides] = useState(true);
@@ -401,7 +404,7 @@ export default function App() {
       setStep('preview');
       // ── Kick off TTS generation in the background ──
       if (voiceOverEnabled) {
-        generateTTS(finalCourse, setCourse);
+        generateTTS(finalCourse, setCourse, ttsVoice);
       }
     } catch (e: any) {
       clearInterval(progressInterval);
@@ -1309,6 +1312,37 @@ export default function App() {
                            </button>
                          </div>
                        </div>
+
+                        {/* TTS Voice Picker — shown when voice-over is enabled */}
+                        {voiceOverEnabled && (
+                          <div className="mt-5 space-y-3">
+                            <div className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">AI Narrator Voice</div>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                              {([
+                                { id: 'alloy',   label: 'Alloy',   sub: 'Neutral · Balanced' },
+                                { id: 'echo',    label: 'Echo',    sub: 'Male · Measured' },
+                                { id: 'fable',   label: 'Fable',   sub: 'Male · Warm' },
+                                { id: 'onyx',    label: 'Onyx',    sub: 'Male · Deep' },
+                                { id: 'nova',    label: 'Nova',    sub: 'Female · Bright' },
+                                { id: 'shimmer', label: 'Shimmer', sub: 'Female · Soft' },
+                              ] as const).map(v => (
+                                <button
+                                  key={v.id}
+                                  onClick={() => setTtsVoice(v.id)}
+                                  className={cn(
+                                    'flex flex-col items-start px-3 py-2.5 rounded-xl border text-left transition-all',
+                                    ttsVoice === v.id
+                                      ? 'border-emerald-500 bg-emerald-500/10 text-emerald-300'
+                                      : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-600 hover:text-slate-300'
+                                  )}
+                                >
+                                  <span className="text-xs font-bold">{v.label}</span>
+                                  <span className="text-[10px] opacity-70 mt-0.5">{v.sub}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                      </div>
 
                      {/* Footer Actions — Player Properties + Generate */}
@@ -2125,16 +2159,62 @@ export default function App() {
                           );
                         })()}
                       </div>
-                      {/* Audio URL if available */}
-                      {editingSlide.audioUrl && (
-                        <div className="p-3 bg-slate-800 rounded-xl border border-slate-700">
-                          <p className="text-xs text-slate-400 font-bold mb-1">Current Audio File</p>
-                          <p className="text-xs text-emerald-400 break-all font-mono">{editingSlide.audioUrl}</p>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
+                        {/* Per-slide voice picker + regenerate */}
+                        {voiceOverEnabled && (
+                          <div className="space-y-3 pt-1">
+                            <div className="flex items-center gap-3">
+                              <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest shrink-0">Voice</label>
+                              <select
+                                value={ttsVoice}
+                                onChange={e => setTtsVoice(e.target.value)}
+                                className="flex-1 bg-slate-950 border border-emerald-700/40 rounded-lg px-3 py-1.5 text-emerald-200 text-xs font-bold outline-none focus:border-emerald-500 transition-all"
+                              >
+                                <option value="alloy">Alloy — Neutral / Balanced</option>
+                                <option value="echo">Echo — Male / Measured</option>
+                                <option value="fable">Fable — Male / Warm</option>
+                                <option value="onyx">Onyx — Male / Deep</option>
+                                <option value="nova">Nova — Female / Bright</option>
+                                <option value="shimmer">Shimmer — Female / Soft</option>
+                              </select>
+                            </div>
+                            <button
+                              disabled={regenSlideId === editingSlide?.id}
+                              onClick={async () => {
+                                if (!editingSlide) return;
+                                const text = editingSlide.voiceOverText || editingSlide.narration || editingSlide.content || '';
+                                if (!text) return;
+                                setRegenSlideId(editingSlide.id);
+                                try {
+                                  const { generateSlideTTS: genTTS } = await import('./services/ttsService');
+                                  const blobUrl = await genTTS(text, { voice: ttsVoice as any });
+                                  handleUpdateSlideMedia(editingSlide.id, { voiceOverUrl: blobUrl });
+                                  // Update editingSlide so the audio editor reflects the change
+                                  setEditingSlide({ ...editingSlide, voiceOverUrl: blobUrl });
+                                } catch (err: any) {
+                                  alert(`TTS error: ${err.message}`);
+                                } finally {
+                                  setRegenSlideId(null);
+                                }
+                              }}
+                              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-700/20 border border-emerald-600/40 text-emerald-300 font-bold text-xs hover:bg-emerald-700/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {regenSlideId === editingSlide?.id ? (
+                                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Generating audio…</>
+                              ) : (
+                                <><Mic className="w-3.5 h-3.5" /> Regenerate Audio for this Slide</>
+                              )}
+                            </button>
+                          </div>
+                        )}
+                        {/* Audio URL if available */}
+                        {(editingSlide?.voiceOverUrl || editingSlide?.audioUrl) && (
+                          <div className="p-3 bg-slate-800 rounded-xl border border-slate-700">
+                            <p className="text-xs text-emerald-400 font-bold">✅ Audio ready for this slide</p>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
 
                 {/* Footer */}
                 <div className="px-5 py-4 border-t border-slate-800 bg-slate-800/40 flex gap-3 flex-shrink-0">

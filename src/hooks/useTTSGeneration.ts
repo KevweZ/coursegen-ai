@@ -46,6 +46,7 @@ export function useTTSGeneration() {
   const generateTTS = useCallback(async (
     course: any,
     setCourse: (c: any) => void,
+    voice: string = 'alloy',
   ) => {
     if (!course?.modules) return;
 
@@ -104,7 +105,7 @@ export function useTTSGeneration() {
       }));
 
       try {
-        const blobUrl = await generateSlideTTS(narrationText);
+        const blobUrl = await generateSlideTTS(narrationText, { voice: voice as any });
         const loc = slideMap[slide.id];
         if (loc) {
           updatedCourse.modules[loc.mi].slides[loc.si].voiceOverUrl = blobUrl;
