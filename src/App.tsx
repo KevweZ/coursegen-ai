@@ -1899,7 +1899,19 @@ export default function App() {
                                       const file = e.target.files?.[0];
                                       if (!file) return;
                                       const url = URL.createObjectURL(file);
-                                      handleUpdateSlideMedia(currentSlide.id, { mediaUrl: url, imagePlaceholder: false });
+                                      // Add to FloatingImageCanvas so it's draggable, resizable, croppable
+                                      const newImg: FloatingImage = {
+                                        id: `fi-placeholder-${Date.now()}`,
+                                        url,
+                                        x: 40, y: 40, width: 320, height: 240,
+                                      };
+                                      setFloatingImagesMap(prev => ({
+                                        ...prev,
+                                        [currentSlide.id]: [...(prev[currentSlide.id] || []), newImg],
+                                      }));
+                                      // Clear the placeholder flag so the dashed box disappears
+                                      handleUpdateSlideMedia(currentSlide.id, { imagePlaceholder: false });
+                                      e.target.value = '';
                                     }}
                                   />
                                   <div className={cn(
@@ -1979,7 +1991,20 @@ export default function App() {
                     <div 
                       key={i} 
                       onClick={() => {
-                        handleUpdateSlideMedia(showImageGalleryForSlide, { mediaUrl: img.url, imagePlaceholder: false });
+                        const slideId = showImageGalleryForSlide;
+                        if (!slideId) return;
+                        // Add to FloatingImageCanvas so it's draggable, resizable, croppable
+                        const newImg: FloatingImage = {
+                          id: `fi-src-${Date.now()}`,
+                          url: img.url,
+                          x: 40, y: 40, width: 320, height: 240,
+                        };
+                        setFloatingImagesMap(prev => ({
+                          ...prev,
+                          [slideId]: [...(prev[slideId] || []), newImg],
+                        }));
+                        // Clear placeholder flag if present
+                        handleUpdateSlideMedia(slideId, { imagePlaceholder: false });
                         setShowImageGalleryForSlide(null);
                       }}
                       className="aspect-video bg-slate-800 rounded-xl overflow-hidden cursor-pointer hover:ring-4 hover:ring-indigo-500 transition-all border border-slate-700 group relative"
