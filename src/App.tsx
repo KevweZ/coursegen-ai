@@ -582,7 +582,7 @@ export default function App() {
                 <div className="absolute right-0 top-full mt-2 w-64 bg-slate-900 border border-purple-700/40 rounded-xl shadow-2xl z-[500] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
                   <div className="px-4 py-2.5 bg-purple-900/30 border-b border-purple-700/40 flex items-center gap-2">
                     <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-                    <p className="text-xs font-bold text-purple-300 uppercase tracking-widest">Sandbox — Dummy Course</p>
+                    <p className="text-xs font-bold text-purple-300 uppercase tracking-widest">Sandbox — Demo Course</p>
                   </div>
                   <div className="p-2 space-y-0.5">
                     {/* ── Course Details (sandbox) ── */}
