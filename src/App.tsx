@@ -129,7 +129,13 @@ const renderInstructionalText = (children: React.ReactNode, theme: string, isLis
 type AppStep = 'home' | 'details' | 'outline' | 'preview';
 type CourseType = 'quick' | 'standard' | 'comprehensive';
 
+/** Detects whether a string is HTML (from the rich-text editor) vs plain Markdown */
+const isHTML = (str: string) => /<[a-z][\s\S]*>/i.test(str?.trim() ?? '');
+
 const sanitizeContent = (content: string) => {
+  // HTML content from the rich-text editor must never be run through markdown
+  // cleanup regexes — return it untouched so SmartContent can render it correctly.
+  if (isHTML(content)) return content;
   return content
     .replace(/^[-*] \*\*.*\*\*:\s*$/gm, '') 
     .replace(/^[-*] \*\*\*\*:\s*/gm, '- ') 
@@ -140,8 +146,6 @@ const sanitizeContent = (content: string) => {
     .trim();
 };
 
-/** Detects whether a string is HTML (from the rich-text editor) vs plain Markdown */
-const isHTML = (str: string) => /<[a-z][\s\S]*>/i.test(str?.trim() ?? '');
 
 const SlideContent = ({ content, theme }: { content: string, theme: string }) => {
   if (isHTML(content)) {
@@ -1760,7 +1764,7 @@ export default function App() {
                                    </h1>
                                    {currentSlide.content && (
                                      <div className={cn('relative z-10 prose max-w-2xl mx-auto text-lg', theme !== 'light' ? 'prose-invert' : '')}>
-                                       <ReactMarkdown>{sanitizeContent(currentSlide.content)}</ReactMarkdown>
+                                       <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                      </div>
                                    )}
                                    <div className="relative z-10 mt-10 flex items-center gap-4">
