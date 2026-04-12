@@ -402,13 +402,41 @@ export default function App() {
         pathway, 
         preset, 
         fmt,
+        // Pass existing objectives for context so the AI knows the content areas,
+        // but the result fully REPLACES the current list (no merge) so multiple
+        // terminal objective groups returned by the AI all appear cleanly.
         learningObjectives.length > 0 ? learningObjectives : undefined
       );
-      setLearningObjectives([...new Set([...learningObjectives, ...suggestions])]);
+      // Replace objectives with the full AI-generated set
+      setLearningObjectives(suggestions);
     } catch (e) {
       console.error(e);
     } finally {
       setIsSuggesting(false);
+    }
+  };
+
+  /** Silently switch format and immediately re-run the AI refinement */
+  const handleFormatChange = async (fmt: string) => {
+    setObjectiveFormat(fmt);
+    if (learningObjectives.length > 0 && (courseTitle || prompt)) {
+      setIsSuggesting(true);
+      try {
+        const apiFormat = fmt === 'I Can' ? 'k12_ican' : (fmt as 'AB' | 'ABC' | 'ABCD');
+        const suggestions = await suggestLearningObjectives(
+          courseTitle || prompt,
+          courseDescription || prompt,
+          pathway,
+          preset,
+          apiFormat,
+          learningObjectives
+        );
+        setLearningObjectives(suggestions);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setIsSuggesting(false);
+      }
     }
   };
 
@@ -1053,54 +1081,97 @@ export default function App() {
                                   if (courseTitle === 'Demo Course: Advanced Cybersecurity') {
                                     setObjectiveFormat(fmt);
                                     if (fmt === 'AB') {
-                                       setLearningObjectives([{ 
-                                         terminalObjective: 'The learner will identify and respond to common cybersecurity threats.', 
-                                         enablingObjectives: ['The learner will identify common cybersecurity threats.', 'The learner will apply the NIST framework to risk assessment.', 'The learner will respond to security incidents effectively.'] 
-                                       }]);
+                                       setLearningObjectives([
+                                         { 
+                                           terminalObjective: 'The learner will identify the most appropriate response to a common cybersecurity threat.',
+                                           enablingObjectives: [
+                                             'The learner will recall the defining characteristics of common cybersecurity threat types.',
+                                             'The learner will describe the core principles of the NIST Cybersecurity Framework.',
+                                             'The learner will recognize indicators of a security incident in a given scenario.',
+                                           ]
+                                         },
+                                         {
+                                           terminalObjective: 'The learner will classify security controls into the correct NIST framework category.',
+                                           enablingObjectives: [
+                                             'The learner will list the five core functions of the NIST Cybersecurity Framework.',
+                                             'The learner will distinguish between preventive and detective security controls.',
+                                           ]
+                                         }
+                                       ]);
                                     } else if (fmt === 'ABC') {
-                                       setLearningObjectives([{ 
-                                         terminalObjective: 'Given a simulated network environment, the learner will identify and respond to common cybersecurity threats.', 
-                                         enablingObjectives: ['Given a list of attack vectors, the learner will identify common cybersecurity threats.', 'Given a risk scenario, the learner will apply the NIST framework.', 'Given an active breach, the learner will respond to security incidents.'] 
-                                       }]);
+                                       setLearningObjectives([
+                                         { 
+                                           terminalObjective: 'Given a list of cybersecurity threat scenarios, the learner will identify the most appropriate response to each threat.',
+                                           enablingObjectives: [
+                                             'The learner will recall the defining characteristics of phishing, malware, and social engineering attacks.',
+                                             'Given a risk scenario, the learner will describe the applicable NIST framework category.',
+                                             'Given a simulated incident report, the learner will recognize the indicators of a security breach.',
+                                           ]
+                                         },
+                                         {
+                                           terminalObjective: 'Given a set of organizational security controls, the learner will classify each control into the correct NIST framework category.',
+                                           enablingObjectives: [
+                                             'The learner will list the five core functions of the NIST Cybersecurity Framework.',
+                                             'Given two controls, the learner will distinguish whether each is preventive or detective.',
+                                           ]
+                                         }
+                                       ]);
                                     } else if (fmt === 'ABCD') {
-                                       setLearningObjectives([{ 
-                                         terminalObjective: 'Given a simulated network environment, the learner will identify and respond to common cybersecurity threats with 100% accuracy.', 
-                                         enablingObjectives: ['Given a list of attack vectors, the learner will identify common cybersecurity threats with zero false positives.', 'Given a risk scenario, the learner will apply the NIST framework according to federal guidelines.', 'Given an active breach, the learner will respond to security incidents within a 15-minute SLA.'] 
-                                       }]);
+                                       setLearningObjectives([
+                                         { 
+                                           terminalObjective: 'Given a set of five cybersecurity threat scenarios, the learner will identify the most appropriate response to each threat, achieving a score of 80% or higher.',
+                                           enablingObjectives: [
+                                             'The learner will recall at least four defining characteristics of phishing, malware, and social engineering attacks.',
+                                             'Given a risk scenario, the learner will describe the applicable NIST framework category with no more than one error.',
+                                             'Given a simulated incident report, the learner will recognize all primary indicators of a security breach.',
+                                           ]
+                                         },
+                                         {
+                                           terminalObjective: 'Given a list of ten organizational security controls, the learner will classify each control into the correct NIST framework category with 90% accuracy.',
+                                           enablingObjectives: [
+                                             'The learner will list all five core functions of the NIST Cybersecurity Framework without reference materials.',
+                                             'Given two controls, the learner will distinguish whether each is preventive or detective with 100% accuracy.',
+                                           ]
+                                         }
+                                       ]);
                                     } else {
-                                       setLearningObjectives([{ 
-                                         terminalObjective: 'Identify and respond to common cybersecurity threats effectively using industry-standard frameworks.', 
-                                         enablingObjectives: ['Identify common cybersecurity threats', 'Apply the NIST framework to risk assessment', 'Respond to security incidents effectively'] 
-                                       }]);
-                                    }
-                                  } else if (fmt !== objectiveFormat && learningObjectives.length > 0) {
-                                    if (window.confirm(`Optimize current objectives for the ${fmt} format?`)) {
-                                      setObjectiveFormat(fmt);
-                                      handleSuggestObjectives();
-                                    } else {
-                                      setObjectiveFormat(fmt);
+                                       setLearningObjectives([
+                                         { 
+                                           terminalObjective: 'The learner will identify the most appropriate response to a common cybersecurity threat.',
+                                           enablingObjectives: [
+                                             'The learner will recall the defining characteristics of common cybersecurity threat types.',
+                                             'The learner will describe the core principles of the NIST Cybersecurity Framework.',
+                                           ]
+                                         }
+                                       ]);
                                     }
                                   } else {
-                                    setObjectiveFormat(fmt);
+                                    // For real courses: switch format and immediately re-refine with AI
+                                    handleFormatChange(fmt);
                                   }
                                 }}
                                 className={`px-3 py-1.5 rounded-lg text-sm font-bold border transition-all ${objectiveFormat === fmt ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-950 border-slate-700 text-slate-400 hover:text-white hover:border-slate-500'}`}
                               >
-                                {fmt}
+                                {isSuggesting && objectiveFormat === fmt ? (
+                                  <span className="flex items-center gap-1.5"><Loader2 className="w-3 h-3 animate-spin" />{fmt}</span>
+                                ) : fmt}
                               </button>
                             ))}
                           </div>
                         </div>
-                        {/* Optimize Objectives button — only when objectives exist (re-optimizes for current format) */}
-                        {learningObjectives.length > 0 && (
+                        {/* Refine Objectives button — always visible when title/description exists */}
+                        {(courseTitle || courseDescription || prompt) && (
                           <div className="px-6 pb-4 pt-2 bg-slate-900/50 border-b border-slate-800">
                             <button
                               onClick={handleSuggestObjectives}
-                              disabled={isSuggesting || (!prompt && !courseDescription)}
+                              disabled={isSuggesting || (!prompt && !courseDescription && !courseTitle)}
                               className="flex items-center justify-center gap-2 px-6 py-3 w-full bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 rounded-xl font-bold transition-colors border border-purple-500/30 disabled:opacity-50"
                             >
-                              {isSuggesting ? <Loader2 className="w-5 h-5 animate-spin"/> : <Wand2 className="w-5 h-5"/>}
-                              Optimize Objectives
+                              {isSuggesting ? (
+                                <><Loader2 className="w-5 h-5 animate-spin" />Refining Objectives...</>
+                              ) : (
+                                <><Wand2 className="w-5 h-5" />Refine Objectives</>
+                              )}
                             </button>
                           </div>
                         )}
