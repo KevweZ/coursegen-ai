@@ -670,12 +670,13 @@ export default function App() {
                         setCourseTitle('Advanced Workplace Communication');
                         setCourseDescription('A comprehensive eLearning course covering modern workplace communication strategies, active listening, cross-functional collaboration, and professional writing for remote and hybrid teams.');
                         setLearningObjectives([{
-                          terminalObjective: 'Apply effective communication strategies across diverse workplace scenarios to improve collaboration and team performance.',
+                          terminalObjective: 'Given a workplace scenario, the learner will identify the communication strategy that best supports effective collaboration and team performance.',
                           enablingObjectives: [
-                            'Identify barriers to effective workplace communication',
-                            'Apply active listening techniques in team settings',
-                            'Construct clear and professional written correspondence',
-                            'Facilitate productive virtual and in-person meetings',
+                            'The learner will recall the key characteristics of effective workplace communication.',
+                            'The learner will describe common barriers to communication in remote and hybrid team settings.',
+                            'The learner will distinguish between active listening behaviors and passive listening behaviors.',
+                            'The learner will recognize examples of clear and professional written correspondence.',
+                            'The learner will classify meeting facilitation techniques as productive or unproductive.',
                           ],
                         }]);
                         setPathway('corporate');
