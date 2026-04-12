@@ -89,6 +89,8 @@ import { cn } from './lib/utils';
 import { SlideEditorBar } from './components/player/SlideEditorBar';
 import { CourseNavSidebar } from './components/player/CourseNavSidebar';
 import { RichTextEditor } from './components/player/RichTextEditor';
+import { useTTSGeneration } from './hooks/useTTSGeneration';
+import { TTSProgressToast } from './components/TTSProgressToast';
 
 const renderInstructionalText = (children: React.ReactNode, theme: string, isList: boolean = false) => {
   let textToParse = '';
@@ -245,19 +247,24 @@ export default function App() {
 
   // Player Audio/Refs
   const player = usePlayer();
+  const { progress: ttsProgress, generateTTS, resetTTS } = useTTSGeneration();
   const allSlides = course ? course.modules.map((m: any) => m.slides).flat() : [];
   const currentSlide = allSlides[currentSlideIndex];
 
   useEffect(() => {
     if (currentSlide) {
       player.loadSlide(
-        currentSlide.id, 
-        currentSlide.audioUrl || null, 
-        voiceOverEnabled ? (currentSlide.voiceOverText || currentSlide.content) : null
+        currentSlide.id,
+        // Prefer real TTS-generated URL, fall back to legacy audioUrl
+        currentSlide.voiceOverUrl || currentSlide.audioUrl || null,
+        // Only use browser TTS fallback when voiceOverUrl isn't available yet
+        voiceOverEnabled && !currentSlide.voiceOverUrl
+          ? (currentSlide.voiceOverText || currentSlide.narration || null)
+          : null
       );
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentSlide?.id, voiceOverEnabled]);
+  }, [currentSlide?.id, currentSlide?.voiceOverUrl, voiceOverEnabled]);
 
   // Extract images
   useEffect(() => {
@@ -392,6 +399,10 @@ export default function App() {
       setCourse(finalCourse);
       setOriginalCourse(finalCourse);
       setStep('preview');
+      // ── Kick off TTS generation in the background ──
+      if (voiceOverEnabled) {
+        generateTTS(finalCourse, setCourse);
+      }
     } catch (e: any) {
       clearInterval(progressInterval);
       setError(e.message);
@@ -2171,6 +2182,12 @@ export default function App() {
             />
           )}
         </AnimatePresence>
+
+        {/* ── TTS Generation Progress Toast ── */}
+        <TTSProgressToast
+          progress={ttsProgress}
+          onDismiss={resetTTS}
+        />
 
         {/* Interaction Preview Modal */}
 
