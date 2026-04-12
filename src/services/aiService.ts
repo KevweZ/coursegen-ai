@@ -262,17 +262,30 @@ export async function suggestLearningObjectives(
 
   const existingStringified = JSON.stringify(existingObjectives || []);
   const userPrompt = existingObjectives && existingObjectives.length > 0
-    ? `Optimize these existing objectives (keep count at ${countRange} Terminal Objectives) for the course titled "${title}" with context: "${description}". Existing: ${existingStringified}`
-    : `Generate ${countRange} new Terminal Objective(s) containing Enabling Objectives for the course titled "${title}" with context: "${description}".`;
+    ? `REFORMAT and REFINE the following existing learning objectives into the "${manualFormat}" format for the course titled "${title}".
+
+Context: "${description}"
+
+Format rules to apply:
+- AB format: "The learner will [single Bloom's verb] [specific outcome]."
+- ABC format: "Given [condition], the learner will [single Bloom's verb] [outcome]."
+- ABCD format: "Given [condition], the learner will [single Bloom's verb] [outcome] to [measurable degree/standard]."
+
+Apply the '${manualFormat}' format to EVERY terminal objective AND every enabling objective string. Keep the same number of terminal objectives and the same content areas — only change the format and wording to match ${manualFormat}.
+
+Existing objectives (to reformat):
+${existingStringified}`
+    : `Generate ${countRange} new Terminal Objective(s) containing Enabling Objectives for the course titled "${title}" with context: "${description}". Use the '${manualFormat}' format for every objective string.`;
 
   const text = await executeAnthropicAI('complex', systemInstruction, userPrompt);
   const parsedData = parseJsonSafely(text) || { objectives: [] };
 
-  if (parsedData.objectives && Array.isArray(parsedData.objectives)) {
+  if (parsedData.objectives && Array.isArray(parsedData.objectives) && parsedData.objectives.length > 0) {
     // Enforce count trim if AI generated too many
     return parsedData.objectives.slice(0, countMax);
   }
-  return [];
+  // Fallback: return original objectives unchanged so we don't silently clear the list
+  return existingObjectives ? (existingObjectives as TerminalObjectiveGroup[]) : [];
 }
 
 export async function generateCourseOutline(
