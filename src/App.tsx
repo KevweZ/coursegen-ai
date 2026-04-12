@@ -1500,93 +1500,123 @@ export default function App() {
 
           {step === 'preview' && course && (
             <motion.div key="preview" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="w-full min-h-screen bg-slate-900 absolute top-0 left-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] bg-opacity-20 z-50 overflow-hidden flex flex-col">
-              {/* ── Preview Top Bar ── */}
-              <div className="h-14 px-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between shrink-0 gap-2">
-                <div className="flex items-center gap-3 min-w-0">
-                  <button onClick={() => setStep('home')} className="p-2 -ml-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0">
-                    <ChevronLeft className="w-5 h-5" />
-                  </button>
-                  <h1 className="text-white font-bold text-base truncate">{course.title}</h1>
-                </div>
-                <div className="flex items-center gap-1.5 flex-wrap shrink-0">
-                  {/* Desktop/Mobile Toggle */}
-                  <button
-                    title="Toggle Desktop / Mobile preview"
-                    onClick={() => setViewMode(viewMode === 'desktop' ? 'mobile' : 'desktop')}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-medium"
-                  >
-                    {viewMode === 'desktop' ? <Monitor className="w-3.5 h-3.5"/> : <Smartphone className="w-3.5 h-3.5"/>}
-                    <span className="hidden lg:inline">{viewMode === 'desktop' ? 'Desktop' : 'Mobile'}</span>
-                  </button>
-
-                  {/* Theme Dropdown */}
-                  <div className="relative">
-                    <button
-                      title="Change colour theme"
-                      onClick={() => setThemeDropdownOpen(o => !o)}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-medium"
-                    >
-                      {theme === 'dark' ? '🌑' : theme === 'light' ? '☀️' : '💜'}
-                      <span className="hidden lg:inline capitalize">{theme}</span>
-                      <ChevronDown className="w-3 h-3 opacity-60" />
+              {/* ── Preview Top Bar — Row 1: Navigation + title + view controls + export ── */}
+              <div className="px-3 bg-slate-900 border-b border-slate-800 shrink-0">
+                <div className="h-11 flex items-center justify-between gap-2">
+                  {/* Left: back + title */}
+                  <div className="flex items-center gap-2 min-w-0">
+                    <button onClick={() => setStep('home')} className="p-1.5 -ml-0.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0">
+                      <ChevronLeft className="w-4 h-4" />
                     </button>
-                    {themeDropdownOpen && (
-                      <>
-                        <div className="fixed inset-0 z-[200]" onClick={() => setThemeDropdownOpen(false)} />
-                        <div className="absolute left-0 top-full mt-1 z-[201] bg-slate-800 border border-slate-700 rounded-xl shadow-2xl overflow-hidden min-w-[130px]">
-                          {([['dark','🌑 Dark'],['light','☀️ Light'],['unified','💜 Unified']] as [string,string][]).map(([val, label]) => (
-                            <button
-                              key={val}
-                              onClick={() => { setTheme(val as any); setThemeDropdownOpen(false); }}
-                              className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-medium hover:bg-slate-700 transition-colors ${theme === val ? 'text-indigo-300' : 'text-slate-300'}`}
-                            >
-                              {theme === val && <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0"/>}
-                              {theme !== val && <span className="w-1.5 h-1.5 shrink-0"/>}
-                              {label}
-                            </button>
-                          ))}
-                        </div>
-                      </>
-                    )}
+                    <div className="flex items-center gap-2 min-w-0">
+                      <h1 className="text-white font-bold text-sm truncate max-w-[220px]">
+                        {isSandboxMode ? 'Demo Course' : course.title}
+                      </h1>
+                      <span className="hidden sm:inline px-1.5 py-0.5 rounded-md bg-slate-700 text-slate-400 text-[10px] font-bold uppercase tracking-wider shrink-0">Preview</span>
+                    </div>
                   </div>
 
-                  {/* ─ Editor buttons divider ─ */}
-                  <div className="w-px h-5 bg-slate-700 mx-0.5" />
+                  {/* Right: view mode + theme + divider + export + discard */}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {/* Desktop / Mobile toggle */}
+                    <button
+                      title="Toggle Desktop / Mobile preview"
+                      onClick={() => setViewMode(viewMode === 'desktop' ? 'mobile' : 'desktop')}
+                      className="flex items-center gap-1.5 px-2 py-1 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-medium"
+                    >
+                      {viewMode === 'desktop' ? <Monitor className="w-3.5 h-3.5"/> : <Smartphone className="w-3.5 h-3.5"/>}
+                      <span className="hidden lg:inline">{viewMode === 'desktop' ? 'Desktop' : 'Mobile'}</span>
+                    </button>
 
-                  {/* Reset Layout */}
+                    {/* Theme dropdown */}
+                    <div className="relative">
+                      <button
+                        title="Change colour theme"
+                        onClick={() => setThemeDropdownOpen(o => !o)}
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-medium"
+                      >
+                        {theme === 'dark' ? '🌑' : theme === 'light' ? '☀️' : '💜'}
+                        <span className="hidden lg:inline capitalize">{theme}</span>
+                        <ChevronDown className="w-3 h-3 opacity-60" />
+                      </button>
+                      {themeDropdownOpen && (
+                        <>
+                          <div className="fixed inset-0 z-[200]" onClick={() => setThemeDropdownOpen(false)} />
+                          <div className="absolute right-0 top-full mt-1 z-[201] bg-slate-800 border border-slate-700 rounded-xl shadow-2xl overflow-hidden min-w-[130px]">
+                            {([['dark','🌑 Dark'],['light','☀️ Light'],['unified','💜 Unified']] as [string,string][]).map(([val, label]) => (
+                              <button
+                                key={val}
+                                onClick={() => { setTheme(val as any); setThemeDropdownOpen(false); }}
+                                className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-medium hover:bg-slate-700 transition-colors ${theme === val ? 'text-indigo-300' : 'text-slate-300'}`}
+                              >
+                                {theme === val && <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0"/>}
+                                {theme !== val && <span className="w-1.5 h-1.5 shrink-0"/>}
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    <div className="w-px h-4 bg-slate-700 mx-0.5" />
+
+                    {/* Export SCORM */}
+                    <button
+                      title="Export SCORM — download a SCORM 1.2 zip package"
+                      onClick={exportScorm}
+                      className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs transition-colors shadow-lg shadow-indigo-500/20"
+                    >
+                      <Download className="w-3.5 h-3.5" /> <span className="hidden lg:inline">Export SCORM</span>
+                    </button>
+
+                    {/* Discard */}
+                    <button
+                      title="Discard — exit preview and return to the home screen"
+                      onClick={() => { setCourse(null); setStep('home'); }}
+                      className="p-1.5 rounded-lg border border-red-800/50 hover:bg-red-900/20 text-red-400 transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5"/>
+                    </button>
+                  </div>
+                </div>
+
+                {/* ── Row 2: Editing tools strip ── */}
+                <div className="h-9 flex items-center gap-1 pb-1">
+                  {/* Reset */}
                   <button
-                    title="Reset Layout — restore the course to its original generated state (clears all edits)"
+                    title="Reset — restore to original generated state"
                     onClick={() => { if (originalCourse) { setCourse(originalCourse); setCurrentSlideIndex(0); setQuizState({}); setFloatingImagesMap({}); setCourseBg(null); } }}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-amber-700/60 hover:bg-amber-800/20 text-amber-300 text-xs font-medium"
+                    className="flex items-center gap-1 px-2 py-1 rounded-md border border-amber-700/50 hover:bg-amber-800/20 text-amber-300 text-[11px] font-semibold"
                   >
-                    <RotateCw className="w-3.5 h-3.5" /><span className="hidden lg:inline">Reset</span>
+                    <RotateCw className="w-3 h-3" /><span>Reset</span>
                   </button>
+
+                  <div className="w-px h-4 bg-slate-700 mx-0.5" />
 
                   {/* Edit Text & Audio */}
                   <button
                     title="Edit Text & Audio — open the rich-text and narration editor for this slide"
                     onClick={() => { editingSlideRef.current = currentSlide; setEditingSlide(currentSlide); setEditDrawerOpen(true); setEditDrawerTab('text'); }}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-indigo-700/60 hover:bg-indigo-800/30 text-indigo-300 text-xs font-medium"
+                    className="flex items-center gap-1 px-2 py-1 rounded-md border border-indigo-700/50 hover:bg-indigo-800/20 text-indigo-300 text-[11px] font-semibold"
                   >
-                    <Edit3 className="w-3.5 h-3.5" /><span className="hidden lg:inline">Edit Text &amp; Audio</span>
+                    <Edit3 className="w-3 h-3" /><span>Edit Text &amp; Audio</span>
                   </button>
 
-                  {/* Change Background — popover with Upload + Solid Color options */}
+                  {/* Change Background */}
                   <div className="relative">
                     <button
                       onClick={() => setShowBgMenu(v => !v)}
                       title="Change Background — upload an image or choose a solid color"
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-pink-700/60 hover:bg-pink-800/20 text-pink-300 text-xs font-medium"
+                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-pink-700/50 hover:bg-pink-800/20 text-pink-300 text-[11px] font-semibold"
                     >
-                      <ImageIcon className="w-3.5 h-3.5" /><span className="hidden lg:inline">Change Bg</span>
+                      <ImageIcon className="w-3 h-3" /><span>Change Bg</span>
                     </button>
 
                     {showBgMenu && (
                       <>
-                        {/* Backdrop to close */}
                         <div className="fixed inset-0 z-[399]" onClick={() => setShowBgMenu(false)} />
                         <div className="absolute top-full left-0 mt-2 w-56 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-[400] overflow-hidden">
-                          {/* Upload option */}
                           <label
                             htmlFor="topbar-bg-upload"
                             className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-slate-800 text-slate-200 text-xs font-medium transition-colors"
@@ -1596,7 +1626,6 @@ export default function App() {
                             Upload Image
                           </label>
                           <div className="border-t border-slate-800" />
-                          {/* Solid color section */}
                           <div className="px-4 py-3">
                             <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest mb-2.5">Solid Color</p>
                             <div className="grid grid-cols-6 gap-1.5">
@@ -1631,19 +1660,19 @@ export default function App() {
                       </>
                     )}
 
-                    {/* Hidden file input — triggered by Upload label above */}
+                    {/* Hidden file input for background upload */}
                     <input id="topbar-bg-upload" type="file" accept="image/*" className="hidden"
                       onChange={e => { const f = e.target.files?.[0]; if (f) { setCourseBg(URL.createObjectURL(f)); e.target.value = ''; } }}
                     />
                   </div>
 
-                                    {/* Upload Image */}
+                  {/* Upload Image (floating) */}
                   <label
                     htmlFor="topbar-img-upload"
-                    title="Upload Image — add images to the current slide (draggable, resizable, croppable)"
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-emerald-700/60 hover:bg-emerald-800/20 text-emerald-300 text-xs font-medium cursor-pointer"
+                    title="Upload Image — add images to the current slide"
+                    className="flex items-center gap-1 px-2 py-1 rounded-md border border-emerald-700/50 hover:bg-emerald-800/20 text-emerald-300 text-[11px] font-semibold cursor-pointer"
                   >
-                    <Upload className="w-3.5 h-3.5" /><span className="hidden lg:inline">Upload Image</span>
+                    <Upload className="w-3 h-3" /><span>Upload Image</span>
                     <input id="topbar-img-upload" type="file" accept="image/*" multiple className="hidden"
                       onChange={e => {
                         if (e.target.files?.length) {
@@ -1661,43 +1690,24 @@ export default function App() {
 
                   {/* Source Image */}
                   <button
-                    title="Source Image — pick an image extracted from your uploaded source document"
+                    title="Source Image — pick an image from your uploaded source document"
                     onClick={() => setShowImageGalleryForSlide(currentSlide?.id || null)}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-teal-700/60 hover:bg-teal-800/20 text-teal-300 text-xs font-medium"
+                    className="flex items-center gap-1 px-2 py-1 rounded-md border border-teal-700/50 hover:bg-teal-800/20 text-teal-300 text-[11px] font-semibold"
                   >
-                    <Layers className="w-3.5 h-3.5" /><span className="hidden lg:inline">Source Image</span>
+                    <Layers className="w-3 h-3" /><span>Source Image</span>
                   </button>
+
+                  <div className="w-px h-4 bg-slate-700 mx-0.5" />
 
                   {/* Player Properties */}
                   <button
-                    title="Player Properties — configure player controls, TOC position, aspect ratio, and branding"
+                    title="Player Properties — configure controls, TOC, aspect ratio, branding"
                     onClick={() => setShowPlayerProperties(true)}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-orange-700/60 hover:bg-orange-800/20 text-orange-300 text-xs font-medium"
+                    className="flex items-center gap-1 px-2 py-1 rounded-md border border-orange-700/50 hover:bg-orange-800/20 text-orange-300 text-[11px] font-semibold"
                   >
-                    <Settings2 className="w-3.5 h-3.5" /><span className="hidden lg:inline">Player Props</span>
-                  </button>
-
-                  {/* ─ Action buttons divider ─ */}
-                  <div className="w-px h-5 bg-slate-700 mx-0.5" />
-
-                  {/* Export SCORM */}
-                  <button
-                    title="Export SCORM — download a SCORM 1.2 zip package"
-                    onClick={exportScorm}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs transition-colors shadow-lg shadow-indigo-500/20"
-                  >
-                    <Download className="w-3.5 h-3.5" /> <span className="hidden lg:inline">Export SCORM</span>
-                  </button>
-                  {/* Discard */}
-                  <button
-                    title="Discard — exit preview and return to the home screen"
-                    onClick={() => { setCourse(null); setStep('home'); }}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-red-800/60 hover:bg-red-900/20 text-red-400 text-xs font-medium"
-                  >
-                    <X className="w-3.5 h-3.5"/><span className="hidden lg:inline">Discard</span>
+                    <Settings2 className="w-3 h-3" /><span>Player Props</span>
                   </button>
                 </div>
-
               </div>
 
               {/* ── Body: Sidebar + Main Player Area ── */}

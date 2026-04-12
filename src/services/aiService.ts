@@ -175,7 +175,15 @@ export async function analyzeUploadedFile(
   5. Suggest a recommended Preset: "quick" (<10 slides), "standard" (10-25), or "comprehensive" (25+).
   6. Recommend an objectiveFormat: "AB" (quick courses), "ABC" (standard), or "ABCD" (comprehensive). If it is a K-12/child audience, MUST suggest "k12_ican".
   7. Classify Content Types and Map Interactions. E.g. Concepts -> "flashcards", Processes -> "timeline", Comparisons -> "accordion", Matching -> "drag-drop-activity". Return an array of these recommended interaction strings.
-  8. GENERATE OBJECTIVES: You MUST default to ABCD format. Generate 2-4 Terminal Objectives (the "big picture" outcome). For each Terminal Objective, generate 2-4 Enabling Objectives (the specific knowledge/stepping stones to reach the terminal outcome).
+  8. GENERATE OBJECTIVES using Bloom's Taxonomy:
+     - For standard eLearning (assessments via MCQ), focus almost exclusively on the REMEMBERING and UNDERSTANDING domains.
+       * Remembering verbs: recall, identify, define, list, name, recognize, state, label, match, outline, retrieve
+       * Understanding verbs: describe, explain, summarize, classify, compare, interpret, paraphrase, categorize
+     - Only use APPLYING / ANALYZING / EVALUATING / CREATING verbs if the course is a software simulation or the learner will actually perform a procedure within the course environment.
+     - ONE VERB PER OBJECTIVE. Never write "define and apply" — that is two objectives. Each objective must describe exactly one measurable, observable behavior.
+     - Generate 2-4 Terminal Objectives (the high-level outcome the course achieves). For each, generate 2-4 Enabling Objectives (the individual knowledge/skill steps needed to reach it).
+     - Terminal Objective example format: "Given [a scenario/condition], the learner will [single Bloom's verb] [specific knowledge/skill] [to a measurable standard]."
+     - Enabling Objective example format: "The learner will [single Bloom's verb] [specific sub-skill or concept]."
   
   OUTPUT FORMAT: Return ONLY raw JSON:
   {
@@ -221,18 +229,33 @@ export async function suggestLearningObjectives(
   5. VALIDATION: Count your objectives before returning. If count is outside [${countMin}, ${countMax}], fix it.
 
   OUTPUT FORMAT: Return ONLY raw JSON: { "objectives": ["Teacher objective | I can..."] }`
-    : `You are an expert Instructional Designer with a PhD in Learning Science.
-  Your task is to generate or optimize learning objectives by mixing Bloom's Taxonomy levels.
+    : `You are an expert Instructional Designer with a PhD in Learning Science and certified expertise in Bloom's Taxonomy.
+  Your task is to generate or optimize learning objectives that follow evidence-based instructional design principles.
+
+  ══════════════════════════════════════
+  BLOOM'S TAXONOMY VERB GUIDANCE
+  ══════════════════════════════════════
+  Standard eLearning assessments (multiple-choice, matching, identification) can only validate REMEMBERING and UNDERSTANDING.
+  Use APPLYING, ANALYZING, EVALUATING, or CREATING ONLY when the course includes a simulated environment where learners actually perform the task and the eLearning itself evaluates the performance.
+
+  DOMAIN → PRIMARY VERBS (use these, not generic filler):
+  • Remembering: recall, identify, define, list, name, recognize, state, label, match, outline, retrieve, locate
+  • Understanding: describe, explain, summarize, classify, compare, contrast, interpret, paraphrase, categorize, distinguish, illustrate
+  • Applying (simulations only): apply, calculate, construct, demonstrate, execute, solve, use, produce, implement
+  • Analyzing (simulations only): analyze, differentiate, examine, break down, classify, compare, inspect, deconstruct
+  • Evaluating (simulations only): evaluate, judge, justify, critique, defend, prioritize, assess
+  • Creating (simulations only): design, formulate, develop, compose, construct, devise, generate
+
   CRITICAL CONSTRAINTS:
   1. COUNT: Generate ${countRange} objective(s). NEVER generate fewer than ${countMin} or more than ${countMax}.
   2. STRATEGY: ${preset.objectiveGenStrategy}
-  3. FORMAT REQUIRED: ${manualFormat}. IMPORTANT: BOTH the overall Terminal Objective AND every single Enabling Objective MUST individually and strictly adhere to this format string.
-     - ABCD: "Given [condition], the [audience] will [behavior] to [degree standard]."
-     - ABC: "Given [condition], the [audience] will [behavior]."
-     - AB: "The learner will [behavior] [specific outcome]."
-  4. VERBS: Use precise Bloom's verbs (Identify, Describe, Demonstrate, Compare, Analyze). NEVER: "understand", "learn about", "be familiar with".
-  5. BLOOM'S DISTRIBUTION: ${courseType === 'quick' ? 'Knowledge + Comprehension only' : courseType === 'standard' ? 'Mix Knowledge, Comprehension, Application' : 'Mix Application, Analysis, Synthesis, Evaluation'}.
-  6. TERMINAL VS ENABLING: Instead of a flat list, group the objectives. A "Terminal Objective" is the big picture goal. "Enabling Objectives" are the smaller steps needed to reach it. Ensure EACH Terminal Objective has 2-4 Enabling Objectives.
+  3. FORMAT REQUIRED: ${manualFormat}
+     - ABCD: "Given [condition], the learner will [single verb] [behavior/outcome] to [degree standard]."
+     - ABC: "Given [condition], the learner will [single verb] [behavior/outcome]."
+     - AB: "The learner will [single verb] [specific outcome]."
+  4. ONE VERB PER OBJECTIVE. NEVER combine verbs (e.g., NEVER "define and apply" — that is two objectives). Each objective must describe exactly ONE measurable, observable behavior.
+  5. TERMINAL vs ENABLING: A Terminal Objective is the high-level course outcome. Enabling Objectives are the individual knowledge/skill building blocks needed to achieve it. Ensure each Terminal Objective has 2-4 Enabling Objectives that logically scaffold toward it.
+  6. BLOOM'S LEVEL: ${courseType === 'quick' ? 'Use ONLY Remembering and Understanding verbs.' : courseType === 'standard' ? 'Use primarily Remembering and Understanding verbs. Apply only if content is procedural and the eLearning simulates the task.' : 'Use Remembering and Understanding as the base. Apply higher-order verbs only for simulation-based or hands-on procedural content.'}
   7. VALIDATION: Count your Terminal Objectives before returning. If the count is outside [${countMin}, ${countMax}], fix it.
 
   OUTPUT FORMAT: Return ONLY raw JSON: { "objectives": [{ "terminalObjective": "string", "enablingObjectives": ["string1", "string2"] }] }`;

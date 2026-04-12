@@ -1,12 +1,14 @@
 /**
  * RichTextEditor — Tiptap-based WYSIWYG editor for slide text editing.
  *
+ * Layout:
+ *   Row 1: Heading dropdown | Bold | Italic | Underline | Bullet List | Ordered List | HR
+ *   Row 2: Color swatches
+ *
  * Architecture note:
  * The parent passes `key={editingSlide.id}` so React remounts this component
- * whenever a different slide is opened. This means `content` is only ever
- * set ONCE (on mount via `initialHtml`), and Tiptap owns all subsequent state.
- * This avoids any external-sync useEffect that would fight the editor's own
- * state machine and silently undo formatting commands.
+ * whenever a different slide is opened. Tiptap owns all state from mount —
+ * no useEffect sync that would fight the editor's command queue.
  */
 import React, { useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
@@ -38,10 +40,6 @@ const HEADING_OPTIONS = [
   { label: 'Heading 3', value: 3 },
 ] as const;
 
-/**
- * Converts a Markdown string to basic HTML understood by Tiptap.
- * If the value is already HTML (contains tags) it is returned as-is.
- */
 function markdownToHtml(md: string): string {
   if (!md) return '';
   if (/<[a-z][\s\S]*>/i.test(md.trim())) return md;
@@ -86,8 +84,6 @@ export function RichTextEditor({ value, onChange, placeholder = 'Edit slide cont
 
   const editor = useEditor({
     extensions: [StarterKit, Underline, TextStyle, Color],
-    // Content is set ONCE on mount. Parent must use key={slideId} to remount
-    // when switching slides — this is the correct Tiptap pattern.
     content: markdownToHtml(value),
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
@@ -106,11 +102,6 @@ export function RichTextEditor({ value, onChange, placeholder = 'Edit slide cont
     HEADING_OPTIONS.find(h => h.value !== 0 && editor.isActive('heading', { level: h.value }))
     ?? HEADING_OPTIONS[0];
 
-  /**
-   * All toolbar interactions use onMouseDown + e.preventDefault().
-   * This keeps focus inside the editor so block-level commands (heading, list)
-   * have a valid selection to operate on.
-   */
   const ToolBtn = ({
     onPress, active, title, children,
   }: { onPress: () => void; active?: boolean; title: string; children: React.ReactNode }) => (
@@ -140,7 +131,8 @@ export function RichTextEditor({ value, onChange, placeholder = 'Edit slide cont
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-0.5 flex-wrap bg-slate-800 border border-slate-700 rounded-xl px-2 py-1.5">
+      {/* ── ROW 1: Structure & marks ── */}
+      <div className="flex items-center gap-0.5 flex-wrap bg-slate-800 border border-slate-700 rounded-t-xl border-b-0 px-2 py-1.5">
 
         {/* Heading dropdown */}
         <div className="relative">
@@ -203,17 +195,18 @@ export function RichTextEditor({ value, onChange, placeholder = 'Edit slide cont
         <ToolBtn title="Horizontal Rule" active={false} onPress={() => editor.chain().focus().setHorizontalRule().run()}>
           <Minus className="w-3.5 h-3.5" />
         </ToolBtn>
+      </div>
 
-        <div className="w-px h-5 bg-slate-600 mx-1" />
-
-        <span className="text-[10px] text-slate-500 font-bold mr-1">COLOR</span>
+      {/* ── ROW 2: Color palette ── */}
+      <div className="flex items-center gap-1.5 flex-wrap bg-slate-800/70 border border-slate-700 rounded-b-xl border-t-0 px-3 py-2">
+        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mr-1">Text Color</span>
         {COLORS.map(c => (
           <button
             key={c.value}
             type="button"
             title={c.label}
             onMouseDown={e => { e.preventDefault(); editor.chain().focus().setColor(c.value).run(); }}
-            className="w-5 h-5 rounded-full border-2 border-transparent hover:border-white transition-all shrink-0"
+            className="w-5 h-5 rounded-full border-2 border-transparent hover:border-white hover:scale-110 transition-all shrink-0"
             style={{
               backgroundColor: c.value,
               outline: editor.isActive('textStyle', { color: c.value }) ? '2px solid #6366f1' : 'none',
@@ -225,12 +218,13 @@ export function RichTextEditor({ value, onChange, placeholder = 'Edit slide cont
           type="button"
           title="Remove color"
           onMouseDown={e => { e.preventDefault(); editor.chain().focus().unsetColor().run(); }}
-          className="text-[10px] text-slate-500 hover:text-slate-300 ml-1 font-bold"
+          className="ml-1 px-2 py-0.5 rounded-md text-[10px] text-slate-500 hover:text-slate-300 hover:bg-slate-700 font-bold transition-colors"
         >
-          ✕
+          ✕ Reset
         </button>
       </div>
 
+      {/* Editor content area */}
       <div
         className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white focus-within:border-indigo-500 transition-all overflow-y-auto tiptap-editor-wrapper"
         style={{ minHeight: `${minRows * 1.75}rem` }}
