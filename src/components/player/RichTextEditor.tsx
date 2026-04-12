@@ -1,15 +1,14 @@
 /**
  * RichTextEditor — Tiptap-based WYSIWYG editor for slide text editing.
  *
- * Key design decisions:
- * - markdownToHtml() converts Markdown → HTML before loading into Tiptap
- *   so existing **bold** etc. render correctly in the editor from the start.
- * - isInternalUpdate ref prevents the useEffect content-sync from calling
- *   setContent() when the change came from inside the editor (toolbar button /
- *   typing), which was previously resetting formatting commands immediately.
- * - Heading dropdown lets the user choose Normal / H1 / H2 / H3.
+ * Architecture note:
+ * The parent passes `key={editingSlide.id}` so React remounts this component
+ * whenever a different slide is opened. This means `content` is only ever
+ * set ONCE (on mount via `initialHtml`), and Tiptap owns all subsequent state.
+ * This avoids any external-sync useEffect that would fight the editor's own
+ * state machine and silently undo formatting commands.
  */
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
@@ -83,16 +82,14 @@ interface Props {
 }
 
 export function RichTextEditor({ value, onChange, placeholder = 'Edit slide content...', minRows = 8 }: Props) {
-  const initialHtml = markdownToHtml(value);
-  /** True while a change is coming FROM inside the editor (prevents useEffect loop) */
-  const isInternalUpdate = useRef(false);
   const [headingOpen, setHeadingOpen] = useState(false);
 
   const editor = useEditor({
     extensions: [StarterKit, Underline, TextStyle, Color],
-    content: initialHtml,
+    // Content is set ONCE on mount. Parent must use key={slideId} to remount
+    // when switching slides — this is the correct Tiptap pattern.
+    content: markdownToHtml(value),
     onUpdate: ({ editor }) => {
-      isInternalUpdate.current = true;
       onChange(editor.getHTML());
     },
     editorProps: {
@@ -103,40 +100,24 @@ export function RichTextEditor({ value, onChange, placeholder = 'Edit slide cont
     },
   });
 
-  /**
-   * Sync the editor when `value` changes externally (opening a different slide).
-   * Skip the sync when the change came from within the editor itself
-   * (isInternalUpdate flag) — otherwise formatting commands are immediately undone.
-   */
-  useEffect(() => {
-    if (!editor) return;
-    if (isInternalUpdate.current) {
-      isInternalUpdate.current = false;
-      return;
-    }
-    const incoming = markdownToHtml(value);
-    // Always sync on external changes (slide switch)
-    editor.commands.setContent(incoming, false);
-  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
-
   if (!editor) return null;
 
-  /** Which heading level is active (0 = paragraph) */
   const activeHeading =
     HEADING_OPTIONS.find(h => h.value !== 0 && editor.isActive('heading', { level: h.value }))
-    ?? HEADING_OPTIONS[0]; // Normal
+    ?? HEADING_OPTIONS[0];
 
+  /**
+   * All toolbar interactions use onMouseDown + e.preventDefault().
+   * This keeps focus inside the editor so block-level commands (heading, list)
+   * have a valid selection to operate on.
+   */
   const ToolBtn = ({
-    onClick, active, title, children,
-  }: { onClick: () => void; active?: boolean; title: string; children: React.ReactNode }) => (
+    onPress, active, title, children,
+  }: { onPress: () => void; active?: boolean; title: string; children: React.ReactNode }) => (
     <button
       type="button"
-      onMouseDown={e => {
-        // Prevent the editor from losing focus when clicking toolbar buttons
-        e.preventDefault();
-        onClick();
-      }}
       title={title}
+      onMouseDown={e => { e.preventDefault(); onPress(); }}
       className={cn(
         'p-1.5 rounded-lg transition-colors text-sm font-bold',
         active
@@ -153,16 +134,15 @@ export function RichTextEditor({ value, onChange, placeholder = 'Edit slide cont
     if (level === 0) {
       editor.chain().focus().setParagraph().run();
     } else {
-      editor.chain().focus().toggleHeading({ level: level as 1 | 2 | 3 }).run();
+      editor.chain().focus().setHeading({ level: level as 1 | 2 | 3 }).run();
     }
   };
 
   return (
     <div className="flex flex-col gap-2">
-      {/* Formatting toolbar */}
       <div className="flex items-center gap-0.5 flex-wrap bg-slate-800 border border-slate-700 rounded-xl px-2 py-1.5">
 
-        {/* ── Heading dropdown ── */}
+        {/* Heading dropdown */}
         <div className="relative">
           <button
             type="button"
@@ -175,7 +155,7 @@ export function RichTextEditor({ value, onChange, placeholder = 'Edit slide cont
           </button>
           {headingOpen && (
             <>
-              <div className="fixed inset-0 z-[499]" onMouseDown={() => setHeadingOpen(false)} />
+              <div className="fixed inset-0 z-[499]" onMouseDown={e => { e.preventDefault(); setHeadingOpen(false); }} />
               <div className="absolute top-full left-0 mt-1 w-32 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-[500] overflow-hidden">
                 {HEADING_OPTIONS.map(h => (
                   <button
@@ -183,7 +163,7 @@ export function RichTextEditor({ value, onChange, placeholder = 'Edit slide cont
                     type="button"
                     onMouseDown={e => { e.preventDefault(); applyHeading(h.value); }}
                     className={cn(
-                      'w-full text-left px-3 py-2 text-xs font-bold transition-colors',
+                      'w-full text-left px-3 py-2 font-bold transition-colors',
                       activeHeading.value === h.value
                         ? 'bg-indigo-500/20 text-indigo-300'
                         : 'text-slate-300 hover:bg-slate-800',
@@ -202,33 +182,30 @@ export function RichTextEditor({ value, onChange, placeholder = 'Edit slide cont
 
         <div className="w-px h-5 bg-slate-600 mx-1" />
 
-        {/* ── Inline marks ── */}
-        <ToolBtn title="Bold (Ctrl+B)" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()}>
+        <ToolBtn title="Bold (Ctrl+B)" active={editor.isActive('bold')} onPress={() => editor.chain().focus().toggleBold().run()}>
           <Bold className="w-3.5 h-3.5" />
         </ToolBtn>
-        <ToolBtn title="Italic (Ctrl+I)" active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()}>
+        <ToolBtn title="Italic (Ctrl+I)" active={editor.isActive('italic')} onPress={() => editor.chain().focus().toggleItalic().run()}>
           <Italic className="w-3.5 h-3.5" />
         </ToolBtn>
-        <ToolBtn title="Underline (Ctrl+U)" active={editor.isActive('underline')} onClick={() => editor.chain().focus().toggleUnderline().run()}>
+        <ToolBtn title="Underline (Ctrl+U)" active={editor.isActive('underline')} onPress={() => editor.chain().focus().toggleUnderline().run()}>
           <UnderlineIcon className="w-3.5 h-3.5" />
         </ToolBtn>
 
         <div className="w-px h-5 bg-slate-600 mx-1" />
 
-        {/* ── Lists ── */}
-        <ToolBtn title="Bullet List" active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()}>
+        <ToolBtn title="Bullet List" active={editor.isActive('bulletList')} onPress={() => editor.chain().focus().toggleBulletList().run()}>
           <List className="w-3.5 h-3.5" />
         </ToolBtn>
-        <ToolBtn title="Numbered List" active={editor.isActive('orderedList')} onClick={() => editor.chain().focus().toggleOrderedList().run()}>
+        <ToolBtn title="Numbered List" active={editor.isActive('orderedList')} onPress={() => editor.chain().focus().toggleOrderedList().run()}>
           <ListOrdered className="w-3.5 h-3.5" />
         </ToolBtn>
-        <ToolBtn title="Horizontal Rule" active={false} onClick={() => editor.chain().focus().setHorizontalRule().run()}>
+        <ToolBtn title="Horizontal Rule" active={false} onPress={() => editor.chain().focus().setHorizontalRule().run()}>
           <Minus className="w-3.5 h-3.5" />
         </ToolBtn>
 
         <div className="w-px h-5 bg-slate-600 mx-1" />
 
-        {/* ── Color swatches ── */}
         <span className="text-[10px] text-slate-500 font-bold mr-1">COLOR</span>
         {COLORS.map(c => (
           <button
@@ -254,7 +231,6 @@ export function RichTextEditor({ value, onChange, placeholder = 'Edit slide cont
         </button>
       </div>
 
-      {/* Editor content area */}
       <div
         className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white focus-within:border-indigo-500 transition-all overflow-y-auto"
         style={{ minHeight: `${minRows * 1.75}rem` }}
