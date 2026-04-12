@@ -48,7 +48,8 @@ import {
   Music2,
   Settings2 as PlayerIcon,
   Shield,
-  ChevronDown
+  ChevronDown,
+  Ear
 } from 'lucide-react';
 import { 
   Accordion, 
@@ -242,6 +243,40 @@ export default function App() {
   const [ttsVoice, setTtsVoice] = useState<string>('alloy');
   // Per-slide TTS regeneration state
   const [regenSlideId, setRegenSlideId] = useState<string | null>(null);
+  // Voice preview state
+  const [previewingVoice, setPreviewingVoice] = useState<string | null>(null);
+  const voicePreviewCache = useRef<Map<string, string>>(new Map());
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  const previewVoice = async (voiceId: string) => {
+    if (previewingVoice) return; // already loading one
+    // Stop any currently playing preview
+    if (previewAudioRef.current) {
+      previewAudioRef.current.pause();
+      previewAudioRef.current = null;
+    }
+    // Use cache if available
+    if (voicePreviewCache.current.has(voiceId)) {
+      const audio = new Audio(voicePreviewCache.current.get(voiceId)!);
+      previewAudioRef.current = audio;
+      audio.play().catch(() => {});
+      return;
+    }
+    setPreviewingVoice(voiceId);
+    try {
+      const { generateSlideTTS } = await import('./services/ttsService');
+      const sampleText = `Hello! I'm ${voiceId.charAt(0).toUpperCase() + voiceId.slice(1)}, and I'll be your narrator for this course.`;
+      const blobUrl = await generateSlideTTS(sampleText, { voice: voiceId as any });
+      voicePreviewCache.current.set(voiceId, blobUrl);
+      const audio = new Audio(blobUrl);
+      previewAudioRef.current = audio;
+      audio.play().catch(() => {});
+    } catch (err: any) {
+      console.warn('[Voice Preview]', err.message);
+    } finally {
+      setPreviewingVoice(null);
+    }
+  };
   const [soundEffectsEnabled, setSoundEffectsEnabled] = useState(true);
   const [includeObjectiveSlides, setIncludeObjectiveSlides] = useState(true);
   const [includeSummarySlides, setIncludeSummarySlides] = useState(true);
@@ -1326,19 +1361,38 @@ export default function App() {
                                 { id: 'nova',    label: 'Nova',    sub: 'Female · Bright' },
                                 { id: 'shimmer', label: 'Shimmer', sub: 'Female · Soft' },
                               ] as const).map(v => (
-                                <button
-                                  key={v.id}
-                                  onClick={() => setTtsVoice(v.id)}
-                                  className={cn(
-                                    'flex flex-col items-start px-3 py-2.5 rounded-xl border text-left transition-all',
-                                    ttsVoice === v.id
-                                      ? 'border-emerald-500 bg-emerald-500/10 text-emerald-300'
-                                      : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-600 hover:text-slate-300'
-                                  )}
-                                >
-                                  <span className="text-xs font-bold">{v.label}</span>
-                                  <span className="text-[10px] opacity-70 mt-0.5">{v.sub}</span>
-                                </button>
+                                <div key={v.id} className="relative">
+                                  <button
+                                    onClick={() => setTtsVoice(v.id)}
+                                    className={cn(
+                                      'w-full flex flex-col items-start px-3 pt-2.5 pb-2 rounded-xl border text-left transition-all',
+                                      ttsVoice === v.id
+                                        ? 'border-emerald-500 bg-emerald-500/10 text-emerald-300'
+                                        : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-600 hover:text-slate-300'
+                                    )}
+                                  >
+                                    <span className="text-xs font-bold pr-5">{v.label}</span>
+                                    <span className="text-[10px] opacity-70 mt-0.5">{v.sub}</span>
+                                  </button>
+                                  {/* Ear preview button — top-right corner of card */}
+                                  <button
+                                    onClick={e => { e.stopPropagation(); previewVoice(v.id); }}
+                                    disabled={!!previewingVoice}
+                                    title={`Preview ${v.label} voice`}
+                                    className={cn(
+                                      'absolute top-1.5 right-1.5 w-5 h-5 rounded flex items-center justify-center transition-all',
+                                      previewingVoice === v.id
+                                        ? 'text-emerald-400'
+                                        : 'text-slate-500 hover:text-emerald-400 hover:bg-emerald-900/40',
+                                      'disabled:cursor-wait'
+                                    )}
+                                  >
+                                    {previewingVoice === v.id
+                                      ? <Loader2 className="w-3 h-3 animate-spin" />
+                                      : <Ear className="w-3 h-3" />
+                                    }
+                                  </button>
+                                </div>
                               ))}
                             </div>
                           </div>
