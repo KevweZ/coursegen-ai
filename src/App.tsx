@@ -1586,7 +1586,7 @@ export default function App() {
                 </div>
 
                 {/* ── Row 2: Editing tools strip ── */}
-                <div className="h-9 flex items-center gap-1 pb-1">
+                <div className="h-9 flex items-center justify-end gap-1 pb-1">
                   {/* Reset */}
                   <button
                     title="Reset — restore to original generated state"
