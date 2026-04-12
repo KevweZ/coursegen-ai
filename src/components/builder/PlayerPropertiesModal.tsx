@@ -40,7 +40,7 @@ export const defaultPlayerConfig: PlayerConfig = {
   theme: 'dark',
   tocPosition: 'sidebar-left',
   tocStartsCollapsed: false,
-  tocNumbering: 'icons',
+  tocNumbering: 'numbered',
   showTitle: true,
   courseTitle: 'My Course',
   showPlayPause: true,
