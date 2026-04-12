@@ -9,12 +9,29 @@ export const DUMMY_COURSE: CourseOutline = {
   description: 'A pre-built sandbox course containing every slide type and interaction component. Use this to test and debug the course player without uploading files or running AI generation.',
   learningObjectives: [
     {
-      terminalObjective: 'Navigate and interact with every component of the CourseGEN eLearning player.',
+      terminalObjective: 'Given a description of the CourseGEN player, the learner will identify each of its core components and their functions.',
       enablingObjectives: [
-        'Identify all slide types available in the player',
-        'Test interactive components including quizzes, accordions, and flashcards',
-        'Verify media and narration display correctly',
-        'Confirm branching scenario navigation works end-to-end',
+        'The learner will label the four layers of the CourseGEN player (Slide Canvas, Player Bar, Edit Drawer, Theme System).',
+        'The learner will describe the role of the Player Bar in controlling slide navigation.',
+        'The learner will distinguish between the three available theme modes: Dark, Light, and Unified.',
+        'The learner will recall the purpose of the Slide Canvas in rendering different slide types.',
+      ],
+    },
+    {
+      terminalObjective: 'Given a multiple-choice knowledge check, the learner will recognize the correct answer that reflects course content covered in each module.',
+      enablingObjectives: [
+        'The learner will identify which player component is responsible for slide navigation.',
+        'The learner will recall the number of theme modes supported by the CourseGEN player.',
+        'The learner will match each player component to its primary function.',
+      ],
+    },
+    {
+      terminalObjective: 'Given an interactive slide, the learner will describe how each exploratory interaction type presents information to the learner.',
+      enablingObjectives: [
+        'The learner will explain how the accordion interaction reveals content when a heading is selected.',
+        'The learner will define key player terminology using the flashcard interaction.',
+        'The learner will outline the sequence of events displayed in the timeline interaction.',
+        'The learner will summarize how branching scenarios require the learner to make decisions to progress.',
       ],
     },
   ],
