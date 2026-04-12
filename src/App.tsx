@@ -707,7 +707,7 @@ export default function App() {
                   loop 
                   muted 
                   playsInline
-                  className="absolute inset-0 w-full h-full object-cover object-top scale-90 opacity-30 mix-blend-screen pointer-events-none"
+                  className="absolute top-0 left-0 w-full h-auto scale-90 origin-top opacity-30 mix-blend-screen pointer-events-none"
                 />
                 <div className="absolute inset-0 bg-slate-900/60 pointer-events-none" />
               </div>
