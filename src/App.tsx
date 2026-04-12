@@ -1513,6 +1513,15 @@ export default function App() {
                   {/* ─ Editor buttons divider ─ */}
                   <div className="w-px h-5 bg-slate-700 mx-0.5" />
 
+                  {/* Reset Layout */}
+                  <button
+                    title="Reset Layout — restore the course to its original generated state (clears all edits)"
+                    onClick={() => { if (originalCourse) { setCourse(originalCourse); setCurrentSlideIndex(0); setQuizState({}); setFloatingImagesMap({}); setCourseBg(null); } }}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-amber-700/60 hover:bg-amber-800/20 text-amber-300 text-xs font-medium"
+                  >
+                    <RotateCw className="w-3.5 h-3.5" /><span className="hidden lg:inline">Reset</span>
+                  </button>
+
                   {/* Edit Text & Audio */}
                   <button
                     title="Edit Text & Audio — open the rich-text and narration editor for this slide"
@@ -1534,16 +1543,7 @@ export default function App() {
                     />
                   </label>
 
-                  {/* Reset Layout */}
-                  <button
-                    title="Reset Layout — restore the course to its original generated state (clears all edits)"
-                    onClick={() => { if (originalCourse) { setCourse(originalCourse); setCurrentSlideIndex(0); setQuizState({}); setFloatingImagesMap({}); setCourseBg(null); } }}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-amber-700/60 hover:bg-amber-800/20 text-amber-300 text-xs font-medium"
-                  >
-                    <RotateCw className="w-3.5 h-3.5" /><span className="hidden lg:inline">Reset</span>
-                  </button>
-
-                  {/* Upload Image */}
+                                    {/* Upload Image */}
                   <label
                     htmlFor="topbar-img-upload"
                     title="Upload Image — add images to the current slide (draggable, resizable, croppable)"
