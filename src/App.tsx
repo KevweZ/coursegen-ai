@@ -2204,33 +2204,45 @@ export default function App() {
                           const secs = Math.round((words / 130) * 60);
                           const mins = Math.floor(secs / 60);
                           const remainSecs = secs % 60;
-                          return (
-                            <div className="flex items-center gap-4 text-xs text-slate-500">
-                              <span>{words} words</span>
-                              <span>•</span>
-                              <span>~{mins > 0 ? `${mins}m ` : ''}{remainSecs}s read time @ 130 wpm</span>
-                            </div>
-                          );
-                        })()}
-                      </div>
+                           return (
+                             <div className="flex items-center gap-4 text-xs text-slate-500">
+                               <span>{words} words</span>
+                               <span>•</span>
+                               <span>~{mins > 0 ? `${mins}m ` : ''}{remainSecs}s read time @ 130 wpm</span>
+                             </div>
+                           );
+                         })()}
+                       </div>
                         {/* Per-slide voice picker + regenerate */}
                         {voiceOverEnabled && (
                           <div className="space-y-3 pt-1">
-                            <div className="flex items-center gap-3">
-                              <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest shrink-0">Voice</label>
-                              <select
-                                value={ttsVoice}
-                                onChange={e => setTtsVoice(e.target.value)}
-                                className="flex-1 bg-slate-950 border border-emerald-700/40 rounded-lg px-3 py-1.5 text-emerald-200 text-xs font-bold outline-none focus:border-emerald-500 transition-all"
-                              >
-                                <option value="alloy">Alloy — Neutral / Balanced</option>
-                                <option value="echo">Echo — Male / Measured</option>
-                                <option value="fable">Fable — Male / Warm</option>
-                                <option value="onyx">Onyx — Male / Deep</option>
-                                <option value="nova">Nova — Female / Bright</option>
-                                <option value="shimmer">Shimmer — Female / Soft</option>
-                              </select>
-                            </div>
+                            <div className="flex items-center gap-2">
+                               <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest shrink-0">Voice</label>
+                               <select
+                                 value={ttsVoice}
+                                 onChange={e => setTtsVoice(e.target.value)}
+                                 className="flex-1 bg-slate-950 border border-emerald-700/40 rounded-lg px-3 py-1.5 text-emerald-200 text-xs font-bold outline-none focus:border-emerald-500 transition-all"
+                               >
+                                 <option value="alloy">Alloy — Neutral / Balanced</option>
+                                 <option value="echo">Echo — Male / Measured</option>
+                                 <option value="fable">Fable — Male / Warm</option>
+                                 <option value="onyx">Onyx — Male / Deep</option>
+                                 <option value="nova">Nova — Female / Bright</option>
+                                 <option value="shimmer">Shimmer — Female / Soft</option>
+                               </select>
+                               {/* Ear preview button — previews the currently selected voice */}
+                               <button
+                                 onClick={() => previewVoice(ttsVoice)}
+                                 disabled={!!previewingVoice}
+                                 title={`Preview ${ttsVoice} voice`}
+                                 className="shrink-0 w-8 h-8 rounded-lg flex items-center justify-center bg-slate-800 hover:bg-emerald-700/40 border border-slate-700 hover:border-emerald-600 text-slate-400 hover:text-emerald-300 transition-all disabled:cursor-wait"
+                               >
+                                 {previewingVoice === ttsVoice
+                                   ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                   : <Ear className="w-3.5 h-3.5" />
+                                 }
+                               </button>
+                             </div>
                             <button
                               disabled={regenSlideId === editingSlide?.id}
                               onClick={async () => {
