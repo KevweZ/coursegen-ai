@@ -193,6 +193,7 @@ export default function App() {
   const [viewMode, setViewMode] = useState<'desktop' | 'mobile'>('desktop');
   const [theme, setTheme] = useState<'light' | 'dark' | 'unified'>('dark');
   const [courseBg, setCourseBg] = useState<string | null>(null);
+  const [showBgMenu, setShowBgMenu] = useState(false);
   
   const [showSettings, setShowSettings] = useState(false);
   const [editingSlide, setEditingSlide] = useState<any>(null);
@@ -1531,17 +1532,71 @@ export default function App() {
                     <Edit3 className="w-3.5 h-3.5" /><span className="hidden lg:inline">Edit Text &amp; Audio</span>
                   </button>
 
-                  {/* Change Background */}
-                  <label
-                    htmlFor="topbar-bg-upload"
-                    title="Change Background — upload a custom background image for the preview area"
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-pink-700/60 hover:bg-pink-800/20 text-pink-300 text-xs font-medium cursor-pointer"
-                  >
-                    <ImageIcon className="w-3.5 h-3.5" /><span className="hidden lg:inline">Change Bg</span>
+                  {/* Change Background — popover with Upload + Solid Color options */}
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowBgMenu(v => !v)}
+                      title="Change Background — upload an image or choose a solid color"
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-pink-700/60 hover:bg-pink-800/20 text-pink-300 text-xs font-medium"
+                    >
+                      <ImageIcon className="w-3.5 h-3.5" /><span className="hidden lg:inline">Change Bg</span>
+                    </button>
+
+                    {showBgMenu && (
+                      <>
+                        {/* Backdrop to close */}
+                        <div className="fixed inset-0 z-[399]" onClick={() => setShowBgMenu(false)} />
+                        <div className="absolute top-full left-0 mt-2 w-56 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-[400] overflow-hidden">
+                          {/* Upload option */}
+                          <label
+                            htmlFor="topbar-bg-upload"
+                            className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-slate-800 text-slate-200 text-xs font-medium transition-colors"
+                            onClick={() => setShowBgMenu(false)}
+                          >
+                            <Upload className="w-3.5 h-3.5 text-pink-400" />
+                            Upload Image
+                          </label>
+                          <div className="border-t border-slate-800" />
+                          {/* Solid color section */}
+                          <div className="px-4 py-3">
+                            <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest mb-2.5">Solid Color</p>
+                            <div className="grid grid-cols-6 gap-1.5">
+                              {[
+                                { color: '#0f172a', label: 'Slate 950' },
+                                { color: '#1e293b', label: 'Slate 800' },
+                                { color: '#334155', label: 'Slate 700' },
+                                { color: '#475569', label: 'Slate 600' },
+                                { color: '#f8fafc', label: 'White' },
+                                { color: '#e2e8f0', label: 'Light Gray' },
+                                { color: '#1e3a5f', label: 'Navy Blue' },
+                                { color: '#1d4ed8', label: 'Blue' },
+                                { color: '#4f46e5', label: 'Indigo' },
+                                { color: '#7c3aed', label: 'Purple' },
+                                { color: '#0f4c3a', label: 'Dark Green' },
+                                { color: '#7c2d12', label: 'Dark Red' },
+                              ].map(({ color, label }) => (
+                                <button
+                                  key={color}
+                                  title={label}
+                                  onClick={() => { setCourseBg(color); setShowBgMenu(false); }}
+                                  className="w-7 h-7 rounded-lg border-2 transition-all hover:scale-110 hover:border-white"
+                                  style={{
+                                    backgroundColor: color,
+                                    borderColor: courseBg === color ? '#fff' : 'transparent',
+                                  }}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Hidden file input — triggered by Upload label above */}
                     <input id="topbar-bg-upload" type="file" accept="image/*" className="hidden"
                       onChange={e => { const f = e.target.files?.[0]; if (f) { setCourseBg(URL.createObjectURL(f)); e.target.value = ''; } }}
                     />
-                  </label>
+                  </div>
 
                                     {/* Upload Image */}
                   <label
@@ -1628,9 +1683,13 @@ export default function App() {
                         ? 'flex flex-col flex-1 overflow-hidden'
                         : 'flex-1 flex items-center justify-center overflow-hidden'
                     )}
-                    style={{ backgroundImage: courseBg ? `url('${courseBg}')` : undefined }}
+                    style={{
+                      backgroundImage: courseBg && !courseBg.startsWith('#') ? `url('${courseBg}')` : undefined,
+                      backgroundColor: courseBg && courseBg.startsWith('#') ? courseBg : undefined,
+                    }}
                   >
-                    {courseBg && <div className="absolute inset-0 bg-slate-900/50 pointer-events-none" />}
+                    {/* Overlay only for image backgrounds */}
+                    {courseBg && !courseBg.startsWith('#') && <div className="absolute inset-0 bg-slate-900/50 pointer-events-none" />}
 
                   {/* Slide frame — aspect ratio driven by playerConfig.playerResolution */}
                   <div className={cn(`theme-${theme}`,
