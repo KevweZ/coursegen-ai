@@ -604,6 +604,7 @@ export default function App() {
                         setCourseType('standard');
                         setPreset('standard');
                         setIsSandboxMode(true);
+                        setShowPlayerProperties(false);
                         setStep('details');
                         setSandboxDropdownOpen(false);
                       }}
@@ -637,6 +638,7 @@ export default function App() {
                         setSandboxOutline(dummyOutline);
                         setOutlineDraft(dummyOutline as any);
                         setIsSandboxMode(true);
+                        setShowPlayerProperties(false);
                         setStep('outline');
                         setSandboxDropdownOpen(false);
                       }}
@@ -660,6 +662,7 @@ export default function App() {
                         setFloatingImagesMap({});
                         setCourseBg('/eLearning Template Backgrounds/Neutral/blue background coffee books_01.png');
                         setIsSandboxMode(true);
+                        setShowPlayerProperties(false);
                         setStep('preview');
                         setSandboxDropdownOpen(false);
                       }}
