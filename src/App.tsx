@@ -1078,77 +1078,9 @@ export default function App() {
                               <button
                                 key={fmt}
                                 onClick={() => {
-                                  if (courseTitle === 'Demo Course: Advanced Cybersecurity') {
-                                    setObjectiveFormat(fmt);
-                                    if (fmt === 'AB') {
-                                       setLearningObjectives([
-                                         { 
-                                           terminalObjective: 'The learner will identify the most appropriate response to a common cybersecurity threat.',
-                                           enablingObjectives: [
-                                             'The learner will recall the defining characteristics of common cybersecurity threat types.',
-                                             'The learner will describe the core principles of the NIST Cybersecurity Framework.',
-                                             'The learner will recognize indicators of a security incident in a given scenario.',
-                                           ]
-                                         },
-                                         {
-                                           terminalObjective: 'The learner will classify security controls into the correct NIST framework category.',
-                                           enablingObjectives: [
-                                             'The learner will list the five core functions of the NIST Cybersecurity Framework.',
-                                             'The learner will distinguish between preventive and detective security controls.',
-                                           ]
-                                         }
-                                       ]);
-                                    } else if (fmt === 'ABC') {
-                                       setLearningObjectives([
-                                         { 
-                                           terminalObjective: 'Given a list of cybersecurity threat scenarios, the learner will identify the most appropriate response to each threat.',
-                                           enablingObjectives: [
-                                             'The learner will recall the defining characteristics of phishing, malware, and social engineering attacks.',
-                                             'Given a risk scenario, the learner will describe the applicable NIST framework category.',
-                                             'Given a simulated incident report, the learner will recognize the indicators of a security breach.',
-                                           ]
-                                         },
-                                         {
-                                           terminalObjective: 'Given a set of organizational security controls, the learner will classify each control into the correct NIST framework category.',
-                                           enablingObjectives: [
-                                             'The learner will list the five core functions of the NIST Cybersecurity Framework.',
-                                             'Given two controls, the learner will distinguish whether each is preventive or detective.',
-                                           ]
-                                         }
-                                       ]);
-                                    } else if (fmt === 'ABCD') {
-                                       setLearningObjectives([
-                                         { 
-                                           terminalObjective: 'Given a set of five cybersecurity threat scenarios, the learner will identify the most appropriate response to each threat, achieving a score of 80% or higher.',
-                                           enablingObjectives: [
-                                             'The learner will recall at least four defining characteristics of phishing, malware, and social engineering attacks.',
-                                             'Given a risk scenario, the learner will describe the applicable NIST framework category with no more than one error.',
-                                             'Given a simulated incident report, the learner will recognize all primary indicators of a security breach.',
-                                           ]
-                                         },
-                                         {
-                                           terminalObjective: 'Given a list of ten organizational security controls, the learner will classify each control into the correct NIST framework category with 90% accuracy.',
-                                           enablingObjectives: [
-                                             'The learner will list all five core functions of the NIST Cybersecurity Framework without reference materials.',
-                                             'Given two controls, the learner will distinguish whether each is preventive or detective with 100% accuracy.',
-                                           ]
-                                         }
-                                       ]);
-                                    } else {
-                                       setLearningObjectives([
-                                         { 
-                                           terminalObjective: 'The learner will identify the most appropriate response to a common cybersecurity threat.',
-                                           enablingObjectives: [
-                                             'The learner will recall the defining characteristics of common cybersecurity threat types.',
-                                             'The learner will describe the core principles of the NIST Cybersecurity Framework.',
-                                           ]
-                                         }
-                                       ]);
-                                    }
-                                  } else {
-                                    // For real courses: switch format and immediately re-refine with AI
-                                    handleFormatChange(fmt);
-                                  }
+                                 // Always call the AI to refine objectives for the selected format
+                                 // (works the same way in sandbox/demo mode and real course creation)
+                                 handleFormatChange(fmt);
                                 }}
                                 className={`px-3 py-1.5 rounded-lg text-sm font-bold border transition-all ${objectiveFormat === fmt ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-950 border-slate-700 text-slate-400 hover:text-white hover:border-slate-500'}`}
                               >
