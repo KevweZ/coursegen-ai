@@ -391,6 +391,55 @@ export default function App() {
   };
 
 
+/**
+   * Client-side objective reformatter.
+   * Strips any existing Given.../to... wrappers and re-applies the target format.
+   * This runs synchronously so format buttons give instant feedback even without API access.
+   */
+  const reformatObjectivesClientSide = (
+    objectives: (string | TerminalObjectiveGroup)[],
+    fmt: string
+  ): TerminalObjectiveGroup[] => {
+    const applyFormat = (raw: string): string => {
+      // Strip existing format wrappers to get the core action
+      let core = raw.trim();
+      // Remove leading "Given [...], " prefix
+      core = core.replace(/^Given [^,]+,\s*/i, '');
+      // Remove leading "The learner will "
+      core = core.replace(/^The learner will\s*/i, '');
+      // Remove trailing degree clause " to [a measurable standard]." / " with X% accuracy." etc.
+      core = core.replace(/\s+(to\s+[^.]+|with\s+\d+%[^.]*)\.?$/i, '');
+      core = core.replace(/\.+$/, '').trim();
+
+      // Re-apply the selected format
+      switch (fmt) {
+        case 'AB':
+          return `The learner will ${core}.`;
+        case 'ABC': {
+          // Derive a simple condition from the core verb phrase
+          const condition = 'Given course content';
+          return `${condition}, the learner will ${core}.`;
+        }
+        case 'ABCD': {
+          const condition = 'Given course content';
+          return `${condition}, the learner will ${core} with at least 80% accuracy.`;
+        }
+        default:
+          return `The learner will ${core}.`;
+      }
+    };
+
+    return objectives.map(obj => {
+      if (typeof obj === 'string') {
+        return { terminalObjective: applyFormat(obj), enablingObjectives: [] };
+      }
+      return {
+        terminalObjective: applyFormat(obj.terminalObjective),
+        enablingObjectives: (obj.enablingObjectives || []).map(applyFormat),
+      };
+    });
+  };
+
   const handleSuggestObjectives = async () => {
     if (!prompt && !courseTitle) return;
     setIsSuggesting(true);
@@ -416,9 +465,17 @@ export default function App() {
     }
   };
 
-  /** Silently switch format and immediately re-run the AI refinement */
+  /** Switch format: apply client-side reformat IMMEDIATELY, then refine with AI in background */
   const handleFormatChange = async (fmt: string) => {
     setObjectiveFormat(fmt);
+
+    // 1. Immediate synchronous reformat so the user sees the change instantly
+    if (learningObjectives.length > 0) {
+      const instant = reformatObjectivesClientSide(learningObjectives, fmt);
+      setLearningObjectives(instant);
+    }
+
+    // 2. Fire AI refinement in the background for higher-quality output
     if (learningObjectives.length > 0 && (courseTitle || prompt)) {
       setIsSuggesting(true);
       try {
@@ -433,7 +490,8 @@ export default function App() {
         );
         setLearningObjectives(suggestions);
       } catch (e) {
-        console.error(e);
+        // API failed — client-side reformatted objectives remain visible
+        console.warn('AI refinement failed, keeping client-side reformatted objectives:', e);
       } finally {
         setIsSuggesting(false);
       }
