@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+﻿import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Sparkles, 
@@ -64,12 +64,12 @@ import {
   SortingPreview, MatchingPreview, TimelinePreview, DropTargetsPreview,
   GamePreview 
 } from './components/interactions/ExtraPreviews';
-import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft } from './services/aiService';
+import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft, generateMasteryExam } from './services/aiService';
 import { createScormPackage } from './services/scormService';
 import { FlashcardGrid } from './components/FlashcardGrid';
 import { OutlinePreview } from './components/builder/OutlinePreview';
 import { PlayerPropertiesModal, PlayerConfig, defaultPlayerConfig } from './components/builder/PlayerPropertiesModal';
-import { CourseOutline, Slide, TerminalObjectiveGroup } from './types/course';
+import { CourseOutline, Slide, TerminalObjectiveGroup, ExamConfig, ExamQuestion, ExamSessionState, NavigationMode } from './types/course';
 import { extractTextFromFile, extractImagesFromFile, SourceImage } from './lib/fileProcessor';
 import { generateGameTemplate } from './services/aiGameService';
 import { GameContainer } from './components/game-templates/core/GameContainer';
@@ -79,7 +79,7 @@ import { GameTemplateType } from './types/game';
 import { usePlayer } from './lib/usePlayer';
 import { PlayerBar } from './components/player/PlayerBar';
 import { getRecommendedGames } from './lib/gameEngine';
-import { DUMMY_COURSE } from './lib/dummyCourse';
+import { DUMMY_COURSE, DUMMY_EXAM_QUESTIONS } from './lib/dummyCourse';
 import { FloatingImageCanvas } from './components/FloatingImageCanvas';
 import { FloatingImage } from './types/course';
 import TabbedHorizontal from './components/interactions/TabbedContentHorizontal';
@@ -92,6 +92,9 @@ import { CourseNavSidebar } from './components/player/CourseNavSidebar';
 import { RichTextEditor } from './components/player/RichTextEditor';
 import { useTTSGeneration } from './hooks/useTTSGeneration';
 import { TTSProgressToast } from './components/TTSProgressToast';
+import { ExamIntroSlide } from './components/player/ExamIntroSlide';
+import { MasteryExamSlide } from './components/player/MasteryExamSlide';
+import { ExamResultsSlide } from './components/player/ExamResultsSlide';
 
 const renderInstructionalText = (children: React.ReactNode, theme: string, isList: boolean = false) => {
   let textToParse = '';
@@ -134,7 +137,7 @@ const isHTML = (str: string) => /<[a-z][\s\S]*>/i.test(str?.trim() ?? '');
 
 const sanitizeContent = (content: string) => {
   // HTML content from the rich-text editor must never be run through markdown
-  // cleanup regexes — return it untouched so SmartContent can render it correctly.
+  // cleanup regexes â€” return it untouched so SmartContent can render it correctly.
   if (isHTML(content)) return content;
   return content
     .replace(/^[-*] \*\*.*\*\*:\s*$/gm, '') 
@@ -187,7 +190,7 @@ const SlideContent = ({ content, theme }: { content: string, theme: string }) =>
 };
 
 /**
- * SmartContent — handles the numerous inline `<ReactMarkdown>` usages in the slide renderer.
+ * SmartContent â€” handles the numerous inline `<ReactMarkdown>` usages in the slide renderer.
  * Automatically switches between HTML rendering and Markdown based on content type.
  */
 const SmartContent = ({ content, className, theme }: { content: string; className?: string; theme?: string }) => {
@@ -323,11 +326,78 @@ export default function App() {
   const [includeModuleTitleSlides, setIncludeModuleTitleSlides] = useState(true);
   const [generatedCourseTitle, setGeneratedCourseTitle] = useState('');
 
+  // â”€â”€ Mastery Quiz state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const [examConfig, setExamConfig] = useState<ExamConfig>({
+    enabled: true,
+    passingScore: 80,
+    questionMode: 'total',
+    questionCount: 10,
+    allowRetake: true,
+    questionTypes: ['mc', 'ma', 'tf'],
+    presentationMode: 'one-at-a-time',
+  });
+  const [examQuestions, setExamQuestions] = useState<ExamQuestion[]>([]);
+  const [examPhase, setExamPhase] = useState<'idle' | 'active' | 'complete'>('idle');
+  const [examSession, setExamSession] = useState<ExamSessionState>({
+    questions: [],
+    answers: {},
+    currentQuestionIdx: 0,
+    submitted: false,
+    score: null,
+    passed: null,
+  });
+  const [isGeneratingExam, setIsGeneratingExam] = useState(false);
+
+  // â”€â”€ Navigation restriction state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const [navigationMode, setNavigationMode] = useState<NavigationMode>('free');
+  const [highestVisitedIndex, setHighestVisitedIndex] = useState(0);
+
   // Player Audio/Refs
   const player = usePlayer();
   const { progress: ttsProgress, generateTTS, resetTTS } = useTTSGeneration();
-  const allSlides = course ? course.modules.map((m: any) => m.slides).flat() : [];
+
+  // â”€â”€ Virtual exam slides injected at end of allSlides â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const contentSlides: Slide[] = course ? course.modules.map((m: any) => m.slides).flat() : [];
+  const examVirtualSlides: Slide[] = examConfig.enabled && contentSlides.length > 0 ? [
+    { id: '__exam-intro__',    title: 'Mastery Quiz',  type: 'exam-intro',    content: '' } as Slide,
+    { id: '__mastery-exam__',  title: 'Quiz Questions', type: 'mastery-exam', content: '' } as Slide,
+    { id: '__exam-results__',  title: 'Quiz Results',  type: 'exam-results',  content: '' } as Slide,
+  ] : [];
+  const allSlides: Slide[] = [...contentSlides, ...examVirtualSlides];
+  const examIntroIndex   = contentSlides.length;       // index of exam-intro slide
+  const examQIndex       = contentSlides.length + 1;   // index of mastery-exam slide
+  const examResultsIndex = contentSlides.length + 2;   // index of exam-results slide
   const currentSlide = allSlides[currentSlideIndex];
+
+  /** Returns true if the learner is allowed to navigate to targetIdx */
+  const canNavigateTo = (targetIdx: number): boolean => {
+    const isExamIntro    = targetIdx === examIntroIndex;
+    const isExamQuestion = targetIdx === examQIndex;
+    const isExamResults  = targetIdx === examResultsIndex;
+
+    if (isExamIntro) return true; // always accessible
+    if (isExamQuestion) return examPhase !== 'idle';
+    if (isExamResults)  return examPhase === 'complete';
+    // content slides
+    if (examPhase === 'active') return false;
+    switch (navigationMode) {
+      case 'free': return true;
+      case 'linear': return false;
+      case 'restricted': return targetIdx <= highestVisitedIndex;
+      default: return true;
+    }
+  };
+
+  const handleNext = () => {
+    const next = Math.min(allSlides.length - 1, currentSlideIndex + 1);
+    setHighestVisitedIndex(prev => Math.max(prev, next));
+    setCurrentSlideIndex(next);
+  };
+
+  const handlePrev = () => {
+    setCurrentSlideIndex(prev => Math.max(0, prev - 1));
+  };
+
 
   useEffect(() => {
     if (currentSlide) {
@@ -394,7 +464,7 @@ export default function App() {
    * Extracts the core "verb + outcome" from any AB/ABC/ABCD formatted string,
    * then re-wraps it cleanly in the target format.
    *
-   * Strip order:  Given[condition],  →  The learner will  →  trailing .  →  trailing degree clause  →  trailing .
+   * Strip order:  Given[condition],  â†’  The learner will  â†’  trailing .  â†’  trailing degree clause  â†’  trailing .
    * Reapply:       AB / ABC / ABCD wrappers
    */
   const reformatObjectivesClientSide = (
@@ -405,8 +475,8 @@ export default function App() {
     const applyFormat = (raw: string): string => {
       let s = raw.trim();
 
-      // ── 1. Capture + strip "Given [condition], " ──────────────────────────
-      // Preserve the original condition so ABC→ABCD doesn't lose specificity
+      // â”€â”€ 1. Capture + strip "Given [condition], " â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // Preserve the original condition so ABCâ†’ABCD doesn't lose specificity
       let condition = ''; // will be derived from verb if no existing Given
       const givenMatch = s.match(/^Given\s+([^,]+),\s+/i);
       if (givenMatch) {
@@ -414,19 +484,19 @@ export default function App() {
         s = s.slice(givenMatch[0].length).trim();
       }
 
-      // ── 2. Strip "The learner will " / "the learner will " ────────────────
+      // â”€â”€ 2. Strip "The learner will " / "the learner will " â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       s = s.replace(/^[Tt]he learner will\s+/i, '').trim();
 
-      // ── 3. Strip trailing period ──────────────────────────────────────────
+      // â”€â”€ 3. Strip trailing period â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       s = s.replace(/\.+$/, '').trim();
 
-      // ── 4. Strip trailing degree / standard clause ────────────────────────
+      // â”€â”€ 4. Strip trailing degree / standard clause â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       s = s.replace(/\s+(?:to\s+\S|with\s+\S).+$/i, '').trim();
 
-      // ── 5. Strip any trailing period that snuck through ───────────────────
+      // â”€â”€ 5. Strip any trailing period that snuck through â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       s = s.replace(/\.+$/, '').trim();
 
-      // ── 6. Derive condition from verb when none was present ───────────────
+      // â”€â”€ 6. Derive condition from verb when none was present â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (!condition) {
         // Extract the first word (the Bloom's verb) from the core action
         const verb = s.split(/\s+/)[0]?.toLowerCase() ?? '';
@@ -460,7 +530,7 @@ export default function App() {
         condition = verbConditionMap[verb] ?? 'relevant examples';
       }
 
-      // ── 6. Re-apply the selected format ──────────────────────────────────
+      // â”€â”€ 6. Re-apply the selected format â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       switch (fmt) {
         case 'AB':
           return `The learner will ${s}.`;
@@ -536,7 +606,7 @@ export default function App() {
         );
         setLearningObjectives(suggestions);
       } catch (e) {
-        // API failed — client-side reformatted objectives remain visible
+        // API failed â€” client-side reformatted objectives remain visible
         console.warn('AI refinement failed, keeping client-side reformatted objectives:', e);
       } finally {
         setIsSuggesting(false);
@@ -609,7 +679,7 @@ export default function App() {
       setCourse(finalCourse);
       setOriginalCourse(finalCourse);
       setStep('preview');
-      // ── Kick off TTS generation in the background ──
+      // â”€â”€ Kick off TTS generation in the background â”€â”€
       if (voiceOverEnabled) {
         generateTTS(finalCourse, setCourse, ttsVoice);
       }
@@ -716,14 +786,14 @@ export default function App() {
     );
   };
 
-  // ── Interactive Timeline Preview Component ──
+  // â”€â”€ Interactive Timeline Preview Component â”€â”€
   const TimelinePreviewDemo = () => {
     const [openStep, setOpenStep] = React.useState<number | null>(null);
     const steps = [
       { n: 1, title: 'Preparation', content: 'Establish IR policies, train your teams, and set up communication channels before an incident occurs.', color: 'bg-blue-500', border: 'border-blue-500/50' },
       { n: 2, title: 'Identification', content: 'Detect and determine whether a security incident has actually occurred using monitoring tools and alerts.', color: 'bg-yellow-500', border: 'border-yellow-500/50' },
       { n: 3, title: 'Containment', content: 'Limit the damage and prevent further spread. Short-term containment isolates affected systems.', color: 'bg-orange-500', border: 'border-orange-500/50' },
-      { n: 4, title: 'Eradication', content: 'Remove the root cause — eliminate malware, close vulnerabilities, and patch systems.', color: 'bg-red-500', border: 'border-red-500/50' },
+      { n: 4, title: 'Eradication', content: 'Remove the root cause â€” eliminate malware, close vulnerabilities, and patch systems.', color: 'bg-red-500', border: 'border-red-500/50' },
       { n: 5, title: 'Recovery', content: 'Restore systems to normal operations and verify they are clean before reconnecting.', color: 'bg-green-500', border: 'border-green-500/50' },
     ];
     return (
@@ -743,7 +813,7 @@ export default function App() {
                 >
                   <div className={`absolute left-3 w-8 h-8 rounded-full ${step.color} flex items-center justify-center text-white font-bold text-sm shadow-lg shrink-0`}>{step.n}</div>
                   <span className="font-bold text-sm flex-1">{step.title}</span>
-                  <span className="text-slate-500 text-xs group-hover:text-slate-300 transition-colors">{openStep === i ? '▲ Close' : '▼ Details'}</span>
+                  <span className="text-slate-500 text-xs group-hover:text-slate-300 transition-colors">{openStep === i ? 'â–² Close' : 'â–¼ Details'}</span>
                 </button>
                 {openStep === i && (
                   <div className={`mt-1 ml-14 p-4 rounded-xl bg-slate-900 border ${step.border} text-slate-300 text-sm leading-relaxed`}>{step.content}</div>
@@ -778,7 +848,7 @@ export default function App() {
           
           <div className="flex gap-3 items-center">
 
-            {/* ── Sandbox Dropdown ── */}
+            {/* â”€â”€ Sandbox Dropdown â”€â”€ */}
             <div className="relative">
               <button
                 onClick={() => { setSandboxDropdownOpen(o => !o); }}
@@ -792,10 +862,10 @@ export default function App() {
                 <div className="absolute right-0 top-full mt-2 w-64 bg-slate-900 border border-purple-700/40 rounded-xl shadow-2xl z-[500] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
                   <div className="px-4 py-2.5 bg-purple-900/30 border-b border-purple-700/40 flex items-center gap-2">
                     <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-                    <p className="text-xs font-bold text-purple-300 uppercase tracking-widest">Sandbox — Demo Course</p>
+                    <p className="text-xs font-bold text-purple-300 uppercase tracking-widest">Sandbox â€” Demo Course</p>
                   </div>
                   <div className="p-2 space-y-0.5">
-                    {/* ── Course Details (sandbox) ── */}
+                    {/* â”€â”€ Course Details (sandbox) â”€â”€ */}
                     <button
                       onClick={() => {
                         // Pre-fill details with sandbox dummy data
@@ -824,7 +894,7 @@ export default function App() {
                       <FileText className="w-4 h-4 text-pink-400 shrink-0" />
                       <span className="flex-1">Course Details</span>
                       {step === 'details' && isSandboxMode && (
-                        <span className="text-[9px] font-black uppercase tracking-wider text-purple-400 bg-purple-500/15 px-1.5 py-0.5 rounded-full">● HERE</span>
+                        <span className="text-[9px] font-black uppercase tracking-wider text-purple-400 bg-purple-500/15 px-1.5 py-0.5 rounded-full">â— HERE</span>
                       )}
                     </button>
 
@@ -858,7 +928,7 @@ export default function App() {
                       <Layers className="w-4 h-4 text-teal-400 shrink-0" />
                       <span className="flex-1">Course Outline</span>
                       {step === 'outline' && isSandboxMode && (
-                        <span className="text-[9px] font-black uppercase tracking-wider text-purple-400 bg-purple-500/15 px-1.5 py-0.5 rounded-full">● HERE</span>
+                        <span className="text-[9px] font-black uppercase tracking-wider text-purple-400 bg-purple-500/15 px-1.5 py-0.5 rounded-full">â— HERE</span>
                       )}
                     </button>
                     {/* Course Preview */}
@@ -874,6 +944,13 @@ export default function App() {
                         setCourseBg('/eLearning Template Backgrounds/Neutral/blue background coffee books_01.png');
                         setIsSandboxMode(true);
                         setShowPlayerProperties(false);
+                        // Exam setup for sandbox
+                        setExamQuestions(DUMMY_EXAM_QUESTIONS);
+                        setExamConfig(DUMMY_COURSE.examConfig!);
+                        setExamPhase('idle');
+                        setExamSession({ questions: [], answers: {}, currentQuestionIdx: 0, submitted: false, score: null, passed: null });
+                        setHighestVisitedIndex(0);
+                        setNavigationMode(DUMMY_COURSE.navigationMode ?? 'free');
                         setStep('preview');
                         setSandboxDropdownOpen(false);
                       }}
@@ -882,7 +959,7 @@ export default function App() {
                       <Eye className="w-4 h-4 text-emerald-400 shrink-0" />
                       <span className="flex-1">Course Preview</span>
                       {step === 'preview' && isSandboxMode && (
-                        <span className="text-[9px] font-black uppercase tracking-wider text-purple-400 bg-purple-500/15 px-1.5 py-0.5 rounded-full">● HERE</span>
+                        <span className="text-[9px] font-black uppercase tracking-wider text-purple-400 bg-purple-500/15 px-1.5 py-0.5 rounded-full">â— HERE</span>
                       )}
                     </button>
                     <div className="border-t border-slate-800 my-1" />
@@ -896,11 +973,11 @@ export default function App() {
               {sandboxDropdownOpen && <div className="fixed inset-0 z-[599]" onClick={() => setSandboxDropdownOpen(false)} />}
             </div>
 
-            {/* ── Admin Button (no dropdown for now) ── */}
+            {/* â”€â”€ Admin Button (no dropdown for now) â”€â”€ */}
             <button
-              onClick={() => { /* Admin panel — reserved for future use */ }}
+              onClick={() => { /* Admin panel â€” reserved for future use */ }}
               className="flex items-center gap-2 px-4 py-2 bg-indigo-500/10 border border-indigo-500/30 hover:bg-indigo-500/20 rounded-lg text-indigo-300 font-bold text-sm transition-all"
-              title="Admin panel — coming soon"
+              title="Admin panel â€” coming soon"
             >
               <Shield className="w-4 h-4" />
               Admin
@@ -973,7 +1050,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    <p className="text-sm text-slate-400 mt-2 font-medium">AI-powered authoring that analyzes your content and builds a complete, SCORM-compliant, interactive course — automatically.</p>
+                    <p className="text-sm text-slate-400 mt-2 font-medium">AI-powered authoring that analyzes your content and builds a complete, SCORM-compliant, interactive course â€” automatically.</p>
 
                     <button 
                       onClick={() => handleStartDetails()}
@@ -1005,7 +1082,7 @@ export default function App() {
                       </div>
                       <h2 className="text-3xl font-extrabold text-white flex-1">Course Details</h2>
                     </div>
-                    {/* Replace Document button — separate from nav click area */}
+                    {/* Replace Document button â€” separate from nav click area */}
                     <label className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white font-bold text-sm rounded-xl cursor-pointer transition-all shrink-0">
                       <FileUp className="w-4 h-4 text-indigo-400" />
                       Replace Document
@@ -1021,7 +1098,7 @@ export default function App() {
 
                  {(isGenerating || isHydrating) ? renderProgressState() : (
                    <div className="space-y-6">
-                      {/* ── Pathway Change Confirmation Popup ── */}
+                      {/* â”€â”€ Pathway Change Confirmation Popup â”€â”€ */}
                       {pendingPathway && (
                         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[400] flex items-center justify-center p-6">
                           <div className="bg-slate-900 border border-slate-700 rounded-2xl p-8 w-full max-w-sm shadow-2xl space-y-5">
@@ -1060,7 +1137,7 @@ export default function App() {
                         </div>
                       )}
 
-                      {/* ── Preset Change Confirmation Popup ── */}
+                      {/* â”€â”€ Preset Change Confirmation Popup â”€â”€ */}
                       {pendingPreset && (
                         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[400] flex items-center justify-center p-6">
                           <div className="bg-slate-900 border border-slate-700 rounded-2xl p-8 w-full max-w-sm shadow-2xl space-y-5">
@@ -1119,7 +1196,7 @@ export default function App() {
                              <div key={p.id} onClick={() => { if (preset !== p.id) setPendingPreset(p.id as any); }} className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${preset === p.id ? 'border-indigo-500 bg-indigo-500/10' : 'border-slate-800 bg-slate-950 hover:border-slate-700'}`}>
                                 <h4 className="text-white font-bold text-lg mb-1">{pathway === 'k12' ? p.k12Label : p.label}</h4>
                                 <p className="text-slate-400 text-xs mb-3">{p.description}</p>
-                                <div className="text-xs font-mono text-indigo-400">{p.slideCountTarget} slides • {p.interactions.length} types</div>
+                                <div className="text-xs font-mono text-indigo-400">{p.slideCountTarget} slides â€¢ {p.interactions.length} types</div>
                              </div>
                            ))}
                         </div>
@@ -1195,7 +1272,7 @@ export default function App() {
                             ))}
                           </div>
                         </div>
-                        {/* Refine Objectives button — always visible when title/description exists */}
+                        {/* Refine Objectives button â€” always visible when title/description exists */}
                         {(courseTitle || courseDescription || prompt) && (
                           <div className="px-6 pb-4 pt-2 bg-slate-900/50 border-b border-slate-800">
                             <button
@@ -1261,7 +1338,7 @@ export default function App() {
                                     <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Enabling Objectives</p>
                                     {tObj.enablingObjectives.map((enablingObj, eIdx) => (
                                       <div key={eIdx} className="flex gap-2 items-start group/enabling">
-                                        <div className="mt-2 text-slate-600 shrink-0">↳</div>
+                                        <div className="mt-2 text-slate-600 shrink-0">â†³</div>
                                         <textarea 
                                           rows={2}
                                           value={enablingObj} 
@@ -1360,7 +1437,7 @@ export default function App() {
                           </div>
                         </div>
                         <div className="p-6">
-                           <p className="text-xs text-blue-400 font-bold tracking-widest uppercase mb-6">CLICK TO SELECT • CLICK ON EYE ICON TO PREVIEW</p>
+                           <p className="text-xs text-blue-400 font-bold tracking-widest uppercase mb-6">CLICK TO SELECT â€¢ CLICK ON EYE ICON TO PREVIEW</p>
                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                              {[
                                { id: 'multiple-choice', label: 'Multiple Choice' },
@@ -1408,25 +1485,25 @@ export default function App() {
                            </div>
                         </div>
                          <div className="p-6">
-                           <p className="text-xs text-orange-400 font-bold tracking-widest uppercase mb-5">CLICK TO SELECT • CLICK ON EYE ICON TO PREVIEW</p>
+                           <p className="text-xs text-orange-400 font-bold tracking-widest uppercase mb-5">CLICK TO SELECT â€¢ CLICK ON EYE ICON TO PREVIEW</p>
                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                             {getRecommendedGames(pathway, preset).map((gt: any) => {
                               const isSelected = gameTemplateIds.includes(gt.id);
                               const NICKNAMES: Record<string, {emoji:string; aka:string}> = {
-                                'jeopardy': { emoji: '📺', aka: 'aka Jeopardy!' },
-                                'knowledge-board': { emoji: '📺', aka: 'aka Jeopardy!' },
-                                'millionaire': { emoji: '💰', aka: "aka Who Wants to Be a Millionaire" },
-                                'millionaire-challenge': { emoji: '💰', aka: "aka Who Wants to Be a Millionaire" },
-                                'family-feud': { emoji: '👨‍👩‍👧', aka: 'aka Family Feud' },
-                                'ranked-survey': { emoji: '👨‍👩‍👧', aka: 'aka Family Feud' },
-                                'escape-room': { emoji: '🔒', aka: 'aka Digital Escape Room' },
-                                'digital-escape-room': { emoji: '🔒', aka: 'aka Digital Escape Room' },
-                                'spin-wheel': { emoji: '🎡', aka: 'aka Spin the Wheel' },
-                                'spin-the-wheel': { emoji: '🎡', aka: 'aka Spin the Wheel' },
-                                'price-is-right': { emoji: '🏷️', aka: "aka The Price is Right" },
-                                'price-estimator': { emoji: '🏷️', aka: "aka The Price is Right" },
+                                'jeopardy': { emoji: 'ðŸ“º', aka: 'aka Jeopardy!' },
+                                'knowledge-board': { emoji: 'ðŸ“º', aka: 'aka Jeopardy!' },
+                                'millionaire': { emoji: 'ðŸ’°', aka: "aka Who Wants to Be a Millionaire" },
+                                'millionaire-challenge': { emoji: 'ðŸ’°', aka: "aka Who Wants to Be a Millionaire" },
+                                'family-feud': { emoji: 'ðŸ‘¨â€ðŸ‘©â€ðŸ‘§', aka: 'aka Family Feud' },
+                                'ranked-survey': { emoji: 'ðŸ‘¨â€ðŸ‘©â€ðŸ‘§', aka: 'aka Family Feud' },
+                                'escape-room': { emoji: 'ðŸ”’', aka: 'aka Digital Escape Room' },
+                                'digital-escape-room': { emoji: 'ðŸ”’', aka: 'aka Digital Escape Room' },
+                                'spin-wheel': { emoji: 'ðŸŽ¡', aka: 'aka Spin the Wheel' },
+                                'spin-the-wheel': { emoji: 'ðŸŽ¡', aka: 'aka Spin the Wheel' },
+                                'price-is-right': { emoji: 'ðŸ·ï¸', aka: "aka The Price is Right" },
+                                'price-estimator': { emoji: 'ðŸ·ï¸', aka: "aka The Price is Right" },
                               };
-                              const nick = NICKNAMES[gt.id] || { emoji: '🎮', aka: '' };
+                              const nick = NICKNAMES[gt.id] || { emoji: 'ðŸŽ®', aka: '' };
                               return (
                                 <div key={gt.id} className={`relative flex flex-col items-center text-center gap-1.5 p-4 rounded-xl border-2 transition-all ${isSelected ? 'border-orange-500 bg-orange-500/10 text-white' : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700'}`}>
                                   <div className="absolute top-2 right-2 text-slate-400 hover:text-orange-300 cursor-pointer z-20 bg-slate-900 rounded-full p-1" onClick={(e) => { e.stopPropagation(); setPreviewModalOption(gt.name); }}>
@@ -1496,18 +1573,18 @@ export default function App() {
                          </div>
                        </div>
 
-                        {/* TTS Voice Picker — shown when voice-over is enabled */}
+                        {/* TTS Voice Picker â€” shown when voice-over is enabled */}
                         {voiceOverEnabled && (
                           <div className="mt-5 space-y-3">
                             <div className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">AI Narrator Voice</div>
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                               {([
-                                { id: 'alloy',   label: 'Alloy',   sub: 'Neutral · Balanced' },
-                                { id: 'echo',    label: 'Echo',    sub: 'Male · Measured' },
-                                { id: 'fable',   label: 'Fable',   sub: 'Male · Warm' },
-                                { id: 'onyx',    label: 'Onyx',    sub: 'Male · Deep' },
-                                { id: 'nova',    label: 'Nova',    sub: 'Female · Bright' },
-                                { id: 'shimmer', label: 'Shimmer', sub: 'Female · Soft' },
+                                { id: 'alloy',   label: 'Alloy',   sub: 'Neutral Â· Balanced' },
+                                { id: 'echo',    label: 'Echo',    sub: 'Male Â· Measured' },
+                                { id: 'fable',   label: 'Fable',   sub: 'Male Â· Warm' },
+                                { id: 'onyx',    label: 'Onyx',    sub: 'Male Â· Deep' },
+                                { id: 'nova',    label: 'Nova',    sub: 'Female Â· Bright' },
+                                { id: 'shimmer', label: 'Shimmer', sub: 'Female Â· Soft' },
                               ] as const).map(v => (
                                 <div key={v.id} className="relative">
                                   <button
@@ -1522,7 +1599,7 @@ export default function App() {
                                     <span className="text-xs font-bold pr-5">{v.label}</span>
                                     <span className="text-[10px] opacity-70 mt-0.5">{v.sub}</span>
                                   </button>
-                                  {/* Ear preview button — top-right corner of card */}
+                                  {/* Ear preview button â€” top-right corner of card */}
                                   <button
                                     onClick={e => { e.stopPropagation(); previewVoice(v.id); }}
                                     disabled={!!previewingVoice}
@@ -1547,7 +1624,7 @@ export default function App() {
                         )}
                      </div>
 
-                     {/* Footer Actions — Player Properties + Generate */}
+                     {/* Footer Actions â€” Player Properties + Generate */}
                      <div className="flex flex-col sm:flex-row gap-4 mt-8">
                        <button
                          onClick={() => setShowPlayerProperties(true)}
@@ -1608,7 +1685,7 @@ export default function App() {
 
           {step === 'preview' && course && (
             <motion.div key="preview" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="w-full min-h-screen bg-slate-900 absolute top-0 left-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] bg-opacity-20 z-50 overflow-hidden flex flex-col">
-              {/* ── Preview Top Bar — Row 1: Navigation + title + view controls + export ── */}
+              {/* â”€â”€ Preview Top Bar â€” Row 1: Navigation + title + view controls + export â”€â”€ */}
               <div className="px-3 bg-slate-900 border-b border-slate-800 shrink-0">
                 <div className="h-11 flex items-center justify-between gap-2">
                   {/* Left: back + title */}
@@ -1643,7 +1720,7 @@ export default function App() {
                         onClick={() => setThemeDropdownOpen(o => !o)}
                         className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-medium"
                       >
-                        {theme === 'dark' ? '🌑' : theme === 'light' ? '☀️' : '💜'}
+                        {theme === 'dark' ? 'ðŸŒ‘' : theme === 'light' ? 'â˜€ï¸' : 'ðŸ’œ'}
                         <span className="hidden lg:inline capitalize">{theme}</span>
                         <ChevronDown className="w-3 h-3 opacity-60" />
                       </button>
@@ -1651,7 +1728,7 @@ export default function App() {
                         <>
                           <div className="fixed inset-0 z-[200]" onClick={() => setThemeDropdownOpen(false)} />
                           <div className="absolute right-0 top-full mt-1 z-[201] bg-slate-800 border border-slate-700 rounded-xl shadow-2xl overflow-hidden min-w-[130px]">
-                            {([['dark','🌑 Dark'],['light','☀️ Light'],['unified','💜 Unified']] as [string,string][]).map(([val, label]) => (
+                            {([['dark','ðŸŒ‘ Dark'],['light','â˜€ï¸ Light'],['unified','ðŸ’œ Unified']] as [string,string][]).map(([val, label]) => (
                               <button
                                 key={val}
                                 onClick={() => { setTheme(val as any); setThemeDropdownOpen(false); }}
@@ -1671,7 +1748,7 @@ export default function App() {
 
                     {/* Export SCORM */}
                     <button
-                      title="Export SCORM — download a SCORM 1.2 zip package"
+                      title="Export SCORM â€” download a SCORM 1.2 zip package"
                       onClick={exportScorm}
                       className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs transition-colors shadow-lg shadow-indigo-500/20"
                     >
@@ -1680,7 +1757,7 @@ export default function App() {
 
                     {/* Discard */}
                     <button
-                      title="Discard — exit preview and return to the home screen"
+                      title="Discard â€” exit preview and return to the home screen"
                       onClick={() => { setCourse(null); setStep('home'); }}
                       className="p-1.5 rounded-lg border border-red-800/50 hover:bg-red-900/20 text-red-400 transition-colors"
                     >
@@ -1689,11 +1766,11 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* ── Row 2: Editing tools strip ── */}
+                {/* â”€â”€ Row 2: Editing tools strip â”€â”€ */}
                 <div className="h-9 flex items-center justify-end gap-1 pb-1">
                   {/* Reset */}
                   <button
-                    title="Reset — restore to original generated state"
+                    title="Reset â€” restore to original generated state"
                     onClick={() => { if (originalCourse) { setCourse(originalCourse); setCurrentSlideIndex(0); setQuizState({}); setFloatingImagesMap({}); setCourseBg(null); } }}
                     className="flex items-center gap-1 px-2 py-1 rounded-md border border-amber-700/50 hover:bg-amber-800/20 text-amber-300 text-[11px] font-semibold"
                   >
@@ -1704,7 +1781,7 @@ export default function App() {
 
                   {/* Edit Text & Audio */}
                   <button
-                    title="Edit Text & Audio — open the rich-text and narration editor for this slide"
+                    title="Edit Text & Audio â€” open the rich-text and narration editor for this slide"
                     onClick={() => { editingSlideRef.current = currentSlide; setEditingSlide(currentSlide); setEditDrawerOpen(true); setEditDrawerTab('text'); }}
                     className="flex items-center gap-1 px-2 py-1 rounded-md border border-indigo-700/50 hover:bg-indigo-800/20 text-indigo-300 text-[11px] font-semibold"
                   >
@@ -1715,7 +1792,7 @@ export default function App() {
                   <div className="relative">
                     <button
                       onClick={() => setShowBgMenu(v => !v)}
-                      title="Change Background — upload an image or choose a solid color"
+                      title="Change Background â€” upload an image or choose a solid color"
                       className="flex items-center gap-1 px-2 py-1 rounded-md border border-pink-700/50 hover:bg-pink-800/20 text-pink-300 text-[11px] font-semibold"
                     >
                       <ImageIcon className="w-3 h-3" /><span>Change Bg</span>
@@ -1777,7 +1854,7 @@ export default function App() {
                   {/* Upload Image (floating) */}
                   <label
                     htmlFor="topbar-img-upload"
-                    title="Upload Image — add images to the current slide"
+                    title="Upload Image â€” add images to the current slide"
                     className="flex items-center gap-1 px-2 py-1 rounded-md border border-emerald-700/50 hover:bg-emerald-800/20 text-emerald-300 text-[11px] font-semibold cursor-pointer"
                   >
                     <Upload className="w-3 h-3" /><span>Upload Image</span>
@@ -1798,7 +1875,7 @@ export default function App() {
 
                   {/* Source Image */}
                   <button
-                    title="Source Image — pick an image from your uploaded source document"
+                    title="Source Image â€” pick an image from your uploaded source document"
                     onClick={() => setShowImageGalleryForSlide(currentSlide?.id || null)}
                     className="flex items-center gap-1 px-2 py-1 rounded-md border border-teal-700/50 hover:bg-teal-800/20 text-teal-300 text-[11px] font-semibold"
                   >
@@ -1809,7 +1886,7 @@ export default function App() {
 
                   {/* Player Properties */}
                   <button
-                    title="Player Properties — configure controls, TOC, aspect ratio, branding"
+                    title="Player Properties â€” configure controls, TOC, aspect ratio, branding"
                     onClick={() => setShowPlayerProperties(true)}
                     className="flex items-center gap-1 px-2 py-1 rounded-md border border-orange-700/50 hover:bg-orange-800/20 text-orange-300 text-[11px] font-semibold"
                   >
@@ -1818,16 +1895,25 @@ export default function App() {
                 </div>
               </div>
 
-              {/* ── Body: Sidebar + Main Player Area ── */}
+              {/* â”€â”€ Body: Sidebar + Main Player Area â”€â”€ */}
               <div className={cn("flex flex-row flex-1 overflow-hidden", playerConfig.playerResolution === 'full' ? 'overflow-x-hidden' : 'min-h-0')}>
                 {/* Course Navigation Sidebar */}
                 <CourseNavSidebar
                   modules={course.modules}
                   currentSlideIndex={currentSlideIndex}
                   allSlides={allSlides}
-                  onNavigate={(idx) => { setCurrentSlideIndex(idx); }}
+                  onNavigate={(idx) => {
+                    if (canNavigateTo(idx)) {
+                      setHighestVisitedIndex(prev => Math.max(prev, idx));
+                      setCurrentSlideIndex(idx);
+                    }
+                  }}
                   theme={theme}
                   tocNumbering={playerConfig.tocNumbering}
+                  navigationMode={navigationMode}
+                  examPhase={examPhase}
+                  examIntroIndex={examIntroIndex}
+                  highestVisitedIndex={highestVisitedIndex}
                 />
 
                 {/* Main slide area */}
@@ -1848,7 +1934,7 @@ export default function App() {
                     {/* Overlay only for image backgrounds */}
                     {courseBg && !courseBg.startsWith('#') && <div className="absolute inset-0 bg-slate-900/50 pointer-events-none" />}
 
-                  {/* Slide frame — aspect ratio driven by playerConfig.playerResolution */}
+                  {/* Slide frame â€” aspect ratio driven by playerConfig.playerResolution */}
                   <div className={cn(`theme-${theme}`,
                     "transition-all duration-500 flex flex-col relative z-10",
                     viewMode === 'desktop'
@@ -1966,7 +2052,7 @@ export default function App() {
                                            <span>{qs.selectedIdx === correctIdx ? 'Correct! Well done.' : 'Incorrect.'}</span>
                                          </div>
                                          {qs.selectedIdx !== correctIdx && correctLabel && (
-                                           <p className="text-sm font-medium">✓ Correct answer: <span className="font-bold">{correctLabel}</span></p>
+                                           <p className="text-sm font-medium">âœ“ Correct answer: <span className="font-bold">{correctLabel}</span></p>
                                          )}
                                          {quiz.feedback && <p className="text-sm font-medium opacity-80">{quiz.feedback}</p>}
                                        </div>
@@ -2031,7 +2117,7 @@ export default function App() {
                                        <div className={cn('p-4 rounded-xl font-bold flex flex-col gap-2', isAllCorrect ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-red-50 text-red-800 border border-red-200')}>
                                          <div className="flex items-center gap-2">
                                            {isAllCorrect ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
-                                           <span>{isAllCorrect ? 'Correct! All answers right.' : 'Not quite — check the highlighted answers.'}</span>
+                                           <span>{isAllCorrect ? 'Correct! All answers right.' : 'Not quite â€” check the highlighted answers.'}</span>
                                          </div>
                                          {quiz.feedback && <p className="text-sm font-medium opacity-80">{quiz.feedback}</p>}
                                        </div>
@@ -2132,6 +2218,99 @@ export default function App() {
                                  </div>
                                )}
 
+                                {/* EXAM INTRO */}
+                               {currentSlide?.type === 'exam-intro' && (
+                                 <ExamIntroSlide
+                                   examConfig={examConfig}
+                                   courseTitle={course?.title}
+                                   onBegin={async () => {
+                                     // Generate questions if not yet generated
+                                     let questions = examQuestions;
+                                     if (!questions || questions.length === 0) {
+                                       setIsGeneratingExam(true);
+                                       try {
+                                         questions = await generateMasteryExam(course, examConfig);
+                                         setExamQuestions(questions);
+                                       } finally {
+                                         setIsGeneratingExam(false);
+                                       }
+                                     }
+                                     const initSession: ExamSessionState = {
+                                       questions,
+                                       answers: Object.fromEntries(questions.map(q => [q.id, null])),
+                                       currentQuestionIdx: 0,
+                                       submitted: false,
+                                       score: null,
+                                       passed: null,
+                                     };
+                                     setExamSession(initSession);
+                                     setExamPhase('active');
+                                     setCurrentSlideIndex(examQIndex);
+                                   }}
+                                 />
+                               )}
+
+                               {/* MASTERY EXAM (questions) */}
+                               {currentSlide?.type === 'mastery-exam' && examPhase === 'active' && (
+                                 <MasteryExamSlide
+                                   questions={examSession.questions.length > 0 ? examSession.questions : examQuestions}
+                                   examConfig={examConfig}
+                                   sessionState={examSession}
+                                   onAnswer={(qId, answer) => {
+                                     setExamSession(prev => ({
+                                       ...prev,
+                                       answers: { ...prev.answers, [qId]: answer },
+                                     }));
+                                   }}
+                                   onSubmit={(newState) => {
+                                     if (newState.submitted) {
+                                       // Full submission â€” go to results
+                                       setExamSession(newState);
+                                       setExamPhase('complete');
+                                       setCurrentSlideIndex(examResultsIndex);
+                                     } else {
+                                       // Just advancing question index
+                                       setExamSession(newState);
+                                     }
+                                   }}
+                                 />
+                               )}
+
+                               {/* EXAM RESULTS */}
+                               {currentSlide?.type === 'exam-results' && examPhase === 'complete' && examSession.submitted && (
+                                 <ExamResultsSlide
+                                   score={examSession.score ?? 0}
+                                   passed={examSession.passed ?? false}
+                                   passingScore={examConfig.passingScore}
+                                   totalQuestions={examSession.questions.length || examQuestions.length}
+                                   correctCount={Math.round(((examSession.score ?? 0) / 100) * (examSession.questions.length || examQuestions.length))}
+                                   allowRetake={examConfig.allowRetake}
+                                   onRetake={() => {
+                                     const initSession: ExamSessionState = {
+                                       questions: examQuestions,
+                                       answers: Object.fromEntries(examQuestions.map(q => [q.id, null])),
+                                       currentQuestionIdx: 0,
+                                       submitted: false,
+                                       score: null,
+                                       passed: null,
+                                     };
+                                     setExamSession(initSession);
+                                     setExamPhase('active');
+                                     setCurrentSlideIndex(examIntroIndex); // back to intro
+                                   }}
+                                   onReturnToCourse={() => {
+                                     setExamPhase('complete');
+                                     setCurrentSlideIndex(0);
+                                   }}
+                                   onRestartCourse={() => {
+                                     setExamPhase('idle');
+                                     setExamSession({ questions: [], answers: {}, currentQuestionIdx: 0, submitted: false, score: null, passed: null });
+                                     setHighestVisitedIndex(0);
+                                     setCurrentSlideIndex(0);
+                                   }}
+                                 />
+                               )}
+
                                {/* GAME TEMPLATES */}
                                {currentSlide?.type === 'game-template' && (
                                  <div className="w-full min-h-[600px] flex items-center justify-center mt-8">
@@ -2160,7 +2339,7 @@ export default function App() {
 
                            </div>
 
-                           {/* Slide media tools — Edit/Reset/Upload are in the top bar */}
+                           {/* Slide media tools â€” Edit/Reset/Upload are in the top bar */}
                            <div className="absolute top-0 right-0 z-[100] flex flex-wrap max-w-sm justify-end gap-2 shrink-0">
                              {sourceImages.length > 0 && (
                                <button 
@@ -2231,7 +2410,7 @@ export default function App() {
                               </div>
                             )}
 
-                       {/* Floating images — inside scroll so they scroll with content */}
+                       {/* Floating images â€” inside scroll so they scroll with content */}
                        <FloatingImageCanvas
                          images={floatingImagesMap[currentSlide?.id] || []}
                          isAuthoring={true}
@@ -2246,7 +2425,7 @@ export default function App() {
 
                      </div>{/* end slide content scroll area */}
 
-                    {/* Learner Player Navigation Bar — sticky at bottom in full-screen mode */}
+                    {/* Learner Player Navigation Bar â€” sticky at bottom in full-screen mode */}
                     <div className={cn(
                       "w-full z-[100] shrink-0 border-t backdrop-blur-md",
                       playerConfig.playerResolution === 'full' ? 'sticky bottom-0' : 'relative',
@@ -2257,8 +2436,8 @@ export default function App() {
                         currentSlideIndex={currentSlideIndex}
                         totalSlides={allSlides.length}
                         currentSlideTitle={currentSlide?.title ?? ''}
-                        onPrev={() => setCurrentSlideIndex(prev => Math.max(0, prev - 1))}
-                        onNext={() => setCurrentSlideIndex(prev => Math.min(allSlides.length - 1, prev + 1))}
+                        onPrev={handlePrev}
+                        onNext={handleNext}
                         theme={theme}
                       />
                      </div>{/* end PlayerBar */}
@@ -2322,7 +2501,7 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {/* ─── Right Slide-In Edit Drawer ─── */}
+        {/* â”€â”€â”€ Right Slide-In Edit Drawer â”€â”€â”€ */}
         <AnimatePresence>
           {editingSlide && (
             <>
@@ -2354,8 +2533,8 @@ export default function App() {
                 {/* Tabs */}
                 <div className="flex border-b border-slate-800 flex-shrink-0">
                   {[
-                    { id: 'text', icon: '✏', label: 'Edit Text', activeColor: 'border-indigo-500 text-indigo-300 bg-indigo-500/10' },
-                    { id: 'audio', icon: '🎤', label: 'Audio / Narration', activeColor: 'border-emerald-500 text-emerald-300 bg-emerald-500/10' },
+                    { id: 'text', icon: 'âœ', label: 'Edit Text', activeColor: 'border-indigo-500 text-indigo-300 bg-indigo-500/10' },
+                    { id: 'audio', icon: 'ðŸŽ¤', label: 'Audio / Narration', activeColor: 'border-emerald-500 text-emerald-300 bg-emerald-500/10' },
                   ].map(tab => (
                     <button
                       key={tab.id}
@@ -2403,13 +2582,13 @@ export default function App() {
                   {editDrawerTab === 'audio' && (
                     <>
                       <div className="p-3 bg-emerald-900/20 border border-emerald-700/30 rounded-xl text-xs text-emerald-300">
-                        <strong>ISD Best Practice:</strong> Narration should <em>expand</em> on what's on screen — never read line-by-line. Aim for conversational, explanatory language.
+                        <strong>ISD Best Practice:</strong> Narration should <em>expand</em> on what's on screen â€” never read line-by-line. Aim for conversational, explanatory language.
                       </div>
                       <div className="space-y-2">
                         <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest flex items-center justify-between">
                           <span>Audio Narration Script</span>
                           <span className={`normal-case font-normal ${voiceOverEnabled ? 'text-emerald-400' : 'text-slate-600'}`}>
-                            {voiceOverEnabled ? '🔊 Voice-Over Enabled' : '🔇 Voice-Over Off'}
+                            {voiceOverEnabled ? 'ðŸ”Š Voice-Over Enabled' : 'ðŸ”‡ Voice-Over Off'}
                           </span>
                         </label>
                         <textarea
@@ -2427,7 +2606,7 @@ export default function App() {
                            return (
                              <div className="flex items-center gap-4 text-xs text-slate-500">
                                <span>{words} words</span>
-                               <span>•</span>
+                               <span>â€¢</span>
                                <span>~{mins > 0 ? `${mins}m ` : ''}{remainSecs}s read time @ 130 wpm</span>
                              </div>
                            );
@@ -2443,14 +2622,14 @@ export default function App() {
                                  onChange={e => setTtsVoice(e.target.value)}
                                  className="flex-1 bg-slate-950 border border-emerald-700/40 rounded-lg px-3 py-1.5 text-emerald-200 text-xs font-bold outline-none focus:border-emerald-500 transition-all"
                                >
-                                 <option value="alloy">Alloy — Neutral / Balanced</option>
-                                 <option value="echo">Echo — Male / Measured</option>
-                                 <option value="fable">Fable — Male / Warm</option>
-                                 <option value="onyx">Onyx — Male / Deep</option>
-                                 <option value="nova">Nova — Female / Bright</option>
-                                 <option value="shimmer">Shimmer — Female / Soft</option>
+                                 <option value="alloy">Alloy â€” Neutral / Balanced</option>
+                                 <option value="echo">Echo â€” Male / Measured</option>
+                                 <option value="fable">Fable â€” Male / Warm</option>
+                                 <option value="onyx">Onyx â€” Male / Deep</option>
+                                 <option value="nova">Nova â€” Female / Bright</option>
+                                 <option value="shimmer">Shimmer â€” Female / Soft</option>
                                </select>
-                               {/* Ear preview button — previews the currently selected voice */}
+                               {/* Ear preview button â€” previews the currently selected voice */}
                                <button
                                  onClick={() => previewVoice(ttsVoice)}
                                  disabled={!!previewingVoice}
@@ -2485,7 +2664,7 @@ export default function App() {
                               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-700/20 border border-emerald-600/40 text-emerald-300 font-bold text-xs hover:bg-emerald-700/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               {regenSlideId === editingSlide?.id ? (
-                                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Generating audio…</>
+                                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Generating audioâ€¦</>
                               ) : (
                                 <><Mic className="w-3.5 h-3.5" /> Regenerate Audio for this Slide</>
                               )}
@@ -2495,7 +2674,7 @@ export default function App() {
                         {/* Audio URL if available */}
                         {(editingSlide?.voiceOverUrl || editingSlide?.audioUrl) && (
                           <div className="p-3 bg-slate-800 rounded-xl border border-slate-700">
-                            <p className="text-xs text-emerald-400 font-bold">✅ Audio ready for this slide</p>
+                            <p className="text-xs text-emerald-400 font-bold">âœ… Audio ready for this slide</p>
                           </div>
                         )}
                       </>
@@ -2572,7 +2751,7 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {/* ★ Player Properties Modal ★ */}
+        {/* â˜… Player Properties Modal â˜… */}
         <AnimatePresence>
           {showPlayerProperties && (
             <PlayerPropertiesModal
@@ -2583,7 +2762,7 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {/* ── TTS Generation Progress Toast ── */}
+        {/* â”€â”€ TTS Generation Progress Toast â”€â”€ */}
         <TTSProgressToast
           progress={ttsProgress}
           onDismiss={resetTTS}
@@ -2645,10 +2824,10 @@ export default function App() {
                          {previewModalOption === 'Tabs (Vertical)' && (
                             <div className="w-full max-w-2xl">
                               <TabbedVertical tabs={[
-                                { id: '1', label: 'Introduction', icon: '📖', content: 'This section introduces the core framework. Use the vertical navigation on the left to jump between areas. Each tab covers a distinct concept.' },
-                                { id: '2', label: 'Core Skills', icon: '⚡', content: 'These are the essential skills needed for mastery. Review each carefully and take notes on areas where you may need practice.' },
-                                { id: '3', label: 'Application', icon: '🔧', content: 'Apply the concepts through real-world scenarios. The exercises here reinforce your understanding with practical examples.' },
-                                { id: '4', label: 'Assessment', icon: '✅', content: 'Test your knowledge with a comprehensive review. Aim for 80% or above to demonstrate topic mastery.' },
+                                { id: '1', label: 'Introduction', icon: 'ðŸ“–', content: 'This section introduces the core framework. Use the vertical navigation on the left to jump between areas. Each tab covers a distinct concept.' },
+                                { id: '2', label: 'Core Skills', icon: 'âš¡', content: 'These are the essential skills needed for mastery. Review each carefully and take notes on areas where you may need practice.' },
+                                { id: '3', label: 'Application', icon: 'ðŸ”§', content: 'Apply the concepts through real-world scenarios. The exercises here reinforce your understanding with practical examples.' },
+                                { id: '4', label: 'Assessment', icon: 'âœ…', content: 'Test your knowledge with a comprehensive review. Aim for 80% or above to demonstrate topic mastery.' },
                               ]} />
                             </div>
                          )}
@@ -2729,10 +2908,11 @@ function MultipleAnswersPreviewDemo() {
       ) : (
         <div className={`mt-2 p-3 rounded-xl font-bold text-sm flex items-center gap-2 ${isAllCorrect ? 'bg-emerald-500/15 border border-emerald-500/40 text-emerald-300' : 'bg-red-500/15 border border-red-500/40 text-red-300'}`}>
           {isAllCorrect ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-          {isAllCorrect ? 'Correct! Rabbit, Dog, and Cat are animals.' : 'Not quite — only Rabbit, Dog, and Cat are animals.'}
+          {isAllCorrect ? 'Correct! Rabbit, Dog, and Cat are animals.' : 'Not quite â€” only Rabbit, Dog, and Cat are animals.'}
         </div>
       )}
     </div>
   );
 }
+
 

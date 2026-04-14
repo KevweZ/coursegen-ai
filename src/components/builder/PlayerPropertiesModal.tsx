@@ -7,8 +7,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Monitor, ChevronDown, ChevronUp, ChevronLeft, ChevronRight,
   Play, Volume2, Captions, Maximize2, Layout, Eye, Move,
-  Check, Sparkles, Menu, Settings2,
+  Check, Sparkles, Menu, Settings2, Lock, Unlock, ArrowRight, AlertTriangle,
 } from 'lucide-react';
+import type { NavigationMode, ExamPresentationMode } from '../../types/course';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type TOCPosition = 'sidebar-left' | 'sidebar-right' | 'dropdown-top' | 'dropdown-bottom' | 'hidden';
@@ -33,6 +34,8 @@ export interface PlayerConfig {
   allowFullscreen: boolean;
   logoUrl: string | null;
   playerResolution: '16:9' | '4:3' | 'full';
+  navigationMode: NavigationMode;
+  examPresentationMode: ExamPresentationMode;
 }
 
 export const defaultPlayerConfig: PlayerConfig = {
@@ -53,6 +56,8 @@ export const defaultPlayerConfig: PlayerConfig = {
   allowFullscreen: true,
   logoUrl: null,
   playerResolution: '16:9',
+  navigationMode: 'free',
+  examPresentationMode: 'one-at-a-time',
 };
 
 // ─── Props ───────────────────────────────────────────────────────────────────
@@ -474,6 +479,65 @@ export function PlayerPropertiesModal({ config, onChange, onClose }: Props) {
                   label={label}
                 />
               ))}
+            </div>
+
+            <SectionTitle>Navigation Mode</SectionTitle>
+            <div className="space-y-2">
+              {([
+                { mode: 'free' as NavigationMode,       label: 'Free Roam',   desc: 'Navigate to any slide at any time' },
+                { mode: 'linear' as NavigationMode,     label: 'Linear',      desc: 'Next button only — no menu skipping' },
+                { mode: 'restricted' as NavigationMode, label: 'Restricted',  desc: 'Next to advance; menu allows revisiting viewed slides only' },
+              ]).map(({ mode, label, desc }) => (
+                <button
+                  key={mode}
+                  onClick={() => update({ navigationMode: mode })}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all ${
+                    local.navigationMode === mode
+                      ? 'bg-indigo-600/20 border-indigo-500/50 text-white'
+                      : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white hover:border-slate-600'
+                  }`}
+                >
+                  <div className="flex-1">
+                    <p className="text-sm font-bold">{label}</p>
+                    <p className="text-[10px] text-slate-500">{desc}</p>
+                  </div>
+                  {local.navigationMode === mode && <Check className="w-3.5 h-3.5 text-indigo-400"/>}
+                </button>
+              ))}
+            </div>
+
+            <SectionTitle>Exam Presentation</SectionTitle>
+            <div className="space-y-2">
+              {([
+                { mode: 'one-at-a-time' as ExamPresentationMode, label: 'One at a Time', desc: 'One question per screen with progress bar (default)' },
+                { mode: 'scroll-all' as ExamPresentationMode,    label: 'All at Once',   desc: 'Scrollable single-page exam view' },
+              ]).map(({ mode, label, desc }) => (
+                <button
+                  key={mode}
+                  onClick={() => {
+                    if (mode !== local.examPresentationMode) {
+                      if (window.confirm('Changing the exam presentation format will require the Mastery Quiz to regenerate.\n\nThis will cost 1 credit in a future update.\n\nProceed?')) {
+                        update({ examPresentationMode: mode });
+                      }
+                    }
+                  }}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all ${
+                    local.examPresentationMode === mode
+                      ? 'bg-purple-600/20 border-purple-500/50 text-white'
+                      : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white hover:border-slate-600'
+                  }`}
+                >
+                  <div className="flex-1">
+                    <p className="text-sm font-bold">{label}</p>
+                    <p className="text-[10px] text-slate-500">{desc}</p>
+                  </div>
+                  {local.examPresentationMode === mode && <Check className="w-3.5 h-3.5 text-purple-400"/>}
+                </button>
+              ))}
+              <p className="text-[10px] text-amber-400/70 flex items-center gap-1.5 mt-1">
+                <AlertTriangle className="w-3 h-3 shrink-0"/>
+                Changing presentation mode will prompt a regeneration confirmation.
+              </p>
             </div>
           </div>
 

@@ -10,6 +10,8 @@ export interface CourseOutline {
   modules: Module[];
   settings?: CourseSettings;
   visualTheme?: string;
+  examConfig?: ExamConfig;
+  navigationMode?: NavigationMode;
 }
 
 export interface CourseSettings {
@@ -55,7 +57,10 @@ export type SlideType =
   | 'sorting' 
   | 'matching' | 'branching'
   | 'hotspot'
-  | 'game-template';
+  | 'game-template'
+  | 'exam-intro'      // Pre-exam informational slide with Begin button
+  | 'mastery-exam'    // Exam question slide(s)
+  | 'exam-results';   // Pass/fail results page
 
 export interface FloatingImage {
   id: string;
@@ -161,4 +166,40 @@ export interface Interaction {
   options: string[];
   correctAnswer: string | number;
   feedback: string;
+}
+
+// ─── Mastery Quiz + Navigation ────────────────────────────────────────────────
+
+export type ExamPresentationMode = 'one-at-a-time' | 'scroll-all';
+export type NavigationMode = 'free' | 'linear' | 'restricted';
+
+export interface ExamQuestion {
+  id: string;
+  type: 'mc' | 'ma' | 'tf';
+  question: string;
+  /** TF always uses ['True', 'False'] */
+  options: string[];
+  /** Index (MC/TF) or indices array (MA) */
+  correctAnswer: number | number[];
+  explanation?: string;
+  moduleIndex?: number;
+}
+
+export interface ExamConfig {
+  enabled: boolean;
+  passingScore: number;                     // 0-100, default 80
+  questionMode: 'total' | 'per-module';
+  questionCount: number;
+  allowRetake: boolean;
+  questionTypes: ('mc' | 'ma' | 'tf')[];
+  presentationMode: ExamPresentationMode;   // default 'one-at-a-time'
+}
+
+export interface ExamSessionState {
+  questions: ExamQuestion[];
+  answers: Record<string, number | number[] | null>;
+  currentQuestionIdx: number;
+  submitted: boolean;
+  score: number | null;
+  passed: boolean | null;
 }

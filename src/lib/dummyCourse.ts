@@ -1,4 +1,4 @@
-import { CourseOutline } from '../types/course';
+import { CourseOutline, ExamConfig, ExamQuestion } from '../types/course';
 
 /**
  * A comprehensive dummy course used by the Admin "Preview Mode" shortcut.
@@ -364,4 +364,59 @@ export const DUMMY_COURSE: CourseOutline = {
       ],
     },
   ],
+  examConfig: {
+    enabled: true,
+    passingScore: 80,
+    questionMode: 'total',
+    questionCount: 5,
+    allowRetake: true,
+    questionTypes: ['mc', 'ma', 'tf'],
+    presentationMode: 'one-at-a-time',
+  },
+  navigationMode: 'free',
 };
+
+export const DUMMY_EXAM_CONFIG: ExamConfig = DUMMY_COURSE.examConfig!;
+
+export const DUMMY_EXAM_QUESTIONS: ExamQuestion[] = [
+  {
+    id: 'q1', type: 'mc',
+    question: 'Which component of the CourseGEN player is responsible for controlling slide navigation?',
+    options: ['Slide Canvas', 'Player Bar', 'Edit Drawer', 'Theme System'],
+    correctAnswer: 1,
+    explanation: 'The Player Bar contains the Prev/Next buttons, progress bar, and playback controls used to navigate between slides.',
+    moduleIndex: 0,
+  },
+  {
+    id: 'q2', type: 'tf',
+    question: 'The CourseGEN player supports three theme modes: Dark, Light, and Unified.',
+    options: ['True', 'False'],
+    correctAnswer: 0,
+    explanation: 'True — the player supports Dark, Light, and Unified theme modes selectable from the top bar or Player Properties.',
+    moduleIndex: 0,
+  },
+  {
+    id: 'q3', type: 'ma',
+    question: 'Which of the following are exploratory interaction types available in the CourseGEN player? (Select all that apply)',
+    options: ['Accordion', 'Flashcards', 'Sorting', 'Timeline'],
+    correctAnswer: [0, 1, 3],
+    explanation: 'Accordion, Flashcards, and Timeline are exploratory interactions. Sorting is a drag-and-drop interaction.',
+    moduleIndex: 1,
+  },
+  {
+    id: 'q4', type: 'mc',
+    question: 'What is the primary purpose of the Edit Drawer in the CourseGEN player?',
+    options: ['To change the course theme', 'To edit slide text and audio narration', 'To add new modules', 'To export the course as SCORM'],
+    correctAnswer: 1,
+    explanation: 'The Edit Drawer allows authors to edit slide text content and record or upload audio narration.',
+    moduleIndex: 1,
+  },
+  {
+    id: 'q5', type: 'tf',
+    question: 'In the CourseGEN player, the Slide Canvas is responsible for rendering different slide types.',
+    options: ['True', 'False'],
+    correctAnswer: 0,
+    explanation: 'True — the Slide Canvas is where all slide types (content, quiz, interaction, etc.) are rendered to the learner.',
+    moduleIndex: 2,
+  },
+];
