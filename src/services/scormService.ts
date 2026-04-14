@@ -148,7 +148,8 @@ ${moduleItems}
 
     // Single source of truth payload injection
     // Use lastIndexOf to ensure we don't accidentally replace a string literal inside the JS bundle!
-    const injection = `<script>window.__COURSE_DATA__ = ${JSON.stringify(course)};</script>`;
+    const examConfigJson = course.examConfig ? JSON.stringify(course.examConfig) : 'null';
+    const injection = `<script>window.__COURSE_DATA__ = ${JSON.stringify(course)};window.__EXAM_CONFIG__ = ${examConfigJson};</script>`;
     const bodyCloseIndex = htmlContent.lastIndexOf('</body>');
     const headCloseIndex = htmlContent.lastIndexOf('</head>');
     
