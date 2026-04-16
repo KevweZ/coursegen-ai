@@ -109,7 +109,7 @@ export function OutlinePreview({ initialOutline, onApprove, onCancel, isHydratin
               disabled={!sandboxMode && isHydrating}
               className="text-gray-400 hover:text-white px-8 py-3 rounded-xl border border-slate-700/50 hover:bg-slate-800 transition-colors text-sm font-bold disabled:opacity-50"
             >
-              {sandboxMode ? 'Back to Sandbox' : 'Cancel'}
+              {sandboxMode ? 'Back to Course Details' : 'Cancel'}
             </button>
           </div>
         </div>

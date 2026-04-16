@@ -138,7 +138,7 @@ const isHTML = (str: string) => /<[a-z][\s\S]*>/i.test(str?.trim() ?? '');
 
 const sanitizeContent = (content: string) => {
   // HTML content from the rich-text editor must never be run through markdown
-  // cleanup regexes ΓÇö return it untouched so SmartContent can render it correctly.
+  // cleanup regexes — return it untouched so SmartContent can render it correctly.
   if (isHTML(content)) return content;
   return content
     .replace(/^[-*] \*\*.*\*\*:\s*$/gm, '') 
@@ -191,7 +191,7 @@ const SlideContent = ({ content, theme }: { content: string, theme: string }) =>
 };
 
 /**
- * SmartContent ΓÇö handles the numerous inline `<ReactMarkdown>` usages in the slide renderer.
+ * SmartContent — handles the numerous inline `<ReactMarkdown>` usages in the slide renderer.
  * Automatically switches between HTML rendering and Markdown based on content type.
  */
 const SmartContent = ({ content, className, theme }: { content: string; className?: string; theme?: string }) => {
@@ -357,7 +357,7 @@ export default function App() {
   const player = usePlayer();
   const { progress: ttsProgress, generateTTS, resetTTS } = useTTSGeneration();
 
-  // Virtual exam slides appended after course content
+  // Virtual exam slides appended after all content slides
   const contentSlides: Slide[] = course ? course.modules.map((m: any) => m.slides).flat() : [];
   const examVirtualSlides: Slide[] = examConfig.enabled && contentSlides.length > 0 ? [
     { id: '__exam-intro__',   title: 'Mastery Quiz',   type: 'exam-intro',   content: '' } as Slide,
@@ -370,7 +370,6 @@ export default function App() {
   const examResultsIndex = contentSlides.length + 2;
   const currentSlide = allSlides[currentSlideIndex];
 
-  /** Returns true if the learner is allowed to navigate to targetIdx */
   const canNavigateTo = (targetIdx: number): boolean => {
     const isExamIntro    = targetIdx === examIntroIndex;
     const isExamQuestion = targetIdx === examQIndex;
@@ -419,20 +418,15 @@ export default function App() {
     }
   }, [uploadedFile]);
 
-  // SCORM lifecycle — no-op when running in preview mode (no LMS)
+  // SCORM lifecycle — safe no-op when not inside an LMS
   useEffect(() => {
     scormInit();
-    const handleUnload = () => scormQuit();
-    window.addEventListener('beforeunload', handleUnload);
-    return () => {
-      window.removeEventListener('beforeunload', handleUnload);
-      scormQuit();
-    };
+    const onUnload = () => scormQuit();
+    window.addEventListener('beforeunload', onUnload);
+    return () => { window.removeEventListener('beforeunload', onUnload); scormQuit(); };
   }, []);
 
-  useEffect(() => {
-    scormSetLocation(currentSlideIndex);
-  }, [currentSlideIndex]);
+  useEffect(() => { scormSetLocation(currentSlideIndex); }, [currentSlideIndex]);
 
   useEffect(() => {
     if (examPhase !== 'idle') {
@@ -483,7 +477,7 @@ export default function App() {
    * Extracts the core "verb + outcome" from any AB/ABC/ABCD formatted string,
    * then re-wraps it cleanly in the target format.
    *
-   * Strip order:  Given[condition],  ΓåÆ  The learner will  ΓåÆ  trailing .  ΓåÆ  trailing degree clause  ΓåÆ  trailing .
+   * Strip order:  Given[condition],  →  The learner will  →  trailing .  →  trailing degree clause  →  trailing .
    * Reapply:       AB / ABC / ABCD wrappers
    */
   const reformatObjectivesClientSide = (
@@ -494,8 +488,8 @@ export default function App() {
     const applyFormat = (raw: string): string => {
       let s = raw.trim();
 
-      // ΓöÇΓöÇ 1. Capture + strip "Given [condition], " ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-      // Preserve the original condition so ABCΓåÆABCD doesn't lose specificity
+      // ── 1. Capture + strip "Given [condition], " ──────────────────────────
+      // Preserve the original condition so ABC→ABCD doesn't lose specificity
       let condition = ''; // will be derived from verb if no existing Given
       const givenMatch = s.match(/^Given\s+([^,]+),\s+/i);
       if (givenMatch) {
@@ -503,19 +497,19 @@ export default function App() {
         s = s.slice(givenMatch[0].length).trim();
       }
 
-      // ΓöÇΓöÇ 2. Strip "The learner will " / "the learner will " ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+      // ── 2. Strip "The learner will " / "the learner will " ────────────────
       s = s.replace(/^[Tt]he learner will\s+/i, '').trim();
 
-      // ΓöÇΓöÇ 3. Strip trailing period ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+      // ── 3. Strip trailing period ──────────────────────────────────────────
       s = s.replace(/\.+$/, '').trim();
 
-      // ΓöÇΓöÇ 4. Strip trailing degree / standard clause ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+      // ── 4. Strip trailing degree / standard clause ────────────────────────
       s = s.replace(/\s+(?:to\s+\S|with\s+\S).+$/i, '').trim();
 
-      // ΓöÇΓöÇ 5. Strip any trailing period that snuck through ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+      // ── 5. Strip any trailing period that snuck through ───────────────────
       s = s.replace(/\.+$/, '').trim();
 
-      // ΓöÇΓöÇ 6. Derive condition from verb when none was present ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+      // ── 6. Derive condition from verb when none was present ───────────────
       if (!condition) {
         // Extract the first word (the Bloom's verb) from the core action
         const verb = s.split(/\s+/)[0]?.toLowerCase() ?? '';
@@ -549,7 +543,7 @@ export default function App() {
         condition = verbConditionMap[verb] ?? 'relevant examples';
       }
 
-      // ΓöÇΓöÇ 6. Re-apply the selected format ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+      // ── 6. Re-apply the selected format ──────────────────────────────────
       switch (fmt) {
         case 'AB':
           return `The learner will ${s}.`;
@@ -625,7 +619,7 @@ export default function App() {
         );
         setLearningObjectives(suggestions);
       } catch (e) {
-        // API failed ΓÇö client-side reformatted objectives remain visible
+        // API failed — client-side reformatted objectives remain visible
         console.warn('AI refinement failed, keeping client-side reformatted objectives:', e);
       } finally {
         setIsSuggesting(false);
@@ -698,7 +692,7 @@ export default function App() {
       setCourse(finalCourse);
       setOriginalCourse(finalCourse);
       setStep('preview');
-      // ΓöÇΓöÇ Kick off TTS generation in the background ΓöÇΓöÇ
+      // ── Kick off TTS generation in the background ──
       if (voiceOverEnabled) {
         generateTTS(finalCourse, setCourse, ttsVoice);
       }
@@ -805,14 +799,14 @@ export default function App() {
     );
   };
 
-  // ΓöÇΓöÇ Interactive Timeline Preview Component ΓöÇΓöÇ
+  // ── Interactive Timeline Preview Component ──
   const TimelinePreviewDemo = () => {
     const [openStep, setOpenStep] = React.useState<number | null>(null);
     const steps = [
       { n: 1, title: 'Preparation', content: 'Establish IR policies, train your teams, and set up communication channels before an incident occurs.', color: 'bg-blue-500', border: 'border-blue-500/50' },
       { n: 2, title: 'Identification', content: 'Detect and determine whether a security incident has actually occurred using monitoring tools and alerts.', color: 'bg-yellow-500', border: 'border-yellow-500/50' },
       { n: 3, title: 'Containment', content: 'Limit the damage and prevent further spread. Short-term containment isolates affected systems.', color: 'bg-orange-500', border: 'border-orange-500/50' },
-      { n: 4, title: 'Eradication', content: 'Remove the root cause ΓÇö eliminate malware, close vulnerabilities, and patch systems.', color: 'bg-red-500', border: 'border-red-500/50' },
+      { n: 4, title: 'Eradication', content: 'Remove the root cause — eliminate malware, close vulnerabilities, and patch systems.', color: 'bg-red-500', border: 'border-red-500/50' },
       { n: 5, title: 'Recovery', content: 'Restore systems to normal operations and verify they are clean before reconnecting.', color: 'bg-green-500', border: 'border-green-500/50' },
     ];
     return (
@@ -832,7 +826,7 @@ export default function App() {
                 >
                   <div className={`absolute left-3 w-8 h-8 rounded-full ${step.color} flex items-center justify-center text-white font-bold text-sm shadow-lg shrink-0`}>{step.n}</div>
                   <span className="font-bold text-sm flex-1">{step.title}</span>
-                  <span className="text-slate-500 text-xs group-hover:text-slate-300 transition-colors">{openStep === i ? 'Γû▓ Close' : 'Γû╝ Details'}</span>
+                  <span className="text-slate-500 text-xs group-hover:text-slate-300 transition-colors">{openStep === i ? '▲ Close' : '▼ Details'}</span>
                 </button>
                 {openStep === i && (
                   <div className={`mt-1 ml-14 p-4 rounded-xl bg-slate-900 border ${step.border} text-slate-300 text-sm leading-relaxed`}>{step.content}</div>
@@ -867,7 +861,7 @@ export default function App() {
           
           <div className="flex gap-3 items-center">
 
-            {/* ΓöÇΓöÇ Sandbox Dropdown ΓöÇΓöÇ */}
+            {/* ── Sandbox Dropdown ── */}
             <div className="relative">
               <button
                 onClick={() => { setSandboxDropdownOpen(o => !o); }}
@@ -881,10 +875,10 @@ export default function App() {
                 <div className="absolute right-0 top-full mt-2 w-64 bg-slate-900 border border-purple-700/40 rounded-xl shadow-2xl z-[500] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
                   <div className="px-4 py-2.5 bg-purple-900/30 border-b border-purple-700/40 flex items-center gap-2">
                     <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-                    <p className="text-xs font-bold text-purple-300 uppercase tracking-widest">Sandbox ΓÇö Demo Course</p>
+                    <p className="text-xs font-bold text-purple-300 uppercase tracking-widest">Sandbox — Demo Course</p>
                   </div>
                   <div className="p-2 space-y-0.5">
-                    {/* ΓöÇΓöÇ Course Details (sandbox) ΓöÇΓöÇ */}
+                    {/* ── Course Details (sandbox) ── */}
                     <button
                       onClick={() => {
                         // Pre-fill details with sandbox dummy data
@@ -913,7 +907,7 @@ export default function App() {
                       <FileText className="w-4 h-4 text-pink-400 shrink-0" />
                       <span className="flex-1">Course Details</span>
                       {step === 'details' && isSandboxMode && (
-                        <span className="text-[9px] font-black uppercase tracking-wider text-purple-400 bg-purple-500/15 px-1.5 py-0.5 rounded-full">ΓùÅ HERE</span>
+                        <span className="text-[9px] font-black uppercase tracking-wider text-purple-400 bg-purple-500/15 px-1.5 py-0.5 rounded-full">● HERE</span>
                       )}
                     </button>
 
@@ -947,7 +941,7 @@ export default function App() {
                       <Layers className="w-4 h-4 text-teal-400 shrink-0" />
                       <span className="flex-1">Course Outline</span>
                       {step === 'outline' && isSandboxMode && (
-                        <span className="text-[9px] font-black uppercase tracking-wider text-purple-400 bg-purple-500/15 px-1.5 py-0.5 rounded-full">ΓùÅ HERE</span>
+                        <span className="text-[9px] font-black uppercase tracking-wider text-purple-400 bg-purple-500/15 px-1.5 py-0.5 rounded-full">● HERE</span>
                       )}
                     </button>
                     {/* Course Preview */}
@@ -977,7 +971,7 @@ export default function App() {
                       <Eye className="w-4 h-4 text-emerald-400 shrink-0" />
                       <span className="flex-1">Course Preview</span>
                       {step === 'preview' && isSandboxMode && (
-                        <span className="text-[9px] font-black uppercase tracking-wider text-purple-400 bg-purple-500/15 px-1.5 py-0.5 rounded-full">ΓùÅ HERE</span>
+                        <span className="text-[9px] font-black uppercase tracking-wider text-purple-400 bg-purple-500/15 px-1.5 py-0.5 rounded-full">● HERE</span>
                       )}
                     </button>
                     <div className="border-t border-slate-800 my-1" />
@@ -991,11 +985,11 @@ export default function App() {
               {sandboxDropdownOpen && <div className="fixed inset-0 z-[599]" onClick={() => setSandboxDropdownOpen(false)} />}
             </div>
 
-            {/* ΓöÇΓöÇ Admin Button (no dropdown for now) ΓöÇΓöÇ */}
+            {/* ── Admin Button (no dropdown for now) ── */}
             <button
-              onClick={() => { /* Admin panel ΓÇö reserved for future use */ }}
+              onClick={() => { /* Admin panel — reserved for future use */ }}
               className="flex items-center gap-2 px-4 py-2 bg-indigo-500/10 border border-indigo-500/30 hover:bg-indigo-500/20 rounded-lg text-indigo-300 font-bold text-sm transition-all"
-              title="Admin panel ΓÇö coming soon"
+              title="Admin panel — coming soon"
             >
               <Shield className="w-4 h-4" />
               Admin
@@ -1068,7 +1062,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    <p className="text-sm text-slate-400 mt-2 font-medium">AI-powered authoring that analyzes your content and builds a complete, SCORM-compliant, interactive course ΓÇö automatically.</p>
+                    <p className="text-sm text-slate-400 mt-2 font-medium">AI-powered authoring that analyzes your content and builds a complete, SCORM-compliant, interactive course — automatically.</p>
 
                     <button 
                       onClick={() => handleStartDetails()}
@@ -1100,7 +1094,7 @@ export default function App() {
                       </div>
                       <h2 className="text-3xl font-extrabold text-white flex-1">Course Details</h2>
                     </div>
-                    {/* Replace Document button ΓÇö separate from nav click area */}
+                    {/* Replace Document button — separate from nav click area */}
                     <label className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white font-bold text-sm rounded-xl cursor-pointer transition-all shrink-0">
                       <FileUp className="w-4 h-4 text-indigo-400" />
                       Replace Document
@@ -1116,7 +1110,7 @@ export default function App() {
 
                  {(isGenerating || isHydrating) ? renderProgressState() : (
                    <div className="space-y-6">
-                      {/* ΓöÇΓöÇ Pathway Change Confirmation Popup ΓöÇΓöÇ */}
+                      {/* ── Pathway Change Confirmation Popup ── */}
                       {pendingPathway && (
                         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[400] flex items-center justify-center p-6">
                           <div className="bg-slate-900 border border-slate-700 rounded-2xl p-8 w-full max-w-sm shadow-2xl space-y-5">
@@ -1155,7 +1149,7 @@ export default function App() {
                         </div>
                       )}
 
-                      {/* ΓöÇΓöÇ Preset Change Confirmation Popup ΓöÇΓöÇ */}
+                      {/* ── Preset Change Confirmation Popup ── */}
                       {pendingPreset && (
                         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[400] flex items-center justify-center p-6">
                           <div className="bg-slate-900 border border-slate-700 rounded-2xl p-8 w-full max-w-sm shadow-2xl space-y-5">
@@ -1214,7 +1208,7 @@ export default function App() {
                              <div key={p.id} onClick={() => { if (preset !== p.id) setPendingPreset(p.id as any); }} className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${preset === p.id ? 'border-indigo-500 bg-indigo-500/10' : 'border-slate-800 bg-slate-950 hover:border-slate-700'}`}>
                                 <h4 className="text-white font-bold text-lg mb-1">{pathway === 'k12' ? p.k12Label : p.label}</h4>
                                 <p className="text-slate-400 text-xs mb-3">{p.description}</p>
-                                <div className="text-xs font-mono text-indigo-400">{p.slideCountTarget} slides ΓÇó {p.interactions.length} types</div>
+                                <div className="text-xs font-mono text-indigo-400">{p.slideCountTarget} slides • {p.interactions.length} types</div>
                              </div>
                            ))}
                         </div>
@@ -1290,7 +1284,7 @@ export default function App() {
                             ))}
                           </div>
                         </div>
-                        {/* Refine Objectives button ΓÇö always visible when title/description exists */}
+                        {/* Refine Objectives button — always visible when title/description exists */}
                         {(courseTitle || courseDescription || prompt) && (
                           <div className="px-6 pb-4 pt-2 bg-slate-900/50 border-b border-slate-800">
                             <button
@@ -1356,7 +1350,7 @@ export default function App() {
                                     <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Enabling Objectives</p>
                                     {tObj.enablingObjectives.map((enablingObj, eIdx) => (
                                       <div key={eIdx} className="flex gap-2 items-start group/enabling">
-                                        <div className="mt-2 text-slate-600 shrink-0">Γå│</div>
+                                        <div className="mt-2 text-slate-600 shrink-0">↳</div>
                                         <textarea 
                                           rows={2}
                                           value={enablingObj} 
@@ -1401,98 +1395,66 @@ export default function App() {
 
                      {/* Mastery Quiz Configuration */}
                      <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-6 w-full space-y-5">
-                       <div className="flex items-center justify-between">
-                         <div className="flex items-center gap-3">
-                           <div className="w-10 h-10 rounded-lg bg-indigo-500/20 flex items-center justify-center"><Target className="w-5 h-5 text-indigo-400" /></div>
-                           <div>
-                             <h3 className="text-xl font-bold text-white">Mastery Quiz</h3>
-                             <p className="text-xs text-slate-500">Final assessment appended after course content</p>
-                           </div>
-                         </div>
-                         <div onClick={() => setExamConfig(c => ({ ...c, enabled: !c.enabled }))} className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${examConfig.enabled ? 'bg-indigo-500' : 'bg-slate-700'}`}>
-                           <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${examConfig.enabled ? 'translate-x-6' : ''}`} />
-                         </div>
+                   <div className="flex items-center justify-between">
+                   <div className="flex items-center gap-3">
+                     <div className="w-10 h-10 rounded-lg bg-indigo-500/20 flex items-center justify-center"><Target className="w-5 h-5 text-indigo-400" /></div>
+                     <div>
+                       <h3 className="text-xl font-bold text-white">Mastery Quiz</h3>
+                       <p className="text-xs text-slate-500">Final assessment appended after course content</p>
+                     </div>
+                   </div>
+                   <div onClick={() => setExamConfig(c => ({ ...c, enabled: !c.enabled }))} className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${examConfig.enabled ? 'bg-indigo-500' : 'bg-slate-700'}`}>
+                     <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${examConfig.enabled ? 'translate-x-6' : ''}`} />
+                   </div>
+                   </div>
+                   {examConfig.enabled && (
+                   <div className="space-y-5 pt-3 border-t border-slate-800">
+                     <div>
+                       <div className="flex justify-between mb-2"><span className="text-sm font-bold text-slate-300">Passing Score</span><span className="text-indigo-400 font-extrabold">{examConfig.passingScore}%</span></div>
+                       <input type="range" min="50" max="100" value={examConfig.passingScore} onChange={e => setExamConfig(c => ({ ...c, passingScore: Number(e.target.value) }))} className="w-full accent-indigo-500 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer" />
+                       <div className="flex justify-between text-xs text-slate-600 mt-1"><span>50%</span><span>100%</span></div>
+                     </div>
+                     <div><p className="text-sm font-bold text-slate-300 mb-2">Question Count Mode</p>
+                       <div className="flex gap-2">
+                         {(['total', 'per-module'] as const).map(m => (<button key={m} onClick={() => setExamConfig(c => ({ ...c, questionMode: m }))} className={`flex-1 py-2 rounded-lg text-sm font-bold border transition-all ${examConfig.questionMode === m ? 'bg-indigo-600/30 border-indigo-500/50 text-indigo-300' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}>{m === 'total' ? 'Total' : 'Per Module'}</button>))}
                        </div>
-                       {examConfig.enabled && (
-                         <div className="space-y-5 pt-3 border-t border-slate-800">
-                           <div>
-                             <div className="flex justify-between mb-2"><span className="text-sm font-bold text-slate-300">Passing Score</span><span className="text-indigo-400 font-extrabold">{examConfig.passingScore}%</span></div>
-                             <input type="range" min="50" max="100" value={examConfig.passingScore} onChange={e => setExamConfig(c => ({ ...c, passingScore: Number(e.target.value) }))} className="w-full accent-indigo-500 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer" />
-                             <div className="flex justify-between text-xs text-slate-600 mt-1"><span>50%</span><span>100%</span></div>
-                           </div>
-                           <div>
-                             <p className="text-sm font-bold text-slate-300 mb-2">Question Count Mode</p>
-                             <div className="flex gap-2">
-                               {(['total', 'per-module'] as const).map(m => (
-                                 <button key={m} onClick={() => setExamConfig(c => ({ ...c, questionMode: m }))} className={`flex-1 py-2 rounded-lg text-sm font-bold border transition-all ${examConfig.questionMode === m ? 'bg-indigo-600/30 border-indigo-500/50 text-indigo-300' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}>
-                                   {m === 'total' ? 'Total' : 'Per Module'}
-                                 </button>
-                               ))}
-                             </div>
-                           </div>
-                           <div>
-                             <p className="text-sm font-bold text-slate-300 mb-2">{examConfig.questionMode === 'total' ? 'Total Questions' : 'Questions per Module'}</p>
-                             <div className="flex items-center gap-3">
-                               <button onClick={() => setExamConfig(c => ({ ...c, questionCount: Math.max(1, c.questionCount - 1) }))} className="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:text-white font-extrabold text-xl flex items-center justify-center">-</button>
-                               <span className="text-white font-extrabold text-xl w-8 text-center">{examConfig.questionCount}</span>
-                               <button onClick={() => setExamConfig(c => ({ ...c, questionCount: c.questionCount + 1 }))} className="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:text-white font-extrabold text-xl flex items-center justify-center">+</button>
-                             </div>
-                           </div>
-                           <div>
-                             <p className="text-sm font-bold text-slate-300 mb-2">Question Types</p>
-                             <div className="flex gap-2 flex-wrap">
-                               {([['mc', 'Multiple Choice'], ['ma', 'Multiple Answer'], ['tf', 'True / False']] as [string, string][]).map(([type, label]) => {
-                                 const active = examConfig.questionTypes.includes(type as any);
-                                 return (<button key={type} onClick={() => setExamConfig(c => ({ ...c, questionTypes: active ? c.questionTypes.filter(t => t !== type) : [...c.questionTypes, type as any] }))} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${active ? 'bg-indigo-600/30 border-indigo-500/40 text-indigo-300' : 'bg-slate-800 border-slate-700 text-slate-500 hover:text-slate-300'}`}>{label}</button>);
-                               })}
-                             </div>
-                           </div>
-                           <div>
-                             <p className="text-sm font-bold text-slate-300 mb-2">Presentation Mode</p>
-                             <div className="flex gap-2">
-                               {([['one-at-a-time', 'One at a Time'], ['scroll-all', 'All at Once']] as [string, string][]).map(([m, label]) => (
-                                 <button key={m} onClick={() => setExamConfig(c => ({ ...c, presentationMode: m as any }))} className={`flex-1 py-2 rounded-lg text-sm font-bold border transition-all ${examConfig.presentationMode === m ? 'bg-purple-600/30 border-purple-500/50 text-purple-300' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}>{label}</button>
-                               ))}
-                             </div>
-                           </div>
-                           <label className="flex items-center justify-between cursor-pointer">
-                             <div>
-                               <p className="text-sm font-bold text-slate-300">Allow Retake on Fail</p>
-                               <p className="text-xs text-slate-600">Disabled = learner must restart full course</p>
-                             </div>
-                             <div onClick={() => setExamConfig(c => ({ ...c, allowRetake: !c.allowRetake }))} className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${examConfig.allowRetake ? 'bg-emerald-500' : 'bg-slate-700'}`}>
-                               <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${examConfig.allowRetake ? 'translate-x-6' : ''}`} />
-                             </div>
-                           </label>
-                         </div>
-                       )}
+                     </div>
+                     <div><p className="text-sm font-bold text-slate-300 mb-2">{examConfig.questionMode === 'total' ? 'Total Questions' : 'Questions per Module'}</p>
+                       <div className="flex items-center gap-3">
+                         <button onClick={() => setExamConfig(c => ({ ...c, questionCount: Math.max(1, c.questionCount - 1) }))} className="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:text-white font-extrabold text-xl flex items-center justify-center">-</button>
+                         <span className="text-white font-extrabold text-xl w-8 text-center">{examConfig.questionCount}</span>
+                         <button onClick={() => setExamConfig(c => ({ ...c, questionCount: c.questionCount + 1 }))} className="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:text-white font-extrabold text-xl flex items-center justify-center">+</button>
+                       </div>
+                     </div>
+                     <div><p className="text-sm font-bold text-slate-300 mb-2">Question Types</p>
+                       <div className="flex gap-2 flex-wrap">
+                         {([['mc','Multiple Choice'],['ma','Multiple Answer'],['tf','True / False']] as [string,string][]).map(([type,label]) => { const active = examConfig.questionTypes.includes(type as any); return (<button key={type} onClick={() => setExamConfig(c => ({ ...c, questionTypes: active ? c.questionTypes.filter(t => t !== type) : [...c.questionTypes, type as any] }))} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${active ? 'bg-indigo-600/30 border-indigo-500/40 text-indigo-300' : 'bg-slate-800 border-slate-700 text-slate-500 hover:text-slate-300'}`}>{label}</button>); })}
+                       </div>
+                     </div>
+                     <div><p className="text-sm font-bold text-slate-300 mb-2">Presentation Mode</p>
+                       <div className="flex gap-2">
+                         {([['one-at-a-time','One at a Time'],['scroll-all','All at Once']] as [string,string][]).map(([m,label]) => (<button key={m} onClick={() => setExamConfig(c => ({ ...c, presentationMode: m as any }))} className={`flex-1 py-2 rounded-lg text-sm font-bold border transition-all ${examConfig.presentationMode === m ? 'bg-purple-600/30 border-purple-500/50 text-purple-300' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}>{label}</button>))}
+                       </div>
+                     </div>
+                     <label className="flex items-center justify-between cursor-pointer">
+                       <div><p className="text-sm font-bold text-slate-300">Allow Retake on Fail</p><p className="text-xs text-slate-600">Disabled = learner must restart full course</p></div>
+                       <div onClick={() => setExamConfig(c => ({ ...c, allowRetake: !c.allowRetake }))} className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${examConfig.allowRetake ? 'bg-emerald-500' : 'bg-slate-700'}`}><div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${examConfig.allowRetake ? 'translate-x-6' : ''}`} /></div>
+                     </label>
+                   </div>
+                   )}
                      </div>
 
                      {/* Navigation Mode */}
                      <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-6 w-full space-y-4">
-                       <div className="flex items-center gap-3">
-                         <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center"><Lock className="w-5 h-5 text-amber-400" /></div>
-                         <div>
-                           <h3 className="text-xl font-bold text-white">Navigation Mode</h3>
-                           <p className="text-xs text-slate-500">Controls how learners move through course slides</p>
-                         </div>
-                       </div>
-                       <div className="grid grid-cols-1 gap-2">
-                         {([
-                           { mode: 'free'       as NavigationMode, label: 'Free Roam',  desc: 'Click any slide at any time' },
-                           { mode: 'linear'     as NavigationMode, label: 'Linear',     desc: 'Next button only - no menu skipping' },
-                           { mode: 'restricted' as NavigationMode, label: 'Restricted', desc: 'Next to advance; revisit viewed slides via menu' },
-                         ]).map(({ mode, label, desc }) => (
-                           <button key={mode} onClick={() => setNavigationMode(mode)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all ${navigationMode === mode ? 'bg-amber-500/10 border-amber-500/30 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white hover:border-slate-600'}`}>
-                             <div className="flex-1">
-                               <p className="text-sm font-bold">{label}</p>
-                               <p className="text-xs text-slate-500">{desc}</p>
-                             </div>
-                             {navigationMode === mode && <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0" />}
-                           </button>
-                         ))}
-                       </div>
+                   <div className="flex items-center gap-3">
+                   <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center"><Lock className="w-5 h-5 text-amber-400" /></div>
+                   <div><h3 className="text-xl font-bold text-white">Navigation Mode</h3><p className="text-xs text-slate-500">Controls how learners move through course slides</p></div>
+                   </div>
+                   <div className="grid grid-cols-1 gap-2">
+                   {([{mode:'free' as NavigationMode,label:'Free Roam',desc:'Click any slide at any time'},{mode:'linear' as NavigationMode,label:'Linear',desc:'Next button only - no menu skipping'},{mode:'restricted' as NavigationMode,label:'Restricted',desc:'Next to advance; revisit viewed slides via menu'}]).map(({mode,label,desc}) => (<button key={mode} onClick={() => setNavigationMode(mode)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all ${navigationMode === mode ? 'bg-amber-500/10 border-amber-500/30 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white hover:border-slate-600'}`}><div className="flex-1"><p className="text-sm font-bold">{label}</p><p className="text-xs text-slate-500">{desc}</p></div>{navigationMode === mode && <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0" />}</button>))}
+                   </div>
                      </div>
+
                      {/* Configuration Grid */}
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
                        <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-6 flex flex-col justify-between">
@@ -1550,7 +1512,7 @@ export default function App() {
                           </div>
                         </div>
                         <div className="p-6">
-                           <p className="text-xs text-blue-400 font-bold tracking-widest uppercase mb-6">CLICK TO SELECT ΓÇó CLICK ON EYE ICON TO PREVIEW</p>
+                           <p className="text-xs text-blue-400 font-bold tracking-widest uppercase mb-6">CLICK TO SELECT • CLICK ON EYE ICON TO PREVIEW</p>
                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                              {[
                                { id: 'multiple-choice', label: 'Multiple Choice' },
@@ -1598,25 +1560,25 @@ export default function App() {
                            </div>
                         </div>
                          <div className="p-6">
-                           <p className="text-xs text-orange-400 font-bold tracking-widest uppercase mb-5">CLICK TO SELECT ΓÇó CLICK ON EYE ICON TO PREVIEW</p>
+                           <p className="text-xs text-orange-400 font-bold tracking-widest uppercase mb-5">CLICK TO SELECT • CLICK ON EYE ICON TO PREVIEW</p>
                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                             {getRecommendedGames(pathway, preset).map((gt: any) => {
                               const isSelected = gameTemplateIds.includes(gt.id);
                               const NICKNAMES: Record<string, {emoji:string; aka:string}> = {
-                                'jeopardy': { emoji: '≡ƒô║', aka: 'aka Jeopardy!' },
-                                'knowledge-board': { emoji: '≡ƒô║', aka: 'aka Jeopardy!' },
-                                'millionaire': { emoji: '≡ƒÆ░', aka: "aka Who Wants to Be a Millionaire" },
-                                'millionaire-challenge': { emoji: '≡ƒÆ░', aka: "aka Who Wants to Be a Millionaire" },
-                                'family-feud': { emoji: '≡ƒæ¿ΓÇì≡ƒæ⌐ΓÇì≡ƒæº', aka: 'aka Family Feud' },
-                                'ranked-survey': { emoji: '≡ƒæ¿ΓÇì≡ƒæ⌐ΓÇì≡ƒæº', aka: 'aka Family Feud' },
-                                'escape-room': { emoji: '≡ƒöÆ', aka: 'aka Digital Escape Room' },
-                                'digital-escape-room': { emoji: '≡ƒöÆ', aka: 'aka Digital Escape Room' },
-                                'spin-wheel': { emoji: '≡ƒÄí', aka: 'aka Spin the Wheel' },
-                                'spin-the-wheel': { emoji: '≡ƒÄí', aka: 'aka Spin the Wheel' },
-                                'price-is-right': { emoji: '≡ƒÅ╖∩╕Å', aka: "aka The Price is Right" },
-                                'price-estimator': { emoji: '≡ƒÅ╖∩╕Å', aka: "aka The Price is Right" },
+                                'jeopardy': { emoji: '📺', aka: 'aka Jeopardy!' },
+                                'knowledge-board': { emoji: '📺', aka: 'aka Jeopardy!' },
+                                'millionaire': { emoji: '💰', aka: "aka Who Wants to Be a Millionaire" },
+                                'millionaire-challenge': { emoji: '💰', aka: "aka Who Wants to Be a Millionaire" },
+                                'family-feud': { emoji: '👨‍👩‍👧', aka: 'aka Family Feud' },
+                                'ranked-survey': { emoji: '👨‍👩‍👧', aka: 'aka Family Feud' },
+                                'escape-room': { emoji: '🔒', aka: 'aka Digital Escape Room' },
+                                'digital-escape-room': { emoji: '🔒', aka: 'aka Digital Escape Room' },
+                                'spin-wheel': { emoji: '🎡', aka: 'aka Spin the Wheel' },
+                                'spin-the-wheel': { emoji: '🎡', aka: 'aka Spin the Wheel' },
+                                'price-is-right': { emoji: '🏷️', aka: "aka The Price is Right" },
+                                'price-estimator': { emoji: '🏷️', aka: "aka The Price is Right" },
                               };
-                              const nick = NICKNAMES[gt.id] || { emoji: '≡ƒÄ«', aka: '' };
+                              const nick = NICKNAMES[gt.id] || { emoji: '🎮', aka: '' };
                               return (
                                 <div key={gt.id} className={`relative flex flex-col items-center text-center gap-1.5 p-4 rounded-xl border-2 transition-all ${isSelected ? 'border-orange-500 bg-orange-500/10 text-white' : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700'}`}>
                                   <div className="absolute top-2 right-2 text-slate-400 hover:text-orange-300 cursor-pointer z-20 bg-slate-900 rounded-full p-1" onClick={(e) => { e.stopPropagation(); setPreviewModalOption(gt.name); }}>
@@ -1686,18 +1648,18 @@ export default function App() {
                          </div>
                        </div>
 
-                        {/* TTS Voice Picker ΓÇö shown when voice-over is enabled */}
+                        {/* TTS Voice Picker — shown when voice-over is enabled */}
                         {voiceOverEnabled && (
                           <div className="mt-5 space-y-3">
                             <div className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">AI Narrator Voice</div>
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                               {([
-                                { id: 'alloy',   label: 'Alloy',   sub: 'Neutral ┬╖ Balanced' },
-                                { id: 'echo',    label: 'Echo',    sub: 'Male ┬╖ Measured' },
-                                { id: 'fable',   label: 'Fable',   sub: 'Male ┬╖ Warm' },
-                                { id: 'onyx',    label: 'Onyx',    sub: 'Male ┬╖ Deep' },
-                                { id: 'nova',    label: 'Nova',    sub: 'Female ┬╖ Bright' },
-                                { id: 'shimmer', label: 'Shimmer', sub: 'Female ┬╖ Soft' },
+                                { id: 'alloy',   label: 'Alloy',   sub: 'Neutral · Balanced' },
+                                { id: 'echo',    label: 'Echo',    sub: 'Male · Measured' },
+                                { id: 'fable',   label: 'Fable',   sub: 'Male · Warm' },
+                                { id: 'onyx',    label: 'Onyx',    sub: 'Male · Deep' },
+                                { id: 'nova',    label: 'Nova',    sub: 'Female · Bright' },
+                                { id: 'shimmer', label: 'Shimmer', sub: 'Female · Soft' },
                               ] as const).map(v => (
                                 <div key={v.id} className="relative">
                                   <button
@@ -1712,7 +1674,7 @@ export default function App() {
                                     <span className="text-xs font-bold pr-5">{v.label}</span>
                                     <span className="text-[10px] opacity-70 mt-0.5">{v.sub}</span>
                                   </button>
-                                  {/* Ear preview button ΓÇö top-right corner of card */}
+                                  {/* Ear preview button — top-right corner of card */}
                                   <button
                                     onClick={e => { e.stopPropagation(); previewVoice(v.id); }}
                                     disabled={!!previewingVoice}
@@ -1737,7 +1699,7 @@ export default function App() {
                         )}
                      </div>
 
-                     {/* Footer Actions ΓÇö Player Properties + Generate */}
+                     {/* Footer Actions — Player Properties + Generate */}
                      <div className="flex flex-col sm:flex-row gap-4 mt-8">
                        <button
                          onClick={() => setShowPlayerProperties(true)}
@@ -1788,7 +1750,7 @@ export default function App() {
                  : hydrateCourse
                }
                onCancel={() => {
-                 if (isSandboxMode) { setIsSandboxMode(false); setSandboxDropdownOpen(false); setStep('home'); }
+                 if (isSandboxMode) { setStep('details'); }
                  else setStep('details');
                }}
                error={error}
@@ -1798,7 +1760,7 @@ export default function App() {
 
           {step === 'preview' && course && (
             <motion.div key="preview" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="w-full min-h-screen bg-slate-900 absolute top-0 left-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] bg-opacity-20 z-50 overflow-hidden flex flex-col">
-              {/* ΓöÇΓöÇ Preview Top Bar ΓÇö Row 1: Navigation + title + view controls + export ΓöÇΓöÇ */}
+              {/* ── Preview Top Bar — Row 1: Navigation + title + view controls + export ── */}
               <div className="px-3 bg-slate-900 border-b border-slate-800 shrink-0">
                 <div className="h-11 flex items-center justify-between gap-2">
                   {/* Left: back + title */}
@@ -1833,7 +1795,7 @@ export default function App() {
                         onClick={() => setThemeDropdownOpen(o => !o)}
                         className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-medium"
                       >
-                        {theme === 'dark' ? '≡ƒîæ' : theme === 'light' ? 'ΓÿÇ∩╕Å' : '≡ƒÆ£'}
+                        {theme === 'dark' ? '🌑' : theme === 'light' ? '☀️' : '💜'}
                         <span className="hidden lg:inline capitalize">{theme}</span>
                         <ChevronDown className="w-3 h-3 opacity-60" />
                       </button>
@@ -1841,7 +1803,7 @@ export default function App() {
                         <>
                           <div className="fixed inset-0 z-[200]" onClick={() => setThemeDropdownOpen(false)} />
                           <div className="absolute right-0 top-full mt-1 z-[201] bg-slate-800 border border-slate-700 rounded-xl shadow-2xl overflow-hidden min-w-[130px]">
-                            {([['dark','≡ƒîæ Dark'],['light','ΓÿÇ∩╕Å Light'],['unified','≡ƒÆ£ Unified']] as [string,string][]).map(([val, label]) => (
+                            {([['dark','🌑 Dark'],['light','☀️ Light'],['unified','💜 Unified']] as [string,string][]).map(([val, label]) => (
                               <button
                                 key={val}
                                 onClick={() => { setTheme(val as any); setThemeDropdownOpen(false); }}
@@ -1861,7 +1823,7 @@ export default function App() {
 
                     {/* Export SCORM */}
                     <button
-                      title="Export SCORM ΓÇö download a SCORM 1.2 zip package"
+                      title="Export SCORM — download a SCORM 1.2 zip package"
                       onClick={exportScorm}
                       className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs transition-colors shadow-lg shadow-indigo-500/20"
                     >
@@ -1870,7 +1832,7 @@ export default function App() {
 
                     {/* Discard */}
                     <button
-                      title="Discard ΓÇö exit preview and return to the home screen"
+                      title="Discard — exit preview and return to the home screen"
                       onClick={() => { setCourse(null); setStep('home'); }}
                       className="p-1.5 rounded-lg border border-red-800/50 hover:bg-red-900/20 text-red-400 transition-colors"
                     >
@@ -1879,11 +1841,11 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* ΓöÇΓöÇ Row 2: Editing tools strip ΓöÇΓöÇ */}
+                {/* ── Row 2: Editing tools strip ── */}
                 <div className="h-9 flex items-center justify-end gap-1 pb-1">
                   {/* Reset */}
                   <button
-                    title="Reset ΓÇö restore to original generated state"
+                    title="Reset — restore to original generated state"
                     onClick={() => { if (originalCourse) { setCourse(originalCourse); setCurrentSlideIndex(0); setQuizState({}); setFloatingImagesMap({}); setCourseBg(null); } }}
                     className="flex items-center gap-1 px-2 py-1 rounded-md border border-amber-700/50 hover:bg-amber-800/20 text-amber-300 text-[11px] font-semibold"
                   >
@@ -1894,7 +1856,7 @@ export default function App() {
 
                   {/* Edit Text & Audio */}
                   <button
-                    title="Edit Text & Audio ΓÇö open the rich-text and narration editor for this slide"
+                    title="Edit Text & Audio — open the rich-text and narration editor for this slide"
                     onClick={() => { editingSlideRef.current = currentSlide; setEditingSlide(currentSlide); setEditDrawerOpen(true); setEditDrawerTab('text'); }}
                     className="flex items-center gap-1 px-2 py-1 rounded-md border border-indigo-700/50 hover:bg-indigo-800/20 text-indigo-300 text-[11px] font-semibold"
                   >
@@ -1905,7 +1867,7 @@ export default function App() {
                   <div className="relative">
                     <button
                       onClick={() => setShowBgMenu(v => !v)}
-                      title="Change Background ΓÇö upload an image or choose a solid color"
+                      title="Change Background — upload an image or choose a solid color"
                       className="flex items-center gap-1 px-2 py-1 rounded-md border border-pink-700/50 hover:bg-pink-800/20 text-pink-300 text-[11px] font-semibold"
                     >
                       <ImageIcon className="w-3 h-3" /><span>Change Bg</span>
@@ -1967,7 +1929,7 @@ export default function App() {
                   {/* Upload Image (floating) */}
                   <label
                     htmlFor="topbar-img-upload"
-                    title="Upload Image ΓÇö add images to the current slide"
+                    title="Upload Image — add images to the current slide"
                     className="flex items-center gap-1 px-2 py-1 rounded-md border border-emerald-700/50 hover:bg-emerald-800/20 text-emerald-300 text-[11px] font-semibold cursor-pointer"
                   >
                     <Upload className="w-3 h-3" /><span>Upload Image</span>
@@ -1988,7 +1950,7 @@ export default function App() {
 
                   {/* Source Image */}
                   <button
-                    title="Source Image ΓÇö pick an image from your uploaded source document"
+                    title="Source Image — pick an image from your uploaded source document"
                     onClick={() => setShowImageGalleryForSlide(currentSlide?.id || null)}
                     className="flex items-center gap-1 px-2 py-1 rounded-md border border-teal-700/50 hover:bg-teal-800/20 text-teal-300 text-[11px] font-semibold"
                   >
@@ -1999,7 +1961,7 @@ export default function App() {
 
                   {/* Player Properties */}
                   <button
-                    title="Player Properties ΓÇö configure controls, TOC, aspect ratio, branding"
+                    title="Player Properties — configure controls, TOC, aspect ratio, branding"
                     onClick={() => setShowPlayerProperties(true)}
                     className="flex items-center gap-1 px-2 py-1 rounded-md border border-orange-700/50 hover:bg-orange-800/20 text-orange-300 text-[11px] font-semibold"
                   >
@@ -2008,7 +1970,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* ΓöÇΓöÇ Body: Sidebar + Main Player Area ΓöÇΓöÇ */}
+              {/* ── Body: Sidebar + Main Player Area ── */}
               <div className={cn("flex flex-row flex-1 overflow-hidden", playerConfig.playerResolution === 'full' ? 'overflow-x-hidden' : 'min-h-0')}>
                 {/* Course Navigation Sidebar */}
                 <CourseNavSidebar
@@ -2047,7 +2009,7 @@ export default function App() {
                     {/* Overlay only for image backgrounds */}
                     {courseBg && !courseBg.startsWith('#') && <div className="absolute inset-0 bg-slate-900/50 pointer-events-none" />}
 
-                  {/* Slide frame ΓÇö aspect ratio driven by playerConfig.playerResolution */}
+                  {/* Slide frame — aspect ratio driven by playerConfig.playerResolution */}
                   <div className={cn(`theme-${theme}`,
                     "transition-all duration-500 flex flex-col relative z-10",
                     viewMode === 'desktop'
@@ -2165,7 +2127,7 @@ export default function App() {
                                            <span>{qs.selectedIdx === correctIdx ? 'Correct! Well done.' : 'Incorrect.'}</span>
                                          </div>
                                          {qs.selectedIdx !== correctIdx && correctLabel && (
-                                           <p className="text-sm font-medium">Γ£ô Correct answer: <span className="font-bold">{correctLabel}</span></p>
+                                           <p className="text-sm font-medium">✓ Correct answer: <span className="font-bold">{correctLabel}</span></p>
                                          )}
                                          {quiz.feedback && <p className="text-sm font-medium opacity-80">{quiz.feedback}</p>}
                                        </div>
@@ -2230,7 +2192,7 @@ export default function App() {
                                        <div className={cn('p-4 rounded-xl font-bold flex flex-col gap-2', isAllCorrect ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-red-50 text-red-800 border border-red-200')}>
                                          <div className="flex items-center gap-2">
                                            {isAllCorrect ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
-                                           <span>{isAllCorrect ? 'Correct! All answers right.' : 'Not quite ΓÇö check the highlighted answers.'}</span>
+                                           <span>{isAllCorrect ? 'Correct! All answers right.' : 'Not quite — check the highlighted answers.'}</span>
                                          </div>
                                          {quiz.feedback && <p className="text-sm font-medium opacity-80">{quiz.feedback}</p>}
                                        </div>
@@ -2343,19 +2305,9 @@ export default function App() {
                                        try {
                                          questions = await generateMasteryExam(course, examConfig);
                                          setExamQuestions(questions);
-                                       } finally {
-                                         setIsGeneratingExam(false);
-                                       }
+                                       } finally { setIsGeneratingExam(false); }
                                      }
-                                     const initSession: ExamSessionState = {
-                                       questions,
-                                       answers: Object.fromEntries(questions.map(q => [q.id, null])),
-                                       currentQuestionIdx: 0,
-                                       submitted: false,
-                                       score: null,
-                                       passed: null,
-                                     };
-                                     setExamSession(initSession);
+                                     setExamSession({ questions, answers: Object.fromEntries(questions.map(q => [q.id, null])), currentQuestionIdx: 0, submitted: false, score: null, passed: null });
                                      setExamPhase('active');
                                      setCurrentSlideIndex(examQIndex);
                                    }}
@@ -2368,18 +2320,14 @@ export default function App() {
                                    questions={examSession.questions.length > 0 ? examSession.questions : examQuestions}
                                    examConfig={examConfig}
                                    sessionState={examSession}
-                                   onAnswer={(qId, answer) => {
-                                     setExamSession(prev => ({ ...prev, answers: { ...prev.answers, [qId]: answer } }));
-                                   }}
+                                   onAnswer={(qId, answer) => setExamSession(prev => ({ ...prev, answers: { ...prev.answers, [qId]: answer } }))}
                                    onSubmit={(newState) => {
                                      if (newState.submitted) {
                                        setExamSession(newState);
                                        setExamPhase('complete');
                                        setCurrentSlideIndex(examResultsIndex);
                                        scormReportScore(newState.score ?? 0, newState.passed ?? false);
-                                     } else {
-                                       setExamSession(newState);
-                                     }
+                                     } else { setExamSession(newState); }
                                    }}
                                  />
                                )}
@@ -2394,22 +2342,11 @@ export default function App() {
                                    correctCount={Math.round(((examSession.score ?? 0) / 100) * (examSession.questions.length || examQuestions.length))}
                                    allowRetake={examConfig.allowRetake}
                                    onRetake={() => {
-                                     const initSession: ExamSessionState = {
-                                       questions: examQuestions,
-                                       answers: Object.fromEntries(examQuestions.map(q => [q.id, null])),
-                                       currentQuestionIdx: 0,
-                                       submitted: false,
-                                       score: null,
-                                       passed: null,
-                                     };
-                                     setExamSession(initSession);
+                                     setExamSession({ questions: examQuestions, answers: Object.fromEntries(examQuestions.map(q => [q.id, null])), currentQuestionIdx: 0, submitted: false, score: null, passed: null });
                                      setExamPhase('active');
                                      setCurrentSlideIndex(examIntroIndex);
                                    }}
-                                   onReturnToCourse={() => {
-                                     setExamPhase('complete');
-                                     setCurrentSlideIndex(0);
-                                   }}
+                                   onReturnToCourse={() => { setExamPhase('complete'); setCurrentSlideIndex(0); }}
                                    onRestartCourse={() => {
                                      setExamPhase('idle');
                                      setExamSession({ questions: [], answers: {}, currentQuestionIdx: 0, submitted: false, score: null, passed: null });
@@ -2447,7 +2384,7 @@ export default function App() {
 
                            </div>
 
-                           {/* Slide media tools ΓÇö Edit/Reset/Upload are in the top bar */}
+                           {/* Slide media tools — Edit/Reset/Upload are in the top bar */}
                            <div className="absolute top-0 right-0 z-[100] flex flex-wrap max-w-sm justify-end gap-2 shrink-0">
                              {sourceImages.length > 0 && (
                                <button 
@@ -2467,7 +2404,7 @@ export default function App() {
                            </div>
 
                             {(currentSlide?.imagePlaceholder || currentSlide?.mediaUrl) && (
-                              <div className="mt-6">
+                              <div className="mt-6 flex justify-center">
                               {currentSlide?.mediaUrl ? (
                                 <div className="max-w-lg rounded-xl overflow-hidden shadow-xl border border-black/10">
                                   <img 
@@ -2518,7 +2455,7 @@ export default function App() {
                               </div>
                             )}
 
-                       {/* Floating images ΓÇö inside scroll so they scroll with content */}
+                       {/* Floating images — inside scroll so they scroll with content */}
                        <FloatingImageCanvas
                          images={floatingImagesMap[currentSlide?.id] || []}
                          isAuthoring={true}
@@ -2533,7 +2470,7 @@ export default function App() {
 
                      </div>{/* end slide content scroll area */}
 
-                    {/* Learner Player Navigation Bar ΓÇö sticky at bottom in full-screen mode */}
+                    {/* Learner Player Navigation Bar — sticky at bottom in full-screen mode */}
                     <div className={cn(
                       "w-full z-[100] shrink-0 border-t backdrop-blur-md",
                       playerConfig.playerResolution === 'full' ? 'sticky bottom-0' : 'relative',
@@ -2609,7 +2546,7 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {/* ΓöÇΓöÇΓöÇ Right Slide-In Edit Drawer ΓöÇΓöÇΓöÇ */}
+        {/* ─── Right Slide-In Edit Drawer ─── */}
         <AnimatePresence>
           {editingSlide && (
             <>
@@ -2641,8 +2578,8 @@ export default function App() {
                 {/* Tabs */}
                 <div className="flex border-b border-slate-800 flex-shrink-0">
                   {[
-                    { id: 'text', icon: 'Γ£Å', label: 'Edit Text', activeColor: 'border-indigo-500 text-indigo-300 bg-indigo-500/10' },
-                    { id: 'audio', icon: '≡ƒÄñ', label: 'Audio / Narration', activeColor: 'border-emerald-500 text-emerald-300 bg-emerald-500/10' },
+                    { id: 'text', icon: '✏', label: 'Edit Text', activeColor: 'border-indigo-500 text-indigo-300 bg-indigo-500/10' },
+                    { id: 'audio', icon: '🎤', label: 'Audio / Narration', activeColor: 'border-emerald-500 text-emerald-300 bg-emerald-500/10' },
                   ].map(tab => (
                     <button
                       key={tab.id}
@@ -2690,13 +2627,13 @@ export default function App() {
                   {editDrawerTab === 'audio' && (
                     <>
                       <div className="p-3 bg-emerald-900/20 border border-emerald-700/30 rounded-xl text-xs text-emerald-300">
-                        <strong>ISD Best Practice:</strong> Narration should <em>expand</em> on what's on screen ΓÇö never read line-by-line. Aim for conversational, explanatory language.
+                        <strong>ISD Best Practice:</strong> Narration should <em>expand</em> on what's on screen — never read line-by-line. Aim for conversational, explanatory language.
                       </div>
                       <div className="space-y-2">
                         <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest flex items-center justify-between">
                           <span>Audio Narration Script</span>
                           <span className={`normal-case font-normal ${voiceOverEnabled ? 'text-emerald-400' : 'text-slate-600'}`}>
-                            {voiceOverEnabled ? '≡ƒöè Voice-Over Enabled' : '≡ƒöç Voice-Over Off'}
+                            {voiceOverEnabled ? '🔊 Voice-Over Enabled' : '🔇 Voice-Over Off'}
                           </span>
                         </label>
                         <textarea
@@ -2714,7 +2651,7 @@ export default function App() {
                            return (
                              <div className="flex items-center gap-4 text-xs text-slate-500">
                                <span>{words} words</span>
-                               <span>ΓÇó</span>
+                               <span>•</span>
                                <span>~{mins > 0 ? `${mins}m ` : ''}{remainSecs}s read time @ 130 wpm</span>
                              </div>
                            );
@@ -2730,14 +2667,14 @@ export default function App() {
                                  onChange={e => setTtsVoice(e.target.value)}
                                  className="flex-1 bg-slate-950 border border-emerald-700/40 rounded-lg px-3 py-1.5 text-emerald-200 text-xs font-bold outline-none focus:border-emerald-500 transition-all"
                                >
-                                 <option value="alloy">Alloy ΓÇö Neutral / Balanced</option>
-                                 <option value="echo">Echo ΓÇö Male / Measured</option>
-                                 <option value="fable">Fable ΓÇö Male / Warm</option>
-                                 <option value="onyx">Onyx ΓÇö Male / Deep</option>
-                                 <option value="nova">Nova ΓÇö Female / Bright</option>
-                                 <option value="shimmer">Shimmer ΓÇö Female / Soft</option>
+                                 <option value="alloy">Alloy — Neutral / Balanced</option>
+                                 <option value="echo">Echo — Male / Measured</option>
+                                 <option value="fable">Fable — Male / Warm</option>
+                                 <option value="onyx">Onyx — Male / Deep</option>
+                                 <option value="nova">Nova — Female / Bright</option>
+                                 <option value="shimmer">Shimmer — Female / Soft</option>
                                </select>
-                               {/* Ear preview button ΓÇö previews the currently selected voice */}
+                               {/* Ear preview button — previews the currently selected voice */}
                                <button
                                  onClick={() => previewVoice(ttsVoice)}
                                  disabled={!!previewingVoice}
@@ -2772,7 +2709,7 @@ export default function App() {
                               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-700/20 border border-emerald-600/40 text-emerald-300 font-bold text-xs hover:bg-emerald-700/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               {regenSlideId === editingSlide?.id ? (
-                                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Generating audioΓÇª</>
+                                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Generating audio…</>
                               ) : (
                                 <><Mic className="w-3.5 h-3.5" /> Regenerate Audio for this Slide</>
                               )}
@@ -2782,7 +2719,7 @@ export default function App() {
                         {/* Audio URL if available */}
                         {(editingSlide?.voiceOverUrl || editingSlide?.audioUrl) && (
                           <div className="p-3 bg-slate-800 rounded-xl border border-slate-700">
-                            <p className="text-xs text-emerald-400 font-bold">Γ£à Audio ready for this slide</p>
+                            <p className="text-xs text-emerald-400 font-bold">✅ Audio ready for this slide</p>
                           </div>
                         )}
                       </>
@@ -2859,7 +2796,7 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {/* Γÿà Player Properties Modal Γÿà */}
+        {/* ★ Player Properties Modal ★ */}
         <AnimatePresence>
           {showPlayerProperties && (
             <PlayerPropertiesModal
@@ -2870,7 +2807,7 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {/* ΓöÇΓöÇ TTS Generation Progress Toast ΓöÇΓöÇ */}
+        {/* ── TTS Generation Progress Toast ── */}
         <TTSProgressToast
           progress={ttsProgress}
           onDismiss={resetTTS}
@@ -2932,10 +2869,10 @@ export default function App() {
                          {previewModalOption === 'Tabs (Vertical)' && (
                             <div className="w-full max-w-2xl">
                               <TabbedVertical tabs={[
-                                { id: '1', label: 'Introduction', icon: '≡ƒôû', content: 'This section introduces the core framework. Use the vertical navigation on the left to jump between areas. Each tab covers a distinct concept.' },
-                                { id: '2', label: 'Core Skills', icon: 'ΓÜí', content: 'These are the essential skills needed for mastery. Review each carefully and take notes on areas where you may need practice.' },
-                                { id: '3', label: 'Application', icon: '≡ƒöº', content: 'Apply the concepts through real-world scenarios. The exercises here reinforce your understanding with practical examples.' },
-                                { id: '4', label: 'Assessment', icon: 'Γ£à', content: 'Test your knowledge with a comprehensive review. Aim for 80% or above to demonstrate topic mastery.' },
+                                { id: '1', label: 'Introduction', icon: '📖', content: 'This section introduces the core framework. Use the vertical navigation on the left to jump between areas. Each tab covers a distinct concept.' },
+                                { id: '2', label: 'Core Skills', icon: '⚡', content: 'These are the essential skills needed for mastery. Review each carefully and take notes on areas where you may need practice.' },
+                                { id: '3', label: 'Application', icon: '🔧', content: 'Apply the concepts through real-world scenarios. The exercises here reinforce your understanding with practical examples.' },
+                                { id: '4', label: 'Assessment', icon: '✅', content: 'Test your knowledge with a comprehensive review. Aim for 80% or above to demonstrate topic mastery.' },
                               ]} />
                             </div>
                          )}
@@ -3016,7 +2953,7 @@ function MultipleAnswersPreviewDemo() {
       ) : (
         <div className={`mt-2 p-3 rounded-xl font-bold text-sm flex items-center gap-2 ${isAllCorrect ? 'bg-emerald-500/15 border border-emerald-500/40 text-emerald-300' : 'bg-red-500/15 border border-red-500/40 text-red-300'}`}>
           {isAllCorrect ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-          {isAllCorrect ? 'Correct! Rabbit, Dog, and Cat are animals.' : 'Not quite ΓÇö only Rabbit, Dog, and Cat are animals.'}
+          {isAllCorrect ? 'Correct! Rabbit, Dog, and Cat are animals.' : 'Not quite — only Rabbit, Dog, and Cat are animals.'}
         </div>
       )}
     </div>
