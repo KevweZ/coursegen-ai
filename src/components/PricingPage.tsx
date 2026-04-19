@@ -492,7 +492,7 @@ export function PricingPage() {
       <div className="max-w-6xl mx-auto px-6 pb-24">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { icon: Shield, label: 'SOC2 Ready', desc: 'Enterprise-grade security' },
+            { icon: Shield, label: 'Encrypted & Secure', desc: 'TLS in transit · AES-256 at rest' },
             { icon: Infinity, label: 'SCORM Compliant', desc: '1.2 & 2004 supported' },
             { icon: Headphones, label: 'Dedicated Support', desc: 'Human help, not bots' },
             { icon: Star, label: 'Cancel Anytime', desc: 'No lock-in contracts' },
