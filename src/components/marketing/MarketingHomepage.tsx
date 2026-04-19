@@ -5,7 +5,7 @@ import {
   FileOutput, GraduationCap, Building2, CheckCircle2,
   ChevronRight, Shield, Layers, BarChart3, BookOpen,
   Award, X, Menu, Volume2, Play, Pause,
-  Globe, Target, Star, Eye, Move, Crop, Image,
+  Globe, Target, Eye, Move, Crop, Image,
   AlertCircle, Lock
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -149,6 +149,254 @@ function FlashcardPreview() {
           <div className="text-[10px] text-slate-200 text-center leading-relaxed">A hierarchical model classifying learning objectives into six levels — from <span className="text-indigo-300 font-bold">Remember</span> to <span className="text-cyan-300 font-bold">Create</span>.</div>
         </div>
       </motion.div>
+    </div>
+  );
+}
+
+// ── Animated Jeopardy Preview ────────────────────────────────────────────────
+// Phase 0: board at rest, score $0
+// Phase 1: Safety $100 cell highlighted / "selected"
+// Phase 2: Question modal with correct answer shown
+// Phase 3: Board updated — $100 cell answered, score $100, progress updated
+// then loops back to 0
+function JeopardyPreview() {
+  const [phase, setPhase] = useState(0);
+  // Phase durations in ms
+  const durations = [2200, 900, 2200, 2200];
+  useEffect(() => {
+    const id = setTimeout(() => setPhase(p => (p + 1) % 4), durations[phase]);
+    return () => clearTimeout(id);
+  }, [phase]);
+
+  const score   = phase >= 3 ? 100 : 0;
+  const maxScore = 2500;
+  const target  = 2000;
+  const pct     = Math.round((score / target) * 100);
+  const barPct  = Math.round((score / maxScore) * 100);
+
+  const cells = [
+    { v: 100, stars: 1, col: 0 }, // Safety $100 — the one that gets answered
+    { v: 100, stars: 1, col: 1 },
+    { v: 100, stars: 1, col: 2 },
+    { v: 200, stars: 2, col: 0, daily: true },
+    { v: 200, stars: 2, col: 1 },
+    { v: 200, stars: 2, col: 2 },
+    { v: 300, stars: 3, col: 0 },
+    { v: 300, stars: 3, col: 1 },
+    { v: 300, stars: 3, col: 2 },
+  ];
+
+  return (
+    <div className="space-y-2.5">
+      {/* Score + Target row */}
+      <div className="flex gap-2">
+        <div className="flex-1 bg-indigo-900/60 border border-indigo-500/40 rounded-xl px-3 py-2 text-center">
+          <div className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-0.5">Your Score</div>
+          <motion.div
+            key={score}
+            initial={{ scale: 1.3, color: '#facc15' }}
+            animate={{ scale: 1,   color: '#ffffff' }}
+            transition={{ duration: 0.4 }}
+            className="text-xl font-black"
+          >
+            ${score.toLocaleString()}
+          </motion.div>
+        </div>
+        <div className="flex-1 bg-amber-900/40 border border-amber-500/40 rounded-xl px-3 py-2 text-center">
+          <div className="flex items-center justify-center gap-1 mb-0.5">
+            <Target className="w-2.5 h-2.5 text-amber-400" />
+            <div className="text-[9px] font-black text-amber-400 uppercase tracking-widest">Target</div>
+          </div>
+          <div className="text-xl font-black text-amber-300">${target.toLocaleString()}</div>
+        </div>
+        <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl px-3 py-2 text-center min-w-[56px]">
+          <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-0.5">Max</div>
+          <div className="text-base font-black text-slate-400">${maxScore.toLocaleString()}</div>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div>
+        <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden border border-slate-700 mb-1">
+          <motion.div
+            className="h-full bg-indigo-500 rounded-full"
+            animate={{ width: `${barPct}%` }}
+            transition={{ duration: 0.6, ease: 'easeOut' }}
+          />
+        </div>
+        <div className="flex justify-between text-[9px] font-bold text-slate-500">
+          <span>$0</span>
+          <span className="text-amber-400">Target: ${target.toLocaleString()} ({pct}%)</span>
+          <span>${maxScore.toLocaleString()}</span>
+        </div>
+      </div>
+
+      {/* Difficulty legend */}
+      <div className="flex items-center gap-2 flex-wrap text-[8px] font-bold bg-slate-800/50 border border-slate-700/40 rounded-lg px-2 py-1.5">
+        <span className="text-slate-600 uppercase tracking-wider shrink-0">⭐ Difficulty:</span>
+        <span className="text-emerald-400">★☆☆☆ Beginner</span>
+        <span className="text-yellow-400">★★☆☆ Inter.</span>
+        <span className="text-orange-400">★★★☆ Adv.</span>
+        <span className="text-red-400">★★★★ Expert</span>
+      </div>
+
+      {/* Game grid — animated */}
+      <div className="relative">
+        <div className="grid grid-cols-3 gap-1.5">
+          {['Safety', 'Compliance', 'Procedures'].map(c => (
+            <div key={c} className="bg-indigo-900/80 border-2 border-indigo-500/60 text-indigo-100 text-[9px] font-black uppercase text-center py-2 px-1 rounded-t-lg">{c}</div>
+          ))}
+          {cells.map((cell, i) => {
+            const isTarget  = i === 0; // Safety $100
+            const answered  = isTarget && phase >= 3;
+            const selected  = isTarget && phase === 1;
+            return (
+              <motion.div
+                key={i}
+                animate={selected ? { scale: [1, 1.08, 1.08], boxShadow: ['0 0 0px transparent', '0 0 18px rgba(250,204,21,0.6)', '0 0 18px rgba(250,204,21,0.6)'] } : { scale: 1, boxShadow: '0 0 0px transparent' }}
+                transition={{ duration: 0.4 }}
+                className={`flex flex-col items-center justify-center py-2.5 rounded-lg text-center border-2 cursor-pointer transition-all ${
+                  answered
+                    ? 'bg-slate-800 border-slate-700 opacity-25 cursor-not-allowed'
+                    : selected
+                    ? 'bg-yellow-500/30 border-yellow-400'
+                    : 'bg-indigo-600 border-indigo-400 hover:scale-105'
+                }`}
+              >
+                {!answered && (
+                  <>
+                    <span className="text-yellow-400 text-base font-black">${cell.v}</span>
+                    {cell.daily && <span className="text-[7px] font-black text-yellow-300 uppercase tracking-widest">Daily Double</span>}
+                    <span className={`text-[8px] font-black ${['','text-emerald-400','text-yellow-400','text-orange-400'][cell.stars]}`}>
+                      {'★'.repeat(cell.stars)}{'☆'.repeat(3-cell.stars)}
+                    </span>
+                  </>
+                )}
+              </motion.div>
+            );
+          })}
+        </div>
+
+        {/* Question overlay — phase 2 */}
+        <AnimatePresence>
+          {phase === 2 && (
+            <motion.div
+              key="question"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ duration: 0.25 }}
+              className="absolute inset-0 bg-slate-950/95 rounded-xl border-2 border-yellow-500/60 p-3 flex flex-col gap-2 z-10"
+            >
+              <div className="text-[9px] font-black text-yellow-400 uppercase tracking-widest">Safety — $100</div>
+              <p className="text-white text-[10px] font-bold leading-snug">
+                What is the first step when you notice a safety hazard in the workplace?
+              </p>
+              <div className="space-y-1.5 mt-1">
+                {[
+                  { text: 'Report it to your supervisor immediately', correct: true },
+                  { text: 'Try to fix it yourself first',             correct: false },
+                  { text: 'Wait until end of shift to report',       correct: false },
+                ].map((opt, oi) => (
+                  <div key={oi} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border text-[9px] font-medium ${
+                    opt.correct
+                      ? 'border-emerald-500/60 bg-emerald-500/15 text-emerald-200'
+                      : 'border-slate-700 text-slate-500'
+                  }`}>
+                    <div className={`w-3 h-3 rounded-full border-2 shrink-0 flex items-center justify-center ${
+                      opt.correct ? 'border-emerald-400 bg-emerald-400' : 'border-slate-600'
+                    }`}>
+                      {opt.correct && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                    </div>
+                    {opt.text}
+                    {opt.correct && <CheckCircle2 className="w-3 h-3 text-emerald-400 ml-auto shrink-0" />}
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
+
+// ── Branching Scenario Preview (matches app design) ───────────────────────────
+function BranchingScenarioPreview() {
+  const [step, setStep] = useState(0);
+  // Auto-reset to start after outcome so it loops
+  useEffect(() => {
+    if (step === 2 || step === 3) {
+      const id = setTimeout(() => setStep(0), 3000);
+      return () => clearTimeout(id);
+    }
+  }, [step]);
+  return (
+    <div className="select-none">
+      <AnimatePresence mode="wait">
+        {step === 0 && (
+          <motion.div key="q" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
+            <div className="bg-slate-800 rounded-xl border border-slate-700 p-3 mb-3 shadow-md">
+              <p className="text-[9px] text-indigo-400 font-black uppercase tracking-widest mb-1.5">📖 Scenario</p>
+              <p className="text-white text-[10px] font-bold leading-snug">
+                A team member raises a concern about a project deadline. How do you respond?
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div
+                onClick={() => setStep(2)}
+                className="p-2.5 bg-slate-800 hover:bg-slate-700 border-2 border-slate-700 hover:border-slate-500 rounded-xl cursor-pointer transition-all text-center"
+              >
+                <p className="text-white text-[9px] font-bold leading-snug">⚠️ Dismiss the concern and keep current timeline</p>
+              </div>
+              <div
+                onClick={() => setStep(1)}
+                className="p-2.5 bg-slate-800 hover:bg-slate-700 border-2 border-slate-700 hover:border-slate-500 rounded-xl cursor-pointer transition-all text-center"
+              >
+                <p className="text-white text-[9px] font-bold leading-snug">✅ Acknowledge &amp; schedule a follow-up meeting</p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+        {step === 1 && (
+          <motion.div key="step2" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
+            <div className="bg-slate-800 rounded-xl border border-slate-700 p-3 mb-3 shadow-md">
+              <p className="text-[9px] text-indigo-400 font-black uppercase tracking-widest mb-1.5">📖 Continued</p>
+              <p className="text-white text-[10px] font-bold leading-snug">
+                In the meeting, the team member reveals a critical dependency issue. What is your next action?
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div onClick={() => setStep(3)} className="p-2.5 bg-slate-800 hover:bg-slate-700 border-2 border-slate-700 hover:border-slate-500 rounded-xl cursor-pointer transition-all text-center">
+                <p className="text-white text-[9px] font-bold leading-snug">✅ Re-scope with stakeholders immediately</p>
+              </div>
+              <div onClick={() => setStep(2)} className="p-2.5 bg-slate-800 hover:bg-slate-700 border-2 border-slate-700 hover:border-slate-500 rounded-xl cursor-pointer transition-all text-center">
+                <p className="text-white text-[9px] font-bold leading-snug">⚠️ Hope the team works extra hours to catch up</p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+        {step === 2 && (
+          <motion.div key="fail" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-red-900/40 border border-red-500/50 p-4 rounded-xl text-center">
+            <AlertCircle className="w-7 h-7 text-red-400 mx-auto mb-2" />
+            <p className="text-white font-black text-xs mb-1">Morale Impact!</p>
+            <p className="text-red-200 text-[9px] mb-3 leading-relaxed">The team felt unheard. Trust and engagement dropped, affecting delivery quality.</p>
+            <button onClick={() => setStep(0)} className="px-3 py-1 bg-red-600 hover:bg-red-500 text-white text-[9px] font-black rounded-lg transition-colors">
+              Retry Scenario
+            </button>
+          </motion.div>
+        )}
+        {step === 3 && (
+          <motion.div key="success" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-emerald-900/40 border border-emerald-500/50 p-4 rounded-xl text-center">
+            <CheckCircle2 className="w-7 h-7 text-emerald-400 mx-auto mb-2" />
+            <p className="text-white font-black text-xs mb-1">Great Leadership!</p>
+            <p className="text-emerald-200 text-[9px] mb-3 leading-relaxed">By acting early, the team realigned expectations. Project delivered successfully with full stakeholder buy-in.</p>
+            <button onClick={() => setStep(0)} className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-[9px] font-black rounded-lg transition-colors">
+              Restart Scenario
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -590,75 +838,9 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
               preview={<FlashcardPreview />}
             />
 
-            {/* 3 — Jeopardy full-featured */}
+            {/* 3 — Jeopardy (animated loop) */}
             <ShowcaseCard label="Jeopardy Game" icon={Gamepad2} accent="border-amber-700/40" wide
-              preview={
-                <div className="space-y-2.5">
-                  {/* Score + Target row */}
-                  <div className="flex gap-2">
-                    <div className="flex-1 bg-indigo-900/60 border border-indigo-500/40 rounded-xl px-3 py-2 text-center">
-                      <div className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-0.5">Your Score</div>
-                      <div className="text-xl font-black text-white">$1,200</div>
-                    </div>
-                    <div className="flex-1 bg-amber-900/40 border border-amber-500/40 rounded-xl px-3 py-2 text-center">
-                      <div className="flex items-center justify-center gap-1 mb-0.5">
-                        <Target className="w-2.5 h-2.5 text-amber-400" />
-                        <div className="text-[9px] font-black text-amber-400 uppercase tracking-widest">Target</div>
-                      </div>
-                      <div className="text-xl font-black text-amber-300">$2,000</div>
-                    </div>
-                    <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl px-3 py-2 text-center min-w-[56px]">
-                      <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-0.5">Max</div>
-                      <div className="text-base font-black text-slate-400">$2,500</div>
-                    </div>
-                  </div>
-
-                  {/* Progress bar */}
-                  <div>
-                    <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden border border-slate-700 mb-1">
-                      <div className="h-full bg-indigo-500 rounded-full" style={{ width:'48%' }} />
-                    </div>
-                    <div className="flex justify-between text-[9px] font-bold text-slate-500">
-                      <span>$0</span><span className="text-amber-400">Target: $2,000 (48%)</span><span>$2,500</span>
-                    </div>
-                  </div>
-
-                  {/* Difficulty legend */}
-                  <div className="flex items-center gap-2 flex-wrap text-[8px] font-bold bg-slate-800/50 border border-slate-700/40 rounded-lg px-2 py-1.5">
-                    <span className="text-slate-600 uppercase tracking-wider shrink-0">⭐ Difficulty:</span>
-                    <span className="text-emerald-400">★☆☆☆ Beginner</span>
-                    <span className="text-yellow-400">★★☆☆ Inter.</span>
-                    <span className="text-orange-400">★★★☆ Adv.</span>
-                    <span className="text-red-400">★★★★ Expert</span>
-                  </div>
-
-                  {/* Game grid — all cells unanswered */}
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {['Safety', 'Compliance', 'Procedures'].map(c => (
-                      <div key={c} className="bg-indigo-900/80 border-2 border-indigo-500/60 text-indigo-100 text-[9px] font-black uppercase text-center py-2 px-1 rounded-t-lg">{c}</div>
-                    ))}
-                    {[
-                      { v: 100, stars: 1 },
-                      { v: 100, stars: 1 },
-                      { v: 100, stars: 1 },
-                      { v: 200, stars: 2, daily: true },
-                      { v: 200, stars: 2 },
-                      { v: 200, stars: 2 },
-                      { v: 300, stars: 3 },
-                      { v: 300, stars: 3 },
-                      { v: 300, stars: 3 },
-                    ].map((cell, i) => (
-                      <div key={i} className="flex flex-col items-center justify-center py-2.5 rounded-lg text-center border-2 cursor-pointer transition-all bg-indigo-600 border-indigo-400 hover:bg-indigo-500 hover:scale-105 hover:shadow-[0_0_12px_rgba(250,204,21,0.4)]">
-                        <span className="text-yellow-400 text-base font-black">${cell.v}</span>
-                        {cell.daily && <span className="text-[7px] font-black text-yellow-300 uppercase tracking-widest">Daily Double</span>}
-                        <span className={`text-[8px] font-black ${['','text-emerald-400','text-yellow-400','text-orange-400'][cell.stars]}`}>
-                          {'★'.repeat(cell.stars)}{'☆'.repeat(3-cell.stars)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              }
+              preview={<JeopardyPreview />}
             />
 
             {/* 4 — Image Editor: background template */}
@@ -765,14 +947,9 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
               }
             />
 
-            {/* 6 — Branching Scenario */}
-            <ShowcaseCard label="Branching Scenario" icon={Globe} accent="border-cyan-700/40"
-              preview={<div className="space-y-2">
-                <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-lg p-2.5 text-[10px] text-cyan-200">A team member raises a concern. How do you respond?</div>
-                {['Acknowledge and schedule follow-up', 'Redirect the conversation', 'Address it publicly now'].map((o,i) => (
-                  <div key={i} className={`px-2 py-1.5 rounded text-[10px] border cursor-pointer ${i === 0 ? 'border-cyan-500/40 text-cyan-300 bg-cyan-500/10' : 'border-slate-700 text-slate-500 hover:border-slate-600'}`}>→ {o}</div>
-                ))}
-              </div>}
+            {/* 6 — Branching Scenario (interactive, matches app style) */}
+            <ShowcaseCard label="Branching Scenario" icon={Globe} accent="border-cyan-700/40" wide
+              preview={<BranchingScenarioPreview />}
             />
 
           </div>
