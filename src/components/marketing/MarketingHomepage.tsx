@@ -72,6 +72,87 @@ function ShowcaseCard({ label, icon: Icon, preview, accent, wide }: {
   );
 }
 
+// ── Animated Accordion Preview ────────────────────────────────────────────────
+function AccordionPreview() {
+  const [open, setOpen] = useState(true);
+  useEffect(() => {
+    const id = setInterval(() => setOpen(o => !o), 3000);
+    return () => clearInterval(id);
+  }, []);
+  const items = [
+    { title: 'What is Active Listening?', body: 'Active listening is the practice of fully concentrating on what is being said, understanding the message, and responding thoughtfully rather than passively hearing.' },
+    { title: 'Barriers in Remote Teams', body: '' },
+    { title: 'Practical Techniques', body: '' },
+    { title: 'Common Mistakes', body: '' },
+  ];
+  return (
+    <div className="space-y-2">
+      {items.map((item, i) => (
+        <div key={i}>
+          <div className={`px-3 py-2 rounded-lg text-xs border flex items-center justify-between cursor-pointer transition-all duration-300 ${
+            i === 0
+              ? open ? 'border-indigo-500/60 bg-indigo-500/15 text-indigo-200' : 'border-slate-700 text-slate-400'
+              : 'border-slate-700 text-slate-500'
+          }`}>
+            {item.title}
+            <ChevronRight className={`w-3 h-3 shrink-0 transition-transform duration-300 ${
+              i === 0 ? (open ? 'rotate-90 text-indigo-400' : 'text-slate-500') : 'text-slate-600'
+            }`} />
+          </div>
+          {i === 0 && (
+            <AnimatePresence initial={false}>
+              {open && (
+                <motion.div
+                  key="accordion-body"
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.45, ease: 'easeInOut' }}
+                  className="overflow-hidden"
+                >
+                  <div className="px-3 py-2.5 text-[10px] leading-relaxed text-slate-300 bg-slate-800/40 border border-t-0 border-indigo-500/30 rounded-b-lg">
+                    {item.body}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Animated Flashcard Preview ────────────────────────────────────────────────
+function FlashcardPreview() {
+  const [flipped, setFlipped] = useState(false);
+  useEffect(() => {
+    const id = setInterval(() => setFlipped(f => !f), 3200);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <div className="relative" style={{ perspective: '600px', minHeight: '120px' }}>
+      <motion.div
+        animate={{ rotateY: flipped ? 180 : 0 }}
+        transition={{ duration: 0.6, ease: 'easeInOut' }}
+        style={{ transformStyle: 'preserve-3d', position: 'relative', width: '100%', height: '120px' }}
+      >
+        {/* Front */}
+        <div className="absolute inset-0 bg-gradient-to-br from-purple-600/20 to-indigo-600/20 rounded-xl p-4 border border-purple-500/20 flex flex-col items-center justify-center gap-2" style={{ backfaceVisibility: 'hidden' }}>
+          <div className="text-xs text-purple-400 font-bold uppercase tracking-widest">Term</div>
+          <div className="font-bold text-white text-sm text-center">Bloom's Taxonomy</div>
+          <div className="text-[10px] text-slate-400 border-t border-slate-700 pt-2 mt-1 w-full text-center">Tap to reveal definition →</div>
+        </div>
+        {/* Back */}
+        <div className="absolute inset-0 bg-gradient-to-br from-indigo-600/20 to-cyan-600/20 rounded-xl p-4 border border-indigo-500/30 flex flex-col items-center justify-center gap-2" style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}>
+          <div className="text-xs text-indigo-400 font-bold uppercase tracking-widest">Definition</div>
+          <div className="text-[10px] text-slate-200 text-center leading-relaxed">A hierarchical model classifying learning objectives into six levels — from <span className="text-indigo-300 font-bold">Remember</span> to <span className="text-cyan-300 font-bold">Create</span>.</div>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 // ── Sign In Dropdown ──────────────────────────────────────────────────────────
 function SignInDropdown({ onClose, onGetStarted }: { onClose: () => void; onGetStarted: () => void }) {
   const { signIn, signInWithGoogle } = useAuth();
@@ -277,10 +358,10 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
 
       {/* ── Hero ─────────────────────────────────────────────────────────────── */}
       <section className="relative min-h-[92vh] flex flex-col items-center justify-center text-center px-6 pt-8 pb-24 overflow-hidden">
-        {/* Background video */}
-        <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+        {/* Background video — full height, no vertical clipping */}
+        <div className="absolute inset-0 z-0 pointer-events-none">
           <video src="/landing_background_3.mp4" autoPlay loop muted playsInline
-            className="absolute top-0 left-0 w-full h-auto scale-90 origin-top opacity-20 mix-blend-screen" />
+            className="absolute top-0 left-0 w-full h-full object-cover opacity-20 mix-blend-screen" />
           <div className="absolute inset-0 bg-slate-950/50" />
         </div>
 
@@ -499,22 +580,14 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
 
           <div className="flex gap-5 overflow-x-auto pb-4 px-1">
 
-            {/* 1 — Accordion */}
+            {/* 1 — Accordion (animated loop) */}
             <ShowcaseCard label="Accordion" icon={Layers} accent="border-indigo-700/40"
-              preview={<div className="space-y-2">{['What is Active Listening?', 'Barriers in Remote Teams', 'Practical Techniques', 'Common Mistakes'].map((t, i) => (
-                <div key={i} className={`px-3 py-2 rounded-lg text-xs border flex items-center justify-between cursor-pointer ${i === 0 ? 'border-indigo-500/40 bg-indigo-500/10 text-indigo-200' : 'border-slate-700 text-slate-500'}`}>
-                  {t}<ChevronRight className={`w-3 h-3 shrink-0 ${i === 0 ? 'rotate-90 text-indigo-400' : 'text-slate-600'}`} />
-                </div>
-              ))}</div>}
+              preview={<AccordionPreview />}
             />
 
-            {/* 2 — Flashcards */}
+            {/* 2 — Flashcards (animated loop) */}
             <ShowcaseCard label="Flashcards" icon={BookOpen} accent="border-purple-700/40"
-              preview={<div className="bg-gradient-to-br from-purple-600/20 to-indigo-600/20 rounded-xl p-4 text-center border border-purple-500/20 min-h-[110px] flex flex-col items-center justify-center gap-2">
-                <div className="text-xs text-purple-400 font-bold uppercase tracking-widest">Term</div>
-                <div className="font-bold text-white text-sm">Bloom's Taxonomy</div>
-                <div className="text-[10px] text-slate-400 border-t border-slate-700 pt-2 mt-1 w-full text-center">Tap to reveal definition →</div>
-              </div>}
+              preview={<FlashcardPreview />}
             />
 
             {/* 3 — Jeopardy full-featured */}
@@ -559,36 +632,28 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
                     <span className="text-red-400">★★★★ Expert</span>
                   </div>
 
-                  {/* Game grid */}
+                  {/* Game grid — all cells unanswered */}
                   <div className="grid grid-cols-3 gap-1.5">
                     {['Safety', 'Compliance', 'Procedures'].map(c => (
                       <div key={c} className="bg-indigo-900/80 border-2 border-indigo-500/60 text-indigo-100 text-[9px] font-black uppercase text-center py-2 px-1 rounded-t-lg">{c}</div>
                     ))}
                     {[
-                      { v: 100, stars: 1, answered: true },
-                      { v: 100, stars: 1, answered: false },
-                      { v: 100, stars: 1, answered: true },
-                      { v: 200, stars: 2, answered: false },
-                      { v: 200, stars: 2, answered: false, daily: true },
-                      { v: 200, stars: 2, answered: false },
-                      { v: 300, stars: 3, answered: false },
-                      { v: 300, stars: 3, answered: false },
-                      { v: 300, stars: 3, answered: true },
+                      { v: 100, stars: 1 },
+                      { v: 100, stars: 1 },
+                      { v: 100, stars: 1 },
+                      { v: 200, stars: 2, daily: true },
+                      { v: 200, stars: 2 },
+                      { v: 200, stars: 2 },
+                      { v: 300, stars: 3 },
+                      { v: 300, stars: 3 },
+                      { v: 300, stars: 3 },
                     ].map((cell, i) => (
-                      <div key={i} className={`flex flex-col items-center justify-center py-2.5 rounded-lg text-center border-2 cursor-pointer transition-all ${
-                        cell.answered
-                          ? 'bg-slate-800 border-slate-700 opacity-30 cursor-not-allowed'
-                          : 'bg-indigo-600 border-indigo-400 hover:bg-indigo-500 hover:scale-105 hover:shadow-[0_0_12px_rgba(250,204,21,0.4)]'
-                      }`}>
-                        {!cell.answered && (
-                          <>
-                            <span className="text-yellow-400 text-base font-black">${cell.v}</span>
-                            {cell.daily && <span className="text-[7px] font-black text-yellow-300 uppercase tracking-widest">Daily Double</span>}
-                            <span className={`text-[8px] font-black ${['','text-emerald-400','text-yellow-400','text-orange-400'][cell.stars]}`}>
-                              {'★'.repeat(cell.stars)}{'☆'.repeat(3-cell.stars)}
-                            </span>
-                          </>
-                        )}
+                      <div key={i} className="flex flex-col items-center justify-center py-2.5 rounded-lg text-center border-2 cursor-pointer transition-all bg-indigo-600 border-indigo-400 hover:bg-indigo-500 hover:scale-105 hover:shadow-[0_0_12px_rgba(250,204,21,0.4)]">
+                        <span className="text-yellow-400 text-base font-black">${cell.v}</span>
+                        {cell.daily && <span className="text-[7px] font-black text-yellow-300 uppercase tracking-widest">Daily Double</span>}
+                        <span className={`text-[8px] font-black ${['','text-emerald-400','text-yellow-400','text-orange-400'][cell.stars]}`}>
+                          {'★'.repeat(cell.stars)}{'☆'.repeat(3-cell.stars)}
+                        </span>
                       </div>
                     ))}
                   </div>
