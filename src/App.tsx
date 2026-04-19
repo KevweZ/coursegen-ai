@@ -215,7 +215,7 @@ const SmartContent = ({ content, className, theme }: { content: string; classNam
 
 export default function App() {
   const isScormPlayer = typeof window !== 'undefined' && !!(window as any).__COURSE_DATA__;
-  const { user, loading: authLoading, signOut } = useAuth();
+  const { user, loading: authLoading, signOut, isAdmin } = useAuth();
   
   const [step, setStep] = useState<AppStep>(isScormPlayer ? 'preview' : 'home');
   const [activeTab, setActiveTab] = useState<'topic' | 'file' | 'url'>('topic');
@@ -878,7 +878,8 @@ export default function App() {
           
           <div className="flex gap-3 items-center">
 
-            {/* ── Sandbox Dropdown ── */}
+            {/* ── Sandbox Dropdown — ADMIN ONLY ── */}
+            {isAdmin && (
             <div className="relative">
               <button
                 onClick={() => { setSandboxDropdownOpen(o => !o); }}
@@ -1001,6 +1002,7 @@ export default function App() {
               )}
               {sandboxDropdownOpen && <div className="fixed inset-0 z-[599]" onClick={() => setSandboxDropdownOpen(false)} />}
             </div>
+            )} {/* end isAdmin Sandbox gate */}
 
             {/* ── Pricing Button ── */}
             <button
@@ -1041,9 +1043,14 @@ export default function App() {
                 <div className="absolute right-0 top-full mt-2 w-48 bg-slate-900 border border-slate-700/60 rounded-xl shadow-2xl overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-[700]">
                   <div className="px-4 py-3 border-b border-slate-800">
                     <p className="text-xs font-bold text-slate-400 truncate">{user.email}</p>
-                    <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest mt-0.5">
-                      {user.user_metadata?.track === 'k12' ? 'Education (K-12)' : 'Corporate'}
-                    </p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">
+                        {user.user_metadata?.track === 'k12' ? 'Education (K-12)' : 'Corporate'}
+                      </p>
+                      {isAdmin && (
+                        <span className="text-[9px] font-black uppercase tracking-widest text-amber-400 bg-amber-500/15 px-1.5 py-0.5 rounded-full">Admin</span>
+                      )}
+                    </div>
                   </div>
                   <div className="p-1.5">
                     <button

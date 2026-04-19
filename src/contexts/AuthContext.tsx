@@ -2,6 +2,8 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
 
+const ADMIN_EMAIL = ((import.meta as any).env.VITE_ADMIN_EMAIL as string ?? '').toLowerCase().trim();
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export type UserTrack = 'corporate' | 'k12';
@@ -10,6 +12,7 @@ interface AuthContextValue {
   user: User | null;
   session: Session | null;
   loading: boolean;
+  isAdmin: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signUp: (
     email: string,
@@ -32,6 +35,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser]       = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Derived: true only when the signed-in email matches the hardcoded admin email
+  const isAdmin = !!(user?.email && user.email.toLowerCase() === ADMIN_EMAIL);
 
   useEffect(() => {
     // Restore any existing session on mount
@@ -117,7 +123,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, session, loading, signIn, signUp, signInWithGoogle, signOut, resetPassword }}
+      value={{ user, session, loading, isAdmin, signIn, signUp, signInWithGoogle, signOut, resetPassword }}
     >
       {children}
     </AuthContext.Provider>
