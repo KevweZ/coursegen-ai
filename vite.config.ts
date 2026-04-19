@@ -1,18 +1,20 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig, loadEnv} from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 
-export default defineConfig(({mode}) => {
+export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
   return {
     plugins: [react(), tailwindcss()],
     optimizeDeps: {
       include: ['react', 'react-dom'],
     },
-    define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-    },
+    // ── Security: DO NOT inject API keys into the client bundle ──────────────
+    // Previously GEMINI_API_KEY was inlined here — this has been removed.
+    // All AI/TTS calls now route through /api/* on the Express proxy server (server.js)
+    // where keys are stored securely as server-side environment variables only.
+    define: {},
     resolve: {
       dedupe: ['react', 'react-dom'],
       alias: {
@@ -25,8 +27,16 @@ export default defineConfig(({mode}) => {
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
+      // ── Development proxy: forward /api/* to the Express server ─────────
+      // Run "node server.js" alongside "npm run dev" in development.
+      proxy: {
+        '/api': {
+          target: `http://localhost:${env.PORT ?? 3001}`,
+          changeOrigin: true,
+          secure: false,
+        },
+      },
     },
   };
 });

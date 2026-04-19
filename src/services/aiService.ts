@@ -1,9 +1,9 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { CourseOutline, TerminalObjectiveGroup, ExamConfig, ExamQuestion } from "../types/course";
 
-// @ts-ignore
-const rawKey = import.meta.env.VITE_ANTHROPIC_API_KEY || import.meta.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY || "";
-const anthropic = new Anthropic({ apiKey: rawKey.replace(/['"]/g, '').trim(), dangerouslyAllowBrowser: true });
+// ── Secure AI Proxy Client ───────────────────────────────────────────────────
+// API keys live ONLY in server.js — never in the browser bundle.
+// All AI calls are routed through /api/ai which is served by the Express proxy.
+const AI_PROXY_URL = '/api/ai';
 
 export interface CourseOutlineDraft {
   title: string;
@@ -109,21 +109,29 @@ function parseJsonSafely(rawText: string): any {
 
 
 /**
- * Universal 1-Pass Anthropic execution wrapper mapping the Dual-Model configuration. 
- * Natively parses 429 Quota Exhaustion limits and sleeps the thread EXACTLY 
- * as commanded before returning the definitive response to the user.
+ * Universal Anthropic execution — proxied securely through server.js.
+ * The API key never leaves the server; the browser sends only prompt data.
  */
 async function executeAnthropicAI(modelTier: 'complex' | 'bulk', systemPrompt: string, userPrompt: string, maxTokens: number = 8192): Promise<string> {
-  const modelStr = modelTier === 'complex' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001';
-  
   const executeCall = async () => {
-      const response = await anthropic.messages.create({
-          model: modelStr,
-          max_tokens: maxTokens,
-          system: systemPrompt,
-          messages: [ { role: 'user', content: userPrompt } ]
-      });
-      return response.content[0].type === 'text' ? response.content[0].text : "{}";
+    const response = await fetch(AI_PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model:     modelTier,
+        system:    systemPrompt,
+        user:      userPrompt,
+        maxTokens,
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => response.statusText);
+      throw new Error(`AI proxy error ${response.status}: ${errText}`);
+    }
+
+    const data = await response.json();
+    return data.text ?? '{}';
   };
 
   try {
@@ -133,14 +141,11 @@ async function executeAnthropicAI(modelTier: 'complex' | 'bulk', systemPrompt: s
       const retryMatch = err.message.match(/retry after (\d+)/i) || err.message.match(/reset in (\d+)/i) || err.message.match(/(\d+)s/i);
       let waitTime = 15000;
       if (retryMatch) waitTime = (parseInt(retryMatch[1], 10) + 2) * 1000;
-      
-      console.warn(`[API Quota Intercept] Automatically pausing proxy for ${waitTime/1000}s to clear Anthropic limits...`);
+      console.warn(`[AI Proxy] Rate limited — pausing ${waitTime / 1000}s then retrying...`);
       await new Promise(resolve => setTimeout(resolve, waitTime));
-      
-      // Definitive execution directly post-cooldown.
       return await executeCall();
     }
-    throw new Error(`Anthropic API Authorization/Network Failure: ${err.message}`);
+    throw new Error(`AI Proxy request failed: ${err.message}`);
   }
 }
 

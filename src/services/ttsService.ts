@@ -1,7 +1,7 @@
 /**
  * ttsService.ts
- * Calls the OpenAI TTS API and returns a browser Blob URL for the generated MP3.
- * No cloud storage required — Blob URLs live for the duration of the browser session.
+ * Calls the TTS API securely via the server-side proxy (/api/tts).
+ * The OpenAI API key is NEVER exposed to the browser bundle — it lives in server.js only.
  *
  * Usage:
  *   import { generateSlideTTS } from './ttsService';
@@ -9,10 +9,7 @@
  *   // blobUrl is a valid <audio src> that usePlayer can load directly
  */
 
-const OPENAI_API_KEY =
-  (import.meta as any).env?.VITE_OPENAI_API_KEY ?? '';
-
-const TTS_ENDPOINT = 'https://api.openai.com/v1/audio/speech';
+const TTS_PROXY_URL = '/api/tts';
 
 export type TTSVoice = 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
 
@@ -25,41 +22,30 @@ interface TTSOptions {
 /**
  * Generate TTS audio for a given text string.
  * Returns a Blob URL pointing to the MP3 audio.
- * Throws on API error (caller should catch and handle gracefully).
+ * Throws on API or proxy error (caller should catch and handle gracefully).
  */
 export async function generateSlideTTS(
   text: string,
   { voice = 'alloy', model = 'tts-1', speed = 1.0 }: TTSOptions = {}
 ): Promise<string> {
-  if (!OPENAI_API_KEY) {
-    throw new Error('VITE_OPENAI_API_KEY is not set. Add it to your .env file.');
-  }
-
   if (!text || text.trim().length === 0) {
     throw new Error('Cannot generate TTS for empty text.');
   }
 
-  // OpenAI TTS max input is 4096 characters — truncate gracefully
-  const safeText = text.trim().slice(0, 4096);
-
-  const response = await fetch(TTS_ENDPOINT, {
+  const response = await fetch(TTS_PROXY_URL, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model,
-      input: safeText,
+      text: text.trim().slice(0, 4096),
       voice,
+      model,
       speed,
-      response_format: 'mp3',
     }),
   });
 
   if (!response.ok) {
     const errText = await response.text().catch(() => response.statusText);
-    throw new Error(`OpenAI TTS API error ${response.status}: ${errText}`);
+    throw new Error(`TTS proxy error ${response.status}: ${errText}`);
   }
 
   const audioBlob = await response.blob();
