@@ -96,6 +96,7 @@ import { ExamIntroSlide } from './components/player/ExamIntroSlide';
 import { MasteryExamSlide } from './components/player/MasteryExamSlide';
 import { ExamResultsSlide } from './components/player/ExamResultsSlide';
 import { scormInit, scormQuit, scormSetLocation, scormReportScore, scormSuspend } from './services/scormReporter';
+import { PricingPage } from './components/PricingPage';
 
 const renderInstructionalText = (children: React.ReactNode, theme: string, isList: boolean = false) => {
   let textToParse = '';
@@ -130,7 +131,7 @@ const renderInstructionalText = (children: React.ReactNode, theme: string, isLis
   );
 };
 
-type AppStep = 'home' | 'details' | 'outline' | 'preview';
+type AppStep = 'home' | 'details' | 'outline' | 'preview' | 'pricing';
 type CourseType = 'quick' | 'standard' | 'comprehensive';
 
 /** Detects whether a string is HTML (from the rich-text editor) vs plain Markdown */
@@ -985,6 +986,19 @@ export default function App() {
               {sandboxDropdownOpen && <div className="fixed inset-0 z-[599]" onClick={() => setSandboxDropdownOpen(false)} />}
             </div>
 
+            {/* ── Pricing Button ── */}
+            <button
+              onClick={() => setStep('pricing')}
+              className={`flex items-center gap-2 px-4 py-2 border rounded-lg font-bold text-sm transition-all ${
+                step === 'pricing'
+                  ? 'bg-amber-500/20 border-amber-400/40 text-amber-300'
+                  : 'bg-amber-500/10 border-amber-500/20 hover:bg-amber-500/20 text-amber-300'
+              }`}
+            >
+              <DollarSign className="w-4 h-4" />
+              Pricing
+            </button>
+
             {/* ── Admin Button (no dropdown for now) ── */}
             <button
               onClick={() => { /* Admin panel — reserved for future use */ }}
@@ -1000,6 +1014,18 @@ export default function App() {
 
       <main className="relative">
         <AnimatePresence mode="wait">
+          {step === 'pricing' && (
+            <motion.div
+              key="pricing"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.35 }}
+              className="relative z-10"
+            >
+              <PricingPage />
+            </motion.div>
+          )}
           {step === 'home' && (
             <motion.div key="home" className="flex flex-col items-center justify-center w-full min-h-[calc(100vh-5rem)] relative z-10 overflow-hidden">
               {/* Background Video */}
