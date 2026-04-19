@@ -75,7 +75,7 @@ const AuthInput = ({
 // ── Main Auth Page ────────────────────────────────────────────────────────────
 type AuthMode = 'login' | 'signup' | 'forgot';
 
-export function AuthPage() {
+export function AuthPage({ onBackToHome }: { onBackToHome?: () => void }) {
   const { signIn, signUp, signInWithGoogle, resetPassword } = useAuth();
 
   const [mode, setMode]           = useState<AuthMode>('login');
@@ -160,6 +160,11 @@ export function AuthPage() {
         transition={{ duration: 0.5 }}
         className="flex items-center gap-3 mb-8 relative z-10"
       >
+        {onBackToHome && (
+          <button onClick={onBackToHome} className="mr-2 text-slate-500 hover:text-slate-300 transition-colors text-xs font-medium flex items-center gap-1">
+            ← Home
+          </button>
+        )}
         <div className="w-10 h-10 bg-indigo-500/10 rounded-xl flex items-center justify-center border border-indigo-500/20">
           <Zap className="w-5 h-5 text-indigo-400" />
         </div>

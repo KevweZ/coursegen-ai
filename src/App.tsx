@@ -99,6 +99,7 @@ import { scormInit, scormQuit, scormSetLocation, scormReportScore, scormSuspend 
 import { PricingPage } from './components/PricingPage';
 import { useAuth } from './contexts/AuthContext';
 import { AuthPage } from './components/auth/AuthPage';
+import { MarketingHomepage } from './components/marketing/MarketingHomepage';
 
 const renderInstructionalText = (children: React.ReactNode, theme: string, isList: boolean = false) => {
   let textToParse = '';
@@ -216,6 +217,9 @@ const SmartContent = ({ content, className, theme }: { content: string; classNam
 export default function App() {
   const isScormPlayer = typeof window !== 'undefined' && !!(window as any).__COURSE_DATA__;
   const { user, loading: authLoading, signOut, isAdmin } = useAuth();
+
+  // Controls which pre-auth view to show: public marketing homepage OR login/signup
+  const [publicView, setPublicView] = useState<'homepage' | 'auth'>('homepage');
   
   const [step, setStep] = useState<AppStep>(isScormPlayer ? 'preview' : 'home');
   const [activeTab, setActiveTab] = useState<'topic' | 'file' | 'url'>('topic');
@@ -843,7 +847,8 @@ export default function App() {
     );
   };
 
-  // ── Auth Gate ── show spinner while session loads, then auth page if not signed in
+  // ── Auth Gate ────────────────────────────────────────────────────────────
+  // Loading spinner while Supabase session is restoring
   if (authLoading) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
@@ -854,7 +859,21 @@ export default function App() {
       </div>
     );
   }
-  if (!user && !isScormPlayer) return <AuthPage />;
+
+  // Not authenticated — show Public Marketing Homepage OR Sign In/Up page
+  if (!user && !isScormPlayer) {
+    if (publicView === 'auth') {
+      return (
+        <AuthPage onBackToHome={() => setPublicView('homepage')} />
+      );
+    }
+    return (
+      <MarketingHomepage
+        onGetStarted={() => setPublicView('auth')}
+        onSignIn={() => setPublicView('auth')}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-900 font-sans selection:bg-indigo-500/30 selection:text-indigo-200 overflow-x-hidden">
