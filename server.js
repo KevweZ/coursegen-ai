@@ -27,7 +27,7 @@ const PORT      = process.env.PORT ?? 3001;
 const isProd    = process.env.NODE_ENV === 'production';
 
 // ─── 1. Startup Environment Validation ──────────────────────────────────────
-const REQUIRED_VARS = ['ANTHROPIC_API_KEY'];
+const REQUIRED_VARS = ['ANTHROPIC_API_KEY', 'SUPABASE_SERVICE_KEY'];
 const missingVars   = REQUIRED_VARS.filter(v => !process.env[v]);
 
 if (missingVars.length > 0) {

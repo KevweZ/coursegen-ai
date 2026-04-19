@@ -97,6 +97,8 @@ import { MasteryExamSlide } from './components/player/MasteryExamSlide';
 import { ExamResultsSlide } from './components/player/ExamResultsSlide';
 import { scormInit, scormQuit, scormSetLocation, scormReportScore, scormSuspend } from './services/scormReporter';
 import { PricingPage } from './components/PricingPage';
+import { useAuth } from './contexts/AuthContext';
+import { AuthPage } from './components/auth/AuthPage';
 
 const renderInstructionalText = (children: React.ReactNode, theme: string, isList: boolean = false) => {
   let textToParse = '';
@@ -213,6 +215,7 @@ const SmartContent = ({ content, className, theme }: { content: string; classNam
 
 export default function App() {
   const isScormPlayer = typeof window !== 'undefined' && !!(window as any).__COURSE_DATA__;
+  const { user, loading: authLoading, signOut } = useAuth();
   
   const [step, setStep] = useState<AppStep>(isScormPlayer ? 'preview' : 'home');
   const [activeTab, setActiveTab] = useState<'topic' | 'file' | 'url'>('topic');
@@ -840,6 +843,19 @@ export default function App() {
     );
   };
 
+  // ── Auth Gate ── show spinner while session loads, then auth page if not signed in
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-12 h-12 border-t-2 border-indigo-500 rounded-full animate-spin mx-auto" />
+          <p className="text-slate-400 text-sm font-medium">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+  if (!user && !isScormPlayer) return <AuthPage />;
+
   return (
     <div className="min-h-screen bg-slate-900 font-sans selection:bg-indigo-500/30 selection:text-indigo-200 overflow-x-hidden">
       {/* Background decoration */}
@@ -1008,6 +1024,39 @@ export default function App() {
               <Shield className="w-4 h-4" />
               Admin
             </button>
+
+            {/* ── User Profile (── */}
+            {user && (
+              <div className="relative group">
+                <button className="flex items-center gap-2.5 pl-2 pr-3 py-1.5 rounded-xl bg-slate-800/60 hover:bg-slate-700/60 border border-slate-700/60 hover:border-slate-600 transition-all">
+                  <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-xs font-black text-white shrink-0">
+                    {(user.user_metadata?.full_name || user.email || 'U')[0].toUpperCase()}
+                  </div>
+                  <span className="text-slate-200 text-sm font-semibold max-w-[100px] truncate hidden sm:block">
+                    {user.user_metadata?.full_name || user.email?.split('@')[0]}
+                  </span>
+                  <ChevronDown className="w-3 h-3 text-slate-400" />
+                </button>
+                {/* Dropdown */}
+                <div className="absolute right-0 top-full mt-2 w-48 bg-slate-900 border border-slate-700/60 rounded-xl shadow-2xl overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-[700]">
+                  <div className="px-4 py-3 border-b border-slate-800">
+                    <p className="text-xs font-bold text-slate-400 truncate">{user.email}</p>
+                    <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest mt-0.5">
+                      {user.user_metadata?.track === 'k12' ? 'Education (K-12)' : 'Corporate'}
+                    </p>
+                  </div>
+                  <div className="p-1.5">
+                    <button
+                      onClick={() => signOut()}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-red-400 hover:bg-red-500/10 text-sm font-medium transition-all text-left"
+                    >
+                      <Lock className="w-3.5 h-3.5" />
+                      Sign Out
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </header>
