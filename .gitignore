@@ -6,3 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Lock file excluded so Cloudflare Pages uses npm install (not npm ci)
+# which avoids Node version mismatch resolution conflicts.
+# Railway generates its own lock file on deploy too.
+package-lock.json
