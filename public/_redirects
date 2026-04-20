@@ -1,0 +1,7 @@
+# Cloudflare Pages — Routing Rules
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. Proxy /api/* calls to the Railway backend (update URL after Railway deploy)
+/api/*  RAILWAY_BACKEND_URL_PLACEHOLDER/api/:splat  200
+
+# 2. SPA fallback — all other routes serve index.html (required for React Router)
+/*  /index.html  200

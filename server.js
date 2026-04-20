@@ -45,10 +45,30 @@ const OPENAI_API_KEY    = process.env.OPENAI_API_KEY ?? '';
 const app = express();
 app.use(express.json({ limit: '512kb' }));
 
+// ─── 2a. CORS — allow Cloudflare Pages frontend ─────────────────────────────
+const ALLOWED_ORIGINS = [
+  'https://nexcourse.ai',
+  'https://www.nexcourse.ai',
+  'https://coursegenai.ai',          // legacy — remove after full rename
+  ...(isProd ? [] : ['http://localhost:3000', 'http://localhost:3001']),
+];
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin ?? '';
+  if (ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Vary', 'Origin');
+  }
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
 // ─── 3. HTTPS Enforcement (production only) ─────────────────────────────────
 if (isProd) {
   app.use((req, res, next) => {
-    // Trust proxy (Cloud Run, Heroku, etc. terminates TLS upstream)
+    // Trust proxy (Cloud Run, Heroku, Railway etc. terminates TLS upstream)
     const proto = req.headers['x-forwarded-proto'];
     if (proto && proto !== 'https') {
       return res.redirect(301, `https://${req.headers.host}${req.url}`);
