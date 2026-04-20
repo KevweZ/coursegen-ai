@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "server": "node server.js",
@@ -29,13 +32,8 @@
     "@tiptap/starter-kit": "^3.22.3",
     "@vitejs/plugin-react": "^5.0.4",
     "@zomako/elearning-components": "^2.0.11",
-    "better-sqlite3": "^12.4.1",
     "clsx": "^2.1.1",
-    "dotenv": "^17.4.2",
-    "express": "^4.21.2",
-    "express-rate-limit": "^8.3.2",
     "framer-motion": "^11.18.2",
-    "helmet": "^8.1.0",
     "interactjs": "^1.10.27",
     "jszip": "^3.10.1",
     "lucide-react": "^0.546.0",
@@ -58,6 +56,11 @@
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0",
-    "vite-plugin-singlefile": "^2.3.2"
+    "vite-plugin-singlefile": "^2.3.2",
+    "better-sqlite3": "^12.4.1",
+    "dotenv": "^17.4.2",
+    "express": "^4.21.2",
+    "express-rate-limit": "^8.3.2",
+    "helmet": "^8.1.0"
   }
 }
