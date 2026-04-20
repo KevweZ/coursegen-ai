@@ -75,10 +75,10 @@ const AuthInput = ({
 // ── Main Auth Page ────────────────────────────────────────────────────────────
 type AuthMode = 'login' | 'signup' | 'forgot';
 
-export function AuthPage({ onBackToHome }: { onBackToHome?: () => void }) {
+export function AuthPage({ onBackToHome, initialMode = 'login' }: { onBackToHome?: () => void; initialMode?: AuthMode }) {
   const { signIn, signUp, signInWithGoogle, resetPassword } = useAuth();
 
-  const [mode, setMode]           = useState<AuthMode>('login');
+  const [mode, setMode]           = useState<AuthMode>(initialMode);
   const [email, setEmail]         = useState('');
   const [password, setPassword]   = useState('');
   const [confirm, setConfirm]     = useState('');

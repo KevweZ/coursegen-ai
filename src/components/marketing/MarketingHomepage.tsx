@@ -3,7 +3,7 @@ import { motion, useInView, AnimatePresence } from 'framer-motion';
 import {
   Zap, ArrowRight, Sparkles, Brain, Gamepad2, Mic,
   FileOutput, GraduationCap, Building2, CheckCircle2,
-  ChevronRight, Shield, Layers, BarChart3, BookOpen,
+  ChevronRight, ChevronLeft, Shield, Layers, BarChart3, BookOpen,
   Award, X, Menu, Volume2, Play, Pause,
   Globe, Target, Eye, Move, Crop, Image,
   AlertCircle, Lock
@@ -321,82 +321,420 @@ function JeopardyPreview() {
   );
 }
 
-// ── Branching Scenario Preview (matches app design) ───────────────────────────
+// ── Showcase Scroller (with large left/right nav arrows) ─────────────────────
+// Hover         → scroll at normal speed (3 px/frame via rAF)
+// Click + hold  → scroll faster (12 px/frame)
+// Mouse off     → scroll stops exactly where it is (no reset)
+// Plain click   → smooth jump of 360 px
+function ShowcaseScroller({ children }: { children: React.ReactNode }) {
+  const scrollRef     = useRef<HTMLDivElement>(null);
+  const rafRef        = useRef<number | null>(null);
+  const dirRef        = useRef<0 | 1 | -1>(0);   // active scroll direction
+  const speedRef      = useRef<number>(3);        // px per frame
+
+  const [canScrollLeft,  setCanScrollLeft]  = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(true);
+
+  const updateArrows = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 8);
+    setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 8);
+  };
+
+  // rAF scroll loop — only runs while dirRef.current !== 0
+  const startLoop = () => {
+    if (rafRef.current !== null) return; // already running
+    const tick = () => {
+      if (dirRef.current === 0) { rafRef.current = null; return; }
+      if (scrollRef.current) {
+        scrollRef.current.scrollLeft += dirRef.current * speedRef.current;
+        updateArrows();
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+  };
+
+  const stopLoop = () => {
+    if (rafRef.current !== null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    dirRef.current  = 0;
+    speedRef.current = 3;
+  };
+
+  // Clean up on unmount
+  useEffect(() => () => stopLoop(), []);
+
+  const makeHandlers = (dir: 1 | -1) => ({
+    // Hover start → normal speed scroll
+    onMouseEnter: () => {
+      dirRef.current   = dir;
+      speedRef.current = 3;
+      startLoop();
+    },
+    // Mouse off → stop immediately, stay at current position
+    onMouseLeave: () => stopLoop(),
+    // Hold start → fast scroll (overrides hover speed)
+    onMouseDown: (e: React.MouseEvent) => {
+      e.preventDefault();         // prevent button focus ring flash
+      speedRef.current = 12;      // fast lane
+    },
+    // Hold release → back to normal hover speed (still hovering)
+    onMouseUp: () => {
+      speedRef.current = 3;
+    },
+  });
+
+  const jumpBy = (dir: 1 | -1) => {
+    if (!scrollRef.current) return;
+    scrollRef.current.scrollBy({ left: dir * 360, behavior: 'smooth' });
+  };
+
+  const btnBase =
+    'absolute top-1/2 -translate-y-1/2 z-20 ' +
+    'w-12 h-12 rounded-full flex items-center justify-center ' +
+    'bg-slate-800/90 border border-slate-600/60 shadow-xl ' +
+    'text-white hover:bg-indigo-600 hover:border-indigo-500 ' +
+    'active:scale-95 transition-all duration-150 cursor-pointer select-none';
+
+  return (
+    <div className="relative">
+      {/* LEFT arrow */}
+      <AnimatePresence>
+        {canScrollLeft && (
+          <motion.button
+            key="arr-left"
+            initial={{ opacity: 0, x: 10 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 10 }}
+            transition={{ duration: 0.2 }}
+            onClick={() => jumpBy(-1)}
+            {...makeHandlers(-1)}
+            className={`${btnBase} left-0 -translate-x-3`}
+            aria-label="Scroll left"
+          >
+            <ChevronLeft className="w-6 h-6" />
+          </motion.button>
+        )}
+      </AnimatePresence>
+
+      {/* RIGHT arrow */}
+      <AnimatePresence>
+        {canScrollRight && (
+          <motion.button
+            key="arr-right"
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -10 }}
+            transition={{ duration: 0.2 }}
+            onClick={() => jumpBy(1)}
+            {...makeHandlers(1)}
+            className={`${btnBase} right-0 translate-x-3`}
+            aria-label="Scroll right"
+          >
+            <ChevronRight className="w-6 h-6" />
+          </motion.button>
+        )}
+      </AnimatePresence>
+
+      {/* Edge fade gradients */}
+      {canScrollLeft && (
+        <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-16 z-10
+          bg-gradient-to-r from-slate-900/80 to-transparent" />
+      )}
+      {canScrollRight && (
+        <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-16 z-10
+          bg-gradient-to-l from-slate-900/80 to-transparent" />
+      )}
+
+      {/* Scrollable strip — native scrollbar hidden */}
+      <div
+        ref={scrollRef}
+        onScroll={updateArrows}
+        className="flex gap-5 overflow-x-auto pb-4 px-1"
+        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ── Branching Scenario Preview (auto-looping) ───────────────────────────────
 function BranchingScenarioPreview() {
-  const [step, setStep] = useState(0);
-  // Auto-reset to start after outcome so it loops
+  // Phase 0: question visible, no answer selected
+  // Phase 1: correct answer highlighted (before advancing)
+  // Phase 2: follow-up question visible, no answer
+  // Phase 3: follow-up correct answer highlighted
+  // Phase 4: success outcome
+  // then loops back to 0
+  const [phase, setPhase] = useState(0);
+  const durations = [2000, 1200, 2000, 1200, 2500];
   useEffect(() => {
-    if (step === 2 || step === 3) {
-      const id = setTimeout(() => setStep(0), 3000);
-      return () => clearTimeout(id);
-    }
-  }, [step]);
+    const id = setTimeout(() => setPhase(p => (p + 1) % 5), durations[phase]);
+    return () => clearTimeout(id);
+  }, [phase]);
+
   return (
     <div className="select-none">
       <AnimatePresence mode="wait">
-        {step === 0 && (
-          <motion.div key="q" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
+        {/* Q1 */}
+        {(phase === 0 || phase === 1) && (
+          <motion.div key="q1" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
             <div className="bg-slate-800 rounded-xl border border-slate-700 p-3 mb-3 shadow-md">
-              <p className="text-[9px] text-indigo-400 font-black uppercase tracking-widest mb-1.5">📖 Scenario</p>
+              <p className="text-[9px] text-indigo-400 font-black uppercase tracking-widest mb-1">📖 Scenario — Week 3 of Sprint</p>
               <p className="text-white text-[10px] font-bold leading-snug">
-                A team member raises a concern about a project deadline. How do you respond?
+                Your team lead flags that 3 key deliverables are at risk due to scope creep. The client expects the original launch date.
+                <span className="block mt-1 text-slate-300 font-normal">How do you respond as the project manager?</span>
               </p>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <div
-                onClick={() => setStep(2)}
-                className="p-2.5 bg-slate-800 hover:bg-slate-700 border-2 border-slate-700 hover:border-slate-500 rounded-xl cursor-pointer transition-all text-center"
-              >
-                <p className="text-white text-[9px] font-bold leading-snug">⚠️ Dismiss the concern and keep current timeline</p>
+              <div className={`p-2.5 border-2 rounded-xl text-center transition-all duration-500 ${
+                phase === 1
+                  ? 'bg-slate-800 border-slate-600 opacity-40'
+                  : 'bg-slate-800 border-slate-700'
+              }`}>
+                <p className="text-white text-[9px] font-bold leading-snug">⚠️ Tell the team lead to push through — protect the deadline at all costs</p>
               </div>
-              <div
-                onClick={() => setStep(1)}
-                className="p-2.5 bg-slate-800 hover:bg-slate-700 border-2 border-slate-700 hover:border-slate-500 rounded-xl cursor-pointer transition-all text-center"
-              >
-                <p className="text-white text-[9px] font-bold leading-snug">✅ Acknowledge &amp; schedule a follow-up meeting</p>
+              <div className={`p-2.5 border-2 rounded-xl text-center transition-all duration-500 ${
+                phase === 1
+                  ? 'bg-emerald-500/20 border-emerald-400 shadow-lg shadow-emerald-500/20'
+                  : 'bg-slate-800 border-slate-700'
+              }`}>
+                <p className="text-white text-[9px] font-bold leading-snug">✅ Acknowledge the risk &amp; schedule an immediate stakeholder sync</p>
+                {phase === 1 && (
+                  <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
+                    className="mt-1 text-[8px] font-black text-emerald-300 uppercase tracking-widest">Selected ✓</motion.div>
+                )}
               </div>
             </div>
           </motion.div>
         )}
-        {step === 1 && (
-          <motion.div key="step2" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
-            <div className="bg-slate-800 rounded-xl border border-slate-700 p-3 mb-3 shadow-md">
-              <p className="text-[9px] text-indigo-400 font-black uppercase tracking-widest mb-1.5">📖 Continued</p>
+        {/* Q2 — direct follow-up to choosing the stakeholder sync */}
+        {(phase === 2 || phase === 3) && (
+          <motion.div key="q2" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
+            <div className="bg-slate-800 rounded-xl border border-indigo-700/60 p-3 mb-3 shadow-md">
+              <p className="text-[9px] text-indigo-400 font-black uppercase tracking-widest mb-1">📖 In the Stakeholder Sync...</p>
               <p className="text-white text-[10px] font-bold leading-snug">
-                In the meeting, the team member reveals a critical dependency issue. What is your next action?
+                The client agrees scope must be trimmed, but asks which features to cut first.
+                <span className="block mt-1 text-slate-300 font-normal">You chose transparency — now prioritise wisely. What do you recommend?</span>
               </p>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <div onClick={() => setStep(3)} className="p-2.5 bg-slate-800 hover:bg-slate-700 border-2 border-slate-700 hover:border-slate-500 rounded-xl cursor-pointer transition-all text-center">
-                <p className="text-white text-[9px] font-bold leading-snug">✅ Re-scope with stakeholders immediately</p>
+              <div className={`p-2.5 border-2 rounded-xl text-center transition-all duration-500 ${
+                phase === 3
+                  ? 'bg-emerald-500/20 border-emerald-400 shadow-lg shadow-emerald-500/20'
+                  : 'bg-slate-800 border-slate-700'
+              }`}>
+                <p className="text-white text-[9px] font-bold leading-snug">✅ Cut lowest-value features &amp; re-scope with a revised delivery plan</p>
+                {phase === 3 && (
+                  <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
+                    className="mt-1 text-[8px] font-black text-emerald-300 uppercase tracking-widest">Selected ✓</motion.div>
+                )}
               </div>
-              <div onClick={() => setStep(2)} className="p-2.5 bg-slate-800 hover:bg-slate-700 border-2 border-slate-700 hover:border-slate-500 rounded-xl cursor-pointer transition-all text-center">
-                <p className="text-white text-[9px] font-bold leading-snug">⚠️ Hope the team works extra hours to catch up</p>
+              <div className={`p-2.5 border-2 rounded-xl text-center transition-all duration-500 ${
+                phase === 3
+                  ? 'bg-slate-800 border-slate-600 opacity-40'
+                  : 'bg-slate-800 border-slate-700'
+              }`}>
+                <p className="text-white text-[9px] font-bold leading-snug">⚠️ Ask the team to work overtime and keep all features intact</p>
               </div>
             </div>
           </motion.div>
         )}
-        {step === 2 && (
-          <motion.div key="fail" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-red-900/40 border border-red-500/50 p-4 rounded-xl text-center">
-            <AlertCircle className="w-7 h-7 text-red-400 mx-auto mb-2" />
-            <p className="text-white font-black text-xs mb-1">Morale Impact!</p>
-            <p className="text-red-200 text-[9px] mb-3 leading-relaxed">The team felt unheard. Trust and engagement dropped, affecting delivery quality.</p>
-            <button onClick={() => setStep(0)} className="px-3 py-1 bg-red-600 hover:bg-red-500 text-white text-[9px] font-black rounded-lg transition-colors">
-              Retry Scenario
-            </button>
-          </motion.div>
-        )}
-        {step === 3 && (
-          <motion.div key="success" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-emerald-900/40 border border-emerald-500/50 p-4 rounded-xl text-center">
+        {/* Success */}
+        {phase === 4 && (
+          <motion.div key="success" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ duration: 0.3 }}
+            className="bg-emerald-900/40 border border-emerald-500/50 p-4 rounded-xl text-center">
             <CheckCircle2 className="w-7 h-7 text-emerald-400 mx-auto mb-2" />
-            <p className="text-white font-black text-xs mb-1">Great Leadership!</p>
-            <p className="text-emerald-200 text-[9px] mb-3 leading-relaxed">By acting early, the team realigned expectations. Project delivered successfully with full stakeholder buy-in.</p>
-            <button onClick={() => setStep(0)} className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-[9px] font-black rounded-lg transition-colors">
-              Restart Scenario
-            </button>
+            <p className="text-white font-black text-xs mb-1">Project Delivered! 🎉</p>
+            <p className="text-emerald-200 text-[9px] leading-relaxed">By surfacing the risk early and cutting low-priority scope, the team hit the revised deadline with full client sign-off.</p>
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+// ── Image Background Template Preview (animated loop) ────────────────────────
+// Cycles through 4 thumbnail options, updating the main slide bg image
+const BG_TEMPLATES = [
+  '/Reference/Images/40570635_l_normal_none.jpg',
+  '/Reference/Images/72769332_l_normal_none.jpg',
+  '/Reference/Images/124953787_l_normal_none.jpg',
+  '/Reference/Images/129314759_l_normal_none.jpg',
+];
+function ImageBackgroundTemplatePreview() {
+  const [selected, setSelected] = useState(0);
+  // Cycle: 0 → 1 → 2 → 3 → 0 ...
+  useEffect(() => {
+    const id = setTimeout(() => setSelected(s => (s + 1) % BG_TEMPLATES.length), 2400);
+    return () => clearTimeout(id);
+  }, [selected]);
+  return (
+    <div className="space-y-2">
+      <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-2">Slide Canvas — Background Template</p>
+      {/* Slide canvas */}
+      <div className="relative w-full rounded-xl overflow-hidden border border-slate-700/50" style={{ paddingBottom: '56.25%' }}>
+        <AnimatePresence mode="sync">
+          <motion.img
+            key={selected}
+            src={BG_TEMPLATES[selected]}
+            alt="bg template"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 0.6 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.6 }}
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+        </AnimatePresence>
+        <div className="absolute inset-0 bg-gradient-to-r from-slate-900/80 to-transparent" />
+        <div className="absolute left-3 top-3 right-1/3">
+          <div className="text-[8px] font-black text-indigo-300 uppercase tracking-widest mb-1">Module 2 — Leadership</div>
+          <div className="text-xs font-black text-white leading-snug">Leading with Confidence</div>
+          <div className="text-[9px] text-slate-300 mt-1 leading-relaxed">Effective leaders inspire trust through clear communication and decisive action.</div>
+        </div>
+        <div className="absolute bottom-2 right-2 flex items-center gap-1 bg-slate-900/70 border border-slate-600/50 rounded px-1.5 py-0.5 text-[8px] text-slate-400 font-bold">
+          <Move className="w-2.5 h-2.5" /> Background
+        </div>
+      </div>
+      {/* Thumbnail picker */}
+      <div className="mt-2">
+        <div className="text-[8px] text-slate-600 font-bold mb-1.5 uppercase tracking-widest">Choose Template</div>
+        <div className="flex gap-1.5">
+          {BG_TEMPLATES.map((src, i) => (
+            <div key={i} className={`relative w-12 h-8 rounded overflow-hidden border-2 transition-all duration-300 ${
+              i === selected ? 'border-indigo-500 scale-105' : 'border-slate-700 opacity-60'
+            }`}>
+              <img src={src} alt="" loading="lazy" className="w-full h-full object-cover preview-img" />
+              {i === selected && <div className="absolute inset-0 bg-indigo-500/20" />}
+            </div>
+          ))}
+          <div className="w-12 h-8 rounded border-2 border-dashed border-slate-700 flex items-center justify-center text-slate-600">
+            <span className="text-[10px]">+</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Multi-Image Editor Preview (animated loop) ────────────────────────────────
+// Phase 0: Image 1 resizing (scale + handle animation)
+// Phase 1: Image 2 moving (translate animation)
+// Phase 2: Image 3 crop mask shrinking
+// then loops
+function MultiImageEditorPreview() {
+  const [phase, setPhase] = useState(0);
+  const durations = [2400, 2400, 2400];
+  useEffect(() => {
+    const id = setTimeout(() => setPhase(p => (p + 1) % 3), durations[phase]);
+    return () => clearTimeout(id);
+  }, [phase]);
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-2">Multiple Images — Drag, Crop &amp; Resize</p>
+      <div className="relative w-full bg-slate-800/60 border border-slate-700/50 rounded-xl overflow-hidden" style={{ height: '160px' }}>
+        <div className="absolute inset-0 bg-gradient-to-br from-slate-900 to-slate-800" />
+
+        {/* Label / action badge */}
+        <div className="absolute top-2 left-2 z-20">
+          <AnimatePresence mode="wait">
+            {phase === 0 && (
+              <motion.div key="resize-badge" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.2 }}
+                className="flex items-center gap-1 bg-indigo-900/90 border border-indigo-500/60 rounded-lg px-2 py-0.5 text-[8px] font-black text-indigo-300">
+                ↔ Resizing Image 1
+              </motion.div>
+            )}
+            {phase === 1 && (
+              <motion.div key="move-badge" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.2 }}
+                className="flex items-center gap-1 bg-violet-900/90 border border-violet-500/60 rounded-lg px-2 py-0.5 text-[8px] font-black text-violet-300">
+                <Move className="w-2.5 h-2.5" /> Moving Image 2
+              </motion.div>
+            )}
+            {phase === 2 && (
+              <motion.div key="crop-badge" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.2 }}
+                className="flex items-center gap-1 bg-amber-900/90 border border-amber-500/60 rounded-lg px-2 py-0.5 text-[8px] font-black text-amber-300">
+                <Crop className="w-2.5 h-2.5" /> Cropping Image 3
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Image 1 — top-left: resizes in phase 0 */}
+        <motion.div
+          animate={phase === 0
+            ? { width: '9rem', height: '6rem', left: '0.75rem', top: '0.75rem' }
+            : { width: '8rem', height: '5rem', left: '0.75rem', top: '0.75rem' }}
+          transition={{ duration: 1.2, ease: 'easeInOut', repeat: phase === 0 ? Infinity : 0, repeatType: 'reverse' }}
+          className={`absolute rounded-lg overflow-visible border-2 shadow-lg ${
+            phase === 0 ? 'border-indigo-400 shadow-indigo-500/20' : 'border-slate-600'
+          }`}
+          style={{ width: '8rem', height: '5rem', left: '0.75rem', top: '0.75rem' }}
+        >
+          <img src="/Reference/Images/72769332_l_normal_none.jpg" alt="img1" loading="lazy" className="w-full h-full object-cover rounded-lg preview-img" />
+          {phase === 0 && ['-top-1 -left-1','-top-1 -right-1','-bottom-1 -left-1','-bottom-1 -right-1'].map(pos => (
+            <motion.div key={pos} animate={{ scale: [1, 1.3, 1] }} transition={{ duration: 0.8, repeat: Infinity }}
+              className={`absolute ${pos} w-2.5 h-2.5 bg-white border-2 border-indigo-500 rounded-sm z-10`} />
+          ))}
+        </motion.div>
+
+        {/* Image 2 — right side: moves horizontally in phase 1 (whole element translates) */}
+        <motion.div
+          animate={phase === 1
+            ? { x: [-8, 8, -8], right: '0.75rem', top: '0.75rem' }
+            : { x: 0, right: '0.75rem', top: '0.75rem' }}
+          transition={phase === 1
+            ? { x: { duration: 1.4, ease: 'easeInOut', repeat: Infinity }, right: { duration: 0 }, top: { duration: 0 } }
+            : { duration: 0.4, ease: 'easeOut' }}
+          style={{ position: 'absolute', right: '0.75rem', top: '0.75rem', width: '6rem', height: '4rem' }}
+          className={`rounded-lg overflow-hidden border-2 ${phase === 1 ? 'border-violet-400 shadow-lg shadow-violet-500/20' : 'border-slate-600 opacity-80'}`}
+        >
+          <img src="/Reference/Images/124953787_l_normal_none.jpg" alt="img2" loading="lazy" className="w-full h-full object-cover preview-img" />
+        </motion.div>
+
+        {/* Image 3 — bottom center: crop mask in phase 2 */}
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-lg overflow-hidden border-2 border-slate-600 opacity-90"
+          style={{ width: '5rem', height: '3.5rem' }}>
+          <img src="/Reference/Images/40570635_l_normal_none.jpg" alt="img3" loading="lazy" className="w-full h-full object-cover preview-img" />
+          {phase === 2 && (
+            <>
+              {/* Crop overlay */}
+              <motion.div
+                className="absolute inset-0 border-2 border-amber-400 z-10"
+                initial={{ top: '0%', left: '0%', right: '0%', bottom: '0%' }}
+                animate={{ top: '15%', left: '10%', right: '10%', bottom: '15%' }}
+                transition={{ duration: 1.2, ease: 'easeInOut', repeat: Infinity, repeatType: 'reverse' }}
+                style={{ position: 'absolute' }}
+              />
+              <div className="absolute inset-0 bg-black/40 z-5" />
+            </>
+          )}
+        </div>
+
+        {/* Size badge */}
+        <div className={`absolute bottom-2 left-3 rounded px-2 py-0.5 text-[8px] font-black transition-all ${
+          phase === 0 ? 'bg-indigo-900/80 border border-indigo-500/40 text-indigo-300' :
+          phase === 1 ? 'bg-violet-900/80 border border-violet-500/40 text-violet-300' :
+                        'bg-amber-900/80 border border-amber-500/40 text-amber-300'
+        }`}>
+          {phase === 0 ? '320 × 200 px' : phase === 1 ? 'X: 148  Y: 32' : 'Crop: 80%'}
+        </div>
+      </div>
+
+      {/* Controls strip */}
+      <div className="flex gap-2 mt-1">
+        <button className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[9px] font-bold border rounded-lg transition-all ${
+          phase === 2 ? 'border-amber-500/50 bg-amber-500/10 text-amber-300' : 'border-slate-700 text-slate-400'
+        }`}><Crop className="w-3 h-3" /> Crop</button>
+        <button className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[9px] font-bold border rounded-lg transition-all ${
+          phase === 1 ? 'border-violet-500/50 bg-violet-500/10 text-violet-300' : 'border-slate-700 text-slate-400'
+        }`}><Move className="w-3 h-3" /> Reposition</button>
+        <button className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[9px] font-bold border border-indigo-600/50 bg-indigo-500/10 rounded-lg text-indigo-300">
+          <Image className="w-3 h-3" /> Add Image
+        </button>
+      </div>
     </div>
   );
 }
@@ -510,6 +848,15 @@ function SignInDropdown({ onClose, onGetStarted }: { onClose: () => void; onGetS
   );
 }
 
+// ── Smooth-scroll helper (accounts for sticky nav height) ────────────────────
+function smoothScrollTo(id: string) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const navHeight = 64; // matches the nav h-16 (64 px)
+  const top = el.getBoundingClientRect().top + window.scrollY - navHeight;
+  window.scrollTo({ top, behavior: 'smooth' });
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
   const [menuOpen, setMenuOpen]           = useState(false);
@@ -561,10 +908,10 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
           </div>
 
           <div className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-400">
-            <a href="#features"  className="hover:text-white transition-colors">Features</a>
-            <a href="#showcase"  className="hover:text-white transition-colors">Interactions</a>
-            <a href="#tracks"    className="hover:text-white transition-colors">Who It's For</a>
-            <a href="#pricing"   className="hover:text-white transition-colors">Pricing</a>
+            <button onClick={() => smoothScrollTo('features')}  className="hover:text-white transition-colors cursor-pointer">Features</button>
+            <button onClick={() => smoothScrollTo('showcase')}  className="hover:text-white transition-colors cursor-pointer">Interactions</button>
+            <button onClick={() => smoothScrollTo('tracks')}    className="hover:text-white transition-colors cursor-pointer">Who It's For</button>
+            <button onClick={() => smoothScrollTo('pricing')}   className="hover:text-white transition-colors cursor-pointer">Pricing</button>
           </div>
 
           <div className="flex items-center gap-3 relative">
@@ -595,8 +942,14 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
           {menuOpen && (
             <motion.div initial={{ height:0, opacity:0 }} animate={{ height:'auto', opacity:1 }} exit={{ height:0, opacity:0 }}
               className="md:hidden border-t border-slate-800 bg-slate-950 px-6 py-4 flex flex-col gap-3 text-sm font-medium text-slate-300">
-              {['Features','Interactions',"Who It's For",'Pricing'].map(l => (
-                <a key={l} href={`#${l.toLowerCase().replace(/[^a-z]/g,'')}`} onClick={() => setMenuOpen(false)} className="hover:text-white transition-colors py-1">{l}</a>
+              {[
+                { label: 'Features',      id: 'features'  },
+                { label: 'Interactions',  id: 'showcase'  },
+                { label: "Who It's For",  id: 'tracks'    },
+                { label: 'Pricing',       id: 'pricing'   },
+              ].map(({ label, id }) => (
+                <button key={id} onClick={() => { setMenuOpen(false); smoothScrollTo(id); }}
+                  className="text-left hover:text-white transition-colors py-1">{label}</button>
               ))}
               <button onClick={() => { setMenuOpen(false); setShowSignIn(true); }} className="text-left pt-2 border-t border-slate-800 text-indigo-400">Sign In →</button>
             </motion.div>
@@ -813,8 +1166,8 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
         </div>
       </section>
 
-      {/* ── Interactions Showcase ────────────────────────────────────────────── */}
-      <section id="showcase" className="py-24 bg-slate-900/30 border-y border-slate-800/60 overflow-hidden">
+      {/* == Interactions Showcase == */}
+      <section id="showcase" className="py-24 bg-slate-900/30 border-y border-slate-800/60">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16">
             <motion.p initial={{ opacity:0 }} whileInView={{ opacity:1 }} viewport={{ once:true }}
@@ -826,133 +1179,38 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
             <p className="text-slate-400 mt-4 max-w-xl mx-auto">Our AI selects and populates the right interaction type for each piece of content automatically.</p>
           </div>
 
-          <div className="flex gap-5 overflow-x-auto pb-4 px-1">
-
-            {/* 1 — Accordion (animated loop) */}
+          {/* Scrollable cards strip with nav arrows */}
+          <ShowcaseScroller>
+            {/* 1 - Accordion */}
             <ShowcaseCard label="Accordion" icon={Layers} accent="border-indigo-700/40"
               preview={<AccordionPreview />}
             />
 
-            {/* 2 — Flashcards (animated loop) */}
+            {/* 2 - Flashcards */}
             <ShowcaseCard label="Flashcards" icon={BookOpen} accent="border-purple-700/40"
               preview={<FlashcardPreview />}
             />
 
-            {/* 3 — Jeopardy (animated loop) */}
+            {/* 3 - Jeopardy */}
             <ShowcaseCard label="Jeopardy Game" icon={Gamepad2} accent="border-amber-700/40" wide
               preview={<JeopardyPreview />}
             />
 
-            {/* 4 — Image Editor: background template */}
+            {/* 4 - Image Background Template */}
             <ShowcaseCard label="Image Background Template" icon={Image} accent="border-rose-700/40" wide
-              preview={
-                <div className="space-y-2">
-                  <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-2">Slide Canvas — Background Template</p>
-                  {/* Slide canvas with bg image */}
-                  <div className="relative w-full rounded-xl overflow-hidden border border-slate-700/50" style={{ paddingBottom:'56.25%' }}>
-                    <img src="/Reference/Images/40570635_l_normal_none.jpg" alt="bg template" className="absolute inset-0 w-full h-full object-cover opacity-60" />
-                    <div className="absolute inset-0 bg-gradient-to-r from-slate-900/80 to-transparent" />
-                    {/* Slide text content on top */}
-                    <div className="absolute left-3 top-3 right-1/3">
-                      <div className="text-[8px] font-black text-indigo-300 uppercase tracking-widest mb-1">Module 2 — Leadership</div>
-                      <div className="text-xs font-black text-white leading-snug">Leading with Confidence</div>
-                      <div className="text-[9px] text-slate-300 mt-1 leading-relaxed">Effective leaders inspire trust through clear communication and decisive action.</div>
-                    </div>
-                    {/* Resize handle indicator */}
-                    <div className="absolute bottom-2 right-2 flex items-center gap-1 bg-slate-900/70 border border-slate-600/50 rounded px-1.5 py-0.5 text-[8px] text-slate-400 font-bold">
-                      <Move className="w-2.5 h-2.5" /> Background
-                    </div>
-                  </div>
-                  {/* Template picker strip */}
-                  <div className="mt-2">
-                    <div className="text-[8px] text-slate-600 font-bold mb-1.5 uppercase tracking-widest">Choose Template</div>
-                    <div className="flex gap-1.5">
-                      {[
-                        '/Reference/Images/40570635_l_normal_none.jpg',
-                        '/Reference/Images/72769332_l_normal_none.jpg',
-                        '/Reference/Images/124953787_l_normal_none.jpg',
-                        '/Reference/Images/25251067_l_normal_none.jpg',
-                      ].map((src, i) => (
-                        <div key={i} className={`relative w-12 h-8 rounded overflow-hidden border-2 cursor-pointer transition-all ${i === 0 ? 'border-indigo-500 scale-105' : 'border-slate-700 hover:border-slate-500 opacity-60 hover:opacity-90'}`}>
-                          <img src={src} alt="" className="w-full h-full object-cover" />
-                          {i === 0 && <div className="absolute inset-0 bg-indigo-500/20" />}
-                        </div>
-                      ))}
-                      <div className="w-12 h-8 rounded border-2 border-dashed border-slate-700 flex items-center justify-center text-slate-600 hover:border-slate-500 cursor-pointer">
-                        <span className="text-[10px]">+</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              }
+              preview={<ImageBackgroundTemplatePreview />}
             />
 
-            {/* 5 — Image Editor: multi-image placement */}
-            <ShowcaseCard label="Image Editor — Multi-Image Layout" icon={Crop} accent="border-violet-700/40" wide
-              preview={
-                <div className="space-y-2">
-                  <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-2">Multiple Images — Drag, Crop & Resize</p>
-                  {/* Canvas with multiple positioned images */}
-                  <div className="relative w-full bg-slate-800/60 border border-slate-700/50 rounded-xl overflow-hidden" style={{ height: '160px' }}>
-                    {/* Bg tint */}
-                    <div className="absolute inset-0 bg-gradient-to-br from-slate-900 to-slate-800" />
-
-                    {/* Image 1 — top-left, selected (dashed border + handles) */}
-                    <div className="absolute top-3 left-3 w-32 h-20 rounded-lg overflow-hidden border-2 border-indigo-400 shadow-lg shadow-indigo-500/20" style={{ outline:'1.5px dashed rgba(99,102,241,0.6)', outlineOffset:'2px' }}>
-                      <img src="/Reference/Images/72769332_l_normal_none.jpg" alt="img1" className="w-full h-full object-cover" />
-                      {/* Corner handles */}
-                      {['-top-1 -left-1','-top-1 -right-1','-bottom-1 -left-1','-bottom-1 -right-1'].map(pos => (
-                        <div key={pos} className={`absolute ${pos} w-2.5 h-2.5 bg-white border-2 border-indigo-500 rounded-sm`} />
-                      ))}
-                    </div>
-
-                    {/* Image 2 — right side, unselected */}
-                    <div className="absolute top-3 right-3 w-24 h-16 rounded-lg overflow-hidden border-2 border-slate-600 opacity-80">
-                      <img src="/Reference/Images/124953787_l_normal_none.jpg" alt="img2" className="w-full h-full object-cover" />
-                    </div>
-
-                    {/* Image 3 — bottom center */}
-                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 w-20 h-14 rounded-lg overflow-hidden border-2 border-slate-600 opacity-70">
-                      <img src="/Reference/Images/40570635_l_normal_none.jpg" alt="img3" className="w-full h-full object-cover" />
-                    </div>
-
-                    {/* Selection tools floating bar */}
-                    <div className="absolute top-2 right-2 flex flex-col gap-1">
-                      <div className="bg-slate-900/90 border border-slate-700 rounded-lg px-2 py-1 flex gap-2 items-center">
-                        <Move className="w-3 h-3 text-indigo-400" />
-                        <Crop className="w-3 h-3 text-slate-400" />
-                        <Eye className="w-3 h-3 text-slate-400" />
-                      </div>
-                    </div>
-
-                    {/* Size indicator for selected image */}
-                    <div className="absolute bottom-2 left-3 bg-indigo-900/80 border border-indigo-500/40 rounded px-2 py-0.5 text-[8px] font-black text-indigo-300">
-                      320 × 200 px
-                    </div>
-                  </div>
-
-                  {/* Controls strip */}
-                  <div className="flex gap-2 mt-1">
-                    <button className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[9px] font-bold border border-slate-700 rounded-lg text-slate-400 hover:border-indigo-500/50 hover:text-indigo-300 transition-all">
-                      <Crop className="w-3 h-3" /> Crop
-                    </button>
-                    <button className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[9px] font-bold border border-slate-700 rounded-lg text-slate-400 hover:border-slate-500 transition-all">
-                      <Move className="w-3 h-3" /> Reposition
-                    </button>
-                    <button className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[9px] font-bold border border-indigo-600/50 bg-indigo-500/10 rounded-lg text-indigo-300">
-                      <Image className="w-3 h-3" /> Add Image
-                    </button>
-                  </div>
-                </div>
-              }
+            {/* 5 - Multi-Image Editor */}
+            <ShowcaseCard label="Image Editor - Multi-Image Layout" icon={Crop} accent="border-violet-700/40" wide
+              preview={<MultiImageEditorPreview />}
             />
 
-            {/* 6 — Branching Scenario (interactive, matches app style) */}
+            {/* 6 - Branching Scenario */}
             <ShowcaseCard label="Branching Scenario" icon={Globe} accent="border-cyan-700/40" wide
               preview={<BranchingScenarioPreview />}
             />
-
-          </div>
+          </ShowcaseScroller>
         </div>
       </section>
 

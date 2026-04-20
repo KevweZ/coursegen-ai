@@ -291,3 +291,32 @@
   border-color: rgba(148, 163, 184, 0.25);
   margin: 1rem 0;
 }
+
+/* -- Marketing page: lazy-load image fade-in ------------------------------- */
+img {
+  opacity: 1;
+  transition: opacity 0.4s ease;
+}
+img[loading='lazy'] {
+  opacity: 0;
+}
+img[loading='lazy'].loaded,
+img:not([loading]) {
+  opacity: 1;
+}
+/* Ensure preview card images always render sharp */
+.preview-img {
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+/* -- Marketing preview images: smooth fade-in on load --------------------- */
+@keyframes imgFadeIn {
+  from { opacity: 0; transform: scale(1.01); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.preview-img {
+  animation: imgFadeIn 0.5s ease both;
+  will-change: opacity, transform;
+  backface-visibility: hidden;
+}

@@ -220,6 +220,7 @@ export default function App() {
 
   // Controls which pre-auth view to show: public marketing homepage OR login/signup
   const [publicView, setPublicView] = useState<'homepage' | 'auth'>('homepage');
+  const [authInitialMode, setAuthInitialMode] = useState<'login' | 'signup'>('login');
   
   const [step, setStep] = useState<AppStep>(isScormPlayer ? 'preview' : 'home');
   const [activeTab, setActiveTab] = useState<'topic' | 'file' | 'url'>('topic');
@@ -864,13 +865,13 @@ export default function App() {
   if (!user && !isScormPlayer) {
     if (publicView === 'auth') {
       return (
-        <AuthPage onBackToHome={() => setPublicView('homepage')} />
+        <AuthPage onBackToHome={() => setPublicView('homepage')} initialMode={authInitialMode} />
       );
     }
     return (
       <MarketingHomepage
-        onGetStarted={() => setPublicView('auth')}
-        onSignIn={() => setPublicView('auth')}
+        onGetStarted={() => { setAuthInitialMode('signup'); setPublicView('auth'); }}
+        onSignIn={() => { setAuthInitialMode('login'); setPublicView('auth'); }}
       />
     );
   }
