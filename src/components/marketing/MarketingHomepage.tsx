@@ -985,7 +985,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
           <div className="absolute inset-0 bg-slate-950/50" />
         </div>
 
-        <div className="relative z-10 flex flex-col items-center">
+        <div className="relative z-10 flex flex-col items-center w-full">
           <motion.div initial={{ opacity:0, y:-12 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.5 }}
             className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-widest text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-4 py-2 rounded-full mb-6">
             <Sparkles className="w-3.5 h-3.5" /> AI-Powered eLearning Builder
@@ -1046,7 +1046,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
                 {playerCanRight && <button onClick={() => playerScrollRef.current?.scrollBy({ left: 160, behavior:'smooth' })} className="sm:hidden absolute right-1 top-1/2 -translate-y-1/2 z-20 w-6 h-6 rounded-full bg-slate-800/80 border border-slate-600/50 flex items-center justify-center text-white shadow"><ChevronRight className="w-3.5 h-3.5" /></button>}
                 {/* Scroll container */}
                 <div ref={playerScrollRef} onScroll={updatePlayerArrows}
-                  className="overflow-x-auto sm:overflow-visible"
+                  className="overflow-x-auto"
                   style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                   <div className="grid grid-cols-12 min-h-[420px] min-w-[600px] sm:min-w-0">
                 {/* Left: Course Outline */}
