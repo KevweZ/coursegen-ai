@@ -1,6 +1,7 @@
-# Cloudflare Pages — Routing Rules
-# API proxy to Railway will be added here once Railway is deployed
-# /api/*  https://YOUR-RAILWAY-URL.railway.app/api/:splat  200
+# Cloudflare Workers — Routing Rules
+
+# 1. Proxy /api/* calls to the Railway backend
+/api/*  https://coursegen-ai-production.up.railway.app/api/:splat  200
 
 # NOTE: SPA fallback is handled by wrangler.jsonc (not_found_handling: single-page-application)
 # Do NOT add a /* rule here — it causes an infinite loop with wrangler's SPA mode
