@@ -574,20 +574,17 @@ function ImageBackgroundTemplatePreview() {
   return (
     <div className="space-y-2">
       <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-2">Slide Canvas — Background Template</p>
-      {/* Slide canvas */}
+      {/* Slide canvas — all images stacked; CSS opacity crossfade eliminates the blink */}
       <div className="relative w-full rounded-xl overflow-hidden border border-slate-700/50" style={{ paddingBottom: '56.25%' }}>
-        <AnimatePresence mode="sync">
-          <motion.img
-            key={selected}
-            src={BG_TEMPLATES[selected]}
+        {BG_TEMPLATES.map((src, i) => (
+          <img
+            key={i}
+            src={src}
             alt="bg template"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 0.6 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.6 }}
-            className="absolute inset-0 w-full h-full object-cover"
+            className="absolute inset-0 w-full h-full object-cover transition-opacity duration-700"
+            style={{ opacity: i === selected ? 0.6 : 0 }}
           />
-        </AnimatePresence>
+        ))}
         <div className="absolute inset-0 bg-gradient-to-r from-slate-900/80 to-transparent" />
         <div className="absolute left-3 top-3 right-1/3">
           <div className="text-[8px] font-black text-indigo-300 uppercase tracking-widest mb-1">Module 2 — Leadership</div>
@@ -864,6 +861,28 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
   const [activeVoice, setActiveVoice]     = useState('nova');
   const [narrationPlaying, setNarrationPlaying] = useState(false);
 
+  // Player mockup — horizontal scroll (mobile)
+  const playerScrollRef = useRef<HTMLDivElement>(null);
+  const [playerCanLeft,  setPlayerCanLeft]  = useState(false);
+  const [playerCanRight, setPlayerCanRight] = useState(true);
+
+  useEffect(() => {
+    const el = playerScrollRef.current;
+    if (!el) return;
+    // Start centred on the quiz column on mobile
+    const mid = (el.scrollWidth - el.clientWidth) / 2;
+    el.scrollLeft = mid;
+    setPlayerCanLeft(mid > 8);
+    setPlayerCanRight(mid < el.scrollWidth - el.clientWidth - 8);
+  }, []);
+
+  const updatePlayerArrows = () => {
+    const el = playerScrollRef.current;
+    if (!el) return;
+    setPlayerCanLeft(el.scrollLeft > 8);
+    setPlayerCanRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 8);
+  };
+
   const voices = ['alloy', 'echo', 'fable', 'nova', 'onyx', 'shimmer'];
 
   const features = [
@@ -903,7 +922,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
               <Zap className="w-4 h-4 text-indigo-400" />
             </div>
             <span className="font-extrabold text-xl tracking-tight text-white">
-              CourseGEN <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">AI</span>
+              NexCourse <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">AI</span>
             </span>
           </div>
 
@@ -974,7 +993,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
 
           <motion.h1 initial={{ opacity:0, y:20 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.6, delay:0.08 }}
             className="text-6xl md:text-7xl lg:text-8xl font-black text-white leading-[1.02] tracking-tight mb-4">
-            CourseGEN <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-cyan-400">AI</span>
+            NexCourse <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-cyan-400">AI</span>
           </motion.h1>
 
           <motion.p initial={{ opacity:0, y:16 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.5, delay:0.16 }}
@@ -1012,12 +1031,24 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
                   <div className="w-3 h-3 rounded-full bg-red-500/60" /><div className="w-3 h-3 rounded-full bg-amber-500/60" /><div className="w-3 h-3 rounded-full bg-emerald-500/60" />
                 </div>
                 <div className="flex-1 mx-4 bg-slate-800 rounded-lg h-6 flex items-center px-3">
-                  <span className="text-slate-500 text-xs font-mono">app.coursegen.ai/player</span>
+                  <span className="text-slate-500 text-xs font-mono">app.nexcourse.ai/player</span>
                 </div>
-                <div className="flex items-center gap-2 text-xs text-slate-500 font-medium"><Zap className="w-3 h-3 text-indigo-400" />CourseGEN AI</div>
+                <div className="flex items-center gap-2 text-xs text-slate-500 font-medium"><Zap className="w-3 h-3 text-indigo-400" />NexCourse AI</div>
               </div>
 
-              <div className="grid grid-cols-12 min-h-[420px]">
+              {/* Mobile-scrollable player mockup */}
+              <div className="relative">
+                {/* Fade indicators — mobile only */}
+                {playerCanLeft  && <div className="sm:hidden pointer-events-none absolute left-0 inset-y-0 w-8 z-10 bg-gradient-to-r from-slate-900/80 to-transparent" />}
+                {playerCanRight && <div className="sm:hidden pointer-events-none absolute right-0 inset-y-0 w-8 z-10 bg-gradient-to-l from-slate-900/80 to-transparent" />}
+                {/* Arrow buttons — mobile only */}
+                {playerCanLeft  && <button onClick={() => playerScrollRef.current?.scrollBy({ left:-160, behavior:'smooth' })} className="sm:hidden absolute left-1 top-1/2 -translate-y-1/2 z-20 w-6 h-6 rounded-full bg-slate-800/80 border border-slate-600/50 flex items-center justify-center text-white shadow"><ChevronLeft  className="w-3.5 h-3.5" /></button>}
+                {playerCanRight && <button onClick={() => playerScrollRef.current?.scrollBy({ left: 160, behavior:'smooth' })} className="sm:hidden absolute right-1 top-1/2 -translate-y-1/2 z-20 w-6 h-6 rounded-full bg-slate-800/80 border border-slate-600/50 flex items-center justify-center text-white shadow"><ChevronRight className="w-3.5 h-3.5" /></button>}
+                {/* Scroll container */}
+                <div ref={playerScrollRef} onScroll={updatePlayerArrows}
+                  className="overflow-x-auto sm:overflow-visible"
+                  style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                  <div className="grid grid-cols-12 min-h-[420px] min-w-[600px] sm:min-w-0">
                 {/* Left: Course Outline */}
                 <div className="col-span-3 border-r border-slate-800 bg-slate-950/50 p-3 overflow-y-auto">
                   <div className="text-[9px] font-black uppercase tracking-widest text-slate-600 px-2 mb-2">Course Outline</div>
@@ -1130,6 +1161,8 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
                   <button className="w-full py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-indigo-600/80 to-purple-600/80 text-white border border-indigo-500/30 transition-all flex items-center justify-center gap-1.5 mt-auto">
                     <Mic className="w-3 h-3" /> Generate All
                   </button>
+                </div>
+              </div>
                 </div>
               </div>
             </div>
@@ -1322,9 +1355,9 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
             <div className="w-7 h-7 bg-indigo-500/15 rounded-lg flex items-center justify-center border border-indigo-500/20">
               <Zap className="w-3.5 h-3.5 text-indigo-400" />
             </div>
-            <span className="font-extrabold text-base text-white">CourseGEN <span className="text-indigo-400">AI</span></span>
+            <span className="font-extrabold text-base text-white">NexCourse <span className="text-indigo-400">AI</span></span>
           </div>
-          <span className="text-slate-600 text-sm">© 2025 CourseGEN AI. All rights reserved.</span>
+          <span className="text-slate-600 text-sm">© 2025 NexCourse AI. All rights reserved.</span>
           <div className="flex items-center gap-1.5 text-slate-600 text-xs">
             <Shield className="w-3 h-3" /> Your data is always kept private & safe
           </div>
