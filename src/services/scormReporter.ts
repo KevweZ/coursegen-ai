@@ -5,7 +5,7 @@
  * SCORM package by scormService.ts.
  *
  * The pipwerks API lives on window.pipwerks (attached by scorm_api.js).
- * When running in the CourseGEN builder/preview (no LMS), all calls are
+ * When running in the NexCourse builder/preview (no LMS), all calls are
  * silently no-ops — the API is only active inside an exported SCORM package.
  *
  * SCORM 1.2 Data Model elements used:

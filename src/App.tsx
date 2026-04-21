@@ -892,7 +892,7 @@ export default function App() {
               <Zap className="w-5 h-5 text-indigo-400 group-hover:text-indigo-300 group-hover:scale-110 transition-all" />
             </div>
             <span className="font-extrabold text-xl tracking-tight text-white">
-              CourseGEN <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">AI</span>
+              NexCourse <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">AI</span>
             </span>
           </div>
           
@@ -1134,7 +1134,7 @@ export default function App() {
                 <div className="relative z-10 max-w-4xl mx-auto text-center w-full px-6 py-16 bg-slate-950/40 backdrop-blur-md rounded-[3rem] border border-indigo-500/20 shadow-2xl space-y-10 my-8">
                   <div>
                     <h1 className="text-5xl md:text-7xl font-bold tracking-tight text-white mb-6">
-                      CourseGEN <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 font-extrabold pb-2">AI</span>
+                      NexCourse <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 font-extrabold pb-2">AI</span>
                     </h1>
                     <p className="text-xl text-slate-300 font-medium max-w-2xl mx-auto">
                       Transform Any Document Into a Complete eLearning Course in Minutes

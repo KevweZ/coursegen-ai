@@ -562,7 +562,7 @@ export function PlayerPropertiesModal({ config, onChange, onClose }: Props) {
                   <div className="w-2.5 h-2.5 rounded-full bg-emerald-500/70" />
                 </div>
                 <div className="flex-1 bg-slate-700 rounded-md h-4 flex items-center px-2">
-                  <span className="text-[9px] text-slate-400">coursegen.app/preview</span>
+                  <span className="text-[9px] text-slate-400">nexcourse.ai/player</span>
                 </div>
               </div>
               <div className="flex-1 min-h-0">

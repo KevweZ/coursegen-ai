@@ -83,7 +83,7 @@ export async function createScormPackage(course: CourseOutline): Promise<Blob> {
   const safeCourseTitle = course.title.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
   const manifest = `<?xml version="1.0" encoding="UTF-8"?>
-<manifest identifier="CourseGenAI_${Date.now()}" version="1"
+<manifest identifier="NexCourseAI_${Date.now()}" version="1"
           xmlns="http://www.imsproject.org/xsd/imscp_rootv1p1p2"
           xmlns:adlcp="http://www.adlnet.org/xsd/adlcp_rootv1p2"
           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"

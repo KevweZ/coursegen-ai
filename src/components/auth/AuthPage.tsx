@@ -104,7 +104,11 @@ export function AuthPage({ onBackToHome, initialMode = 'login' }: { onBackToHome
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const { error } = await signIn(email, password);
+    // 'admin' username shortcut → maps to the VITE_ADMIN_EMAIL without exposing it in the UI
+    const loginEmail = email.trim().toLowerCase() === 'admin'
+      ? (import.meta.env.VITE_ADMIN_EMAIL as string)
+      : email;
+    const { error } = await signIn(loginEmail, password);
     setLoading(false);
     if (error) setError(error);
   };
@@ -146,7 +150,7 @@ export function AuthPage({ onBackToHome, initialMode = 'login' }: { onBackToHome
   const onSubmit = mode === 'login' ? handleLogin : mode === 'signup' ? handleSignup : handleForgot;
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center relative overflow-hidden px-4">
+    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-start py-12 sm:py-16 relative overflow-x-hidden px-4 overflow-y-auto">
       {/* Background glows */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-indigo-900/20 rounded-full blur-[120px] transform translate-x-1/3 -translate-y-1/3" />
@@ -169,7 +173,7 @@ export function AuthPage({ onBackToHome, initialMode = 'login' }: { onBackToHome
           <Zap className="w-5 h-5 text-indigo-400" />
         </div>
         <span className="font-extrabold text-2xl tracking-tight text-white">
-          CourseGEN <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">AI</span>
+          NexCourse <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">AI</span>
         </span>
       </motion.div>
 

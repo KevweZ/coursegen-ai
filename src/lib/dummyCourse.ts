@@ -5,13 +5,13 @@ import { CourseOutline, ExamConfig, ExamQuestion } from '../types/course';
  * Covers every slide type so the player can be tested without generating content.
  */
 export const DUMMY_COURSE: CourseOutline = {
-  title: 'CourseGEN Preview — Player Test Course',
+  title: 'NexCourse Preview — Player Test Course',
   description: 'A pre-built sandbox course containing every slide type and interaction component. Use this to test and debug the course player without uploading files or running AI generation.',
   learningObjectives: [
     {
-      terminalObjective: 'Given a description of the CourseGEN player, the learner will identify each of its core components and their functions.',
+      terminalObjective: 'Given a description of the NexCourse player, the learner will identify each of its core components and their functions.',
       enablingObjectives: [
-        'The learner will label the four layers of the CourseGEN player (Slide Canvas, Player Bar, Edit Drawer, Theme System).',
+        'The learner will label the four layers of the NexCourse player (Slide Canvas, Player Bar, Edit Drawer, Theme System).',
         'The learner will describe the role of the Player Bar in controlling slide navigation.',
         'The learner will distinguish between the three available theme modes: Dark, Light, and Unified.',
         'The learner will recall the purpose of the Slide Canvas in rendering different slide types.',
@@ -21,7 +21,7 @@ export const DUMMY_COURSE: CourseOutline = {
       terminalObjective: 'Given a multiple-choice knowledge check, the learner will recognize the correct answer that reflects course content covered in each module.',
       enablingObjectives: [
         'The learner will identify which player component is responsible for slide navigation.',
-        'The learner will recall the number of theme modes supported by the CourseGEN player.',
+        'The learner will recall the number of theme modes supported by the NexCourse player.',
         'The learner will match each player component to its primary function.',
       ],
     },
@@ -51,7 +51,7 @@ export const DUMMY_COURSE: CourseOutline = {
         {
           id: 'slide-title',
           type: 'title',
-          title: 'CourseGEN Player Sandbox',
+          title: 'NexCourse player Sandbox',
           content: 'Welcome to the **Admin Preview Mode**. This course lets you test every player component without generating a real course. Use the navigation controls below to move between slides.',
           narration: 'Welcome to the Admin Preview Mode. This is a sandbox course that contains every slide type and interactive component. Use this environment to test and debug the course player.',
           voiceOverText: 'Welcome to the Admin Preview Mode. This is a sandbox course that contains every slide type.',
@@ -63,9 +63,9 @@ export const DUMMY_COURSE: CourseOutline = {
           id: 'slide-content-1',
           type: 'content',
           title: 'Understanding the Player Layout',
-          content: `## Player Architecture\n\nThe CourseGEN player is composed of several key layers:\n\n- **Slide Canvas** — The central content area that renders each slide type\n- **Player Bar** — The bottom navigation with play/pause, seekbar, and slide controls\n- **Edit Drawer** — The right-side panel for modifying slide text and audio\n- **Theme System** — Dark, Light, and Unified color modes\n\n## Navigation\n\nUse the **Previous** and **Next** buttons in the player bar, or click directly on the seekbar to jump to any slide. The current slide position is tracked in real time.`,
-          narration: 'The CourseGEN player is built from four key layers: the slide canvas, the player bar, the edit drawer, and the theme system. Let\'s explore each one.',
-          voiceOverText: 'The CourseGEN player is built from four key layers: the slide canvas, the player bar, the edit drawer, and the theme system.',
+          content: `## Player Architecture\n\nThe NexCourse player is composed of several key layers:\n\n- **Slide Canvas** — The central content area that renders each slide type\n- **Player Bar** — The bottom navigation with play/pause, seekbar, and slide controls\n- **Edit Drawer** — The right-side panel for modifying slide text and audio\n- **Theme System** — Dark, Light, and Unified color modes\n\n## Navigation\n\nUse the **Previous** and **Next** buttons in the player bar, or click directly on the seekbar to jump to any slide. The current slide position is tracked in real time.`,
+          narration: 'The NexCourse player is built from four key layers: the slide canvas, the player bar, the edit drawer, and the theme system. Let\'s explore each one.',
+          voiceOverText: 'The NexCourse player is built from four key layers: the slide canvas, the player bar, the edit drawer, and the theme system.',
           imagePlaceholder: true,
           mediaPrompt: 'Clean diagram showing the layers of an eLearning player interface',
         },
@@ -91,7 +91,7 @@ export const DUMMY_COURSE: CourseOutline = {
           id: 'slide-mod2-intro',
           type: 'content',
           title: 'Module 2 — Knowledge Checks',
-          content: '## Testing Quiz Components\n\nThis module demonstrates the **Quiz** and **Multiple Answer** slide types. These are the core assessment tools in the CourseGEN player.\n\nTry selecting an answer and clicking Submit to see the feedback logic in action.',
+          content: '## Testing Quiz Components\n\nThis module demonstrates the **Quiz** and **Multiple Answer** slide types. These are the core assessment tools in the NexCourse player.\n\nTry selecting an answer and clicking Submit to see the feedback logic in action.',
           narration: 'Module 2 focuses on knowledge checks. Here you will test the quiz slide type which provides immediate feedback when a learner selects and submits their answer.',
           voiceOverText: 'Module 2 focuses on knowledge checks. Test the quiz slide by selecting an answer and clicking submit.',
         },
@@ -105,7 +105,7 @@ export const DUMMY_COURSE: CourseOutline = {
           voiceOverText: 'Here is your first knowledge check. Select the best answer and click submit.',
           interactions: [],
           data: {
-            questionText: 'Which of the following is responsible for controlling slide navigation in the CourseGEN player?',
+            questionText: 'Which of the following is responsible for controlling slide navigation in the NexCourse player?',
             options: [
               { id: 'a', text: 'The slide canvas', isCorrect: false },
               { id: 'b', text: 'The Player Bar', isCorrect: true },
@@ -120,12 +120,12 @@ export const DUMMY_COURSE: CourseOutline = {
           id: 'slide-quiz-2',
           type: 'quiz',
           title: 'Knowledge Check — Themes',
-          content: 'Which theme modes are available in the CourseGEN player?',
+          content: 'Which theme modes are available in the NexCourse player?',
           narration: 'Second knowledge check. Identify the correct theme options available in the player.',
           voiceOverText: 'Second knowledge check. Identify the correct theme options.',
           interactions: [],
           data: {
-            questionText: 'How many theme modes does the CourseGEN player support?',
+            questionText: 'How many theme modes does the NexCourse player support?',
             options: [
               { id: 'a', text: '2 — Light and Dark', isCorrect: false },
               { id: 'b', text: '3 — Dark, Light, and Unified', isCorrect: true },
@@ -192,7 +192,7 @@ export const DUMMY_COURSE: CourseOutline = {
           id: 'slide-timeline',
           type: 'timeline',
           title: 'Timeline — CourseGEN Development Milestones',
-          content: 'Explore the key milestones in the development of the CourseGEN platform.',
+          content: 'Explore the key milestones in the development of the NexCourse platform.',
           narration: 'This is the timeline interaction. Click each node to expand its detail panel.',
           voiceOverText: 'This is the timeline interaction. Click each node to reveal its detail panel.',
           data: {
@@ -357,7 +357,7 @@ export const DUMMY_COURSE: CourseOutline = {
           type: 'summary',
           title: 'Course Summary — Player Sandbox Complete',
           content: `## What This Course Covered\n\n**Module 1** — Core slide types: Title, Content, Key Takeaways\n\n**Module 2** — Knowledge checks: Multiple Choice Quiz\n\n**Module 3** — Exploratory interactions: Accordion, Flashcards, Timeline\n\n**Module 4** — Drag-and-drop interactions: Sorting, Matching\n\n**Module 5** — Advanced interactions: Hotspot, Branching Scenario\n\n---\n\n> Use this sandbox any time via **Admin → Preview Mode** to test player changes without generating a full course.`,
-          narration: 'Congratulations on completing the Admin Preview Mode sandbox. You have now seen every slide type and interaction component the CourseGEN player supports.',
+          narration: 'Congratulations on completing the Admin Preview Mode sandbox. You have now seen every slide type and interaction component the NexCourse player supports.',
           voiceOverText: 'Congratulations on completing the sandbox. You have now tested every component in the player.',
           imagePlaceholder: false,
         },
@@ -381,7 +381,7 @@ export const DUMMY_EXAM_CONFIG: ExamConfig = DUMMY_COURSE.examConfig!;
 export const DUMMY_EXAM_QUESTIONS: ExamQuestion[] = [
   {
     id: 'q1', type: 'mc',
-    question: 'Which component of the CourseGEN player is responsible for controlling slide navigation?',
+    question: 'Which component of the NexCourse player is responsible for controlling slide navigation?',
     options: ['Slide Canvas', 'Player Bar', 'Edit Drawer', 'Theme System'],
     correctAnswer: 1,
     explanation: 'The Player Bar contains the Prev/Next buttons, progress bar, and playback controls used to navigate between slides.',
@@ -389,7 +389,7 @@ export const DUMMY_EXAM_QUESTIONS: ExamQuestion[] = [
   },
   {
     id: 'q2', type: 'tf',
-    question: 'The CourseGEN player supports three theme modes: Dark, Light, and Unified.',
+    question: 'The NexCourse player supports three theme modes: Dark, Light, and Unified.',
     options: ['True', 'False'],
     correctAnswer: 0,
     explanation: 'True — the player supports Dark, Light, and Unified theme modes selectable from the top bar or Player Properties.',
@@ -397,7 +397,7 @@ export const DUMMY_EXAM_QUESTIONS: ExamQuestion[] = [
   },
   {
     id: 'q3', type: 'ma',
-    question: 'Which of the following are exploratory interaction types available in the CourseGEN player? (Select all that apply)',
+    question: 'Which of the following are exploratory interaction types available in the NexCourse player? (Select all that apply)',
     options: ['Accordion', 'Flashcards', 'Sorting', 'Timeline'],
     correctAnswer: [0, 1, 3],
     explanation: 'Accordion, Flashcards, and Timeline are exploratory interactions. Sorting is a drag-and-drop interaction.',
@@ -405,7 +405,7 @@ export const DUMMY_EXAM_QUESTIONS: ExamQuestion[] = [
   },
   {
     id: 'q4', type: 'mc',
-    question: 'What is the primary purpose of the Edit Drawer in the CourseGEN player?',
+    question: 'What is the primary purpose of the Edit Drawer in the NexCourse player?',
     options: ['To change the course theme', 'To edit slide text and audio narration', 'To add new modules', 'To export the course as SCORM'],
     correctAnswer: 1,
     explanation: 'The Edit Drawer allows authors to edit slide text content and record or upload audio narration.',
@@ -413,7 +413,7 @@ export const DUMMY_EXAM_QUESTIONS: ExamQuestion[] = [
   },
   {
     id: 'q5', type: 'tf',
-    question: 'In the CourseGEN player, the Slide Canvas is responsible for rendering different slide types.',
+    question: 'In the NexCourse player, the Slide Canvas is responsible for rendering different slide types.',
     options: ['True', 'False'],
     correctAnswer: 0,
     explanation: 'True — the Slide Canvas is where all slide types (content, quiz, interaction, etc.) are rendered to the learner.',
