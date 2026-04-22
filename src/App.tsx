@@ -915,131 +915,6 @@ export default function App() {
           
           <div className="flex gap-3 items-center">
 
-            {/* ── Sandbox Dropdown — ADMIN ONLY ── */}
-            {isAdmin && (
-            <div className="relative">
-              <button
-                onClick={() => { setSandboxDropdownOpen(o => !o); }}
-                className="flex items-center gap-2 px-4 py-2 bg-purple-500/10 border border-purple-500/30 hover:bg-purple-500/20 rounded-lg text-purple-300 font-bold text-sm transition-all"
-              >
-                <Sparkles className="w-4 h-4" />
-                Sandbox
-                <ChevronDown className={`w-3 h-3 transition-transform ${sandboxDropdownOpen ? 'rotate-180' : ''}`} />
-              </button>
-              {sandboxDropdownOpen && (
-                <div className="absolute right-0 top-full mt-2 w-64 bg-slate-900 border border-purple-700/40 rounded-xl shadow-2xl z-[500] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
-                  <div className="px-4 py-2.5 bg-purple-900/30 border-b border-purple-700/40 flex items-center gap-2">
-                    <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-                    <p className="text-xs font-bold text-purple-300 uppercase tracking-widest">Sandbox — Demo Course</p>
-                  </div>
-                  <div className="p-2 space-y-0.5">
-                    {/* ── Course Details (sandbox) ── */}
-                    <button
-                      onClick={() => {
-                        // Pre-fill details with sandbox dummy data
-                        setCourseTitle('Advanced Workplace Communication');
-                        setCourseDescription('A comprehensive eLearning course covering modern workplace communication strategies, active listening, cross-functional collaboration, and professional writing for remote and hybrid teams.');
-                        setLearningObjectives([{
-                          terminalObjective: 'Given a workplace scenario, the learner will identify the communication strategy that best supports effective collaboration and team performance.',
-                          enablingObjectives: [
-                            'The learner will recall the key characteristics of effective workplace communication.',
-                            'The learner will describe common barriers to communication in remote and hybrid team settings.',
-                            'The learner will distinguish between active listening behaviors and passive listening behaviors.',
-                            'The learner will recognize examples of clear and professional written correspondence.',
-                            'The learner will classify meeting facilitation techniques as productive or unproductive.',
-                          ],
-                        }]);
-                        setPathway('corporate');
-                        setCourseType('standard');
-                        setPreset('standard');
-                        setIsSandboxMode(true);
-                        setShowPlayerProperties(false);
-                        setStep('details');
-                        setSandboxDropdownOpen(false);
-                      }}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-purple-500/10 hover:text-purple-200 text-sm font-medium transition-all text-left"
-                    >
-                      <FileText className="w-4 h-4 text-pink-400 shrink-0" />
-                      <span className="flex-1">Course Details</span>
-                      {step === 'details' && isSandboxMode && (
-                        <span className="text-[9px] font-black uppercase tracking-wider text-purple-400 bg-purple-500/15 px-1.5 py-0.5 rounded-full">● HERE</span>
-                      )}
-                    </button>
-
-                    {/* Course Outline (sandbox) */}
-                    <button
-                      onClick={() => {
-                        // Build a dummy outline from DUMMY_COURSE for the outline step
-                        const dummyOutline = {
-                          title: DUMMY_COURSE.title,
-                          description: DUMMY_COURSE.description,
-                          modules: DUMMY_COURSE.modules.map((mod: any) => ({
-                            id: mod.id,
-                            title: mod.title,
-                            slides: mod.slides.map((s: any) => ({
-                              id: s.id,
-                              title: s.title,
-                              type: s.type,
-                              estimatedMinutes: 3,
-                            })),
-                          })),
-                        };
-                        setSandboxOutline(dummyOutline);
-                        setOutlineDraft(dummyOutline as any);
-                        setIsSandboxMode(true);
-                        setShowPlayerProperties(false);
-                        setStep('outline');
-                        setSandboxDropdownOpen(false);
-                      }}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-purple-500/10 hover:text-purple-200 text-sm font-medium transition-all text-left"
-                    >
-                      <Layers className="w-4 h-4 text-teal-400 shrink-0" />
-                      <span className="flex-1">Course Outline</span>
-                      {step === 'outline' && isSandboxMode && (
-                        <span className="text-[9px] font-black uppercase tracking-wider text-purple-400 bg-purple-500/15 px-1.5 py-0.5 rounded-full">● HERE</span>
-                      )}
-                    </button>
-                    {/* Course Preview */}
-                    <button
-                      onClick={() => {
-                        setCourse(DUMMY_COURSE);
-                        setOriginalCourse(DUMMY_COURSE);
-                        setCurrentSlideIndex(0);
-                        setQuizState({});
-                        setTheme('dark');
-                        setViewMode('desktop');
-                        setFloatingImagesMap({});
-                        setCourseBg('/eLearning Template Backgrounds/Neutral/blue background coffee books_01.png');
-                        setIsSandboxMode(true);
-                        setShowPlayerProperties(false);
-                        setExamQuestions(DUMMY_EXAM_QUESTIONS);
-                        setExamConfig(DUMMY_COURSE.examConfig!);
-                        setExamPhase('idle');
-                        setExamSession({ questions: [], answers: {}, currentQuestionIdx: 0, submitted: false, score: null, passed: null });
-                        setHighestVisitedIndex(0);
-                        setNavigationMode(DUMMY_COURSE.navigationMode ?? 'free');
-                        setStep('preview');
-                        setSandboxDropdownOpen(false);
-                      }}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-purple-500/10 hover:text-purple-200 text-sm font-medium transition-all text-left"
-                    >
-                      <Eye className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span className="flex-1">Course Preview</span>
-                      {step === 'preview' && isSandboxMode && (
-                        <span className="text-[9px] font-black uppercase tracking-wider text-purple-400 bg-purple-500/15 px-1.5 py-0.5 rounded-full">● HERE</span>
-                      )}
-                    </button>
-                    <div className="border-t border-slate-800 my-1" />
-                    {/* Player Properties */}
-                    <button onClick={() => { setShowPlayerProperties(true); setSandboxDropdownOpen(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-purple-500/10 hover:text-purple-200 text-sm font-medium transition-all text-left">
-                      <Settings2 className="w-4 h-4 text-orange-400 shrink-0" /> Player Properties
-                    </button>
-                  </div>
-                </div>
-              )}
-              {sandboxDropdownOpen && <div className="fixed inset-0 z-[599]" onClick={() => setSandboxDropdownOpen(false)} />}
-            </div>
-            )} {/* end isAdmin Sandbox gate */}
 
             {/* ── Pricing Button ── */}
             <button
@@ -1090,12 +965,47 @@ export default function App() {
                     </div>
                   </div>
                   <div className="p-1.5">
+                    {/* Sandbox — admin only */}
+                    {isAdmin && (
+                      <>
+                        <div className="px-3 py-1.5">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-purple-400">Sandbox</p>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setCourseTitle('Advanced Workplace Communication');
+                            setCourseDescription('A comprehensive eLearning course covering modern workplace communication strategies.');
+                            setLearningObjectives([{ terminalObjective: 'Given a workplace scenario, the learner will identify the communication strategy that best supports effective collaboration.', enablingObjectives: [] }]);
+                            setPathway('corporate'); setCourseType('standard'); setPreset('standard');
+                            setIsSandboxMode(true); setShowPlayerProperties(false); setStep('details');
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-purple-300 hover:bg-purple-500/10 text-sm font-medium transition-all text-left"
+                        >
+                          <FileText className="w-3.5 h-3.5" /> Demo — Course Details
+                        </button>
+                        <button
+                          onClick={() => {
+                            setCourse(DUMMY_COURSE); setOriginalCourse(DUMMY_COURSE);
+                            setCurrentSlideIndex(0); setQuizState({}); setTheme('dark'); setViewMode('desktop');
+                            setFloatingImagesMap({}); setCourseBg('/eLearning Template Backgrounds/Neutral/blue background coffee books_01.png');
+                            setIsSandboxMode(true); setShowPlayerProperties(false);
+                            setExamQuestions(DUMMY_EXAM_QUESTIONS); setExamConfig(DUMMY_COURSE.examConfig!);
+                            setExamPhase('idle'); setHighestVisitedIndex(0);
+                            setNavigationMode(DUMMY_COURSE.navigationMode ?? 'free'); setStep('preview');
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-purple-300 hover:bg-purple-500/10 text-sm font-medium transition-all text-left"
+                        >
+                          <Eye className="w-3.5 h-3.5" /> Demo — Course Preview
+                        </button>
+                        <div className="border-t border-slate-800 my-1" />
+                      </>
+                    )}
                     <button
                       onClick={() => { setStep('account'); }}
                       className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800 text-sm font-medium transition-all text-left"
                     >
                       <CreditCard className="w-3.5 h-3.5 text-indigo-400" />
-                      My Account & Billing
+                      My Account &amp; Billing
                     </button>
                     <button
                       onClick={() => signOut()}
