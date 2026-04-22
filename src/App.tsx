@@ -929,17 +929,7 @@ export default function App() {
               Pricing
             </button>
 
-            {/* ── Admin Button (no dropdown for now) ── */}
-            <button
-              onClick={() => { /* Admin panel — reserved for future use */ }}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-500/10 border border-indigo-500/30 hover:bg-indigo-500/20 rounded-lg text-indigo-300 font-bold text-sm transition-all"
-              title="Admin panel — coming soon"
-            >
-              <Shield className="w-4 h-4" />
-              Admin
-            </button>
-
-            {/* ── User Profile (── */}
+            {/* ── User Profile ── */}
             {user && (
               <div className="relative group">
                 <button className="flex items-center gap-2.5 pl-2 pr-3 py-1.5 rounded-xl bg-slate-800/60 hover:bg-slate-700/60 border border-slate-700/60 hover:border-slate-600 transition-all">
