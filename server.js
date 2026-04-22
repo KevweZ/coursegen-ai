@@ -19,6 +19,7 @@ import rateLimit from 'express-rate-limit';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import * as dotenv from 'dotenv';
+import Stripe from 'stripe';
 
 dotenv.config();
 
@@ -40,6 +41,32 @@ if (missingVars.length > 0) {
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const OPENAI_API_KEY    = process.env.OPENAI_API_KEY ?? '';
+
+// ─── 1b. Stripe Init ────────────────────────────────────────────────────────
+const STRIPE_SECRET_KEY      = process.env.STRIPE_SECRET_KEY ?? '';
+const STRIPE_WEBHOOK_SECRET  = process.env.STRIPE_WEBHOOK_SECRET ?? '';
+
+// Map frontend plan IDs → Stripe Price IDs (set in Railway env vars)
+const STRIPE_PRICE_MAP = {
+  teacher_pro:      process.env.STRIPE_PRICE_TEACHER_PRO      ?? '',
+  pro_creator:      process.env.STRIPE_PRICE_PRO_CREATOR      ?? '',
+  business_team:    process.env.STRIPE_PRICE_BUSINESS_TEAM    ?? '',
+  credits_standard: process.env.STRIPE_PRICE_CREDITS_STANDARD ?? '',
+  credits_volume:   process.env.STRIPE_PRICE_CREDITS_VOLUME   ?? '',
+};
+
+// Map plan IDs → credit grants (applied on successful checkout)
+const PLAN_CREDITS = {
+  teacher_pro:      { credits_ai: 300,  credits_tts: 300  },
+  pro_creator:      { credits_ai: 500,  credits_tts: 500  },
+  business_team:    { credits_ai: 1500, credits_tts: 1500 },
+  credits_standard: { credits_ai: 100,  credits_tts: 0    },
+  credits_volume:   { credits_ai: 500,  credits_tts: 0    },
+};
+
+const stripe = STRIPE_SECRET_KEY
+  ? new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2024-12-18.acacia' })
+  : null;
 
 // ─── 2. Express App Setup ───────────────────────────────────────────────────
 const app = express();
@@ -211,7 +238,166 @@ app.post('/api/tts', ttsRateLimit, async (req, res) => {
   }
 });
 
-// ─── 8. Health Check ────────────────────────────────────────────────────────
+// ─── 8. Payment Routes ──────────────────────────────────────────────────────
+
+// 8a. Create Stripe Checkout Session
+app.post('/api/payments/create-checkout', async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Payments not configured on this server.' });
+
+  const { planId, userId, userEmail } = req.body;
+  if (!planId || !userId || !userEmail) {
+    return res.status(400).json({ error: 'Missing required fields: planId, userId, userEmail' });
+  }
+
+  const priceId = STRIPE_PRICE_MAP[planId];
+  if (!priceId) {
+    return res.status(400).json({ error: `Unknown planId: ${planId}` });
+  }
+
+  const isSubscription = ['teacher_pro', 'pro_creator', 'business_team'].includes(planId);
+  const frontendBase = isProd ? 'https://nexcourse.ai' : 'http://localhost:3000';
+
+  try {
+    const session = await stripe.checkout.sessions.create({
+      mode:               isSubscription ? 'subscription' : 'payment',
+      payment_method_types: ['card'],
+      customer_email:     userEmail,
+      line_items: [{ price: priceId, quantity: 1 }],
+      metadata:           { userId, planId },
+      success_url:        `${frontendBase}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url:         `${frontendBase}/payment-cancel`,
+    });
+    return res.json({ url: session.url });
+  } catch (err) {
+    console.error('[Stripe] create-checkout error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// 8b. Stripe Webhook — MUST use raw body (not parsed JSON)
+app.post(
+  '/api/payments/webhook',
+  express.raw({ type: 'application/json' }),
+  async (req, res) => {
+    if (!stripe || !STRIPE_WEBHOOK_SECRET) {
+      return res.status(503).json({ error: 'Webhook not configured.' });
+    }
+
+    const sig = req.headers['stripe-signature'];
+    let event;
+    try {
+      event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
+    } catch (err) {
+      console.error('[Stripe Webhook] Signature verification failed:', err.message);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    // ── Handle relevant events ────────────────────────────────────────────────
+    try {
+      if (event.type === 'checkout.session.completed') {
+        const session  = event.data.object;
+        const userId   = session.metadata?.userId;
+        const planId   = session.metadata?.planId;
+        const custId   = session.customer;
+        const subId    = session.subscription ?? null;
+        const credits  = PLAN_CREDITS[planId] ?? { credits_ai: 0, credits_tts: 0 };
+        const isSubscription = subId !== null;
+
+        if (userId && planId) {
+          const { createClient } = await import('@supabase/supabase-js');
+          const supabase = createClient(
+            process.env.VITE_SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_KEY,
+            { auth: { autoRefreshToken: false, persistSession: false } }
+          );
+
+          if (isSubscription) {
+            // Upsert subscription record
+            await supabase.from('user_entitlements').upsert({
+              user_id:            userId,
+              subscription:       planId,
+              credits_ai:         credits.credits_ai,
+              credits_tts:        credits.credits_tts,
+              stripe_customer_id: custId,
+              stripe_sub_id:      subId,
+              updated_at:         new Date().toISOString(),
+            }, { onConflict: 'user_id' });
+          } else {
+            // One-time purchase — add credits on top of existing balance
+            const { data: existing } = await supabase
+              .from('user_entitlements')
+              .select('credits_ai, credits_tts')
+              .eq('user_id', userId)
+              .single();
+
+            await supabase.from('user_entitlements').upsert({
+              user_id:            userId,
+              subscription:       existing?.subscription ?? 'free',
+              credits_ai:         (existing?.credits_ai ?? 0) + credits.credits_ai,
+              credits_tts:        (existing?.credits_tts ?? 0) + credits.credits_tts,
+              stripe_customer_id: custId,
+              updated_at:         new Date().toISOString(),
+            }, { onConflict: 'user_id' });
+          }
+          console.log(`[Stripe Webhook] checkout.session.completed — userId=${userId} plan=${planId}`);
+        }
+      }
+
+      if (event.type === 'customer.subscription.deleted') {
+        // Subscription cancelled — downgrade to free
+        const sub    = event.data.object;
+        const custId = sub.customer;
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(
+          process.env.VITE_SUPABASE_URL,
+          process.env.SUPABASE_SERVICE_KEY,
+          { auth: { autoRefreshToken: false, persistSession: false } }
+        );
+        await supabase
+          .from('user_entitlements')
+          .update({ subscription: 'free', stripe_sub_id: null, updated_at: new Date().toISOString() })
+          .eq('stripe_customer_id', custId);
+        console.log(`[Stripe Webhook] subscription.deleted — customer=${custId}`);
+      }
+    } catch (handlerErr) {
+      console.error('[Stripe Webhook] Handler error:', handlerErr.message);
+      // Still return 200 so Stripe doesn't retry
+    }
+
+    res.json({ received: true });
+  }
+);
+
+// 8c. Get Payment Status for a user
+app.get('/api/payments/status', async (req, res) => {
+  const { userId } = req.query;
+  if (!userId) return res.status(400).json({ error: 'Missing userId query param' });
+
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(
+      process.env.VITE_SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_KEY,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+    const { data, error } = await supabase
+      .from('user_entitlements')
+      .select('subscription, credits_ai, credits_tts, stripe_customer_id')
+      .eq('user_id', userId)
+      .single();
+
+    if (error || !data) {
+      // No record = free tier user
+      return res.json({ subscription: 'free', credits_ai: 0, credits_tts: 0, stripe_customer_id: null });
+    }
+    return res.json(data);
+  } catch (err) {
+    console.error('[Payment Status] Error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── 9. Health Check ────────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', mode: isProd ? 'production' : 'development' });
 });

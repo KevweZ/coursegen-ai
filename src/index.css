@@ -1,8 +1,11 @@
-@import "tailwindcss";
+﻿@import "tailwindcss";
 
 html, body, #root {
   overflow-x: clip;
 }
+/* Global: all buttons and links show pointer cursor */
+button, [role="button"], a { cursor: pointer; }
+
 /* Override branching scenario correct path indicator globally */
 [data-correct-path="true"] {
   border-left-width: 2px !important;
@@ -44,16 +47,16 @@ html, body, #root {
   --component-hover: #fce7f3;
 }
 
-/* ── Dark-mode CSS overrides for external @zomako/elearning-components ──
+/* â”€â”€ Dark-mode CSS overrides for external @zomako/elearning-components â”€â”€
    Applied via .interaction-dark-override wrapper when theme !== 'light'.
-   Uses concrete dark colors — NOT transparent — to preserve component structure. */
+   Uses concrete dark colors â€” NOT transparent â€” to preserve component structure. */
 
 .interaction-dark-override {
   color-scheme: dark;
   color: #e2e8f0;
 }
 
-/* ── Text: force light colours everywhere ── */
+/* â”€â”€ Text: force light colours everywhere â”€â”€ */
 .interaction-dark-override p,
 .interaction-dark-override span,
 .interaction-dark-override h1, .interaction-dark-override h2,
@@ -72,7 +75,7 @@ html, body, #root {
   color: #a5b4fc !important;
 }
 
-/* ── Card/panel surfaces: dark slate, NOT transparent ── */
+/* â”€â”€ Card/panel surfaces: dark slate, NOT transparent â”€â”€ */
 .interaction-dark-override [class*="bg-white"] {
   background-color: #1e293b !important;
 }
@@ -87,14 +90,14 @@ html, body, #root {
   background-color: rgba(99,102,241,0.15) !important;
 }
 
-/* ── Borders ── */
+/* â”€â”€ Borders â”€â”€ */
 .interaction-dark-override [class*="border-gray"],
 .interaction-dark-override [class*="border-slate-2"],
 .interaction-dark-override [class*="border-slate-3"] {
   border-color: rgba(100, 116, 139, 0.35) !important;
 }
 
-/* ── Buttons (accordion triggers, timeline steps) ── */
+/* â”€â”€ Buttons (accordion triggers, timeline steps) â”€â”€ */
 .interaction-dark-override button {
   background-color: rgba(30, 41, 59, 0.85) !important;
   border-color: rgba(100, 116, 139, 0.3) !important;
@@ -105,7 +108,7 @@ html, body, #root {
   border-color: rgba(99, 102, 241, 0.5) !important;
 }
 
-/* ── Timeline: active/selected step highlight ── */
+/* â”€â”€ Timeline: active/selected step highlight â”€â”€ */
 .interaction-dark-override button[class*="active"],
 .interaction-dark-override button[aria-selected="true"],
 .interaction-dark-override button[aria-pressed="true"],
@@ -135,7 +138,7 @@ html, body, #root {
   background-color: rgba(99, 102, 241, 0.7) !important;
 }
 
-/* ── Matching: draggable items and droppable targets ── */
+/* â”€â”€ Matching: draggable items and droppable targets â”€â”€ */
 .interaction-dark-override [draggable="true"],
 .interaction-dark-override [class*="draggable"],
 .interaction-dark-override [class*="drag-item"] {
@@ -152,7 +155,7 @@ html, body, #root {
   color: #e2e8f0 !important;
 }
 
-/* ── Drag & Drop: source items and target zones ── */
+/* â”€â”€ Drag & Drop: source items and target zones â”€â”€ */
 .interaction-dark-override [class*="drop-zone"],
 .interaction-dark-override [class*="target-zone"] {
   background-color: rgba(15, 23, 42, 0.6) !important;
@@ -164,7 +167,7 @@ html, body, #root {
   color: #e2e8f0 !important;
 }
 
-/* ── Feedback states for matched/correct items ── */
+/* â”€â”€ Feedback states for matched/correct items â”€â”€ */
 .interaction-dark-override [class*="correct"],
 .interaction-dark-override [class*="success"] {
   background-color: rgba(16, 185, 129, 0.2) !important;
@@ -179,7 +182,7 @@ html, body, #root {
 }
 
 
-/* -- Tiptap Rich Text Editor � Visual Styles -- */
+/* -- Tiptap Rich Text Editor — Visual Styles -- */
 /* These styles render headings, lists, and formatting visually inside the editor */
 .tiptap-editor-wrapper .ProseMirror h1 {
   font-size: 1.875rem; /* text-3xl */
@@ -245,7 +248,7 @@ html, body, #root {
   height: 0;
 }
 
-/* -- Rich Slide Content � Slide Preview HTML Rendering -- */
+/* -- Rich Slide Content — Slide Preview HTML Rendering -- */
 /* Applied to slides that have been edited with the rich-text editor */
 .rich-slide-content ul {
   list-style-type: disc;

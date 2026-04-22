@@ -49,7 +49,8 @@ import {
   Settings2 as PlayerIcon,
   Shield,
   ChevronDown,
-  Ear
+  Ear,
+  CreditCard
 } from 'lucide-react';
 import { 
   Accordion, 
@@ -97,6 +98,9 @@ import { MasteryExamSlide } from './components/player/MasteryExamSlide';
 import { ExamResultsSlide } from './components/player/ExamResultsSlide';
 import { scormInit, scormQuit, scormSetLocation, scormReportScore, scormSuspend } from './services/scormReporter';
 import { PricingPage } from './components/PricingPage';
+import { AccountPage } from './components/AccountPage';
+import { PaymentSuccessPage } from './components/PaymentSuccessPage';
+import { PaymentCancelPage } from './components/PaymentCancelPage';
 import { useAuth } from './contexts/AuthContext';
 import { AuthPage } from './components/auth/AuthPage';
 import { MarketingHomepage } from './components/marketing/MarketingHomepage';
@@ -134,7 +138,7 @@ const renderInstructionalText = (children: React.ReactNode, theme: string, isLis
   );
 };
 
-type AppStep = 'home' | 'details' | 'outline' | 'preview' | 'pricing';
+type AppStep = 'home' | 'details' | 'outline' | 'preview' | 'pricing' | 'account' | 'payment-success' | 'payment-cancel';
 type CourseType = 'quick' | 'standard' | 'comprehensive';
 
 /** Detects whether a string is HTML (from the rich-text editor) vs plain Markdown */
@@ -223,6 +227,19 @@ export default function App() {
   const [authInitialMode, setAuthInitialMode] = useState<'login' | 'signup'>('login');
   
   const [step, setStep] = useState<AppStep>(isScormPlayer ? 'preview' : 'home');
+
+  // ── Handle Stripe redirect-back URLs (/payment-success, /payment-cancel)
+  useEffect(() => {
+    const path = window.location.pathname;
+    if (path === '/payment-success') {
+      setStep('payment-success');
+      window.history.replaceState({}, '', '/');
+    } else if (path === '/payment-cancel') {
+      setStep('payment-cancel');
+      window.history.replaceState({}, '', '/');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [activeTab, setActiveTab] = useState<'topic' | 'file' | 'url'>('topic');
   const [courseTitle, setCourseTitle] = useState('');
   const [prompt, setPrompt] = useState('');
@@ -1074,6 +1091,13 @@ export default function App() {
                   </div>
                   <div className="p-1.5">
                     <button
+                      onClick={() => { setStep('account'); }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800 text-sm font-medium transition-all text-left"
+                    >
+                      <CreditCard className="w-3.5 h-3.5 text-indigo-400" />
+                      My Account & Billing
+                    </button>
+                    <button
                       onClick={() => signOut()}
                       className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-red-400 hover:bg-red-500/10 text-sm font-medium transition-all text-left"
                     >
@@ -1100,6 +1124,31 @@ export default function App() {
               className="relative z-10"
             >
               <PricingPage />
+            </motion.div>
+          )}
+          {step === 'account' && (
+            <motion.div
+              key="account"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.35 }}
+              className="relative z-10"
+            >
+              <AccountPage onUpgrade={() => setStep('pricing')} />
+            </motion.div>
+          )}
+          {step === 'payment-success' && (
+            <motion.div key="payment-success" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <PaymentSuccessPage onContinue={() => setStep('home')} />
+            </motion.div>
+          )}
+          {step === 'payment-cancel' && (
+            <motion.div key="payment-cancel" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <PaymentCancelPage
+                onBackToPricing={() => setStep('pricing')}
+                onBackToHome={() => setStep('home')}
+              />
             </motion.div>
           )}
           {step === 'home' && (

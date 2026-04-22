@@ -5,7 +5,7 @@ import {
   FileOutput, GraduationCap, Building2, CheckCircle2,
   ChevronRight, ChevronLeft, Shield, Layers, BarChart3, BookOpen,
   Award, X, Menu, Volume2, Play, Pause,
-  Globe, Target, Eye, Move, Crop, Image,
+  Globe, Target, Eye, EyeOff, Move, Crop, Image,
   AlertCircle, Lock
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -739,10 +739,11 @@ function MultiImageEditorPreview() {
 // ── Sign In Dropdown ──────────────────────────────────────────────────────────
 function SignInDropdown({ onClose, onGetStarted }: { onClose: () => void; onGetStarted: () => void }) {
   const { signIn, signInWithGoogle } = useAuth();
-  const [email, setEmail]     = useState('');
+  const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState('');
+  const [showPw, setShowPw]     = useState(false);
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState('');
   const ref = useRef<HTMLDivElement>(null);
 
   // Close on outside click
@@ -807,9 +808,25 @@ function SignInDropdown({ onClose, onGetStarted }: { onClose: () => void; onGetS
 
         <div>
           <label className="block text-xs font-bold text-slate-400 mb-1.5">Password</label>
-          <input type="password" value={password} onChange={e => setPassword(e.target.value)} required
-            placeholder="••••••••"
-            className="w-full bg-slate-800/60 border border-slate-700 hover:border-slate-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-white text-sm rounded-xl px-3.5 py-2.5 outline-none transition-all placeholder-slate-600" />
+          <div className="relative">
+            <input
+              type={showPw ? 'text' : 'password'}
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              required
+              placeholder="••••••••"
+              className="w-full bg-slate-800/60 border border-slate-700 hover:border-slate-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-white text-sm rounded-xl px-3.5 py-2.5 pr-10 outline-none transition-all placeholder-slate-600" />
+            <button
+              type="button"
+              onClick={() => setShowPw(v => !v)}
+              tabIndex={-1}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
+            >
+              {showPw
+                ? <EyeOff className="w-4 h-4" />
+                : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
         </div>
 
         <button type="submit" disabled={loading}

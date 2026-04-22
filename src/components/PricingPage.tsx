@@ -16,7 +16,10 @@ import {
   Infinity,
   CreditCard,
   HelpCircle,
+  Loader2,
 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { redirectToCheckout, type StripePlanId } from '../services/paymentService';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -40,7 +43,9 @@ interface PricingPlan {
   ctaStyle: 'primary' | 'secondary' | 'outline';
   badge?: string;
   highlighted?: boolean;
+  stripePlanId?: StripePlanId; // undefined = free or contact sales
 }
+
 
 // ── Data ────────────────────────────────────────────────────────────────────
 
@@ -88,6 +93,7 @@ const k12Plans: PricingPlan[] = [
     ctaStyle: 'primary',
     badge: 'Most Popular',
     highlighted: true,
+    stripePlanId: 'teacher_pro',
   },
   {
     id: 'school-district',
@@ -134,6 +140,7 @@ const corporatePlans: PricingPlan[] = [
     cta: 'Get Started',
     ctaStyle: 'outline',
     badge: 'Freelancers',
+    stripePlanId: 'pro_creator',
   },
   {
     id: 'business-team',
@@ -157,6 +164,7 @@ const corporatePlans: PricingPlan[] = [
     ctaStyle: 'primary',
     badge: 'Best Value',
     highlighted: true,
+    stripePlanId: 'business_team',
   },
   {
     id: 'enterprise',
@@ -213,28 +221,72 @@ const FeatureRow = ({ feature }: { feature: PlanFeature }) => (
 );
 
 const CtaButton = ({ plan }: { plan: PricingPlan }) => {
-  const base = 'w-full py-3.5 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 group';
-  if (plan.ctaStyle === 'primary') {
-    return (
-      <button className={`${base} bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 hover:scale-[1.02] active:scale-[0.98]`}>
-        {plan.cta}
-        <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-      </button>
-    );
-  }
-  if (plan.ctaStyle === 'secondary') {
-    return (
-      <button className={`${base} bg-slate-700/60 hover:bg-slate-700 border border-slate-600 hover:border-slate-500 text-white hover:scale-[1.02] active:scale-[0.98]`}>
-        {plan.cta}
-        <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-      </button>
-    );
-  }
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const base = 'w-full py-3.5 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 group disabled:opacity-60 disabled:cursor-not-allowed';
+
+  const handleClick = async () => {
+    // Contact Sales & Free plans — no checkout
+    if (!plan.stripePlanId || plan.price === '$0') return;
+    if (!user) {
+      // Redirect to auth if not logged in
+      window.location.href = '/#auth';
+      return;
+    }
+    setError(null);
+    setLoading(true);
+    try {
+      await redirectToCheckout({
+        planId:    plan.stripePlanId,
+        userId:    user.id,
+        userEmail: user.email ?? '',
+      });
+    } catch (err: any) {
+      setError(err.message ?? 'Something went wrong. Please try again.');
+      setLoading(false);
+    }
+  };
+
+  const isClickable = !!plan.stripePlanId && plan.price !== '$0';
+
+  const inner = loading ? (
+    <><Loader2 className="w-4 h-4 animate-spin" /> Processing...</>
+  ) : (
+    <>{plan.cta}<ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" /></>
+  );
+
   return (
-    <button className={`${base} bg-transparent border border-indigo-500/50 hover:border-indigo-400 hover:bg-indigo-500/10 text-indigo-300 hover:text-indigo-200 hover:scale-[1.02] active:scale-[0.98]`}>
-      {plan.cta}
-      <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-    </button>
+    <div className="space-y-2">
+      {plan.ctaStyle === 'primary' && (
+        <button
+          onClick={handleClick}
+          disabled={loading}
+          className={`${base} bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 hover:scale-[1.02] active:scale-[0.98]`}
+        >{inner}</button>
+      )}
+      {plan.ctaStyle === 'secondary' && (
+        <button
+          onClick={handleClick}
+          disabled={loading}
+          className={`${base} bg-slate-700/60 hover:bg-slate-700 border border-slate-600 hover:border-slate-500 text-white hover:scale-[1.02] active:scale-[0.98]`}
+        >{inner}</button>
+      )}
+      {plan.ctaStyle === 'outline' && (
+        <button
+          onClick={handleClick}
+          disabled={loading}
+          className={`${base} bg-transparent border ${
+            isClickable
+              ? 'border-indigo-500/50 hover:border-indigo-400 hover:bg-indigo-500/10 text-indigo-300 hover:text-indigo-200 hover:scale-[1.02] active:scale-[0.98]'
+              : 'border-slate-600 text-slate-400 cursor-default'
+          }`}
+        >{inner}</button>
+      )}
+      {error && (
+        <p className="text-red-400 text-xs text-center font-medium">{error}</p>
+      )}
+    </div>
   );
 };
 
@@ -329,6 +381,71 @@ const FAQItem = ({ item, index }: { item: typeof faqItems[0]; index: number }) =
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  );
+};
+
+// ── Credit Pack Buttons (checkout-wired) ─────────────────────────────────────
+const CreditPackButtons = () => {
+  const { user } = useAuth();
+  const [loadingPack, setLoadingPack] = useState<'standard' | 'volume' | null>(null);
+  const [packError, setPackError] = useState<string | null>(null);
+
+  const handleBuyPack = async (packId: 'credits_standard' | 'credits_volume') => {
+    if (!user) { window.location.href = '/#auth'; return; }
+    setPackError(null);
+    setLoadingPack(packId === 'credits_standard' ? 'standard' : 'volume');
+    try {
+      await redirectToCheckout({ planId: packId, userId: user.id, userEmail: user.email ?? '' });
+    } catch (err: any) {
+      setPackError(err.message ?? 'Something went wrong.');
+      setLoadingPack(null);
+    }
+  };
+
+  return (
+    <div className="flex flex-col sm:flex-row gap-4">
+      {/* Standard Pack */}
+      <div className="relative flex-1 min-w-[200px] rounded-xl border border-amber-500/20 bg-slate-800/60 p-5 hover:border-amber-500/40 hover:bg-slate-800 transition-all">
+        <p className="text-xs font-black uppercase tracking-widest text-amber-400 mb-2">Standard Pack</p>
+        <p className="text-3xl font-extrabold text-white mb-1">$25</p>
+        <div className="flex items-center gap-2 mb-4">
+          <Zap className="w-4 h-4 text-amber-400" />
+          <span className="text-slate-300 font-bold text-sm">100 credits</span>
+        </div>
+        <button
+          onClick={() => handleBuyPack('credits_standard')}
+          disabled={!!loadingPack}
+          className="w-full py-2.5 rounded-lg border border-amber-500/30 hover:border-amber-400 bg-amber-500/5 hover:bg-amber-500/10 text-amber-300 text-sm font-bold transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+        >
+          {loadingPack === 'standard' ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing...</> : <><CreditCard className="w-4 h-4" /> Buy Pack</>}
+        </button>
+      </div>
+
+      {/* Volume Pack */}
+      <div className="relative flex-1 min-w-[200px] rounded-xl border border-amber-400/40 bg-gradient-to-b from-amber-950/40 to-slate-800/60 p-5 hover:border-amber-400/60 transition-all shadow-lg shadow-amber-500/5">
+        <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+          <span className="px-3 py-1 rounded-full bg-amber-500 text-black text-[10px] font-black uppercase tracking-widest whitespace-nowrap">Best Deal</span>
+        </div>
+        <p className="text-xs font-black uppercase tracking-widest text-amber-400 mb-2">Volume Pack</p>
+        <p className="text-3xl font-extrabold text-white mb-1">$100</p>
+        <div className="flex items-center gap-2 mb-4">
+          <Zap className="w-4 h-4 text-amber-400" />
+          <span className="text-slate-300 font-bold text-sm">500 credits</span>
+          <span className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">Save 20%</span>
+        </div>
+        <button
+          onClick={() => handleBuyPack('credits_volume')}
+          disabled={!!loadingPack}
+          className="w-full py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-sm font-black transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+        >
+          {loadingPack === 'volume' ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing...</> : <><CreditCard className="w-4 h-4" /> Buy Pack</>}
+        </button>
+      </div>
+
+      {packError && (
+        <p className="text-red-400 text-xs text-center font-medium w-full">{packError}</p>
+      )}
     </div>
   );
 };
@@ -453,37 +570,7 @@ export function PricingPage() {
               </p>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-4">
-              {/* Standard Pack */}
-              <div className="relative flex-1 min-w-[200px] rounded-xl border border-amber-500/20 bg-slate-800/60 p-5 hover:border-amber-500/40 hover:bg-slate-800 transition-all group cursor-pointer">
-                <p className="text-xs font-black uppercase tracking-widest text-amber-400 mb-2">Standard Pack</p>
-                <p className="text-3xl font-extrabold text-white mb-1">$25</p>
-                <div className="flex items-center gap-2 mb-4">
-                  <Zap className="w-4 h-4 text-amber-400" />
-                  <span className="text-slate-300 font-bold text-sm">100 credits</span>
-                </div>
-                <button className="w-full py-2.5 rounded-lg border border-amber-500/30 hover:border-amber-400 bg-amber-500/5 hover:bg-amber-500/10 text-amber-300 text-sm font-bold transition-all flex items-center justify-center gap-2">
-                  <CreditCard className="w-4 h-4" /> Buy Pack
-                </button>
-              </div>
-
-              {/* Volume Pack */}
-              <div className="relative flex-1 min-w-[200px] rounded-xl border border-amber-400/40 bg-gradient-to-b from-amber-950/40 to-slate-800/60 p-5 hover:border-amber-400/60 transition-all group cursor-pointer shadow-lg shadow-amber-500/5">
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                  <span className="px-3 py-1 rounded-full bg-amber-500 text-black text-[10px] font-black uppercase tracking-widest whitespace-nowrap">Best Deal</span>
-                </div>
-                <p className="text-xs font-black uppercase tracking-widest text-amber-400 mb-2">Volume Pack</p>
-                <p className="text-3xl font-extrabold text-white mb-1">$100</p>
-                <div className="flex items-center gap-2 mb-4">
-                  <Zap className="w-4 h-4 text-amber-400" />
-                  <span className="text-slate-300 font-bold text-sm">500 credits</span>
-                  <span className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">Save 20%</span>
-                </div>
-                <button className="w-full py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-sm font-black transition-all flex items-center justify-center gap-2">
-                  <CreditCard className="w-4 h-4" /> Buy Pack
-                </button>
-              </div>
-            </div>
+            <CreditPackButtons />
           </div>
         </div>
       </div>
