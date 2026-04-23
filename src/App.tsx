@@ -68,6 +68,7 @@ import {
 import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft, generateMasteryExam } from './services/aiService';
 import { createScormPackage } from './services/scormService';
 import { FlashcardGrid } from './components/FlashcardGrid';
+import { AccordionDarkWrapper } from './components/AccordionDarkWrapper';
 import { OutlinePreview } from './components/builder/OutlinePreview';
 import { PlayerPropertiesModal, PlayerConfig, defaultPlayerConfig } from './components/builder/PlayerPropertiesModal';
 import { CourseOutline, Slide, TerminalObjectiveGroup, ExamConfig, ExamQuestion, ExamSessionState, NavigationMode } from './types/course';
@@ -2266,9 +2267,11 @@ export default function App() {
                                  <div className="space-y-6 w-full">
                                    <h2 className={cn('text-3xl font-extrabold', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
                                    <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
-                                   <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : '')}>
-                                     <Accordion {...(currentSlide.data || currentSlide.interactions?.[0] || {})} />
-                                   </div>
+                                   <AccordionDarkWrapper theme={theme}>
+                                     <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : '')}>
+                                       <Accordion {...(currentSlide.data || currentSlide.interactions?.[0] || {})} />
+                                     </div>
+                                   </AccordionDarkWrapper>
                                  </div>
                                )}
                                {currentSlide?.type === 'flashcards' && (
