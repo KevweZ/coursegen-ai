@@ -1094,6 +1094,19 @@ export default function App() {
             loading={qcLoading}
             loadingPhase={qcPhase}
             onClose={() => { setQcModalOpen(false); setQcReport(null); }}
+            onRunScan={async () => {
+              setQcLoading(true);
+              setQcReport(null);
+              try {
+                const report = await runFullQC(course, voiceOverEnabled, (phase) => setQcPhase(phase));
+                setQcReport(report);
+              } catch {
+                setQcReport(null);
+              } finally {
+                setQcLoading(false);
+                setQcPhase(null);
+              }
+            }}
             onApply={(confirmedIds) => {
               if (course && qcReport) {
                 const fixed = applyConfirmedFixes(course, confirmedIds, qcReport);
@@ -1103,6 +1116,7 @@ export default function App() {
               setQcReport(null);
             }}
           />
+
 
           {step === 'home' && (
 

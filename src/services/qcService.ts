@@ -163,16 +163,26 @@ export async function runFullQC(
   const totalSlides = allSlides.length;
   const rawAIIssues: RawAIIssue[] = [];
 
-  for (let i = 0; i < allSlides.length; i += BATCH_SIZE) {
-    const batch = allSlides.slice(i, i + BATCH_SIZE);
-    const batchIssues = await scanBatch(batch);
-    rawAIIssues.push(...batchIssues);
+  // AI scan is best-effort — structural report is always returned even if AI fails
+  let aiScanFailed = false;
+  try {
+    for (let i = 0; i < allSlides.length; i += BATCH_SIZE) {
+      const batch = allSlides.slice(i, i + BATCH_SIZE);
+      const batchIssues = await scanBatch(batch);
+      rawAIIssues.push(...batchIssues);
+    }
+  } catch {
+    aiScanFailed = true;
+    console.warn('[QC] AI scan unavailable — returning structural results only.');
   }
 
   const aiIssues = aiIssuesToQCIssues(rawAIIssues, course);
   onPhase?.('done');
-  return mergeReports(structural, aiIssues, totalSlides);
+  const report = mergeReports(structural, aiIssues, totalSlides);
+  // Attach a flag so the UI can show a note when AI scan was skipped
+  return { ...report, aiScanFailed } as QCReport;
 }
+
 
 /** Structural-only audit — instant, no network. For quick checks. */
 export function runStructuralQC(course: any, narrationEnabled = false): QCReport {
