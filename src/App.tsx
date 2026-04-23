@@ -69,6 +69,8 @@ import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent,
 import { createScormPackage } from './services/scormService';
 import { FlashcardGrid } from './components/FlashcardGrid';
 import { AccordionDarkWrapper } from './components/AccordionDarkWrapper';
+import { QCTrackChangesModal } from './components/QCTrackChangesModal';
+import { runFullQC, runStructuralQC, autoFixCourse, applyConfirmedFixes, QCReport } from './services/qcService';
 import { OutlinePreview } from './components/builder/OutlinePreview';
 import { PlayerPropertiesModal, PlayerConfig, defaultPlayerConfig } from './components/builder/PlayerPropertiesModal';
 import { CourseOutline, Slide, TerminalObjectiveGroup, ExamConfig, ExamQuestion, ExamSessionState, NavigationMode } from './types/course';
@@ -249,6 +251,11 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isHydrating, setIsHydrating] = useState(false);
   const [isSuggesting, setIsSuggesting] = useState(false);
+  const [isRunningQC, setIsRunningQC] = useState(false);
+  const [qcPhase, setQcPhase] = useState<'structural' | 'ai' | 'done' | null>(null);
+  const [qcReport, setQcReport] = useState<QCReport | null>(null);
+  const [qcModalOpen, setQcModalOpen] = useState(false);
+  const [qcLoading, setQcLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [course, setCourse] = useState<any>(isScormPlayer ? (window as any).__COURSE_DATA__ : null);
@@ -718,6 +725,27 @@ export default function App() {
       await new Promise(r => setTimeout(r, 300));
       setCourse(finalCourse);
       setOriginalCourse(finalCourse);
+      // ── Auto QC: run immediately before showing preview ──
+      try {
+        setIsRunningQC(true);
+        setQcPhase('structural');
+        const report = await runFullQC(finalCourse, voiceOverEnabled, (phase) => setQcPhase(phase));
+        setQcReport(report);
+        // Apply auto-fixable issues silently
+        if (report.issues.some(i => i.autoFixable)) {
+          const { course: fixedCourse, fixedCount } = autoFixCourse(finalCourse, report);
+          setCourse(fixedCourse);
+          setOriginalCourse(fixedCourse);
+        } else {
+          setCourse(finalCourse);
+          setOriginalCourse(finalCourse);
+        }
+      } catch {
+        // QC failure is non-fatal — proceed with original course
+      } finally {
+        setIsRunningQC(false);
+        setQcPhase(null);
+      }
       setStep('preview');
       // ── Kick off TTS generation in the background ──
       if (voiceOverEnabled) {
@@ -795,10 +823,16 @@ export default function App() {
             
             <div className="space-y-3">
               <h3 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">
-                {isGenerating ? 'Structuring Module Flow...' : 'Synthesizing Course Content...'}
+                {isRunningQC
+                  ? (qcPhase === 'structural' ? 'Checking Structure & Format…'
+                     : qcPhase === 'ai'       ? 'Running AI Quality Scan…'
+                     : 'Finalising…')
+                  : isGenerating ? 'Structuring Module Flow...' : 'Synthesizing Course Content...'}
               </h3>
               <p className="text-slate-400 text-lg">
-                {isGenerating ? 'Analyzing topics and creating progressive learning paths. This usually takes 10-15 seconds.' : 'Generating detailed slide content, interactions, and knowledge checks. This can take up to a minute.'}
+                {isRunningQC
+                  ? (qcPhase === 'ai' ? 'AI is reviewing spelling, grammar, and clarity. Almost there…' : 'Running instant checks on your course content…')
+                  : isGenerating ? 'Analyzing topics and creating progressive learning paths. This usually takes 10-15 seconds.' : 'Generating detailed slide content, interactions, and knowledge checks. This can take up to a minute.'}
               </p>
             </div>
 
@@ -1052,7 +1086,26 @@ export default function App() {
               />
             </motion.div>
           )}
+
+          {/* QC Track Changes Modal — overlays preview */}
+          <QCTrackChangesModal
+            open={qcModalOpen}
+            report={qcReport}
+            loading={qcLoading}
+            loadingPhase={qcPhase}
+            onClose={() => { setQcModalOpen(false); setQcReport(null); }}
+            onApply={(confirmedIds) => {
+              if (course && qcReport) {
+                const fixed = applyConfirmedFixes(course, confirmedIds, qcReport);
+                setCourse(fixed);
+              }
+              setQcModalOpen(false);
+              setQcReport(null);
+            }}
+          />
+
           {step === 'home' && (
+
             <motion.div key="home" className="flex flex-col items-center justify-center w-full min-h-[calc(100vh-5rem)] relative z-10 overflow-hidden">
               {/* Background Video */}
               <div className="absolute inset-0 z-0 overflow-hidden">
@@ -1870,6 +1923,29 @@ export default function App() {
                         </>
                       )}
                     </div>
+
+                    {/* QC Check */}
+                    <button
+                      id="qc-check-button"
+                      title="Quality Check — scan for spelling, grammar, and formatting issues"
+                      onClick={async () => {
+                        setQcModalOpen(true);
+                        setQcLoading(true);
+                        setQcReport(null);
+                        try {
+                          const report = await runFullQC(course, voiceOverEnabled, (phase) => setQcPhase(phase));
+                          setQcReport(report);
+                        } catch {
+                          setQcReport(null);
+                        } finally {
+                          setQcLoading(false);
+                          setQcPhase(null);
+                        }
+                      }}
+                      className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-700/80 hover:bg-emerald-600 text-white rounded-lg font-bold text-xs transition-colors shadow-lg shadow-emerald-500/10"
+                    >
+                      <Shield className="w-3.5 h-3.5" /> <span className="hidden lg:inline">QC Check</span>
+                    </button>
 
                     <div className="w-px h-4 bg-slate-700 mx-0.5" />
 

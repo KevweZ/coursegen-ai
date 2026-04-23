@@ -397,7 +397,83 @@ app.get('/api/payments/status', async (req, res) => {
   }
 });
 
-// ─── 9. Health Check ────────────────────────────────────────────────────────
+// ─── 9. QC Content Scan ─────────────────────────────────────────────────────
+app.post('/api/qc/content-scan', aiRateLimit, async (req, res) => {
+  try {
+    const { slides } = req.body;
+    if (!Array.isArray(slides) || slides.length === 0) {
+      return res.status(400).json({ error: 'slides array required' });
+    }
+
+    const slideSummary = slides.map(s => ({
+      id: s.id,
+      type: s.type,
+      fields: s.fields,
+    }));
+
+    const prompt = `You are a quality checker for eLearning course content. Review these slides and identify ONLY clear spelling or grammar errors — do not rewrite for style.
+
+Return a JSON array (only the array, no markdown) where each item has:
+{
+  "slideId": "the slide id",
+  "field": "the field path e.g. title, content, data.items.0.content",
+  "type": "spelling" | "grammar" | "clarity",
+  "severity": "error" | "warning" | "info",
+  "message": "short description of the issue",
+  "originalText": "the exact problematic phrase or sentence",
+  "suggestion": "corrected version"
+}
+
+Rules:
+- Only flag CLEAR errors. Do not suggest rewrites for style or voice.
+- For spelling: provide the exact corrected word/phrase (not the whole field).
+- For grammar: minimal fix, preserve the author's voice and meaning.
+- Return [] if no issues found.
+- Maximum 3 issues per slide.
+
+Slides to review:
+${JSON.stringify(slideSummary, null, 2)}`;
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-3-5-haiku-20241022',
+        max_tokens: 2048,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      return res.status(502).json({ error: `AI API error: ${errText}` });
+    }
+
+    const aiData = await response.json();
+    const raw = aiData.content?.[0]?.text ?? '[]';
+
+    // Strip any markdown code fences before parsing
+    const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    let issues = [];
+    try {
+      issues = JSON.parse(cleaned);
+      if (!Array.isArray(issues)) issues = [];
+    } catch {
+      issues = [];
+    }
+
+    return res.json({ issues });
+  } catch (err) {
+    console.error('[QC Scan] Error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── 10. Health Check ───────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', mode: isProd ? 'production' : 'development' });
 });
