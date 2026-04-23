@@ -1158,6 +1158,18 @@ export default function App() {
               setQcConfirmed(prev => { const n = new Set(prev); ids.forEach(id => n.delete(id)); return n; });
             }}
             onClose={() => setQcModalOpen(false)}
+            onGoToSlide={(moduleIndex, slideIndex) => {
+              // Compute global flat slide index across all modules
+              if (course?.modules) {
+                let globalIdx = 0;
+                for (let m = 0; m < moduleIndex; m++) {
+                  globalIdx += course.modules[m]?.slides?.length ?? 0;
+                }
+                globalIdx += slideIndex;
+                setCurrentSlideIndex(globalIdx);
+              }
+              setQcModalOpen(false);
+            }}
             onRunScan={async () => {
               setQcConfirmed(new Set());
               setQcDeclined(new Set());

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, CheckCircle2, XCircle, AlertCircle, Info,
   CheckCheck, Shield, ChevronDown, ChevronRight,
-  Sparkles, BarChart3, RefreshCw
+  Sparkles, BarChart3, RefreshCw, ExternalLink
 } from 'lucide-react';
 import { QCReport, QCIssue } from '../services/qcService';
 
@@ -21,9 +21,11 @@ interface Props {
   onDecline:    (id: string) => void;
   onConfirmAll: (ids: string[]) => void;
   onDeclineAll: (ids: string[]) => void;
-  onClose:   () => void;
-  onApply:   (confirmedIssueIds: string[]) => void;
-  onRunScan: () => void;
+  onClose:      () => void;
+  onApply:      (confirmedIssueIds: string[]) => void;
+  onRunScan:    () => void;
+  /** Navigate to a specific slide and close the modal */
+  onGoToSlide:  (moduleIndex: number, slideIndex: number) => void;
 }
 
 const SEVERITY_CONFIG = {
@@ -44,13 +46,14 @@ function ScoreBadge({ score }: { score: number }) {
 }
 
 function IssueCard({
-  issue, confirmed, declined, onConfirm, onDecline,
+  issue, confirmed, declined, onConfirm, onDecline, onGoToSlide,
 }: {
   issue: QCIssue;
   confirmed: boolean;
   declined: boolean;
-  onConfirm: () => void;
-  onDecline: () => void;
+  onConfirm:   () => void;
+  onDecline:   () => void;
+  onGoToSlide: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const cfg = SEVERITY_CONFIG[issue.severity];
@@ -111,28 +114,39 @@ function IssueCard({
       </AnimatePresence>
 
       {/* Actions */}
-      <div className="flex items-center justify-end gap-2 px-4 pb-3">
+      <div className="flex items-center justify-between gap-2 px-4 pb-3">
+        {/* Left: go to slide */}
         <button
-          onClick={onDecline}
-          disabled={declined}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border
-            ${declined
-              ? 'border-slate-700 text-slate-600 cursor-not-allowed'
-              : 'border-slate-600 text-slate-400 hover:bg-slate-700 hover:text-slate-200'}`}
+          onClick={onGoToSlide}
+          title="Go to this slide in the course preview"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-500 hover:text-indigo-300 hover:bg-indigo-500/10 border border-transparent hover:border-indigo-500/20 transition-all"
         >
-          <XCircle className="w-3 h-3" /> Decline
+          <ExternalLink className="w-3 h-3" /> View Slide
         </button>
-        <button
-          onClick={onConfirm}
-          disabled={confirmed || issue.suggestion === issue.originalText || !issue.suggestion}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border
-            ${confirmed
-              ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300 cursor-default'
-              : 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/30'}`}
-        >
-          <CheckCircle2 className="w-3 h-3" />
-          {confirmed ? 'Confirmed' : 'Confirm Fix'}
-        </button>
+        {/* Right: decline / confirm */}
+        <div className="flex gap-2">
+          <button
+            onClick={onDecline}
+            disabled={declined}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border
+              ${declined
+                ? 'border-slate-700 text-slate-600 cursor-not-allowed'
+                : 'border-slate-600 text-slate-400 hover:bg-slate-700 hover:text-slate-200'}`}
+          >
+            <XCircle className="w-3 h-3" /> Decline
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={confirmed || issue.suggestion === issue.originalText || !issue.suggestion}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border
+              ${confirmed
+                ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300 cursor-default'
+                : 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/30'}`}
+          >
+            <CheckCircle2 className="w-3 h-3" />
+            {confirmed ? 'Confirmed' : 'Confirm Fix'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -142,7 +156,7 @@ export function QCTrackChangesModal({
   open, report, loading, loadingPhase,
   confirmed, declined,
   onConfirm, onDecline, onConfirmAll, onDeclineAll,
-  onClose, onApply, onRunScan,
+  onClose, onApply, onRunScan, onGoToSlide,
 }: Props) {
   const [filter, setFilter] = useState<FilterTab>('all');
 
@@ -321,6 +335,7 @@ export function QCTrackChangesModal({
                       declined={declined.has(issue.id)}
                       onConfirm={() => onConfirm(issue.id)}
                       onDecline={() => onDecline(issue.id)}
+                      onGoToSlide={() => onGoToSlide(issue.moduleIndex, issue.slideIndex)}
                     />
                   ))
                 )}
