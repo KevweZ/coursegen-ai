@@ -875,32 +875,7 @@ function smoothScrollTo(id: string) {
 export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
   const [menuOpen, setMenuOpen]           = useState(false);
   const [showSignIn, setShowSignIn]       = useState(false);
-  const [activeVoice, setActiveVoice]     = useState('nova');
-  const [narrationPlaying, setNarrationPlaying] = useState(false);
 
-  // Player mockup — horizontal scroll (mobile)
-  const playerScrollRef = useRef<HTMLDivElement>(null);
-  const [playerCanLeft,  setPlayerCanLeft]  = useState(false);
-  const [playerCanRight, setPlayerCanRight] = useState(true);
-
-  useEffect(() => {
-    const el = playerScrollRef.current;
-    if (!el) return;
-    // Start centred on the quiz column on mobile
-    const mid = (el.scrollWidth - el.clientWidth) / 2;
-    el.scrollLeft = mid;
-    setPlayerCanLeft(mid > 8);
-    setPlayerCanRight(mid < el.scrollWidth - el.clientWidth - 8);
-  }, []);
-
-  const updatePlayerArrows = () => {
-    const el = playerScrollRef.current;
-    if (!el) return;
-    setPlayerCanLeft(el.scrollLeft > 8);
-    setPlayerCanRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 8);
-  };
-
-  const voices = ['alloy', 'echo', 'fable', 'nova', 'onyx', 'shimmer'];
 
   const features = [
     { icon: Brain,      title: 'AI Course Generation',    description: 'Paste a topic or upload a document — our AI drafts a full course outline with slides, quizzes, and narration in minutes.',       color: 'from-indigo-600/20 to-purple-600/20', delay: 0 },
@@ -1037,155 +1012,36 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
             </button>
           </motion.div>
 
-          {/* ── UI Mockup ─────────────────────────────────────────────────────── */}
-          <motion.div initial={{ opacity:0, y:40, scale:0.96 }} animate={{ opacity:1, y:0, scale:1 }} transition={{ duration:0.8, delay:0.38 }}
-            className="relative w-full max-w-5xl mx-auto">
-            <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500/30 via-purple-500/30 to-cyan-500/30 rounded-3xl blur-xl" />
-            <div className="relative bg-slate-900 border border-slate-700/60 rounded-2xl overflow-hidden shadow-2xl">
-              {/* Browser chrome */}
-              <div className="flex items-center gap-2 px-5 py-3 border-b border-slate-800 bg-slate-950/60">
-                <div className="flex gap-1.5">
-                  <div className="w-3 h-3 rounded-full bg-red-500/60" /><div className="w-3 h-3 rounded-full bg-amber-500/60" /><div className="w-3 h-3 rounded-full bg-emerald-500/60" />
-                </div>
-                <div className="flex-1 mx-4 bg-slate-800 rounded-lg h-6 flex items-center px-3">
-                  <span className="text-slate-500 text-xs font-mono">app.nexcourse.ai/player</span>
-                </div>
-                <div className="flex items-center gap-2 text-xs text-slate-500 font-medium"><Zap className="w-3 h-3 text-indigo-400" />NexCourse AI</div>
-              </div>
-
-              {/* Mobile-scrollable player mockup */}
-              <div className="relative">
-                {/* Fade indicators — mobile only */}
-                {playerCanLeft  && <div className="sm:hidden pointer-events-none absolute left-0 inset-y-0 w-8 z-10 bg-gradient-to-r from-slate-900/80 to-transparent" />}
-                {playerCanRight && <div className="sm:hidden pointer-events-none absolute right-0 inset-y-0 w-8 z-10 bg-gradient-to-l from-slate-900/80 to-transparent" />}
-                {/* Arrow buttons — mobile only */}
-                {playerCanLeft  && <button onClick={() => playerScrollRef.current?.scrollBy({ left:-160, behavior:'smooth' })} className="sm:hidden absolute left-1 top-1/2 -translate-y-1/2 z-20 w-6 h-6 rounded-full bg-slate-800/80 border border-slate-600/50 flex items-center justify-center text-white shadow"><ChevronLeft  className="w-3.5 h-3.5" /></button>}
-                {playerCanRight && <button onClick={() => playerScrollRef.current?.scrollBy({ left: 160, behavior:'smooth' })} className="sm:hidden absolute right-1 top-1/2 -translate-y-1/2 z-20 w-6 h-6 rounded-full bg-slate-800/80 border border-slate-600/50 flex items-center justify-center text-white shadow"><ChevronRight className="w-3.5 h-3.5" /></button>}
-                {/* Scroll container */}
-                <div ref={playerScrollRef} onScroll={updatePlayerArrows}
-                  className="overflow-x-auto"
-                  style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                  <div className="grid grid-cols-12 min-h-[420px] min-w-[600px] sm:min-w-0">
-                {/* Left: Course Outline */}
-                <div className="col-span-3 border-r border-slate-800 bg-slate-950/50 p-3 overflow-y-auto">
-                  <div className="text-[9px] font-black uppercase tracking-widest text-slate-600 px-2 mb-2">Course Outline</div>
-                  {[
-                    { num: 1, title: 'Introduction',  slides: ['1.1  Title Slide', '1.2  Objectives'] },
-                    { num: 2, title: 'Core Concepts', slides: ['2.1  Key Terms', '2.2  Flashcards', '2.3  Knowledge Check'] },
-                    { num: 3, title: 'Application',   slides: ['3.1  Scenario', '3.2  Branching', '3.3  Summary'] },
-                    { num: 4, title: 'Assessment',    slides: ['4.1  Mastery Quiz', '4.2  Results'] },
-                  ].map((mod, mi) => (
-                    <div key={mi} className="mb-1">
-                      <div className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${mi === 1 ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/20' : 'text-slate-400 hover:bg-slate-800'}`}>
-                        <span className={`w-5 h-5 rounded flex items-center justify-center text-[9px] font-black shrink-0 ${mi === 1 ? 'bg-indigo-500 text-white' : 'bg-slate-800 text-slate-500'}`}>{mod.num}</span>
-                        {mod.title}
-                      </div>
-                      {mi === 1 && (
-                        <div className="ml-3 mt-0.5 space-y-px">
-                          {mod.slides.map((s, si) => (
-                            <div key={si} className={`flex items-center gap-1.5 pl-3 py-1 text-[9px] border-l-2 cursor-pointer ${si === 1 ? 'border-indigo-500 text-indigo-300 font-bold' : 'border-slate-800 text-slate-600 hover:text-slate-400'}`}>
-                              {si === 1 && <div className="w-1 h-1 rounded-full bg-indigo-400 shrink-0" />}{s}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                {/* Center: Quiz */}
-                <div className="col-span-6 p-6 flex flex-col items-center justify-center bg-gradient-to-b from-slate-900 to-slate-950">
-                  <div className="w-full max-w-sm">
-                    <div className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
-                      <Award className="w-3 h-3" /> Knowledge Check — Module 2
-                    </div>
-                    <div className="bg-slate-800/60 border border-slate-700/40 rounded-xl p-4 space-y-3">
-                      <p className="text-white text-xs font-bold leading-relaxed">Which interaction type is best suited for comparing two or more concepts side-by-side?</p>
-                      {[
-                        { text: 'Accordion', correct: false },
-                        { text: 'Flashcards', correct: false },
-                        { text: 'Tabbed Panel', correct: true },
-                        { text: 'Timeline', correct: false },
-                      ].map((opt, oi) => (
-                        <div key={oi} className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg border text-xs font-medium cursor-pointer transition-all ${opt.correct ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-200' : 'border-slate-700 text-slate-400 hover:border-slate-600'}`}>
-                          <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${opt.correct ? 'border-emerald-400 bg-emerald-400' : 'border-slate-600'}`}>
-                            {opt.correct && <div className="w-2 h-2 rounded-full bg-white" />}
-                          </div>
-                          {opt.text}
-                          {opt.correct && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 ml-auto shrink-0" />}
-                        </div>
-                      ))}
-                      <p className="text-[10px] text-emerald-400/80 border-t border-slate-700/50 pt-2 leading-relaxed">✓ Correct! Tabbed panels let learners compare multiple concepts within a single clean interface.</p>
-                    </div>
-                    {/* Seekbar */}
-                    <div className="mt-4 bg-slate-800/40 border border-slate-700/30 rounded-xl px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <button className="w-7 h-7 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center">
-                          <Play className="w-3 h-3 text-indigo-400 ml-0.5" />
-                        </button>
-                        <div className="flex-1 h-1.5 bg-slate-700 rounded-full relative">
-                          <div className="h-1.5 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full w-2/5" />
-                          <div className="absolute top-1/2 left-[40%] -translate-y-1/2 -translate-x-1/2 w-3 h-3 bg-white rounded-full shadow border-2 border-indigo-500" />
-                        </div>
-                        <span className="text-[9px] text-slate-500 font-mono whitespace-nowrap">1:24 / 3:15</span>
-                        <Volume2 className="w-3 h-3 text-slate-500" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Right: AI Narration Panel */}
-                <div className="col-span-3 border-l border-slate-800 bg-slate-950/50 p-3 flex flex-col gap-3">
-                  <div className="text-[9px] font-black uppercase tracking-widest text-slate-600">AI Narration</div>
-                  <div>
-                    <div className="text-[9px] text-slate-500 mb-1.5 font-medium">Voice</div>
-                    <div className="grid grid-cols-2 gap-1">
-                      {voices.map(v => (
-                        <button key={v} onClick={() => setActiveVoice(v)}
-                          className={`px-2 py-1.5 rounded-lg text-[9px] font-bold capitalize transition-all border ${activeVoice === v ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300' : 'border-slate-800 text-slate-600 hover:border-slate-700 hover:text-slate-400'}`}>
-                          {v}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="bg-slate-800/40 border border-slate-700/30 rounded-xl p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">Preview</span>
-                      <button onClick={() => setNarrationPlaying(p => !p)}
-                        className={`w-5 h-5 rounded-full flex items-center justify-center transition-all ${narrationPlaying ? 'bg-indigo-500 text-white' : 'bg-slate-700 text-slate-400'}`}>
-                        {narrationPlaying ? <Pause className="w-2.5 h-2.5" /> : <Play className="w-2.5 h-2.5 ml-0.5" />}
-                      </button>
-                    </div>
-                    <div className="flex items-end justify-center gap-0.5 h-8">
-                      {[4,7,5,9,6,11,8,6,10,7,5,9,6,4,8,6,11,7,5,9].map((h, i) => (
-                        <motion.div key={i}
-                          animate={narrationPlaying ? { scaleY:[1, 0.4+Math.random()*0.6, 1] } : { scaleY:1 }}
-                          transition={{ duration:0.4+i*0.03, repeat:Infinity, ease:'easeInOut' }}
-                          style={{ height:`${h*2.5}px` }}
-                          className={`w-1 rounded-full origin-bottom ${narrationPlaying ? 'bg-indigo-400' : 'bg-slate-700'}`}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-[9px] text-slate-500 mb-1.5 font-medium">Playback Speed</div>
-                    <div className="flex gap-1">
-                      {['0.75×','1×','1.25×','1.5×'].map(s => (
-                        <button key={s} className={`flex-1 py-1 rounded text-[8px] font-bold border transition-all ${s === '1×' ? 'bg-indigo-500/20 border-indigo-500/30 text-indigo-300' : 'border-slate-800 text-slate-600 hover:border-slate-700'}`}>{s}</button>
-                      ))}
-                    </div>
-                  </div>
-                  <button className="w-full py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-indigo-600/80 to-purple-600/80 text-white border border-indigo-500/30 transition-all flex items-center justify-center gap-1.5 mt-auto">
-                    <Mic className="w-3 h-3" /> Generate All
-                  </button>
-                </div>
-              </div>
-                </div>
-              </div>
-            </div>
-          </motion.div>
+          {/* ── Interactions Showcase ── */}
+          <div id="showcase" className="w-full mt-16 pb-8">
+            <motion.div
+              initial={{ opacity:0, y:32 }} animate={{ opacity:1, y:0 }}
+              transition={{ duration:0.7, delay:0.42 }}
+              className="text-center mb-12"
+            >
+              <p className="text-purple-400 text-sm font-black uppercase tracking-widest mb-3">See It In Action</p>
+              <h2 className="text-4xl md:text-5xl font-black text-white">
+                Rich Interactions,<br />Zero Effort
+              </h2>
+              <p className="text-slate-400 mt-4 max-w-xl mx-auto">Our AI selects and populates the right interaction type for each piece of content automatically.</p>
+            </motion.div>
+            <motion.div
+              initial={{ opacity:0, y:24 }} animate={{ opacity:1, y:0 }}
+              transition={{ duration:0.7, delay:0.52 }}
+            >
+              <ShowcaseScroller>
+                <ShowcaseCard label="Accordion" icon={Layers} accent="border-indigo-700/40" preview={<AccordionPreview />} />
+                <ShowcaseCard label="Flashcards" icon={BookOpen} accent="border-purple-700/40" preview={<FlashcardPreview />} />
+                <ShowcaseCard label="Jeopardy Game" icon={Gamepad2} accent="border-amber-700/40" wide preview={<JeopardyPreview />} />
+                <ShowcaseCard label="Image Background Template" icon={Image} accent="border-rose-700/40" wide preview={<ImageBackgroundTemplatePreview />} />
+                <ShowcaseCard label="Image Editor - Multi-Image Layout" icon={Crop} accent="border-violet-700/40" wide preview={<MultiImageEditorPreview />} />
+                <ShowcaseCard label="Branching Scenario" icon={Globe} accent="border-cyan-700/40" wide preview={<BranchingScenarioPreview />} />
+              </ShowcaseScroller>
+            </motion.div>
+          </div>
         </div>
       </section>
+
 
       {/* ── Stats Bar ────────────────────────────────────────────────────────── */}
       <section className="border-y border-slate-800/60 bg-slate-900/30 py-12">
@@ -1216,53 +1072,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
         </div>
       </section>
 
-      {/* == Interactions Showcase == */}
-      <section id="showcase" className="py-24 bg-slate-900/30 border-y border-slate-800/60">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center mb-16">
-            <motion.p initial={{ opacity:0 }} whileInView={{ opacity:1 }} viewport={{ once:true }}
-              className="text-purple-400 text-sm font-black uppercase tracking-widest mb-3">See It In Action</motion.p>
-            <motion.h2 initial={{ opacity:0, y:16 }} whileInView={{ opacity:1, y:0 }} viewport={{ once:true }}
-              transition={{ duration:0.5 }} className="text-4xl md:text-5xl font-black text-white">
-              Rich Interactions,<br />Zero Effort
-            </motion.h2>
-            <p className="text-slate-400 mt-4 max-w-xl mx-auto">Our AI selects and populates the right interaction type for each piece of content automatically.</p>
-          </div>
 
-          {/* Scrollable cards strip with nav arrows */}
-          <ShowcaseScroller>
-            {/* 1 - Accordion */}
-            <ShowcaseCard label="Accordion" icon={Layers} accent="border-indigo-700/40"
-              preview={<AccordionPreview />}
-            />
-
-            {/* 2 - Flashcards */}
-            <ShowcaseCard label="Flashcards" icon={BookOpen} accent="border-purple-700/40"
-              preview={<FlashcardPreview />}
-            />
-
-            {/* 3 - Jeopardy */}
-            <ShowcaseCard label="Jeopardy Game" icon={Gamepad2} accent="border-amber-700/40" wide
-              preview={<JeopardyPreview />}
-            />
-
-            {/* 4 - Image Background Template */}
-            <ShowcaseCard label="Image Background Template" icon={Image} accent="border-rose-700/40" wide
-              preview={<ImageBackgroundTemplatePreview />}
-            />
-
-            {/* 5 - Multi-Image Editor */}
-            <ShowcaseCard label="Image Editor - Multi-Image Layout" icon={Crop} accent="border-violet-700/40" wide
-              preview={<MultiImageEditorPreview />}
-            />
-
-            {/* 6 - Branching Scenario */}
-            <ShowcaseCard label="Branching Scenario" icon={Globe} accent="border-cyan-700/40" wide
-              preview={<BranchingScenarioPreview />}
-            />
-          </ShowcaseScroller>
-        </div>
-      </section>
 
       {/* ── Dual Track ───────────────────────────────────────────────────────── */}
       <section id="tracks" className="py-24 px-6">
