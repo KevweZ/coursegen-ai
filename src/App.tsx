@@ -256,6 +256,9 @@ export default function App() {
   const [qcReport, setQcReport] = useState<QCReport | null>(null);
   const [qcModalOpen, setQcModalOpen] = useState(false);
   const [qcLoading, setQcLoading] = useState(false);
+  const [qcConfirmed, setQcConfirmed] = useState<Set<string>>(new Set());
+  const [qcDeclined, setQcDeclined] = useState<Set<string>>(new Set());
+  const [showQcPublishWarning, setShowQcPublishWarning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [course, setCourse] = useState<any>(isScormPlayer ? (window as any).__COURSE_DATA__ : null);
@@ -1087,16 +1090,79 @@ export default function App() {
             </motion.div>
           )}
 
-          {/* QC Track Changes Modal — overlays preview */}
+          {/* Publish Warning — pending QC items */}
+          {showQcPublishWarning && (
+            <div className="fixed inset-0 z-[900] flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowQcPublishWarning(false)} />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="relative bg-slate-950 border border-amber-500/40 rounded-2xl shadow-2xl p-6 w-full max-w-md"
+              >
+                <div className="flex items-start gap-4">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center shrink-0 mt-0.5">
+                    <AlertCircle className="w-5 h-5 text-amber-400" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-base font-black text-white">Pending QC Items</h3>
+                    <p className="text-sm text-slate-400 mt-1.5 leading-relaxed">
+                      Your QC report has <span className="text-amber-300 font-bold">
+                        {qcReport ? qcReport.issues.filter(i => !qcConfirmed.has(i.id) && !qcDeclined.has(i.id)).length : 0} unreviewed item{(qcReport ? qcReport.issues.filter(i => !qcConfirmed.has(i.id) && !qcDeclined.has(i.id)).length : 0) !== 1 ? 's' : ''}
+                      </span> that haven't been confirmed or declined yet.
+                    </p>
+                    <p className="text-sm text-slate-400 mt-1 leading-relaxed">
+                      You can review them first, or publish anyway.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-3 mt-6 justify-end">
+                  <button
+                    onClick={() => { setShowQcPublishWarning(false); setQcModalOpen(true); }}
+                    className="px-4 py-2 rounded-xl border border-slate-700 text-slate-300 hover:text-white text-sm font-bold transition-all hover:bg-slate-800"
+                  >
+                    Review QC Items
+                  </button>
+                  <button
+                    onClick={() => { setShowQcPublishWarning(false); exportScorm(); }}
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold transition-all"
+                  >
+                    Publish Anyway
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+
+          {/* QC Track Changes Modal — overlays preview, persists across open/close */}
           <QCTrackChangesModal
             open={qcModalOpen}
             report={qcReport}
             loading={qcLoading}
             loadingPhase={qcPhase}
-            onClose={() => { setQcModalOpen(false); setQcReport(null); }}
+            confirmed={qcConfirmed}
+            declined={qcDeclined}
+            onConfirm={(id) => {
+              setQcConfirmed(prev => new Set([...prev, id]));
+              setQcDeclined(prev => { const n = new Set(prev); n.delete(id); return n; });
+            }}
+            onDecline={(id) => {
+              setQcDeclined(prev => new Set([...prev, id]));
+              setQcConfirmed(prev => { const n = new Set(prev); n.delete(id); return n; });
+            }}
+            onConfirmAll={(ids) => {
+              setQcConfirmed(prev => new Set([...prev, ...ids]));
+              setQcDeclined(prev => { const n = new Set(prev); ids.forEach(id => n.delete(id)); return n; });
+            }}
+            onDeclineAll={(ids) => {
+              setQcDeclined(prev => new Set([...prev, ...ids]));
+              setQcConfirmed(prev => { const n = new Set(prev); ids.forEach(id => n.delete(id)); return n; });
+            }}
+            onClose={() => setQcModalOpen(false)}
             onRunScan={async () => {
-              setQcLoading(true);
+              setQcConfirmed(new Set());
+              setQcDeclined(new Set());
               setQcReport(null);
+              setQcLoading(true);
               try {
                 const report = await runFullQC(course, voiceOverEnabled, (phase) => setQcPhase(phase));
                 setQcReport(report);
@@ -1112,8 +1178,11 @@ export default function App() {
                 const fixed = applyConfirmedFixes(course, confirmedIds, qcReport);
                 setCourse(fixed);
               }
-              setQcModalOpen(false);
+              // Clear resolved report after applying
               setQcReport(null);
+              setQcConfirmed(new Set());
+              setQcDeclined(new Set());
+              setQcModalOpen(false);
             }}
           />
 
@@ -1938,35 +2007,72 @@ export default function App() {
                       )}
                     </div>
 
-                    {/* QC Check */}
-                    <button
-                      id="qc-check-button"
-                      title="Quality Check — scan for spelling, grammar, and formatting issues"
-                      onClick={async () => {
-                        setQcModalOpen(true);
-                        setQcLoading(true);
-                        setQcReport(null);
-                        try {
-                          const report = await runFullQC(course, voiceOverEnabled, (phase) => setQcPhase(phase));
-                          setQcReport(report);
-                        } catch {
-                          setQcReport(null);
-                        } finally {
-                          setQcLoading(false);
-                          setQcPhase(null);
-                        }
-                      }}
-                      className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-700/80 hover:bg-emerald-600 text-white rounded-lg font-bold text-xs transition-colors shadow-lg shadow-emerald-500/10"
-                    >
-                      <Shield className="w-3.5 h-3.5" /> <span className="hidden lg:inline">QC Check</span>
-                    </button>
+                    {/* QC Check — context-aware: reopen existing report if pending, or start new scan */}
+                    {(() => {
+                      const pendingCount = qcReport
+                        ? qcReport.issues.filter(i => !qcConfirmed.has(i.id) && !qcDeclined.has(i.id)).length
+                        : 0;
+                      const hasPending = pendingCount > 0;
+                      return (
+                        <button
+                          id="qc-check-button"
+                          title={hasPending
+                            ? `QC Report — ${pendingCount} item${pendingCount !== 1 ? 's' : ''} pending review (click to reopen)`
+                            : 'Quality Check — scan for spelling, grammar, and formatting issues'}
+                          onClick={async () => {
+                            // If a report exists with pending items, just reopen. Don't re-scan.
+                            if (qcReport && hasPending) {
+                              setQcModalOpen(true);
+                              return;
+                            }
+                            // Fresh scan
+                            setQcConfirmed(new Set());
+                            setQcDeclined(new Set());
+                            setQcReport(null);
+                            setQcModalOpen(true);
+                            setQcLoading(true);
+                            try {
+                              const report = await runFullQC(course, voiceOverEnabled, (phase) => setQcPhase(phase));
+                              setQcReport(report);
+                            } catch {
+                              setQcReport(null);
+                            } finally {
+                              setQcLoading(false);
+                              setQcPhase(null);
+                            }
+                          }}
+                          className={`relative flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-bold text-xs transition-colors shadow-lg ${
+                            hasPending
+                              ? 'bg-amber-600/80 hover:bg-amber-500 text-white shadow-amber-500/10'
+                              : 'bg-emerald-700/80 hover:bg-emerald-600 text-white shadow-emerald-500/10'
+                          }`}
+                        >
+                          <Shield className="w-3.5 h-3.5" />
+                          <span className="hidden lg:inline">{hasPending ? 'QC Pending' : 'QC Check'}</span>
+                          {hasPending && (
+                            <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-black flex items-center justify-center">
+                              {pendingCount > 9 ? '9+' : pendingCount}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })()}
 
                     <div className="w-px h-4 bg-slate-700 mx-0.5" />
 
-                    {/* Export SCORM */}
+                    {/* Export SCORM — warns if pending QC items exist */}
                     <button
                       title="Export SCORM — download a SCORM 1.2 zip package"
-                      onClick={exportScorm}
+                      onClick={() => {
+                        const pendingCount = qcReport
+                          ? qcReport.issues.filter(i => !qcConfirmed.has(i.id) && !qcDeclined.has(i.id)).length
+                          : 0;
+                        if (pendingCount > 0) {
+                          setShowQcPublishWarning(true);
+                        } else {
+                          exportScorm();
+                        }
+                      }}
                       className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs transition-colors shadow-lg shadow-indigo-500/20"
                     >
                       <Download className="w-3.5 h-3.5" /> <span className="hidden lg:inline">Export SCORM</span>

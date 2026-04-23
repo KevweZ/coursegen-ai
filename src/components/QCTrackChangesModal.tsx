@@ -2,8 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, CheckCircle2, XCircle, AlertCircle, Info,
-  CheckCheck, Loader2, Shield, ChevronDown, ChevronRight,
-  Sparkles, FileText, BarChart3
+  CheckCheck, Shield, ChevronDown, ChevronRight,
+  Sparkles, BarChart3, RefreshCw
 } from 'lucide-react';
 import { QCReport, QCIssue } from '../services/qcService';
 
@@ -14,8 +14,15 @@ interface Props {
   report: QCReport | null;
   loading: boolean;
   loadingPhase: 'structural' | 'ai' | 'done' | null;
-  onClose: () => void;
-  onApply: (confirmedIssueIds: string[]) => void;
+  /** Lifted from App — persists across modal open/close */
+  confirmed: Set<string>;
+  declined: Set<string>;
+  onConfirm:    (id: string) => void;
+  onDecline:    (id: string) => void;
+  onConfirmAll: (ids: string[]) => void;
+  onDeclineAll: (ids: string[]) => void;
+  onClose:   () => void;
+  onApply:   (confirmedIssueIds: string[]) => void;
   onRunScan: () => void;
 }
 
@@ -37,11 +44,7 @@ function ScoreBadge({ score }: { score: number }) {
 }
 
 function IssueCard({
-  issue,
-  confirmed,
-  declined,
-  onConfirm,
-  onDecline,
+  issue, confirmed, declined, onConfirm, onDecline,
 }: {
   issue: QCIssue;
   confirmed: boolean;
@@ -135,10 +138,18 @@ function IssueCard({
   );
 }
 
-export function QCTrackChangesModal({ open, report, loading, loadingPhase, onClose, onApply, onRunScan }: Props) {
+export function QCTrackChangesModal({
+  open, report, loading, loadingPhase,
+  confirmed, declined,
+  onConfirm, onDecline, onConfirmAll, onDeclineAll,
+  onClose, onApply, onRunScan,
+}: Props) {
   const [filter, setFilter] = useState<FilterTab>('all');
-  const [confirmed, setConfirmed] = useState<Set<string>>(new Set());
-  const [declined, setDeclined] = useState<Set<string>>(new Set());
+
+  const pendingCount = useMemo(() =>
+    report ? report.issues.filter(i => !confirmed.has(i.id) && !declined.has(i.id)).length : 0,
+    [report, confirmed, declined]
+  );
 
   const filteredIssues = useMemo(() => {
     if (!report) return [];
@@ -146,38 +157,16 @@ export function QCTrackChangesModal({ open, report, loading, loadingPhase, onClo
   }, [report, filter]);
 
   const confirmable = useMemo(() =>
-    filteredIssues.filter(i => i.suggestion && i.suggestion !== i.originalText),
-    [filteredIssues]
+    filteredIssues.filter(i => i.suggestion && i.suggestion !== i.originalText && !confirmed.has(i.id)),
+    [filteredIssues, confirmed]
   );
-
-  const handleConfirmAll = () => {
-    setConfirmed(prev => new Set([...prev, ...confirmable.map(i => i.id)]));
-    setDeclined(prev => {
-      const next = new Set(prev);
-      confirmable.forEach(i => next.delete(i.id));
-      return next;
-    });
-  };
-
-  const handleDeclineAll = () => {
-    setDeclined(prev => new Set([...prev, ...filteredIssues.map(i => i.id)]));
-    setConfirmed(prev => {
-      const next = new Set(prev);
-      filteredIssues.forEach(i => next.delete(i.id));
-      return next;
-    });
-  };
-
-  const handleApply = () => {
-    onApply([...confirmed]);
-  };
 
   if (!open) return null;
 
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-[800] flex items-center justify-center p-4">
-        {/* Backdrop */}
+        {/* Backdrop — clicking dismisses but preserves report */}
         <motion.div
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           className="absolute inset-0 bg-black/70 backdrop-blur-sm"
@@ -200,7 +189,13 @@ export function QCTrackChangesModal({ open, report, loading, loadingPhase, onClo
             <div className="flex-1">
               <h2 className="text-base font-black text-white">Quality Check</h2>
               <p className="text-xs text-slate-400">
-                {loading ? 'Scanning course content…' : report ? `${report.totalIssues} issue${report.totalIssues !== 1 ? 's' : ''} found` : 'Ready to scan'}
+                {loading
+                  ? 'Scanning course content…'
+                  : report
+                  ? pendingCount > 0
+                    ? `${pendingCount} pending item${pendingCount !== 1 ? 's' : ''} · ${report.totalIssues} total found`
+                    : `${report.totalIssues} issue${report.totalIssues !== 1 ? 's' : ''} found — all reviewed`
+                  : 'Ready to scan'}
               </p>
             </div>
             {report && !loading && <ScoreBadge score={report.score} />}
@@ -244,7 +239,7 @@ export function QCTrackChangesModal({ open, report, loading, loadingPhase, onClo
             <>
               {/* Summary row */}
               <div className="flex items-center gap-4 px-6 py-3 border-b border-slate-800 bg-slate-900/40 shrink-0">
-                <div className="flex gap-4 text-sm">
+                <div className="flex gap-4 text-sm flex-wrap">
                   {report.errors > 0 && (
                     <span className="flex items-center gap-1.5 text-red-400 font-bold">
                       <XCircle className="w-3.5 h-3.5" />{report.errors} error{report.errors !== 1 ? 's' : ''}
@@ -266,7 +261,7 @@ export function QCTrackChangesModal({ open, report, loading, loadingPhase, onClo
                     </span>
                   )}
                   {(report as any).aiScanFailed && (
-                    <span className="flex items-center gap-1.5 text-amber-500/80 text-[11px] font-medium ml-2">
+                    <span className="flex items-center gap-1.5 text-amber-500/80 text-[11px] font-medium">
                       <AlertCircle className="w-3 h-3" />Structural check only (AI scan unavailable)
                     </span>
                   )}
@@ -275,10 +270,16 @@ export function QCTrackChangesModal({ open, report, loading, loadingPhase, onClo
                 {/* Bulk actions */}
                 {filteredIssues.length > 0 && (
                   <div className="flex gap-2 ml-auto">
-                    <button onClick={handleDeclineAll} className="text-xs text-slate-400 hover:text-slate-200 font-bold px-2 py-1 rounded hover:bg-slate-800 transition-all">
+                    <button
+                      onClick={() => onDeclineAll(filteredIssues.map(i => i.id))}
+                      className="text-xs text-slate-400 hover:text-slate-200 font-bold px-2 py-1 rounded hover:bg-slate-800 transition-all"
+                    >
                       Decline all
                     </button>
-                    <button onClick={handleConfirmAll} className="text-xs text-indigo-300 hover:text-indigo-100 font-bold px-2 py-1 rounded hover:bg-indigo-500/10 transition-all flex items-center gap-1">
+                    <button
+                      onClick={() => onConfirmAll(confirmable.map(i => i.id))}
+                      className="text-xs text-indigo-300 hover:text-indigo-100 font-bold px-2 py-1 rounded hover:bg-indigo-500/10 transition-all flex items-center gap-1"
+                    >
                       <CheckCheck className="w-3 h-3" /> Confirm all
                     </button>
                   </div>
@@ -318,14 +319,8 @@ export function QCTrackChangesModal({ open, report, loading, loadingPhase, onClo
                       issue={issue}
                       confirmed={confirmed.has(issue.id)}
                       declined={declined.has(issue.id)}
-                      onConfirm={() => {
-                        setConfirmed(prev => new Set([...prev, issue.id]));
-                        setDeclined(prev => { const n = new Set(prev); n.delete(issue.id); return n; });
-                      }}
-                      onDecline={() => {
-                        setDeclined(prev => new Set([...prev, issue.id]));
-                        setConfirmed(prev => { const n = new Set(prev); n.delete(issue.id); return n; });
-                      }}
+                      onConfirm={() => onConfirm(issue.id)}
+                      onDecline={() => onDecline(issue.id)}
                     />
                   ))
                 )}
@@ -333,16 +328,27 @@ export function QCTrackChangesModal({ open, report, loading, loadingPhase, onClo
 
               {/* Footer */}
               <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-slate-800 bg-slate-900/60 shrink-0">
-                <p className="text-xs text-slate-500">
-                  {confirmed.size} fix{confirmed.size !== 1 ? 'es' : ''} confirmed · {declined.size} declined
-                </p>
+                <div className="flex flex-col gap-0.5">
+                  <p className="text-xs text-slate-500">
+                    {confirmed.size} fix{confirmed.size !== 1 ? 'es' : ''} confirmed · {declined.size} declined
+                    {pendingCount > 0 && <span className="text-amber-400 ml-1">· {pendingCount} pending</span>}
+                  </p>
+                  {pendingCount === 0 && report.totalIssues > 0 && (
+                    <button
+                      onClick={onRunScan}
+                      className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-indigo-300 transition-colors"
+                    >
+                      <RefreshCw className="w-3 h-3" /> Run new scan
+                    </button>
+                  )}
+                </div>
                 <div className="flex gap-2">
                   <button onClick={onClose} className="px-4 py-2 rounded-xl border border-slate-700 text-slate-400 hover:text-slate-200 text-sm font-bold transition-all hover:bg-slate-800">
                     Close
                   </button>
                   {confirmed.size > 0 && (
                     <button
-                      onClick={handleApply}
+                      onClick={() => onApply([...confirmed])}
                       className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-bold transition-all hover:from-indigo-500 hover:to-purple-500 shadow-lg shadow-indigo-500/20 flex items-center gap-2"
                     >
                       <Sparkles className="w-3.5 h-3.5" />
