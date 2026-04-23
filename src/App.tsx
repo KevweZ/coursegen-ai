@@ -70,7 +70,8 @@ import { createScormPackage } from './services/scormService';
 import { FlashcardGrid } from './components/FlashcardGrid';
 import { AccordionDarkWrapper } from './components/AccordionDarkWrapper';
 import { QCTrackChangesModal } from './components/QCTrackChangesModal';
-import { runFullQC, runStructuralQC, autoFixCourse, applyConfirmedFixes, QCReport } from './services/qcService';
+import { runFullQC, runStructuralQC, autoFixCourse, applyConfirmedFixes, simplifySlide, regenerateSlideData, QCReport } from './services/qcService';
+
 import { OutlinePreview } from './components/builder/OutlinePreview';
 import { PlayerPropertiesModal, PlayerConfig, defaultPlayerConfig } from './components/builder/PlayerPropertiesModal';
 import { CourseOutline, Slide, TerminalObjectiveGroup, ExamConfig, ExamQuestion, ExamSessionState, NavigationMode } from './types/course';
@@ -1159,7 +1160,6 @@ export default function App() {
             }}
             onClose={() => setQcModalOpen(false)}
             onGoToSlide={(moduleIndex, slideIndex) => {
-              // Compute global flat slide index across all modules
               if (course?.modules) {
                 let globalIdx = 0;
                 for (let m = 0; m < moduleIndex; m++) {
@@ -1169,6 +1169,38 @@ export default function App() {
                 setCurrentSlideIndex(globalIdx);
               }
               setQcModalOpen(false);
+            }}
+            onSimplify={(moduleIndex, slideIndex) => {
+              setCourse(simplifySlide(course, moduleIndex, slideIndex));
+              // Remove resolved issue from report
+              setQcReport(prev => prev ? {
+                ...prev,
+                issues: prev.issues.filter(i =>
+                  !(i.moduleIndex === moduleIndex && i.slideIndex === slideIndex && i.type === 'interaction_empty')
+                ),
+                totalIssues: prev.totalIssues - 1,
+                errors: Math.max(0, prev.errors - 1),
+              } : null);
+            }}
+            onRegenerate={async (moduleIndex, slideIndex, slideId) => {
+              const slide = course?.modules?.[moduleIndex]?.slides?.[slideIndex];
+              if (!slide) return;
+              try {
+                const newData = await regenerateSlideData(slide, course.title ?? '');
+                const cloned = JSON.parse(JSON.stringify(course));
+                cloned.modules[moduleIndex].slides[slideIndex].data = newData;
+                setCourse(cloned);
+                // Remove the resolved empty-interaction issue
+                setQcReport(prev => prev ? {
+                  ...prev,
+                  issues: prev.issues.filter(i => !(i.slideId === slideId && i.type === 'interaction_empty')),
+                  totalIssues: Math.max(0, prev.totalIssues - 1),
+                  errors: Math.max(0, prev.errors - 1),
+                } : null);
+              } catch (err) {
+                console.error('[QC] Regeneration failed:', err);
+                // Non-fatal — user can retry or use simple layout
+              }
             }}
             onRunScan={async () => {
               setQcConfirmed(new Set());

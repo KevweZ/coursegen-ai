@@ -11,11 +11,15 @@ export type IssueType =
   | 'quiz_integrity'
   | 'narration_gap'
   | 'interaction_incomplete'
+  | 'interaction_empty'
+  | 'color_contrast'
   | 'theme_inconsistency'
   | 'spelling'
   | 'grammar'
   | 'clarity'
   | 'consistency';
+
+export type FixAction = 'simplify' | 'regenerate' | 'fix_color';
 
 export interface QCIssue {
   id: string;
@@ -31,6 +35,8 @@ export interface QCIssue {
   originalText: string;
   suggestion: string;
   autoFixable: boolean;
+  /** Special actions available beyond confirm/decline */
+  fixActions?: FixAction[];
 }
 
 export interface QCReport {
@@ -64,6 +70,45 @@ const LIGHT_COLOUR_PATTERNS = [
   /background-color:\s*white/i, /background-color:\s*#fff/i,
   /color:\s*black/i, /color:\s*#000/i,
 ];
+
+// ── WCAG Colour Contrast Utilities ───────────────────────────────────────────
+
+function parseColor(str: string): [number, number, number] | null {
+  const s = str.trim();
+  // Hex
+  const hexM = s.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (hexM) {
+    let h = hexM[1];
+    if (h.length === 3) h = h.split('').map(c => c + c).join('');
+    return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4),16)];
+  }
+  // rgb / rgba
+  const rgbM = s.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+  if (rgbM) return [+rgbM[1], +rgbM[2], +rgbM[3]];
+  // Common named light colours that fail contrast on white
+  const named: Record<string,[number,number,number]> = {
+    gray:[128,128,128], grey:[128,128,128], silver:[192,192,192],
+    lightgray:[211,211,211], lightgrey:[211,211,211],
+    gainsboro:[220,220,220], whitesmoke:[245,245,245],
+    white:[255,255,255],
+  };
+  return named[s.toLowerCase()] ?? null;
+}
+
+function relativeLuminance([r,g,b]: [number,number,number]): number {
+  return [r,g,b].reduce((sum, v, i) => {
+    const c = v / 255;
+    const l = c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    return sum + l * [0.2126, 0.7152, 0.0722][i];
+  }, 0);
+}
+
+function wcagRatio(l1: number, l2: number): number {
+  return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+}
+
+const WHITE_LUM = 1; // luminance of white background
+const DARK_TEXT_SAFE = '#1e293b'; // slate-900, readable on white
 
 let _issueCounter = 0;
 const makeId = () => `qc-${Date.now()}-${_issueCounter++}`;
@@ -344,6 +389,95 @@ function checkThemeConsistency(slide: any, modIdx: number, slideIdx: number, mod
   return issues;
 }
 
+// ── Colour Contrast Check ────────────────────────────────────────────────────
+
+function checkColorContrast(slide: any, modIdx: number, slideIdx: number, modTitle: string): QCIssue[] {
+  const issues: QCIssue[] = [];
+
+  const flagColor = (colorStr: string, field: string) => {
+    const rgb = parseColor(colorStr);
+    if (!rgb) return;
+    const lum = relativeLuminance(rgb);
+    const ratio = wcagRatio(lum, WHITE_LUM);
+    // Only flag if it's being used as a text color (light colors on white background)
+    if (ratio < 4.5) {
+      issues.push(baseIssue(slide, modIdx, slideIdx, modTitle, {
+        field,
+        type: 'color_contrast',
+        severity: ratio < 3.0 ? 'error' : 'warning',
+        message: `Low contrast: "${colorStr}" achieves only ${ratio.toFixed(1)}:1 against white (WCAG AA requires 4.5:1 for text). This text may be unreadable.`,
+        originalText: colorStr,
+        suggestion: DARK_TEXT_SAFE,
+        autoFixable: true,
+        fixActions: ['fix_color'],
+      }));
+    }
+  };
+
+  // Recursively scan data object for color-related properties and inline styles
+  const scan = (val: any, path: string) => {
+    if (!val) return;
+    if (typeof val === 'string') {
+      const key = path.split('.').pop() ?? '';
+      // Direct color property names
+      if (/^(text_?color|font_?color|foreground|textColor|fontColor|foregroundColor)$/i.test(key)) {
+        flagColor(val, path);
+      }
+      // Named "color" property — check only if it looks like a hex/rgb color
+      if (key === 'color' && (val.startsWith('#') || val.startsWith('rgb'))) {
+        flagColor(val, path);
+      }
+      // Inline style "color: ..." (explicitly not background-color)
+      const styleRe = /(?<![a-z-])color\s*:\s*(#[0-9a-f]{3,6}|rgb[a]?\([^)]+\)|(?:gray|grey|silver|white|lightgray|lightgrey|gainsboro|whitesmoke))/gi;
+      let m: RegExpExecArray | null;
+      while ((m = styleRe.exec(val)) !== null) {
+        flagColor(m[1], path);
+      }
+    } else if (Array.isArray(val)) {
+      val.forEach((item, i) => scan(item, `${path}.${i}`));
+    } else if (typeof val === 'object') {
+      Object.entries(val).forEach(([k, v]) => scan(v, `${path}.${k}`));
+    }
+  };
+
+  scan(slide.data, 'data');
+  if (slide.content) scan(slide.content, 'content');
+  return issues;
+}
+
+// ── Empty Interaction Check ───────────────────────────────────────────────────
+
+const INTERACTION_TYPES: Record<string, (data: any) => boolean> = {
+  accordion:        d => !d?.items      || d.items.length      === 0,
+  flashcards:       d => !d?.cards      || d.cards.length      === 0,
+  timeline:         d => !d?.events     || d.events.length     === 0,
+  branching:        d => !d?.nodes      || d.nodes.length      === 0,
+  jeopardy:         d => !d?.categories || d.categories.length === 0,
+  matching:         d => !d?.pairs      || d.pairs.length      === 0,
+  hotspot:          d => !d?.hotspots   || d.hotspots.length   === 0,
+  scenario:         d => !d?.scenes     || d.scenes.length     === 0,
+  quiz:             d => !d?.questionText && !d?.options?.length,
+  'multiple-answer':d => !d?.questionText && !d?.options?.length,
+};
+
+function checkEmptyInteraction(slide: any, modIdx: number, slideIdx: number, modTitle: string): QCIssue[] {
+  const isEmpty = INTERACTION_TYPES[slide.type];
+  if (!isEmpty) return [];
+  const data = slide.data;
+  if (!isEmpty(!data ? null : data)) return []; // data present and non-empty, skip
+  // data is null or empty for this interaction type
+  return [baseIssue(slide, modIdx, slideIdx, modTitle, {
+    field: 'data',
+    type: 'interaction_empty',
+    severity: 'error',
+    message: `This ${slide.type} interaction has no content and will appear blank to learners.`,
+    originalText: '',
+    suggestion: '',
+    autoFixable: false,
+    fixActions: ['simplify', 'regenerate'],
+  })];
+}
+
 // ── Score calculation ────────────────────────────────────────────────────────
 function calcScore(issues: QCIssue[], totalSlides: number): number {
   if (totalSlides === 0) return 100;
@@ -373,6 +507,8 @@ export function validateCourse(course: any, narrationEnabled = false): QCReport 
       issues.push(...checkAccordion(slide, modIdx, slideIdx, modTitle));
       issues.push(...checkFlashcards(slide, modIdx, slideIdx, modTitle));
       issues.push(...checkTimeline(slide, modIdx, slideIdx, modTitle));
+      issues.push(...checkEmptyInteraction(slide, modIdx, slideIdx, modTitle));
+      issues.push(...checkColorContrast(slide, modIdx, slideIdx, modTitle));
       issues.push(...checkThemeConsistency(slide, modIdx, slideIdx, modTitle));
     });
   });

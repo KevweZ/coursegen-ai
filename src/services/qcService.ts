@@ -4,14 +4,15 @@
  * Works alongside structuralValidator.ts which handles non-AI structural checks.
  */
 
-import { QCIssue, QCReport, IssueSeverity, IssueType, validateCourse, applyFixes } from './structuralValidator';
+import { QCIssue, QCReport, IssueSeverity, IssueType, FixAction, validateCourse, applyFixes } from './structuralValidator';
 
 const BATCH_SIZE = 5;
 const API_BASE = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:3001';
 
 // ── Types re-exported for consumers ─────────────────────────────────────────
-export type { QCIssue, QCReport, IssueSeverity, IssueType };
+export type { QCIssue, QCReport, IssueSeverity, IssueType, FixAction };
 export { validateCourse, applyFixes };
+
 
 // ── Slide text extractor ─────────────────────────────────────────────────────
 function extractSlideText(slide: any): Record<string, string> {
@@ -200,4 +201,81 @@ export function autoFixCourse(course: any, report: QCReport): { course: any; fix
 export function applyConfirmedFixes(course: any, confirmedIssueIds: string[], report: QCReport): any {
   const confirmed = report.issues.filter(i => confirmedIssueIds.includes(i.id));
   return applyFixes(course, confirmed);
+}
+
+// ── Single-Slide Regeneration ─────────────────────────────────────────────────
+
+const SCHEMA_HINTS: Record<string, string> = {
+  accordion:       '{ "items": [{ "id": "string", "title": "string", "content": "string" }] }',
+  flashcards:      '{ "cards": [{ "id": "string", "front": "string", "back": "string" }] }',
+  timeline:        '{ "events": [{ "id": "string", "year": "string", "title": "string", "content": "string" }] }',
+  quiz:            '{ "questionText": "string", "options": [{ "id": "string", "text": "string", "isCorrect": boolean }], "feedback": "string" }',
+  'multiple-answer':'{ "questionText": "string", "options": [{ "id": "string", "text": "string", "isCorrect": boolean }] }',
+  branching:       '{ "startNodeId": "string", "nodes": [{ "id": "string", "title": "string", "content": "string", "choices": [{ "id": "string", "text": "string", "nextId": "string" }] }] }',
+  jeopardy:        '{ "categories": [{ "id": "string", "title": "string", "questions": [{ "id": "string", "points": number, "question": "string", "answer": "string" }] }] }',
+  matching:        '{ "pairs": [{ "id": "string", "left": "string", "right": "string" }] }',
+};
+
+/**
+ * Regenerates a single slide's interaction data by sending a focused prompt to
+ * the AI. Returns the new `data` object to be merged into the course.
+ */
+export async function regenerateSlideData(
+  slide: any,
+  courseTopic: string
+): Promise<any> {
+  const schema = SCHEMA_HINTS[slide.type] ?? '{}';
+  const prompt = `You are an expert eLearning content author.
+
+Regenerate rich, educational content for this ${slide.type} interaction slide.
+
+Slide title: "${slide.title}"
+Course topic: "${courseTopic}"
+${slide.content ? `Slide description: "${slide.content.slice(0, 300)}"` : ''}
+
+Return ONLY a valid JSON object matching this exact schema for the "${slide.type}" type:
+${schema}
+
+Rules:
+- Use 3–6 items/events/cards unless the schema implies otherwise
+- Write in clear, professional English
+- Do NOT include markdown, backticks, or any explanation — pure JSON only`;
+
+  const res = await fetch(`${API_BASE}/api/ai`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt, complexity: 'simple' }),
+  });
+
+  if (!res.ok) throw new Error(`Regeneration API error: ${res.status}`);
+
+  const aiRes = await res.json();
+  const text: string = aiRes.content?.[0]?.text ?? aiRes.text ?? '';
+
+  // Extract JSON from the response
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('AI did not return valid JSON');
+  return JSON.parse(jsonMatch[0]);
+}
+
+/**
+ * Converts a broken/empty interaction slide to a simple content slide,
+ * preserving the title and any available narration text.
+ */
+export function simplifySlide(course: any, moduleIndex: number, slideIndex: number): any {
+  const cloned = JSON.parse(JSON.stringify(course));
+  const slide = cloned.modules[moduleIndex]?.slides[slideIndex];
+  if (!slide) return cloned;
+
+  // Gather any available text to use as content
+  const fallbackContent =
+    slide.content ||
+    slide.voiceOverText ||
+    `This slide covers: ${slide.title}`;
+
+  slide.type    = 'content';
+  slide.content = fallbackContent;
+  slide.data    = undefined;
+
+  return cloned;
 }

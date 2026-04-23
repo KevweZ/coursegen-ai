@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, CheckCircle2, XCircle, AlertCircle, Info,
   CheckCheck, Shield, ChevronDown, ChevronRight,
-  Sparkles, BarChart3, RefreshCw, ExternalLink
+  Sparkles, BarChart3, RefreshCw, ExternalLink, Wand2, Loader2, FileText
 } from 'lucide-react';
 import { QCReport, QCIssue } from '../services/qcService';
 
@@ -14,7 +14,6 @@ interface Props {
   report: QCReport | null;
   loading: boolean;
   loadingPhase: 'structural' | 'ai' | 'done' | null;
-  /** Lifted from App — persists across modal open/close */
   confirmed: Set<string>;
   declined: Set<string>;
   onConfirm:    (id: string) => void;
@@ -24,8 +23,11 @@ interface Props {
   onClose:      () => void;
   onApply:      (confirmedIssueIds: string[]) => void;
   onRunScan:    () => void;
-  /** Navigate to a specific slide and close the modal */
   onGoToSlide:  (moduleIndex: number, slideIndex: number) => void;
+  /** Instantly convert empty interaction to simple content slide */
+  onSimplify:   (moduleIndex: number, slideIndex: number) => void;
+  /** AI regeneration of a single slide's interaction data */
+  onRegenerate: (moduleIndex: number, slideIndex: number, slideId: string) => Promise<void>;
 }
 
 const SEVERITY_CONFIG = {
@@ -46,18 +48,22 @@ function ScoreBadge({ score }: { score: number }) {
 }
 
 function IssueCard({
-  issue, confirmed, declined, onConfirm, onDecline, onGoToSlide,
+  issue, confirmed, declined, onConfirm, onDecline, onGoToSlide, onSimplify, onRegenerate,
 }: {
   issue: QCIssue;
   confirmed: boolean;
   declined: boolean;
-  onConfirm:   () => void;
-  onDecline:   () => void;
-  onGoToSlide: () => void;
+  onConfirm:    () => void;
+  onDecline:    () => void;
+  onGoToSlide:  () => void;
+  onSimplify:   () => void;
+  onRegenerate: () => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   const cfg = SEVERITY_CONFIG[issue.severity];
   const Icon = cfg.icon;
+  const isEmptyInteraction = issue.type === 'interaction_empty';
 
   return (
     <div className={`rounded-xl border ${cfg.border} ${cfg.bg} overflow-hidden transition-all ${declined ? 'opacity-40' : ''}`}>
@@ -123,30 +129,59 @@ function IssueCard({
         >
           <ExternalLink className="w-3 h-3" /> View Slide
         </button>
-        {/* Right: decline / confirm */}
-        <div className="flex gap-2">
-          <button
-            onClick={onDecline}
-            disabled={declined}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border
-              ${declined
-                ? 'border-slate-700 text-slate-600 cursor-not-allowed'
-                : 'border-slate-600 text-slate-400 hover:bg-slate-700 hover:text-slate-200'}`}
-          >
-            <XCircle className="w-3 h-3" /> Decline
-          </button>
-          <button
-            onClick={onConfirm}
-            disabled={confirmed || issue.suggestion === issue.originalText || !issue.suggestion}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border
-              ${confirmed
-                ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300 cursor-default'
-                : 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/30'}`}
-          >
-            <CheckCircle2 className="w-3 h-3" />
-            {confirmed ? 'Confirmed' : 'Confirm Fix'}
-          </button>
-        </div>
+
+        {/* Right: special actions for empty interactions */}
+        {isEmptyInteraction ? (
+          <div className="flex gap-2">
+            <button
+              onClick={onSimplify}
+              title="Replace with a simple content slide — no AI credits needed"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white transition-all"
+            >
+              <FileText className="w-3 h-3" /> Use Simple Layout
+            </button>
+            <button
+              onClick={async () => {
+                setRegenerating(true);
+                try { await onRegenerate(); } finally { setRegenerating(false); }
+              }}
+              disabled={regenerating}
+              title="Ask AI to regenerate this interaction's content"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border bg-indigo-500/20 border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/30 disabled:opacity-60 disabled:cursor-wait transition-all"
+            >
+              {regenerating
+                ? <><Loader2 className="w-3 h-3 animate-spin" /> Regenerating…</>
+                : <><Wand2 className="w-3 h-3" /> Regenerate</>}
+            </button>
+          </div>
+        ) : (
+          /* Right: standard decline / confirm for all other types */
+          <div className="flex gap-2">
+            <button
+              onClick={onDecline}
+              disabled={declined}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border
+                ${declined
+                  ? 'border-slate-700 text-slate-600 cursor-not-allowed'
+                  : 'border-slate-600 text-slate-400 hover:bg-slate-700 hover:text-slate-200'}`}
+            >
+              <XCircle className="w-3 h-3" /> Decline
+            </button>
+            <button
+              onClick={onConfirm}
+              disabled={confirmed || issue.suggestion === issue.originalText || !issue.suggestion}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border
+                ${confirmed
+                  ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300 cursor-default'
+                  : issue.type === 'color_contrast'
+                  ? 'bg-amber-500/20 border-amber-500/40 text-amber-200 hover:bg-amber-500/30'
+                  : 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/30'}`}
+            >
+              <CheckCircle2 className="w-3 h-3" />
+              {confirmed ? 'Applied' : issue.type === 'color_contrast' ? 'Apply Dark Color' : 'Confirm Fix'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -157,6 +192,7 @@ export function QCTrackChangesModal({
   confirmed, declined,
   onConfirm, onDecline, onConfirmAll, onDeclineAll,
   onClose, onApply, onRunScan, onGoToSlide,
+  onSimplify, onRegenerate,
 }: Props) {
   const [filter, setFilter] = useState<FilterTab>('all');
 
@@ -336,6 +372,8 @@ export function QCTrackChangesModal({
                       onConfirm={() => onConfirm(issue.id)}
                       onDecline={() => onDecline(issue.id)}
                       onGoToSlide={() => onGoToSlide(issue.moduleIndex, issue.slideIndex)}
+                      onSimplify={() => onSimplify(issue.moduleIndex, issue.slideIndex)}
+                      onRegenerate={() => onRegenerate(issue.moduleIndex, issue.slideIndex, issue.slideId)}
                     />
                   ))
                 )}
