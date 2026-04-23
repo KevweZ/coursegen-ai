@@ -978,20 +978,24 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
         </div>
 
         <div className="relative z-10 flex flex-col items-center w-full">
+          {/* Brand label — smaller, above the value prop */}
           <motion.div initial={{ opacity:0, y:-12 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.5 }}
-            className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-widest text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-4 py-2 rounded-full mb-6">
+            className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-widest text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-4 py-2 rounded-full mb-4">
             <Sparkles className="w-3.5 h-3.5" /> AI-Powered eLearning Builder
           </motion.div>
 
-          <motion.h1 initial={{ opacity:0, y:20 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.6, delay:0.08 }}
-            className="text-6xl md:text-7xl lg:text-8xl font-black text-white leading-[1.02] tracking-tight mb-4">
-            NexCourse <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-cyan-400">AI</span>
-          </motion.h1>
-
-          <motion.p initial={{ opacity:0, y:16 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.5, delay:0.16 }}
-            className="text-indigo-300/80 text-lg md:text-xl font-semibold tracking-wide mb-5">
-            Turn any topic into a complete eLearning course — instantly.
+          {/* Brand name — reduced to subtitle treatment */}
+          <motion.p initial={{ opacity:0, y:8 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.45, delay:0.06 }}
+            className="text-xl md:text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 tracking-tight mb-3">
+            NexCourse AI
           </motion.p>
+
+          {/* Value proposition — now the dominant h1 */}
+          <motion.h1 initial={{ opacity:0, y:20 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.6, delay:0.1 }}
+            className="text-5xl md:text-6xl lg:text-7xl font-black text-white leading-[1.04] tracking-tight mb-5">
+            Turn any topic into a complete eLearning course —{' '}
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-cyan-400">instantly.</span>
+          </motion.h1>
 
           <motion.p initial={{ opacity:0, y:16 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.5, delay:0.22 }}
             className="text-slate-400 text-base md:text-lg max-w-2xl mb-10 leading-relaxed">
@@ -1012,18 +1016,43 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
             </button>
           </motion.div>
 
-          {/* ── Interactions Showcase ── */}
-          <div id="showcase" className="w-full mt-8 pb-8">
+          {/* ── Stats Bar — appears before the showcase ──────────────── */}
+          <motion.div
+            initial={{ opacity:0, y:12 }} animate={{ opacity:1, y:0 }}
+            transition={{ duration:0.5, delay:0.34 }}
+            className="w-full max-w-4xl mx-auto px-6 py-8 mb-6"
+          >
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center border-y border-slate-800/60 py-8">
+              {stats.map(({ label, value, suffix }) => (
+                <div key={label}>
+                  <div className="text-3xl font-black text-white mb-1"><AnimatedCounter target={value} suffix={suffix} /></div>
+                  <p className="text-slate-500 text-xs font-medium">{label}</p>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+
+          {/* ── Interactions Showcase ————————————————————————————— */}
+          <div id="showcase" className="w-full mt-2 pb-8">
             <motion.p
               initial={{ opacity:0, y:8 }} animate={{ opacity:1, y:0 }}
               transition={{ duration:0.5, delay:0.38 }}
-              className="text-center text-purple-400 text-sm font-black uppercase tracking-widest mb-6"
+              className="text-center text-purple-400 text-sm font-black uppercase tracking-widest mb-3"
             >
               See It In Action
             </motion.p>
+            {/* Descriptive headline — Change 2 */}
+            <motion.h2
+              initial={{ opacity:0, y:12 }} animate={{ opacity:1, y:0 }}
+              transition={{ duration:0.5, delay:0.43 }}
+              className="text-center text-2xl md:text-3xl font-black text-white mb-8 leading-tight"
+            >
+              Create engaging interactions —{' '}
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-cyan-400">without writing a single line of code.</span>
+            </motion.h2>
             <motion.div
               initial={{ opacity:0, y:20 }} animate={{ opacity:1, y:0 }}
-              transition={{ duration:0.6, delay:0.44 }}
+              transition={{ duration:0.6, delay:0.48 }}
             >
               <ShowcaseScroller>
                 <ShowcaseCard label="Accordion" icon={Layers} accent="border-indigo-700/40" preview={<AccordionPreview />} />
@@ -1039,18 +1068,6 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
         </div>
       </section>
 
-
-      {/* ── Stats Bar ────────────────────────────────────────────────────────── */}
-      <section className="border-y border-slate-800/60 bg-slate-900/30 py-12">
-        <div className="max-w-5xl mx-auto px-6 grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-          {stats.map(({ label, value, suffix }) => (
-            <div key={label}>
-              <div className="text-4xl font-black text-white mb-1"><AnimatedCounter target={value} suffix={suffix} /></div>
-              <p className="text-slate-500 text-sm font-medium">{label}</p>
-            </div>
-          ))}
-        </div>
-      </section>
 
       {/* ── Features ─────────────────────────────────────────────────────────── */}
       <section id="features" className="py-24 px-6">
@@ -1131,14 +1148,34 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
           <p className="text-slate-400 text-lg mb-10">Teacher Free plan available. No credit card required.</p>
           <div className="grid sm:grid-cols-3 gap-5 mb-10">
             {[
-              { name:'Free',       price:'$0',     color:'border-slate-700',                   textColor:'text-slate-300',  badge:null },
-              { name:'Pro',        price:'$49',    color:'border-indigo-500/50 bg-indigo-500/5', textColor:'text-indigo-300', badge:'Most Popular' },
-              { name:'Enterprise', price:'Custom', color:'border-slate-700',                   textColor:'text-slate-300',  badge:null },
-            ].map(({ name, price, color, textColor, badge }) => (
+              {
+                name:'Free', price:'$0', color:'border-slate-700', textColor:'text-slate-300', badge:null,
+                features: ['Up to 3 courses', 'SCORM 1.2 export', '2 AI voice options', 'Basic game templates'],
+                featureColor: 'text-slate-300',
+              },
+              {
+                name:'Pro', price:'$49', color:'border-indigo-500/50 bg-indigo-500/5', textColor:'text-indigo-300', badge:'Most Popular',
+                features: ['Unlimited AI course generation', 'SCORM 1.2 & 2004 export', 'All 5 AI voice options', 'All 6+ game templates', 'Mastery quiz & score reporting'],
+                featureColor: 'text-indigo-200',
+              },
+              {
+                name:'Enterprise', price:'Custom', color:'border-slate-700', textColor:'text-slate-300', badge:null,
+                features: ['Everything in Pro', 'Enterprise DPA agreement', 'Dedicated onboarding support', 'Custom LMS integrations'],
+                featureColor: 'text-slate-300',
+              },
+            ].map(({ name, price, color, textColor, badge, features: planFeatures, featureColor }) => (
               <div key={name} className={`relative p-6 rounded-2xl border ${color} text-center`}>
                 {badge && <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-[10px] font-black uppercase tracking-widest bg-indigo-500 text-white px-3 py-1 rounded-full whitespace-nowrap">{badge}</div>}
                 <p className={`font-black text-base mb-1 ${textColor}`}>{name}</p>
-                <p className="text-3xl font-black text-white">{price}<span className="text-sm text-slate-500 font-medium">{price !== 'Custom' ? '/mo' : ''}</span></p>
+                <p className="text-3xl font-black text-white mb-5">{price}<span className="text-sm text-slate-500 font-medium">{price !== 'Custom' ? '/mo' : ''}</span></p>
+                <ul className="space-y-2 text-left">
+                  {planFeatures.map(feat => (
+                    <li key={feat} className={`flex items-start gap-2 text-xs ${featureColor}`}>
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                      {feat}
+                    </li>
+                  ))}
+                </ul>
               </div>
             ))}
           </div>
@@ -1181,7 +1218,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
             </div>
             <span className="font-extrabold text-base text-white">NexCourse <span className="text-indigo-400">AI</span></span>
           </div>
-          <span className="text-slate-600 text-sm">© 2025 NexCourse AI. All rights reserved.</span>
+          <span className="text-slate-600 text-sm">© 2026 NexCourse AI. All rights reserved.</span>
           <div className="flex items-center gap-1.5 text-slate-600 text-xs">
             <Shield className="w-3 h-3" /> Your data is always kept private & safe
           </div>
