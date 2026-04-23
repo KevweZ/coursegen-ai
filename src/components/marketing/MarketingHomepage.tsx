@@ -992,7 +992,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
 
           {/* Value proposition — now the dominant h1 */}
           <motion.h1 initial={{ opacity:0, y:20 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.6, delay:0.1 }}
-            className="text-5xl md:text-6xl lg:text-7xl font-black text-white leading-[1.04] tracking-tight mb-5">
+            className="max-w-3xl mx-auto text-5xl md:text-6xl lg:text-7xl font-black text-white leading-[1.04] tracking-tight mb-5">
             Turn any topic into a complete eLearning course —{' '}
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-cyan-400">instantly.</span>
           </motion.h1>
