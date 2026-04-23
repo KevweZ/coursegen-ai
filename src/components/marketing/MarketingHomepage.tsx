@@ -1013,21 +1013,17 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
           </motion.div>
 
           {/* ── Interactions Showcase ── */}
-          <div id="showcase" className="w-full mt-16 pb-8">
-            <motion.div
-              initial={{ opacity:0, y:32 }} animate={{ opacity:1, y:0 }}
-              transition={{ duration:0.7, delay:0.42 }}
-              className="text-center mb-12"
+          <div id="showcase" className="w-full mt-8 pb-8">
+            <motion.p
+              initial={{ opacity:0, y:8 }} animate={{ opacity:1, y:0 }}
+              transition={{ duration:0.5, delay:0.38 }}
+              className="text-center text-purple-400 text-sm font-black uppercase tracking-widest mb-6"
             >
-              <p className="text-purple-400 text-sm font-black uppercase tracking-widest mb-3">See It In Action</p>
-              <h2 className="text-4xl md:text-5xl font-black text-white">
-                Rich Interactions,<br />Zero Effort
-              </h2>
-              <p className="text-slate-400 mt-4 max-w-xl mx-auto">Our AI selects and populates the right interaction type for each piece of content automatically.</p>
-            </motion.div>
+              See It In Action
+            </motion.p>
             <motion.div
-              initial={{ opacity:0, y:24 }} animate={{ opacity:1, y:0 }}
-              transition={{ duration:0.7, delay:0.52 }}
+              initial={{ opacity:0, y:20 }} animate={{ opacity:1, y:0 }}
+              transition={{ duration:0.6, delay:0.44 }}
             >
               <ShowcaseScroller>
                 <ShowcaseCard label="Accordion" icon={Layers} accent="border-indigo-700/40" preview={<AccordionPreview />} />
@@ -1039,6 +1035,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
               </ShowcaseScroller>
             </motion.div>
           </div>
+
         </div>
       </section>
 
