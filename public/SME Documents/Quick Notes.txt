@@ -1,3 +1,19 @@
 
-4/3/2026
+4/3/2026 - Completed
 Error on Review Course Outline page: Failed to safely parse AI generated content structure for Module 2: Reciprocating Pump — Components and Stroke Mechanics. Please try regenerating.
+
+
+4/22/2026 - Completed
+-After purchasing a subscription plan, there should probably be a page where the user can see their current subscription plan, how many credits they have left, how many days until their next credit reset, an option to buy more standalone credits (or whatever we are calling them), and other useful data (course publishing history?)
+-Have the arrows look like a pointer finger when hovering over all buttons
+-There's an extra admin button (the original one you created) that no longer needs to be there.
+-when launch the app, the tab says My Google AI Studio App. Instead it should say NexCourse or whatever the specific page name is.
+
+
+Things to Do Still:
+
+-The switch to live mode (not until you are ready to receive payments)
+
+
+-let's fix the course marketing page (removing the player display and moving up the animated preview cards, perhaps adding the player display as another feature). Also, improving the scrolling up the preview cards on the mobile mode.
+
