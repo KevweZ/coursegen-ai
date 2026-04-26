@@ -7,7 +7,7 @@
  *  - SPA fallback: serve index.html for unknown paths (React Router)
  */
 
-const RAILWAY_API = 'https://coursegen-ai-production.up.railway.app';
+const RENDER_API = 'https://nexcourse-api.onrender.com';
 
 export default {
   async fetch(request, env) {
@@ -15,7 +15,7 @@ export default {
 
     // ── Proxy all /api/* requests to Railway ─────────────────────────────────
     if (url.pathname.startsWith('/api/')) {
-      const railwayUrl = RAILWAY_API + url.pathname + url.search;
+      const railwayUrl = RENDER_API + url.pathname + url.search;
 
       const proxyRequest = new Request(railwayUrl, {
         method:  request.method,
