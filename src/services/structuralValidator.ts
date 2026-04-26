@@ -230,7 +230,8 @@ function checkNarration(slide: any, modIdx: number, slideIdx: number, modTitle: 
 function checkQuiz(slide: any, modIdx: number, slideIdx: number, modTitle: string): QCIssue[] {
   if (slide.type !== 'quiz' && slide.type !== 'multiple-answer') return [];
   const issues: QCIssue[] = [];
-  const data = slide.data || {};
+  // Quiz data lives in slide.data (dummy course) OR slide.interactions[0] (AI-generated)
+  const data = slide.data || slide.interactions?.[0] || {};
   const options: any[] = data.options ?? [];
 
   if (!data.questionText || data.questionText.trim() === '') {
@@ -447,24 +448,24 @@ function checkColorContrast(slide: any, modIdx: number, slideIdx: number, modTit
 
 // ── Empty Interaction Check ───────────────────────────────────────────────────
 
-const INTERACTION_TYPES: Record<string, (data: any) => boolean> = {
-  accordion:        d => !d?.items      || d.items.length      === 0,
-  flashcards:       d => !d?.cards      || d.cards.length      === 0,
-  timeline:         d => !d?.events     || d.events.length     === 0,
-  branching:        d => !d?.nodes      || d.nodes.length      === 0,
-  jeopardy:         d => !d?.categories || d.categories.length === 0,
-  matching:         d => !d?.pairs      || d.pairs.length      === 0,
-  hotspot:          d => !d?.hotspots   || d.hotspots.length   === 0,
-  scenario:         d => !d?.scenes     || d.scenes.length     === 0,
-  quiz:             d => !d?.questionText && !d?.options?.length,
-  'multiple-answer':d => !d?.questionText && !d?.options?.length,
+const INTERACTION_TYPES: Record<string, (slide: any) => boolean> = {
+  accordion:        s => !s.data?.items      || s.data.items.length      === 0,
+  flashcards:       s => !s.data?.cards      || s.data.cards.length      === 0,
+  timeline:         s => !s.data?.events     || s.data.events.length     === 0,
+  branching:        s => !s.data?.nodes      || s.data.nodes.length      === 0,
+  jeopardy:         s => !s.data?.categories || s.data.categories.length === 0,
+  matching:         s => !s.data?.pairs      || s.data.pairs.length      === 0,
+  hotspot:          s => !s.data?.hotspots   || s.data.hotspots.length   === 0,
+  scenario:         s => !s.data?.scenes     || s.data.scenes.length     === 0,
+  // Quiz data lives in slide.data (dummy course) OR slide.interactions[0] (AI pipeline)
+  quiz:             s => { const d = s.data || s.interactions?.[0]; return !d?.questionText && !d?.options?.length; },
+  'multiple-answer':s => { const d = s.data || s.interactions?.[0]; return !d?.questionText && !d?.options?.length; },
 };
 
 function checkEmptyInteraction(slide: any, modIdx: number, slideIdx: number, modTitle: string): QCIssue[] {
   const isEmpty = INTERACTION_TYPES[slide.type];
   if (!isEmpty) return [];
-  const data = slide.data;
-  if (!isEmpty(!data ? null : data)) return []; // data present and non-empty, skip
+  if (!isEmpty(slide)) return []; // data present and non-empty, skip
   // data is null or empty for this interaction type
   return [baseIssue(slide, modIdx, slideIdx, modTitle, {
     field: 'data',
