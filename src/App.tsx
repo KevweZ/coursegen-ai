@@ -503,8 +503,10 @@ export default function App() {
            if (config.objectiveFormat) setObjectiveFormat(config.objectiveFormat === 'k12_ican' ? 'I Can' : config.objectiveFormat);
         }
         setStep('details');
-      } catch (err) {
+      } catch (err: any) {
         console.error("File analysis error:", err);
+        setError(`Could not process file: ${err?.message ?? 'Unknown error'}. Please try a PDF or Word document.`);
+        setUploadedFile(null);
       } finally {
         setIsAnalyzing(false);
       }
