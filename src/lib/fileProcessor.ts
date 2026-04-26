@@ -42,7 +42,37 @@ export async function extractTextFromFile(file: File): Promise<string> {
     return await file.text();
   }
 
-  throw new Error('Unsupported file format. Please upload a PDF, Word, or Text file.');
+  if (extension === 'pptx') {
+    const arrayBuffer = await file.arrayBuffer();
+    const zip = await JSZip.loadAsync(arrayBuffer);
+
+    // Slide content lives in ppt/slides/slide1.xml, slide2.xml, ...
+    const slideFiles = Object.keys(zip.files)
+      .filter(name => /^ppt\/slides\/slide\d+\.xml$/.test(name))
+      .sort((a, b) => {
+        const numA = parseInt(a.match(/\d+/)?.[0] ?? '0', 10);
+        const numB = parseInt(b.match(/\d+/)?.[0] ?? '0', 10);
+        return numA - numB;
+      });
+
+    let text = '';
+    for (const slideFile of slideFiles) {
+      const xml = await zip.files[slideFile].async('string');
+      // <a:t> elements hold all visible text in OOXML
+      const matches = xml.match(/<a:t[^>]*>([^<]*)<\/a:t>/g) ?? [];
+      const slideText = matches
+        .map(m => m.replace(/<[^>]*>/g, '').trim())
+        .filter(Boolean)
+        .join(' ');
+      if (slideText) text += slideText + '\n';
+    }
+
+    if (!text.trim()) throw new Error('No readable text found in the PowerPoint file.');
+    return text;
+  }
+
+  throw new Error('Unsupported file format. Please upload a PDF, Word, PowerPoint, or Text file.');
+
 }
 
 /**
