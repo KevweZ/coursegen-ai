@@ -126,7 +126,7 @@ export function HelpWidget({ userEmail, userId }: HelpWidgetProps) {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 60 }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            className="fixed bottom-24 right-6 z-[799] w-[360px] max-h-[calc(100vh-120px)] bg-slate-950 border border-slate-700/60 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+            className="fixed bottom-24 right-6 z-[799] w-[360px] max-h-[calc(100vh-200px)] bg-slate-950 border border-slate-700/60 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
           >
             {/* Header */}
             <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-5 py-4 shrink-0">
