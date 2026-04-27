@@ -108,6 +108,7 @@ import { PaymentCancelPage } from './components/PaymentCancelPage';
 import { useAuth } from './contexts/AuthContext';
 import { AuthPage } from './components/auth/AuthPage';
 import { MarketingHomepage } from './components/marketing/MarketingHomepage';
+import { HelpWidget } from './components/HelpWidget';
 
 const renderInstructionalText = (children: React.ReactNode, theme: string, isList: boolean = false) => {
   let textToParse = '';
@@ -936,6 +937,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-900 font-sans selection:bg-indigo-500/30 selection:text-indigo-200 overflow-x-hidden">
+      {/* Help & Support floating widget — visible to all authenticated users */}
+      <HelpWidget userEmail={user?.email ?? ''} userId={user?.id} />
       {/* Background decoration */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-indigo-900/20 rounded-full blur-[120px] mix-blend-screen overflow-hidden transform translate-x-1/3 -translate-y-1/3" />

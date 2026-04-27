@@ -20,6 +20,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import * as dotenv from 'dotenv';
 import Stripe from 'stripe';
+import { Resend } from 'resend';
 
 dotenv.config();
 
@@ -67,6 +68,12 @@ const PLAN_CREDITS = {
 const stripe = STRIPE_SECRET_KEY
   ? new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2024-12-18.acacia' })
   : null;
+
+// ─── 1c. Resend Init ────────────────────────────────────────────────────────
+const RESEND_API_KEY  = process.env.RESEND_API_KEY ?? '';
+const SUPPORT_EMAIL   = process.env.SUPPORT_EMAIL  ?? 'support@nexcourse.ai';
+const FROM_EMAIL      = process.env.FROM_EMAIL     ?? 'noreply@nexcourse.ai';
+const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 
 // ─── 2. Express App Setup ───────────────────────────────────────────────────
 const app = express();
@@ -149,6 +156,14 @@ const ttsRateLimit = rateLimit({
   standardHeaders:  true,
   legacyHeaders:    false,
   message: { error: 'Too many TTS requests. Please wait 15 minutes.' },
+});
+
+const supportRateLimit = rateLimit({
+  windowMs:         60 * 60 * 1000,   // 1-hour window
+  max:              5,                 // max 5 support submissions per IP per hour
+  standardHeaders:  true,
+  legacyHeaders:    false,
+  message: { error: 'Too many support requests. Please wait before submitting again.' },
 });
 
 // ─── 6. Anthropic AI Proxy ──────────────────────────────────────────────────
@@ -473,7 +488,92 @@ ${JSON.stringify(slideSummary, null, 2)}`;
   }
 });
 
-// ─── 10. Health Check ───────────────────────────────────────────────────────
+// ─── 10. Support Contact ─────────────────────────────────────────────────────
+app.post('/api/support/contact', supportRateLimit, async (req, res) => {
+  const { name, email, message, subject = 'General Inquiry', issueType, userId } = req.body;
+
+  if (!name?.trim() || !email?.trim() || !message?.trim()) {
+    return res.status(400).json({ error: 'Name, email, and message are required.' });
+  }
+  if (message.trim().length < 10) {
+    return res.status(400).json({ error: 'Message must be at least 10 characters.' });
+  }
+  if (!resend) {
+    console.warn('[Support] RESEND_API_KEY not configured — email not sent.');
+    return res.status(503).json({ error: 'Email service not configured.' });
+  }
+
+  const source    = issueType ? 'Dashboard (Logged-in User)' : 'Marketing Page (Visitor)';
+  const ticketRef = `NCX-${Date.now().toString(36).toUpperCase()}`;
+  const timestamp = new Date().toLocaleString('en-GB', { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'short' });
+
+  try {
+    // 1. Send notification to support inbox
+    await resend.emails.send({
+      from: `NexCourse AI Support <${FROM_EMAIL}>`,
+      to:   [SUPPORT_EMAIL],
+      subject: `[${ticketRef}] ${issueType ? `[${issueType}] ` : ''}${subject} — ${name}`,
+      html: `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b;">
+          <div style="background: #4f46e5; padding: 20px 24px; border-radius: 8px 8px 0 0;">
+            <h2 style="color: white; margin: 0; font-size: 18px;">📬 New Support Ticket — ${ticketRef}</h2>
+            <p style="color: #c7d2fe; margin: 4px 0 0; font-size: 13px;">Source: ${source}</p>
+          </div>
+          <div style="background: #f8fafc; padding: 24px; border: 1px solid #e2e8f0; border-top: none;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+              <tr><td style="padding: 8px 0; color: #64748b; width: 120px;">From</td><td style="padding: 8px 0; font-weight: 600;">${name} &lt;${email}&gt;</td></tr>
+              ${userId ? `<tr><td style="padding: 8px 0; color: #64748b;">User ID</td><td style="padding: 8px 0; font-family: monospace; font-size: 12px;">${userId}</td></tr>` : ''}
+              <tr><td style="padding: 8px 0; color: #64748b;">Subject</td><td style="padding: 8px 0;">${subject}</td></tr>
+              ${issueType ? `<tr><td style="padding: 8px 0; color: #64748b;">Issue Type</td><td style="padding: 8px 0;"><span style="background: #ede9fe; color: #4f46e5; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">${issueType}</span></td></tr>` : ''}
+              <tr><td style="padding: 8px 0; color: #64748b;">Submitted</td><td style="padding: 8px 0; color: #94a3b8; font-size: 12px;">${timestamp} UTC</td></tr>
+            </table>
+            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 16px 0;">
+            <h3 style="margin: 0 0 8px; font-size: 14px; color: #475569;">MESSAGE</h3>
+            <p style="white-space: pre-wrap; background: white; border: 1px solid #e2e8f0; border-radius: 6px; padding: 16px; font-size: 14px; line-height: 1.6; margin: 0;">${message.trim()}</p>
+          </div>
+          <div style="background: #f1f5f9; padding: 12px 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px; font-size: 12px; color: #94a3b8;">
+            Reply directly to this email to respond to ${name}.
+          </div>
+        </div>
+      `,
+      replyTo: email,
+    });
+
+    // 2. Send auto-reply confirmation to submitter
+    await resend.emails.send({
+      from: `NexCourse AI <${FROM_EMAIL}>`,
+      to:   [email],
+      subject: `We received your message [${ticketRef}]`,
+      html: `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b;">
+          <div style="background: #4f46e5; padding: 20px 24px; border-radius: 8px 8px 0 0;">
+            <h2 style="color: white; margin: 0; font-size: 18px;">Thanks for reaching out, ${name.split(' ')[0]}!</h2>
+          </div>
+          <div style="background: #f8fafc; padding: 24px; border: 1px solid #e2e8f0; border-top: none;">
+            <p style="margin: 0 0 16px; line-height: 1.6;">We've received your message and will get back to you within <strong>24–48 hours</strong> at this email address.</p>
+            <div style="background: white; border: 1px solid #e2e8f0; border-radius: 6px; padding: 16px; font-size: 13px; color: #64748b;">
+              <strong>Ticket reference:</strong> ${ticketRef}<br>
+              <strong>Subject:</strong> ${subject}
+            </div>
+            <p style="margin: 16px 0 0; line-height: 1.6; font-size: 14px; color: #64748b;">In the meantime, you may find answers in our FAQ at <a href="https://nexcourse.ai" style="color: #4f46e5;">nexcourse.ai</a>.</p>
+          </div>
+          <div style="background: #f1f5f9; padding: 12px 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px; font-size: 12px; color: #94a3b8;">
+            This is an automated confirmation. Please do not reply to this email — write to <a href="mailto:${SUPPORT_EMAIL}" style="color: #4f46e5;">${SUPPORT_EMAIL}</a> directly.
+          </div>
+        </div>
+      `,
+    });
+
+    console.log(`[Support] Ticket ${ticketRef} submitted by ${email}`);
+    return res.json({ success: true, ticketRef });
+
+  } catch (err) {
+    console.error('[Support] Resend error:', err.message);
+    return res.status(500).json({ error: 'Failed to send email. Please try again.' });
+  }
+});
+
+// ─── 11. Health Check ───────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', mode: isProd ? 'production' : 'development' });
 });

@@ -3,10 +3,10 @@ import { motion, useInView, AnimatePresence } from 'framer-motion';
 import {
   Zap, ArrowRight, Sparkles, Brain, Gamepad2, Mic,
   FileOutput, GraduationCap, Building2, CheckCircle2,
-  ChevronRight, ChevronLeft, Shield, Layers, BarChart3, BookOpen,
+  ChevronRight, ChevronLeft, ChevronDown, Shield, Layers, BarChart3, BookOpen,
   Award, X, Menu, Volume2, Play, Pause,
   Globe, Target, Eye, EyeOff, Move, Crop, Image,
-  AlertCircle, Lock
+  AlertCircle, Lock, MessageSquare, Send, Loader2, Mail
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -876,6 +876,62 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
   const [menuOpen, setMenuOpen]           = useState(false);
   const [showSignIn, setShowSignIn]       = useState(false);
 
+  // FAQ state
+  const [expandedFaq, setExpandedFaq]     = useState<number | null>(null);
+
+  // Contact form state
+  const [contactName, setContactName]     = useState('');
+  const [contactEmail, setContactEmail]   = useState('');
+  const [contactSubject, setContactSubject] = useState('');
+  const [contactMessage, setContactMessage] = useState('');
+  const [contactSending, setContactSending] = useState(false);
+  const [contactSent, setContactSent]     = useState(false);
+  const [contactTicketRef, setContactTicketRef] = useState('');
+  const [contactError, setContactError]   = useState('');
+
+  const CONTACT_SUBJECTS = [
+    'General Inquiry',
+    'Pricing & Plans',
+    'Technical Issue',
+    'Partnership & Enterprise',
+    'Other',
+  ];
+
+  const MARKETING_FAQS = [
+    { q: 'How does NexCourse AI work?', a: 'You paste a topic, upload a PDF/PowerPoint/Word document, or describe your course in plain text. Our AI drafts a full course outline with modules and slides, then generates all the content — narration scripts, quiz questions, interactions, and voice-over audio. The whole process typically takes 30–90 seconds.' },
+    { q: 'What file types does it support?', a: 'NexCourse AI accepts PDF files, Microsoft PowerPoint (.pptx), and Microsoft Word (.docx) documents. You can also type a topic directly without uploading a file.' },
+    { q: 'Is there a free trial or free plan?', a: 'Yes! The Teacher Free plan lets you build up to 3 courses with no credit card required. Paid plans unlock unlimited generation, all game templates, AI voice options, and advanced SCORM export.' },
+    { q: 'What is SCORM and which LMS platforms does it work with?', a: 'SCORM is the universal standard format for eLearning content. NexCourse AI exports SCORM 1.2 and SCORM 2004 packages that work with virtually any LMS — Moodle, Canvas, Blackboard, Cornerstone, TalentLMS, Docebo, and more.' },
+    { q: 'Can I edit the AI-generated course?', a: 'Absolutely. Every slide is fully editable after generation. You can change text, add or remove slides, swap images, adjust quiz questions, edit narration scripts, and tweak interactions — all from within the Course Preview.' },
+    { q: 'How long does course generation take?', a: 'A standard 15–20 slide course generates in approximately 30–90 seconds. Comprehensive courses with 30+ slides may take up to 2–3 minutes. A progress bar keeps you informed throughout.' },
+    { q: 'Is my data and content private?', a: 'Yes. Your uploaded files and generated courses are private to your account. We do not use your content to train AI models. See our Privacy Policy for full details.' },
+    { q: 'How do I cancel my subscription?', a: 'You can cancel anytime from your Account page (click your name → My Account & Billing). There are no cancellation fees and your plan stays active until the end of the billing period.' },
+  ];
+
+  const handleContactSubmit = async () => {
+    if (!contactName.trim() || !contactEmail.trim() || !contactSubject || !contactMessage.trim()) {
+      setContactError('Please fill in all fields.');
+      return;
+    }
+    if (contactMessage.trim().length < 10) { setContactError('Message must be at least 10 characters.'); return; }
+    setContactError('');
+    setContactSending(true);
+    try {
+      const res = await fetch('/api/support/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: contactName, email: contactEmail, subject: contactSubject, message: contactMessage }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Submission failed');
+      setContactTicketRef(data.ticketRef);
+      setContactSent(true);
+    } catch (e: any) {
+      setContactError(e.message ?? 'Failed to send. Please try again.');
+    } finally {
+      setContactSending(false);
+    }
+  };
 
   const features = [
     { icon: Brain,      title: 'AI Course Generation',    description: 'Paste a topic or upload a document — our AI drafts a full course outline with slides, quizzes, and narration in minutes.',       color: 'from-indigo-600/20 to-purple-600/20', delay: 0 },
@@ -1183,6 +1239,123 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
             className="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black text-base px-10 py-4 rounded-2xl shadow-xl shadow-indigo-500/25 transition-all">
             View Full Pricing <ArrowRight className="w-4 h-4" />
           </button>
+        </div>
+      </section>
+
+      {/* ── FAQ ─────────────────────────────────────────────────────────────── */}
+      <section id="faq" className="py-24 px-6 bg-slate-900/30 border-y border-slate-800/60">
+        <div className="max-w-3xl mx-auto">
+          <div className="text-center mb-12">
+            <motion.p initial={{ opacity:0 }} whileInView={{ opacity:1 }} viewport={{ once:true }}
+              className="text-purple-400 text-sm font-black uppercase tracking-widest mb-3">Frequently Asked Questions</motion.p>
+            <motion.h2 initial={{ opacity:0, y:16 }} whileInView={{ opacity:1, y:0 }} viewport={{ once:true }}
+              transition={{ duration:0.5 }} className="text-4xl md:text-5xl font-black text-white">
+              Got Questions?
+            </motion.h2>
+          </div>
+          <div className="space-y-3">
+            {MARKETING_FAQS.map((faq, i) => (
+              <motion.div key={i} initial={{ opacity:0, y:12 }} whileInView={{ opacity:1, y:0 }}
+                viewport={{ once:true }} transition={{ delay: i * 0.04 }}
+                className="border border-slate-800 rounded-2xl overflow-hidden bg-slate-900/60 hover:border-slate-700 transition-colors">
+                <button
+                  onClick={() => setExpandedFaq(expandedFaq === i ? null : i)}
+                  className="w-full flex items-center justify-between gap-4 px-6 py-5 text-left"
+                >
+                  <span className="font-bold text-white text-sm md:text-base leading-snug">{faq.q}</span>
+                  <ChevronDown className={`w-5 h-5 text-indigo-400 shrink-0 transition-transform duration-300 ${expandedFaq === i ? 'rotate-180' : ''}`} />
+                </button>
+                <AnimatePresence>
+                  {expandedFaq === i && (
+                    <motion.div initial={{ height:0, opacity:0 }} animate={{ height:'auto', opacity:1 }}
+                      exit={{ height:0, opacity:0 }} transition={{ duration:0.25 }}>
+                      <p className="px-6 pb-6 text-slate-400 text-sm leading-relaxed border-t border-slate-800 pt-4">{faq.a}</p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            ))}
+          </div>
+          <p className="text-center text-slate-500 text-sm mt-8">
+            Still have questions?{' '}
+            <button onClick={() => { const el = document.getElementById('contact'); el?.scrollIntoView({ behavior: 'smooth' }); }}
+              className="text-indigo-400 hover:text-indigo-300 font-semibold">Contact us →</button>
+          </p>
+        </div>
+      </section>
+
+      {/* ── Contact Us ──────────────────────────────────────────────────────── */}
+      <section id="contact" className="py-24 px-6">
+        <div className="max-w-2xl mx-auto">
+          <div className="text-center mb-12">
+            <motion.p initial={{ opacity:0 }} whileInView={{ opacity:1 }} viewport={{ once:true }}
+              className="text-indigo-400 text-sm font-black uppercase tracking-widest mb-3">Get In Touch</motion.p>
+            <motion.h2 initial={{ opacity:0, y:16 }} whileInView={{ opacity:1, y:0 }} viewport={{ once:true }}
+              transition={{ duration:0.5 }} className="text-4xl md:text-5xl font-black text-white mb-4">Contact Us</motion.h2>
+            <p className="text-slate-400">Have a question about our plans or want to explore an enterprise deal? We'd love to hear from you.</p>
+          </div>
+
+          <motion.div initial={{ opacity:0, y:20 }} whileInView={{ opacity:1, y:0 }} viewport={{ once:true }}
+            transition={{ duration:0.5 }}
+            className="bg-slate-900/80 border border-slate-800 rounded-3xl p-8">
+
+            {contactSent ? (
+              <div className="text-center py-8 space-y-4">
+                <div className="w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center mx-auto">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+                </div>
+                <h3 className="text-white font-black text-xl">Message Sent!</h3>
+                <p className="text-slate-400">We'll get back to you at <span className="text-indigo-300 font-semibold">{contactEmail}</span> within 24–48 hours.</p>
+                <p className="text-xs text-slate-500 font-mono bg-slate-800 px-4 py-2 rounded-lg inline-block">Ref: {contactTicketRef}</p>
+                <button onClick={() => { setContactSent(false); setContactName(''); setContactEmail(''); setContactSubject(''); setContactMessage(''); }}
+                  className="block mx-auto text-sm text-indigo-400 hover:text-indigo-300 font-semibold mt-2">Send another message</button>
+              </div>
+            ) : (
+              <div className="space-y-5">
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Name <span className="text-red-400">*</span></label>
+                    <input type="text" value={contactName} onChange={e => setContactName(e.target.value)}
+                      placeholder="Your full name"
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:border-indigo-500 outline-none transition-all placeholder-slate-600" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Email <span className="text-red-400">*</span></label>
+                    <input type="email" value={contactEmail} onChange={e => setContactEmail(e.target.value)}
+                      placeholder="your@email.com"
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:border-indigo-500 outline-none transition-all placeholder-slate-600" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Subject <span className="text-red-400">*</span></label>
+                  <select value={contactSubject} onChange={e => setContactSubject(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:border-indigo-500 outline-none transition-all">
+                    <option value="">Select a subject...</option>
+                    {CONTACT_SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Message <span className="text-red-400">*</span></label>
+                  <textarea rows={5} value={contactMessage} onChange={e => setContactMessage(e.target.value)}
+                    placeholder="Tell us what you need..."
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:border-indigo-500 outline-none transition-all resize-none placeholder-slate-600" />
+                </div>
+                {contactError && (
+                  <div className="flex items-center gap-2 text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-sm">
+                    <AlertCircle className="w-4 h-4 shrink-0" />{contactError}
+                  </div>
+                )}
+                <button onClick={handleContactSubmit} disabled={contactSending}
+                  className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-black py-4 rounded-xl flex items-center justify-center gap-2 transition-all text-sm shadow-lg shadow-indigo-500/20">
+                  {contactSending ? <><Loader2 className="w-4 h-4 animate-spin" /> Sending...</> : <><Send className="w-4 h-4" /> Send Message</>}
+                </button>
+                <p className="text-center text-xs text-slate-500">
+                  Or email us directly at{' '}
+                  <a href="mailto:support@nexcourse.ai" className="text-indigo-400 hover:text-indigo-300 font-semibold">support@nexcourse.ai</a>
+                </p>
+              </div>
+            )}
+          </motion.div>
         </div>
       </section>
 
