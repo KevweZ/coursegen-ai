@@ -6,7 +6,7 @@ const ADMIN_EMAIL = ((import.meta as any).env.VITE_ADMIN_EMAIL as string ?? '').
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type UserTrack = 'corporate' | 'k12';
+export type UserTrack = 'corporate';
 
 interface AuthContextValue {
   user: User | null;
@@ -70,17 +70,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     fullName: string,
     track: UserTrack
   ) => {
-    // K-12 plans require a verified school email address
-    if (track === 'k12') {
-      const isK12Email = /\.(edu|k12(\.[a-z]{2})?\.us)$/i.test(email);
-      if (!isK12Email) {
-        return {
-          error: 'Education plans require a school email address ending in .edu or .k12.state.us',
-          needsVerification: false,
-        };
-      }
-    }
-
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -88,14 +77,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         data: {
           full_name: fullName,
           track,
-          // Default plan per track (upgradeable from Pricing page)
-          plan: track === 'k12' ? 'teacher_free' : 'pro_creator',
+          plan: 'pro_creator',
         },
       },
     });
 
     if (error) return { error: error.message, needsVerification: false };
-    // If Supabase email confirmation is required, data.session will be null
     return { error: null, needsVerification: !data.session };
   };
 

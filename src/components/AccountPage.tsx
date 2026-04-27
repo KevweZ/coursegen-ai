@@ -131,7 +131,7 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
                     {meta.label}
                   </span>
                   <span className="text-xs text-slate-500 font-medium">
-                    {user?.user_metadata?.track === 'k12' ? 'Education (K-12)' : 'Corporate Training'}
+                  <span className="text-xs text-slate-500 font-medium">Corporate Training</span>
                   </span>
                 </div>
               </div>

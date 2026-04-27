@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { GameTemplatePayload, GameTemplateType } from "../types/game";
 import { getPresetConfig } from "../lib/presetEngine";
+import type { CourseOutline } from "../types/course";
 
 // @ts-ignore
 const rawKey = import.meta.env.VITE_ANTHROPIC_API_KEY || import.meta.env.ANTHROPIC_API_KEY || "";
@@ -39,7 +40,6 @@ function parseGameJSON(rawText: string): any {
   try {
     return JSON.parse(cleaned);
   } catch {
-    // Try to extract JSON from the text
     const jsonMatch = cleaned.match(/(\{[\s\S]*\})/);
     if (jsonMatch) return JSON.parse(jsonMatch[1]);
     throw new Error('Could not parse game JSON from AI response');
@@ -47,12 +47,12 @@ function parseGameJSON(rawText: string): any {
 }
 
 // =========================================================
-// Per-template system prompts with exact schemas
+// Per-template system prompts (Corporate / Professional)
 // =========================================================
 
-function getJeopardyPrompt(isK12: boolean): string {
+function getJeopardyPrompt(): string {
   return `You are a master eLearning Game Developer generating a Jeopardy-style knowledge board.
-AUDIENCE: ${isK12 ? 'K-12 Students (age-appropriate language, curriculum-aligned categories)' : 'Corporate Professionals (real-world workplace scenarios, business-relevant categories)'}.
+AUDIENCE: Corporate Professionals (real-world workplace scenarios, business-relevant categories).
 
 RULES:
 1. Generate EXACTLY 4-5 thematically distinct categories aligned to the course topic.
@@ -66,19 +66,19 @@ RULES:
 4. Questions must be written as clues (like real Jeopardy — statement form, not question form).
 5. correctAnswer must be a specific, precise answer (no ambiguity).
 6. Mark 1-2 questions as isDailyDouble: true (preferably in the 300-400 value range).
-7. ${isK12 ? 'Categories should be curriculum-aligned. Disable point deduction for younger grades.' : 'Categories should use real workplace scenario headings (e.g., "Handling Escalations" not "Customer Service").'}
+7. Categories should use real workplace scenario headings (e.g., "Handling Escalations" not "Customer Service").
 8. hint: optional, but should be genuinely useful without giving away the answer.
 
 REQUIRED JSON SCHEMA:
 {
   "templateType": "jeopardy",
-  "audienceType": "${isK12 ? 'k12' : 'corporate'}",
+  "audienceType": "corporate",
   "title": "string (e.g., 'Pumps & Hydraulics Challenge')",
   "instructions": "string (1-2 sentences explaining the rules to the learner)",
   "scoringEnabled": true,
   "timerEnabled": false,
   "gamePayload": {
-    "deductPointsOnWrong": ${isK12 ? 'false' : 'true'},
+    "deductPointsOnWrong": true,
     "categories": [
       {
         "id": "cat-1",
@@ -98,24 +98,23 @@ REQUIRED JSON SCHEMA:
 Return ONLY raw JSON. No markdown, no explanation.`;
 }
 
-function getMillionairePrompt(isK12: boolean): string {
+function getMillionairePrompt(): string {
   return `You are a master eLearning Game Developer generating a Who Wants to be a Millionaire style quiz.
-AUDIENCE: ${isK12 ? 'K-12 Students — scaffold from easy confidence-builders to mastery-level challenge' : 'Corporate Professionals — compliance/certification focus, real-world consequence framing'}.
+AUDIENCE: Corporate Professionals — compliance/certification focus, real-world consequence framing.
 
 RULES:
 1. Generate EXACTLY 12 questions ordered by STRICT difficulty escalation.
 2. Values: $100, $200, $300, $500, $1K, $2K, $4K, $8K, $16K, $32K, $64K, $125K.
 3. Each question must have EXACTLY 4 options (strings array) and a correctAnswer that exactly matches one option.
 4. isSafeHaven: true for questions 5 and 10 (these are the "safe floor" checkpoints).
-5. hint: a "Phone a Friend" style hint — genuinely helpful but does NOT give away the answer directly.
-6. ${isK12 ? "Early questions (1-4) must use simple, accessible language. Build to complex at questions 9-12." : "Lifelines: 'Phone a Friend' = 'Consult the Policy Document'. Hint text should reference real procedure/policy source."}
-7. All questions must directly relate to the course topic and learning objectives.
-8. NEVER repeat or recycle the same concept across two questions.
+5. hint: a "Phone a Friend" style hint — genuinely helpful but does NOT give away the answer directly. Lifelines: 'Phone a Friend' = 'Consult the Policy Document'. Hint text should reference real procedure/policy source.
+6. All questions must directly relate to the course topic and learning objectives.
+7. NEVER repeat or recycle the same concept across two questions.
 
 REQUIRED JSON SCHEMA:
 {
   "templateType": "millionaire",
-  "audienceType": "${isK12 ? 'k12' : 'corporate'}",
+  "audienceType": "corporate",
   "title": "string",
   "instructions": "string",
   "scoringEnabled": true,
@@ -143,9 +142,9 @@ REQUIRED JSON SCHEMA:
 Return ONLY raw JSON. No markdown, no explanation.`;
 }
 
-function getFamilyFeudPrompt(isK12: boolean): string {
+function getFamilyFeudPrompt(): string {
   return `You are a master eLearning Game Developer generating a Family Feud-style ranked survey game.
-AUDIENCE: ${isK12 ? 'K-12 Students — brainstorming, vocabulary, classification' : 'Corporate Professionals — soft skills, sales, real organizational data'}.
+AUDIENCE: Corporate Professionals — soft skills, sales, real organizational data.
 
 CRITICAL RULES:
 1. Generate 3-5 rounds. Each round has ONE open-ended prompt.
@@ -153,13 +152,13 @@ CRITICAL RULES:
 3. POINTS per answer should total approximately 100 per round (e.g., 40, 25, 15, 10, 10).
 4. synonyms: CRITICAL array — list all alternate valid phrasings a learner might type. Include common typos, abbreviations, synonyms. At least 3-5 synonyms per answer.
 5. Prompts must be genuinely open-ended with MULTIPLE valid answers — NOT questions with one correct answer.
-6. ${isK12 ? 'Prompts: "Name a type of...", "Give an example of...", "What is a word that means...". Keep age-appropriate.' : 'Prompts should reflect real business knowledge: "Name a reason a customer might churn", "Name a common onboarding mistake", etc.'}
+6. Prompts should reflect real business knowledge: "Name a reason a customer might churn", "Name a common onboarding mistake", etc.
 7. explanation: why this answer ranks where it does.
 
 REQUIRED JSON SCHEMA:
 {
   "templateType": "family-feud",
-  "audienceType": "${isK12 ? 'k12' : 'corporate'}",
+  "audienceType": "corporate",
   "title": "string",
   "instructions": "string",
   "gamePayload": {
@@ -185,9 +184,9 @@ REQUIRED JSON SCHEMA:
 Return ONLY raw JSON. No markdown, no explanation.`;
 }
 
-function getEscapeRoomPrompt(isK12: boolean): string {
+function getEscapeRoomPrompt(): string {
   return `You are a master eLearning Game Developer generating a Digital Escape Room — a narrative-driven, sequentially gated learning experience.
-AUDIENCE: ${isK12 ? 'K-12 Students — adventurous narrative theme (e.g., "Help the explorer find the lost artifact"), cross-curricular challenges' : 'Corporate Professionals — professional scenario (e.g., cybersecurity breach detected, compliance audit, onboarding mission)'}.
+AUDIENCE: Corporate Professionals — professional scenario (e.g., cybersecurity breach detected, compliance audit, onboarding mission).
 
 CRITICAL RULES:
 1. Generate a COHERENT NARRATIVE ARC. The scenario must have a defined mission, obstacles, and resolution.
@@ -198,14 +197,14 @@ CRITICAL RULES:
    - lock: The gate condition. Types: 'code' (enter a specific word/number), 'choice' (pick correct option), 'sequence' (arrange items)
 4. The lock.correctAnswer for 'choice' type is a string exactly matching one of the options the renderer provides.
 5. successOutro: Resolution text that completes the story (2-3 sentences).
-6. ${isK12 ? "Use fun, adventurous language. The narrative should feel like a story book." : "Use professional, urgent language. Stakes should feel real (e.g., 'The breach spreads if you fail')."}
+6. Use professional, urgent language. Stakes should feel real (e.g., 'The breach spreads if you fail').
 7. Each stage must require ACTUAL KNOWLEDGE of the course topic to unlock — not just random puzzle solving.
 
 REQUIRED JSON SCHEMA:
 {
   "templateType": "escape-room",
-  "audienceType": "${isK12 ? 'k12' : 'corporate'}",
-  "title": "string (e.g., 'The Server Room Breach' or 'The Lost Expedition')",
+  "audienceType": "corporate",
+  "title": "string (e.g., 'The Server Room Breach')",
   "instructions": "string (story setup, 2 sentences max)",
   "gamePayload": {
     "scenarioIntro": "string (2-4 sentence narrative hook that sets the scene)",
@@ -231,22 +230,22 @@ REQUIRED JSON SCHEMA:
 Return ONLY raw JSON. No markdown, no explanation.`;
 }
 
-function getSpinWheelPrompt(isK12: boolean): string {
+function getSpinWheelPrompt(): string {
   return `You are a master eLearning Game Developer generating a Spin the Wheel randomized question game.
-AUDIENCE: ${isK12 ? 'K-12 Students — vocabulary, math facts, subject review' : 'Corporate Professionals — microlearning refresher, topic warm-up'}.
+AUDIENCE: Corporate Professionals — microlearning refresher, topic warm-up.
 
 RULES:
 1. Generate 5-6 wheel segments, each representing a distinct category/topic from the course.
 2. Each segment has a questionPool of 3-5 questions (randomly drawn when that segment lands).
 3. Each question in the pool: prompt + correctAnswer + 3 wrong options (for multiple-choice display).
 4. Segment colors should be visually distinct (use tailwind-compatible color names or hex values).
-5. ${isK12 ? 'Keep questions fun and accessible. Use real-world examples students can relate to.' : 'Questions should be concise knowledge checks — format for quick warm-up energy.'}
+5. Questions should be concise knowledge checks — format for quick warm-up energy.
 6. spinsAllowed: typically 5-8 spins per session.
 
 REQUIRED JSON SCHEMA:
 {
   "templateType": "spin-wheel",
-  "audienceType": "${isK12 ? 'k12' : 'corporate'}",
+  "audienceType": "corporate",
   "title": "string",
   "instructions": "string",
   "gamePayload": {
@@ -271,23 +270,23 @@ REQUIRED JSON SCHEMA:
 Return ONLY raw JSON. No markdown, no explanation.`;
 }
 
-function getPriceIsRightPrompt(isK12: boolean): string {
+function getPriceIsRightPrompt(): string {
   return `You are a master eLearning Game Developer generating a Price Is Right estimation game.
-AUDIENCE: ${isK12 ? 'K-12 Students — math estimation, science measurements, number sense' : 'Corporate Professionals — budget management, pricing, financial literacy, procurement'}.
+AUDIENCE: Corporate Professionals — budget management, pricing, financial literacy, procurement.
 
 CRITICAL RULES:
 1. Generate 5-8 estimation items. Each must have a REAL, GROUNDED correct value (not made-up figures).
 2. correctValue must always be a number (no ranges — exact value).
 3. toleranceRange: acceptable proximity. E.g., if correctValue is $15,000, toleranceRange of 2000 means $13,000-$15,000 is accepted (classic "closest without going over" rule — NOT exceeding the value).
 4. Items must be directly relevant to the course topic domain.
-5. ${isK12 ? 'Use concrete, tangible items students understand (cost of a school lunch, distance to the moon in miles, etc.). Whole numbers preferred.' : 'Use business scenarios with realistic figures grounded in industry data (cost of a data breach, average software license, etc.). Must feel credible.'}
+5. Use business scenarios with realistic figures grounded in industry data (cost of a data breach, average software license, etc.). Must feel credible.
 6. explanation: a brief explanation of the real-world context and why this value matters.
 7. name: a clear item/scenario label. description: 1-2 sentences of context before the learner guesses.
 
 REQUIRED JSON SCHEMA:
 {
   "templateType": "price-is-right",
-  "audienceType": "${isK12 ? 'k12' : 'corporate'}",
+  "audienceType": "corporate",
   "title": "string",
   "instructions": "string (explain the 'closest without going over' mechanic)",
   "gamePayload": {
@@ -309,7 +308,7 @@ Return ONLY raw JSON. No markdown, no explanation.`;
 }
 
 // =========================================================
-// Main export
+// Main exports
 // =========================================================
 
 export async function generateGameTemplate(
@@ -317,26 +316,22 @@ export async function generateGameTemplate(
   objectives: string[],
   config: {
     templateType: GameTemplateType;
-    pathway: 'corporate' | 'k12';
     courseType: 'quick' | 'standard' | 'comprehensive';
   }
 ): Promise<GameTemplatePayload> {
-  const isK12 = config.pathway === 'k12';
-
-  // Build per-template system prompt
   let systemInstruction: string;
   switch (config.templateType) {
-    case 'jeopardy':       systemInstruction = getJeopardyPrompt(isK12); break;
-    case 'millionaire':    systemInstruction = getMillionairePrompt(isK12); break;
-    case 'family-feud':    systemInstruction = getFamilyFeudPrompt(isK12); break;
-    case 'escape-room':    systemInstruction = getEscapeRoomPrompt(isK12); break;
-    case 'spin-wheel':     systemInstruction = getSpinWheelPrompt(isK12); break;
-    case 'price-is-right': systemInstruction = getPriceIsRightPrompt(isK12); break;
+    case 'jeopardy':       systemInstruction = getJeopardyPrompt(); break;
+    case 'millionaire':    systemInstruction = getMillionairePrompt(); break;
+    case 'family-feud':    systemInstruction = getFamilyFeudPrompt(); break;
+    case 'escape-room':    systemInstruction = getEscapeRoomPrompt(); break;
+    case 'spin-wheel':     systemInstruction = getSpinWheelPrompt(); break;
+    case 'price-is-right': systemInstruction = getPriceIsRightPrompt(); break;
     default:
       throw new Error(`Unknown game template type: ${config.templateType}`);
   }
 
-  const preset = getPresetConfig(config.pathway, config.courseType);
+  const preset = getPresetConfig('corporate', config.courseType);
   const userPrompt = `Generate a complete, fully-populated ${config.templateType} game for the following course:
 COURSE TOPIC: ${prompt}
 LEARNING OBJECTIVES: ${objectives.join('; ')}
@@ -356,4 +351,69 @@ All content must directly assess the course topic and objectives above. Do NOT u
   } catch (parseErr: any) {
     throw new Error(`Failed to parse game template response: ${parseErr.message}`);
   }
+}
+
+/**
+ * Game Mode Only — generates a standalone playable game from a topic/file.
+ * Returns a minimal CourseOutline (title slide + game slide) that goes
+ * directly to the Preview step without a full course outline.
+ */
+export async function generateStandaloneGame(
+  topic: string,
+  gameType: GameTemplateType,
+  fileText?: string
+): Promise<CourseOutline> {
+  const topicContext = fileText
+    ? `${topic}\n\nSOURCE MATERIAL:\n${fileText.slice(0, 6000)}`
+    : topic;
+
+  const gamePayload = await generateGameTemplate(topicContext, [], {
+    templateType: gameType,
+    courseType: 'standard',
+  });
+
+  const gameId = `game-${Date.now()}`;
+  const titleId = `title-${Date.now()}`;
+  const moduleId = `mod-${Date.now()}`;
+
+  const gameTypeLabel: Record<GameTemplateType, string> = {
+    'jeopardy':       'Jeopardy',
+    'millionaire':    'Who Wants to Be a Millionaire',
+    'family-feud':    'Family Feud',
+    'escape-room':    'Escape Room',
+    'spin-wheel':     'Spin the Wheel',
+    'price-is-right': 'Price Is Right',
+  };
+
+  const course: CourseOutline = {
+    title: gamePayload.title || `${gameTypeLabel[gameType]}: ${topic}`,
+    description: `A standalone ${gameTypeLabel[gameType]} game covering: ${topic}`,
+    learningObjectives: [],
+    visualTheme: 'Neutral',
+    modules: [
+      {
+        id: moduleId,
+        title: 'Game',
+        slides: [
+          {
+            id: titleId,
+            type: 'title',
+            title: gamePayload.title || topic,
+            content: gamePayload.instructions || `Test your knowledge of ${topic}!`,
+            narration: gamePayload.instructions || '',
+            voiceOverText: gamePayload.instructions || '',
+          },
+          {
+            id: gameId,
+            type: 'game-template',
+            title: gameTypeLabel[gameType],
+            content: '',
+            data: gamePayload,
+          },
+        ],
+      },
+    ],
+  };
+
+  return course;
 }

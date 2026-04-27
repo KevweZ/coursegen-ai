@@ -18,15 +18,7 @@ export interface CourseSettings {
   voiceOverEnabled: boolean;
   soundEffectsEnabled: boolean;
   theme: 'light' | 'dark' | 'unified';
-  pathway?: 'corporate' | 'k12';
-  k12config?: {
-    gradeLevel: string;
-    unitTitle?: string;
-    lessonTitle?: string;
-    standards?: string;
-    uiStyle: 'early' | 'upper';
-    includeFormative: boolean;
-  };
+  pathway?: 'corporate' | 'game';
 }
 
 export interface LearningObjective {

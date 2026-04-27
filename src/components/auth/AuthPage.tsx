@@ -9,7 +9,6 @@ import {
   ArrowRight,
   Zap,
   Building2,
-  GraduationCap,
   AlertCircle,
   CheckCircle2,
   Loader2,
@@ -300,42 +299,6 @@ export function AuthPage({ onBackToHome, initialMode = 'login' }: { onBackToHome
                   />
                 )}
 
-                {/* Track selector — sign up only */}
-                {mode === 'signup' && (
-                  <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 mt-4">
-                      I'm signing up for
-                    </p>
-                    <div className="grid grid-cols-2 gap-2">
-                      {([
-                        { value: 'corporate', icon: Building2, label: 'Corporate Training' },
-                        { value: 'k12',       icon: GraduationCap, label: 'Education (K-12)' },
-                      ] as const).map(({ value, icon: Icon, label }) => (
-                        <button
-                          key={value}
-                          type="button"
-                          onClick={() => setTrack(value)}
-                          className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border text-sm font-bold transition-all ${
-                            track === value
-                              ? value === 'k12'
-                                ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-300'
-                                : 'bg-indigo-500/10 border-indigo-500/50 text-indigo-300'
-                              : 'bg-slate-800/40 border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-200'
-                          }`}
-                        >
-                          <Icon className="w-4 h-4 shrink-0" />
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                    {track === 'k12' && (
-                      <p className="text-xs text-amber-400/80 mt-2 flex items-center gap-1.5">
-                        <AlertCircle className="w-3 h-3" />
-                        Requires a verified <strong>.edu</strong> or <strong>.k12.state.us</strong> email
-                      </p>
-                    )}
-                  </div>
-                )}
 
                 {/* Forgot password link */}
                 {mode === 'login' && (

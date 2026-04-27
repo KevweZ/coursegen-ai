@@ -6,7 +6,6 @@ import {
   Zap,
   Star,
   Building2,
-  GraduationCap,
   ChevronDown,
   ArrowRight,
   Sparkles,
@@ -22,8 +21,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { redirectToCheckout, type StripePlanId } from '../services/paymentService';
 
 // ── Types ───────────────────────────────────────────────────────────────────
-
-type Track = 'corporate' | 'k12';
 
 interface PlanFeature {
   text: string;
@@ -43,80 +40,10 @@ interface PricingPlan {
   ctaStyle: 'primary' | 'secondary' | 'outline';
   badge?: string;
   highlighted?: boolean;
-  stripePlanId?: StripePlanId; // undefined = free or contact sales
+  stripePlanId?: StripePlanId;
 }
 
-
 // ── Data ────────────────────────────────────────────────────────────────────
-
-const k12Plans: PricingPlan[] = [
-  {
-    id: 'teacher-free',
-    name: 'Teacher Free',
-    subtitle: 'Perfect for getting started',
-    price: '$0',
-    audience: 'Individual Teachers',
-    credits: '50 credits / month',
-    features: [
-      { text: 'Basic AI course generation (Quick Overview & Standard)', included: true },
-      { text: 'Standard K-12 templates', included: true },
-      { text: 'Community support', included: true },
-      { text: 'Watermarked exports', included: true },
-      { text: 'TTS Audio narration', included: false },
-      { text: 'Full AI generation (Comprehensive Units)', included: false },
-      { text: 'Advanced game templates', included: false },
-      { text: 'LMS integration', included: false },
-    ],
-    cta: 'Get Started Free',
-    ctaStyle: 'outline',
-    badge: 'Free Forever',
-  },
-  {
-    id: 'teacher-pro',
-    name: 'Teacher Pro',
-    subtitle: 'For power-user educators',
-    price: '$12',
-    priceNote: 'per user / month · billed annually',
-    audience: 'Power-User Teachers',
-    credits: '300 credits / month',
-    features: [
-      { text: 'Full AI generation (incl. Comprehensive Units)', included: true },
-      { text: 'Advanced game templates', included: true },
-      { text: 'No watermarks on exports', included: true },
-      { text: 'LMS integration', included: true },
-      { text: 'Standard TTS Audio (accessibility / UDL)', included: true },
-      { text: 'HD TTS Audio', included: false },
-      { text: 'Voice Cloning', included: false },
-      { text: 'Admin dashboard', included: false },
-    ],
-    cta: 'Get Started',
-    ctaStyle: 'primary',
-    badge: 'Most Popular',
-    highlighted: true,
-    stripePlanId: 'teacher_pro',
-  },
-  {
-    id: 'school-district',
-    name: 'School / District',
-    subtitle: 'Enterprise-grade for institutions',
-    price: 'Custom',
-    priceNote: 'per student or per site',
-    audience: 'School Admins & District IT',
-    credits: 'Pooled / Custom',
-    features: [
-      { text: 'SSO & Rostering integration', included: true },
-      { text: 'Admin dashboards', included: true },
-      { text: 'Shared curriculum libraries', included: true },
-      { text: 'Custom data privacy agreements', included: true },
-      { text: 'HD TTS Audio', included: true },
-      { text: 'Voice Cloning options', included: true },
-      { text: 'Priority dedicated support', included: true },
-      { text: 'Custom AI model fine-tuning', included: false },
-    ],
-    cta: 'Contact Sales',
-    ctaStyle: 'secondary',
-  },
-];
 
 const corporatePlans: PricingPlan[] = [
   {
@@ -198,8 +125,8 @@ const faqItems = [
     a: 'Subscription credits reset at the beginning of each billing cycle. However, any Pay-As-You-Go overage credits you purchase will roll over and never expire.',
   },
   {
-    q: 'Can I use the Education track for my corporate training?',
-    a: 'The Education track is strictly reserved for verified K-12 educators and schools. You must register with a valid .edu or .k12.state.us email address to access these plans.',
+    q: 'Can I use it for both corporate training and education?',
+    a: 'Absolutely! NexCourse AI is optimized for corporate L&D, but the Game Mode feature works beautifully for educational refreshers, onboarding, and compliance training in any context.',
   },
 ];
 
@@ -453,9 +380,6 @@ const CreditPackButtons = () => {
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export function PricingPage() {
-  const [track, setTrack] = useState<Track>('corporate');
-  const plans = track === 'k12' ? k12Plans : corporatePlans;
-
   return (
     <div className="min-h-screen w-full relative z-10">
       {/* Hero header */}
@@ -472,83 +396,26 @@ export function PricingPage() {
               Choose Your <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">Plan</span>
             </h1>
             <p className="text-xl text-slate-400 max-w-2xl mx-auto leading-relaxed mb-10">
-              Purpose-built pricing for every type of creator — from individual teachers to enterprise L&amp;D teams.
+              Purpose-built pricing for corporate L&amp;D teams — from independent designers to enterprise organizations.
             </p>
-
-            {/* ── Track Toggle ── */}
-            <div className="inline-flex items-center p-1.5 bg-slate-800/80 border border-slate-700/60 rounded-2xl gap-1 shadow-xl backdrop-blur-sm">
-              <button
-                onClick={() => setTrack('corporate')}
-                className={`relative flex items-center gap-2.5 px-6 py-3 rounded-xl font-bold text-sm transition-all duration-300 ${
-                  track === 'corporate'
-                    ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-500/25'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/40'
-                }`}
-              >
-                <Building2 className="w-4 h-4" />
-                Corporate Training
-              </button>
-              <button
-                onClick={() => setTrack('k12')}
-                className={`relative flex items-center gap-2.5 px-6 py-3 rounded-xl font-bold text-sm transition-all duration-300 ${
-                  track === 'k12'
-                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-500/25'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/40'
-                }`}
-              >
-                <GraduationCap className="w-4 h-4" />
-                Education (K-12)
-              </button>
-            </div>
           </motion.div>
         </div>
       </div>
 
       {/* ── Pricing Cards ── */}
       <div className="max-w-6xl mx-auto px-6 pb-20">
-        {/* Track context banner */}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={track}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.3 }}
-            className={`flex items-center justify-center gap-2.5 mb-10 px-5 py-3 rounded-xl border text-sm font-semibold mx-auto max-w-xl ${
-              track === 'k12'
-                ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-400'
-                : 'bg-indigo-500/5 border-indigo-500/20 text-indigo-400'
-            }`}
-          >
-            {track === 'k12' ? (
-              <>
-                <GraduationCap className="w-4 h-4 shrink-0" />
-                Education plans require a valid <strong className="font-black">.edu</strong> or <strong className="font-black">.k12.state.us</strong> email for verification.
-              </>
-            ) : (
-              <>
-                <Building2 className="w-4 h-4 shrink-0" />
-                All corporate plans include SCORM 1.2 / 2004 export and full LMS compatibility.
-              </>
-            )}
-          </motion.div>
-        </AnimatePresence>
+        {/* Context banner */}
+        <div className="flex items-center justify-center gap-2.5 mb-10 px-5 py-3 rounded-xl border text-sm font-semibold mx-auto max-w-xl bg-indigo-500/5 border-indigo-500/20 text-indigo-400">
+          <Building2 className="w-4 h-4 shrink-0" />
+          All plans include SCORM 1.2 / 2004 export and full LMS compatibility.
+        </div>
 
         {/* Cards grid */}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={track + '-grid'}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch"
-          >
-            {plans.map((plan, i) => (
-              <PlanCard key={plan.id} plan={plan} index={i} />
-            ))}
-          </motion.div>
-        </AnimatePresence>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
+          {corporatePlans.map((plan, i) => (
+            <PlanCard key={plan.id} plan={plan} index={i} />
+          ))}
+        </div>
       </div>
 
       {/* ── Credit Overage Section ── */}

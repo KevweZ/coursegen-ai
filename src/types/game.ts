@@ -8,7 +8,7 @@ export type GameTemplateType =
 
 export interface BaseGameTemplate {
   templateType: GameTemplateType;
-  audienceType: 'corporate' | 'k12';
+  audienceType: 'corporate';
   difficultyLevel: 'quick' | 'standard' | 'comprehensive';
   title: string;
   instructions: string;

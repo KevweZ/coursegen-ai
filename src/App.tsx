@@ -76,7 +76,7 @@ import { OutlinePreview } from './components/builder/OutlinePreview';
 import { PlayerPropertiesModal, PlayerConfig, defaultPlayerConfig } from './components/builder/PlayerPropertiesModal';
 import { CourseOutline, Slide, TerminalObjectiveGroup, ExamConfig, ExamQuestion, ExamSessionState, NavigationMode } from './types/course';
 import { extractTextFromFile, extractImagesFromFile, SourceImage } from './lib/fileProcessor';
-import { generateGameTemplate } from './services/aiGameService';
+import { generateGameTemplate, generateStandaloneGame } from './services/aiGameService';
 import { GameContainer } from './components/game-templates/core/GameContainer';
 import { getRandomBackgroundForTheme } from './lib/backgrounds';
 import { getPresetOptions, getPresetConfig } from './lib/presetEngine';
@@ -310,18 +310,19 @@ export default function App() {
   const [floatingImagesMap, setFloatingImagesMap] = useState<Record<string, FloatingImage[]>>({});
 
   // Course Details State
-  const [pathway, setPathway] = useState<'corporate' | 'k12'>('corporate');
+  const [pathway] = useState<'corporate'>('corporate');
   const [preset, setPreset] = useState<'quick' | 'standard' | 'comprehensive'>('standard');
   const [courseType, setCourseType] = useState<CourseType>('standard');
-  // Change-confirmation modals
-  const [pendingPathway, setPendingPathway] = useState<'corporate' | 'k12' | null>(null);
-  const [pendingPreset, setPendingPreset] = useState<'quick' | 'standard' | 'comprehensive' | null>(null);
   const [courseDescription, setCourseDescription] = useState('');
   const [learningObjectives, setLearningObjectives] = useState<(string | TerminalObjectiveGroup)[]>([{ terminalObjective: '', enablingObjectives: [''] }]);
   const [objectiveFormat, setObjectiveFormat] = useState<string>('ABC');
   const [slideCount, setSlideCount] = useState(14);
   const [interactionTypes, setInteractionTypes] = useState<string[]>([]);
   const [gameTemplateIds, setGameTemplateIds] = useState<string[]>([]);
+  // Build mode: 'course' = full course builder, 'game' = standalone game mode
+  const [buildMode, setBuildMode] = useState<'course' | 'game'>('course');
+  const [selectedGameType, setSelectedGameType] = useState<GameTemplateType>('jeopardy');
+  const [extractedFileText, setExtractedFileText] = useState<string>('');
   const [voiceOverEnabled, setVoiceOverEnabled] = useState(true);
   const [ttsVoice, setTtsVoice] = useState<string>('alloy');
   // Per-slide TTS regeneration state
@@ -489,6 +490,16 @@ export default function App() {
       setIsAnalyzing(true);
       try {
         const text = await extractTextFromFile(file);
+        setExtractedFileText(text);
+
+        if (buildMode === 'game') {
+          // Game Mode: extract text only, derive topic from filename, stay on home screen
+          const baseName = file.name.replace(/\.(pdf|docx|pptx|txt)$/i, '').replace(/[-_]/g, ' ');
+          setPrompt(baseName);
+          return;
+        }
+
+        // Course Builder: full AI analysis
         const result = await analyzeUploadedFile(text, file.name);
         setPrompt(result.title || file.name);
         setCourseTitle(result.title || file.name);
@@ -498,10 +509,10 @@ export default function App() {
         if (result.recommendedPreset) {
            const rp = result.recommendedPreset as 'quick' | 'standard' | 'comprehensive';
            setPreset(rp);
-           const config = getPresetConfig(pathway, rp);
+           const config = getPresetConfig('corporate', rp);
            setSlideCount(config.slideCountTarget);
            setInteractionTypes(config.interactions);
-           if (config.objectiveFormat) setObjectiveFormat(config.objectiveFormat === 'k12_ican' ? 'I Can' : config.objectiveFormat);
+           if (config.objectiveFormat) setObjectiveFormat(config.objectiveFormat);
         }
         setStep('details');
       } catch (err: any) {
@@ -614,7 +625,7 @@ export default function App() {
     if (!prompt && !courseTitle) return;
     setIsSuggesting(true);
     try {
-      const fmt = objectiveFormat === 'I Can' ? 'k12_ican' : (objectiveFormat as 'AB' | 'ABC' | 'ABCD');
+      const fmt = objectiveFormat as 'AB' | 'ABC' | 'ABCD';
       const suggestions = await suggestLearningObjectives(
         courseTitle || prompt, 
         courseDescription || prompt, 
@@ -649,7 +660,7 @@ export default function App() {
     if (learningObjectives.length > 0 && (courseTitle || prompt)) {
       setIsSuggesting(true);
       try {
-        const apiFormat = fmt === 'I Can' ? 'k12_ican' : (fmt as 'AB' | 'ABC' | 'ABCD');
+        const apiFormat = fmt as 'AB' | 'ABC' | 'ABCD';
         const suggestions = await suggestLearningObjectives(
           courseTitle || prompt,
           courseDescription || prompt,
@@ -673,12 +684,30 @@ export default function App() {
     setStep('details');
   };
 
+  const handleGenerateGame = async () => {
+    if (!selectedGameType) return;
+    const topic = prompt || (uploadedFile?.name.replace(/\.(pdf|docx|pptx|txt)$/i, '') ?? '');
+    if (!topic) { setError('Please enter a topic or upload a file first.'); return; }
+    setIsGenerating(true);
+    setProgress(30);
+    try {
+      const result = await generateStandaloneGame(topic, selectedGameType, extractedFileText || undefined);
+      setCourse(result);
+      setStep('preview');
+    } catch (err: any) {
+      setError(`Game generation failed: ${err.message}`);
+    } finally {
+      setIsGenerating(false);
+      setProgress(100);
+    }
+  };
+
   const handlePresetChange = (newPreset: 'quick' | 'standard' | 'comprehensive') => {
     setPreset(newPreset);
-    const config = getPresetConfig(pathway, newPreset);
+    const config = getPresetConfig('corporate', newPreset);
     setSlideCount(config.slideCountTarget);
     setInteractionTypes(config.interactions);
-    if (config.objectiveFormat) setObjectiveFormat(config.objectiveFormat === 'k12_ican' ? 'I Can' : config.objectiveFormat);
+    if (config.objectiveFormat) setObjectiveFormat(config.objectiveFormat);
   };
 
   const generateOutline = async () => {
@@ -991,7 +1020,7 @@ export default function App() {
                     <p className="text-xs font-bold text-slate-400 truncate">{user.email}</p>
                     <div className="flex items-center gap-2 mt-0.5">
                       <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">
-                        {user.user_metadata?.track === 'k12' ? 'Education (K-12)' : 'Corporate'}
+                        Corporate
                       </p>
                       {isAdmin && (
                         <span className="text-[9px] font-black uppercase tracking-widest text-amber-400 bg-amber-500/15 px-1.5 py-0.5 rounded-full">Admin</span>
@@ -1266,54 +1295,139 @@ export default function App() {
                     </div>
                  </div>
               ) : (
-                <div className="relative z-10 max-w-4xl mx-auto text-center w-full px-6 py-16 bg-slate-950/40 backdrop-blur-md rounded-[3rem] border border-indigo-500/20 shadow-2xl space-y-10 my-8">
+                <div className="relative z-10 max-w-4xl mx-auto text-center w-full px-6 py-12 bg-slate-950/40 backdrop-blur-md rounded-[3rem] border border-indigo-500/20 shadow-2xl space-y-8 my-8">
+                  {/* Title */}
                   <div>
                     <h1 className="text-5xl md:text-7xl font-bold tracking-tight text-white mb-6">
                       NexCourse <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 font-extrabold pb-2">AI</span>
                     </h1>
                     <p className="text-xl text-slate-300 font-medium max-w-2xl mx-auto">
-                      Transform Any Document Into a Complete eLearning Course in Minutes
+                      Transform Any Document Into a Complete eLearning Experience
                     </p>
                   </div>
-                  
-                  <div className="w-full flex flex-col items-center gap-6 max-w-xl mx-auto">
-                    <div className="w-full flex flex-col items-center justify-center gap-4 px-8 py-12 bg-slate-900/80 rounded-2xl border-[2px] border-dashed border-indigo-500/50 hover:border-indigo-400 hover:bg-slate-800/90 transition-all cursor-pointer relative group">
-                      <input 
-                        type="file" 
-                        onChange={(e) => {
-                           handleFileUpload(e);
-                        }}
+
+                  {/* Mode Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl mx-auto">
+                    <button
+                      onClick={() => setBuildMode('course')}
+                      className={`p-5 rounded-2xl border-2 text-left transition-all ${buildMode === 'course' ? 'border-indigo-500 bg-indigo-500/10 shadow-lg shadow-indigo-500/10' : 'border-slate-700 bg-slate-900/60 hover:border-slate-600'}`}
+                    >
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${buildMode === 'course' ? 'bg-indigo-500/30' : 'bg-indigo-500/10'}`}>
+                          <BookOpen className="w-5 h-5 text-indigo-400" />
+                        </div>
+                        <span className="font-extrabold text-white text-base">Course Builder</span>
+                      </div>
+                      <p className="text-sm text-slate-400 leading-relaxed">Full AI course with slides, quizzes & narration. SCORM-ready for your LMS.</p>
+                    </button>
+                    <button
+                      onClick={() => setBuildMode('game')}
+                      className={`p-5 rounded-2xl border-2 text-left transition-all ${buildMode === 'game' ? 'border-purple-500 bg-purple-500/10 shadow-lg shadow-purple-500/10' : 'border-slate-700 bg-slate-900/60 hover:border-slate-600'}`}
+                    >
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${buildMode === 'game' ? 'bg-purple-500/30' : 'bg-purple-500/10'}`}>
+                          <Gamepad2 className="w-5 h-5 text-purple-400" />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-extrabold text-white text-base">Game Mode</span>
+                          <span className="text-[10px] font-black bg-purple-500 text-white px-2 py-0.5 rounded-full uppercase tracking-widest">New</span>
+                        </div>
+                      </div>
+                      <p className="text-sm text-slate-400 leading-relaxed">Standalone game from any document. Jeopardy, Millionaire, Escape Room & more — in 30 sec.</p>
+                    </button>
+                  </div>
+
+                  {/* Main input area */}
+                  <div className="w-full flex flex-col items-center gap-4 max-w-xl mx-auto">
+                    {/* File upload */}
+                    <div className="w-full flex flex-col items-center justify-center gap-4 px-8 py-8 bg-slate-900/80 rounded-2xl border-[2px] border-dashed border-indigo-500/50 hover:border-indigo-400 hover:bg-slate-800/90 transition-all cursor-pointer relative group">
+                      <input
+                        type="file"
+                        onChange={(e) => { handleFileUpload(e); }}
                         className="absolute inset-0 opacity-0 cursor-pointer z-10 w-full h-full"
                         accept=".pdf,.docx,.pptx,.txt"
                       />
-                      <div className="w-20 h-20 bg-indigo-500/20 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform mb-2">
-                        <FileUp className="w-10 h-10 text-indigo-400 group-hover:text-indigo-300 transition-colors" />
+                      <div className="w-16 h-16 bg-indigo-500/20 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <FileUp className="w-8 h-8 text-indigo-400 group-hover:text-indigo-300 transition-colors" />
                       </div>
                       <div className="text-center">
-                        <span className="text-2xl text-white font-bold block mb-2">
-                          {uploadedFile ? "File Ready" : "Upload File to Begin"}
+                        <span className="text-xl text-white font-bold block mb-1">
+                          {uploadedFile ? 'File Ready ✓' : 'Upload File to Begin'}
                         </span>
-                        <span className="text-base text-indigo-300/70 font-medium group-hover:text-indigo-300 transition-colors">
-                          {uploadedFile ? uploadedFile.name : "Drop PDF, Word, or Text files here"}
+                        <span className="text-sm text-indigo-300/70 font-medium group-hover:text-indigo-300 transition-colors">
+                          {uploadedFile ? uploadedFile.name : 'Drop PDF, Word, or PowerPoint files here'}
                         </span>
                       </div>
                     </div>
 
-                    <p className="text-sm text-slate-400 mt-2 font-medium">AI-powered authoring that analyzes your content and builds a complete, SCORM-compliant, interactive course — automatically.</p>
+                    {/* Game Mode: topic input + game type selector */}
+                    {buildMode === 'game' && (
+                      <>
+                        <div className="w-full space-y-2">
+                          <label className="text-xs font-bold text-slate-400 uppercase tracking-widest text-left flex">Topic (or use uploaded file above)</label>
+                          <input
+                            type="text"
+                            value={prompt}
+                            onChange={e => setPrompt(e.target.value)}
+                            placeholder="e.g. Workplace Safety, Customer Service Excellence..."
+                            className="w-full bg-slate-900/80 border border-slate-700 hover:border-slate-600 focus:border-purple-500 text-white placeholder-slate-500 rounded-xl px-4 py-3 text-sm outline-none transition-all focus:ring-2 focus:ring-purple-500/20"
+                          />
+                        </div>
 
-                    <button 
-                      onClick={() => handleStartDetails()}
-                      disabled={!uploadedFile}
-                      className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white px-10 py-5 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all shadow-lg hover:shadow-indigo-500/25 border border-indigo-500/50 text-xl mt-4"
-                    >
-                      Start Configuration
-                      <ArrowRight className="w-6 h-6" />
-                    </button>
-                    
-                    <div className="w-full flex items-center gap-6 mt-6 opacity-60 justify-center">
-                       <span className="text-xs font-bold text-slate-300 uppercase tracking-widest flex items-center gap-2"><CheckCircle2 className="w-4 h-4"/> SCORM Compliant</span>
-                       <span className="text-xs font-bold text-slate-300 uppercase tracking-widest flex items-center gap-2"><CheckCircle2 className="w-4 h-4"/> AI Generated</span>
-                    </div>
+                        <div className="w-full">
+                          <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 text-left flex">Select Game Type</label>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
+                            {([
+                              { id: 'jeopardy',       label: 'Jeopardy',    icon: '🎯', desc: 'Category board' },
+                              { id: 'millionaire',    label: 'Millionaire', icon: '💰', desc: '12-question climb' },
+                              { id: 'family-feud',    label: 'Family Feud', icon: '👥', desc: 'Ranked surveys' },
+                              { id: 'escape-room',    label: 'Escape Room', icon: '🔐', desc: 'Narrative stages' },
+                              { id: 'spin-wheel',     label: 'Spin Wheel',  icon: '🎡', desc: 'Random segments' },
+                              { id: 'price-is-right', label: 'Price Is Right', icon: '📊', desc: 'Estimation game' },
+                            ] as const).map(g => (
+                              <button
+                                key={g.id}
+                                onClick={() => setSelectedGameType(g.id as GameTemplateType)}
+                                className={`flex flex-col items-center gap-1 p-3 rounded-xl border-2 text-center transition-all ${selectedGameType === g.id ? 'border-purple-500 bg-purple-500/15' : 'border-slate-700 bg-slate-900/40 hover:border-slate-600 hover:bg-slate-800/60'}`}
+                              >
+                                <span className="text-2xl">{g.icon}</span>
+                                <span className={`text-xs font-bold ${selectedGameType === g.id ? 'text-purple-300' : 'text-slate-300'}`}>{g.label}</span>
+                                <span className="text-[10px] text-slate-500">{g.desc}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={handleGenerateGame}
+                          disabled={isGenerating || (!prompt && !uploadedFile)}
+                          className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white px-10 py-4 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all shadow-lg hover:shadow-purple-500/25 border border-purple-500/50 text-lg"
+                        >
+                          {isGenerating
+                            ? <><Loader2 className="w-5 h-5 animate-spin" /> Generating Game...</>
+                            : <><Gamepad2 className="w-5 h-5" /> Generate Game</>}
+                        </button>
+                      </>
+                    )}
+
+                    {/* Course Builder buttons */}
+                    {buildMode === 'course' && (
+                      <>
+                        <p className="text-sm text-slate-400 font-medium">AI-powered authoring that analyzes your content and builds a complete, SCORM-compliant, interactive course — automatically.</p>
+                        <button
+                          onClick={() => handleStartDetails()}
+                          disabled={!uploadedFile}
+                          className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white px-10 py-5 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all shadow-lg hover:shadow-indigo-500/25 border border-indigo-500/50 text-xl"
+                        >
+                          Start Configuration
+                          <ArrowRight className="w-6 h-6" />
+                        </button>
+                        <div className="w-full flex items-center gap-6 opacity-60 justify-center">
+                          <span className="text-xs font-bold text-slate-300 uppercase tracking-widest flex items-center gap-2"><CheckCircle2 className="w-4 h-4"/> SCORM Compliant</span>
+                          <span className="text-xs font-bold text-slate-300 uppercase tracking-widest flex items-center gap-2"><CheckCircle2 className="w-4 h-4"/> AI Generated</span>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               )}
@@ -1347,88 +1461,6 @@ export default function App() {
 
                  {(isGenerating || isHydrating) ? renderProgressState() : (
                    <div className="space-y-6">
-                      {/* ── Pathway Change Confirmation Popup ── */}
-                      {pendingPathway && (
-                        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[400] flex items-center justify-center p-6">
-                          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-8 w-full max-w-sm shadow-2xl space-y-5">
-                            <h3 className="text-white font-extrabold text-xl">Change Audience Pathway?</h3>
-                            <p className="text-slate-400 text-sm leading-relaxed">
-                              Switching to <strong className="text-white">{pendingPathway === 'k12' ? 'K-12 Education' : 'Adult Learning'}</strong> will regenerate your course description and learning objectives to match that audience's specifications.
-                            </p>
-                            <div className="flex gap-3 pt-2">
-                              <button onClick={() => setPendingPathway(null)} className="flex-1 px-4 py-2.5 rounded-xl border border-slate-700 text-slate-300 font-bold text-sm hover:bg-slate-800 transition-all">Cancel</button>
-                              <button
-                                onClick={async () => {
-                                  const p = pendingPathway;
-                                  setPendingPathway(null);
-                                  setPathway(p);
-                                  if (courseTitle && courseTitle.startsWith('Demo Course')) {
-                                    if (p === 'k12') {
-                                       setCourseTitle('Demo Course: Primary Ecosystems');
-                                       setCourseDescription('An engaging science unit exploring evaporation, condensation, and precipitation through interactive models.');
-                                       setLearningObjectives(['Students will identify ecosystem components | I can name parts of an ecosystem', 'Students will map a food chain | I can draw a simple food chain', 'Students will explain human impact | I can tell how people affect nature']);
-                                    } else {
-                                       setCourseTitle('Demo Course: Advanced Cybersecurity');
-                                       setCourseDescription('An AI-generated course covering cybersecurity principles, threat vectors, and incident response strategies.');
-                                       setLearningObjectives([{ 
-                                          terminalObjective: 'Identify and respond to common cybersecurity threats effectively using industry-standard frameworks.', 
-                                          enablingObjectives: ['Identify common cybersecurity threats', 'Apply the NIST framework to risk assessment', 'Respond to security incidents effectively'] 
-                                       }]);
-                                    }
-                                  } else if (courseTitle || prompt) {
-                                    await handleSuggestObjectives();
-                                  }
-                                }}
-                                className="flex-1 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition-all"
-                              >Proceed &amp; Regenerate</button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* ── Preset Change Confirmation Popup ── */}
-                      {pendingPreset && (
-                        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[400] flex items-center justify-center p-6">
-                          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-8 w-full max-w-sm shadow-2xl space-y-5">
-                            <h3 className="text-white font-extrabold text-xl">Change Complexity Level?</h3>
-                            <p className="text-slate-400 text-sm leading-relaxed">
-                              Switching complexity will cause the app to regenerate the course description and learning objectives to better reflect the new depth and scope.
-                            </p>
-                            <div className="flex gap-3 pt-2">
-                              <button onClick={() => setPendingPreset(null)} className="flex-1 px-4 py-2.5 rounded-xl border border-slate-700 text-slate-300 font-bold text-sm hover:bg-slate-800 transition-all">Cancel</button>
-                              <button
-                                onClick={async () => {
-                                  const p = pendingPreset;
-                                  setPendingPreset(null);
-                                  handlePresetChange(p);
-                                  if (courseTitle || prompt) {
-                                    await handleSuggestObjectives();
-                                  }
-                                }}
-                                className="flex-1 px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-sm transition-all"
-                              >Proceed &amp; Regenerate</button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                     {/* Audience Pathway */}
-                     <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-6 flex flex-col sm:flex-row items-center justify-between shadow-xl">
-                       <div className="flex items-center gap-4 mb-4 sm:mb-0">
-                         <div className="w-12 h-12 rounded-xl bg-orange-500/20 flex items-center justify-center">
-                           <Users className="w-6 h-6 text-orange-400" />
-                         </div>
-                         <div>
-                           <h3 className="text-xl font-bold text-white">Audience Pathway</h3>
-                           <p className="text-slate-400 text-sm">Tailor content tone to the target age group.</p>
-                         </div>
-                       </div>
-                       <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 w-full sm:w-auto">
-                         <button onClick={() => { if (pathway !== 'corporate') setPendingPathway('corporate'); }} className={`flex-1 sm:w-32 py-2 rounded-lg text-sm font-bold transition-all ${pathway === 'corporate' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}>Adult Learning</button>
-                         <button onClick={() => { if (pathway !== 'k12') setPendingPathway('k12'); }} className={`flex-1 sm:w-32 py-2 rounded-lg text-sm font-bold transition-all ${pathway === 'k12' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}>K-12 Education</button>
-                       </div>
-                     </div>
-
                      {/* Complexity Presets */}
                      <div className="bg-slate-900/80 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
                         <div className="p-6 border-b border-slate-800 bg-slate-900 relative">
@@ -1441,9 +1473,9 @@ export default function App() {
                            </div>
                         </div>
                         <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-                           {getPresetOptions(pathway).map(p => (
+                           {getPresetOptions('corporate').map(p => (
                              <div key={p.id} onClick={() => { if (preset !== p.id) setPendingPreset(p.id as any); }} className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${preset === p.id ? 'border-indigo-500 bg-indigo-500/10' : 'border-slate-800 bg-slate-950 hover:border-slate-700'}`}>
-                                <h4 className="text-white font-bold text-lg mb-1">{pathway === 'k12' ? p.k12Label : p.label}</h4>
+                                <h4 className="text-white font-bold text-lg mb-1">{p.label}</h4>
                                 <p className="text-slate-400 text-xs mb-3">{p.description}</p>
                                 <div className="text-xs font-mono text-indigo-400">{p.slideCountTarget} slides • {p.interactions.length} types</div>
                              </div>
@@ -1799,7 +1831,7 @@ export default function App() {
                          <div className="p-6">
                            <p className="text-xs text-orange-400 font-bold tracking-widest uppercase mb-5">CLICK TO SELECT • CLICK ON EYE ICON TO PREVIEW</p>
                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                            {getRecommendedGames(pathway, preset).map((gt: any) => {
+                            {getRecommendedGames(preset).map((gt: any) => {
                               const isSelected = gameTemplateIds.includes(gt.id);
                               const NICKNAMES: Record<string, {emoji:string; aka:string}> = {
                                 'jeopardy': { emoji: '📺', aka: 'aka Jeopardy!' },

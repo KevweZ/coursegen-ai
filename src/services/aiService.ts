@@ -156,7 +156,7 @@ export interface FileAnalysisResult {
   audience: string;
   complexityLevel: 'simple' | 'moderate' | 'complex';
   recommendedPreset: 'quick' | 'standard' | 'comprehensive';
-  recommendedObjectiveFormat: 'AB' | 'ABC' | 'ABCD' | 'k12_ican';
+  recommendedObjectiveFormat: 'AB' | 'ABC' | 'ABCD';
   recommendedInteractions: string[];
   objectives: TerminalObjectiveGroup[];
   objectivesInferred: boolean;
@@ -178,7 +178,7 @@ export async function analyzeUploadedFile(
   3. Write a 2-4 sentence Description (what learners will learn, context, why it matters).
   4. Classify the complexity (simple vs moderate vs complex).
   5. Suggest a recommended Preset: "quick" (<10 slides), "standard" (10-25), or "comprehensive" (25+).
-  6. Recommend an objectiveFormat: "AB" (quick courses), "ABC" (standard), or "ABCD" (comprehensive). If it is a K-12/child audience, MUST suggest "k12_ican".
+  6. Recommend an objectiveFormat: "AB" (quick courses), "ABC" (standard), or "ABCD" (comprehensive).
   7. Classify Content Types and Map Interactions. E.g. Concepts -> "flashcards", Processes -> "timeline", Comparisons -> "accordion", Matching -> "drag-drop-activity". Return an array of these recommended interaction strings.
   8. GENERATE OBJECTIVES using Bloom's Taxonomy:
      - For standard eLearning (assessments via MCQ), focus almost exclusively on the REMEMBERING and UNDERSTANDING domains.
@@ -198,7 +198,7 @@ export async function analyzeUploadedFile(
     "audience": "string",
     "complexityLevel": "simple|moderate|complex",
     "recommendedPreset": "quick|standard|comprehensive",
-    "recommendedObjectiveFormat": "AB|ABC|ABCD|k12_ican",
+    "recommendedObjectiveFormat": "AB|ABC|ABCD",
     "recommendedInteractions": ["string"],
     "objectives": [{"terminalObjective": "string", "enablingObjectives": ["string"]}],
     "objectivesInferred": true,
@@ -214,27 +214,15 @@ export async function analyzeUploadedFile(
 }
 
 export async function suggestLearningObjectives(
-  title: string, description: string, pathway: 'corporate' | 'k12', courseType: 'quick' | 'standard' | 'comprehensive', manualFormat: 'AB' | 'ABC' | 'ABCD' | 'k12_ican', existingObjectives?: (string | TerminalObjectiveGroup)[]
+  title: string, description: string, pathway: 'corporate', courseType: 'quick' | 'standard' | 'comprehensive', manualFormat: 'AB' | 'ABC' | 'ABCD', existingObjectives?: (string | TerminalObjectiveGroup)[]
 ): Promise<TerminalObjectiveGroup[]> {
   const { getPresetConfig } = await import('../lib/presetEngine');
   const preset = getPresetConfig(pathway, courseType);
-  const isK12 = pathway === 'k12';
   const countMin = preset.objectiveCountMin;
   const countMax = preset.objectiveCountMax;
   const countRange = countMin === countMax ? `exactly ${countMin}` : `${countMin} to ${countMax}`;
 
-  const systemInstruction = isK12
-    ? `You are an expert K-12 Curriculum Designer.
-  Your task is to generate or optimize learning targets based on pedagogy and developmental appropriateness.
-  CRITICAL CONSTRAINTS:
-  1. COUNT: Generate ${countRange} objective(s). NEVER generate fewer than ${countMin} or more than ${countMax}.
-  2. STRATEGY: ${preset.objectiveGenStrategy}
-  3. FORMAT: Each objective MUST be a single string containing the Teacher Objective, a pipe "|", and then the Student "I Can" Target.
-  4. AGE APPROPRIATENESS: Ensure the verbs and content are suitable for children/young adults.
-  5. VALIDATION: Count your objectives before returning. If count is outside [${countMin}, ${countMax}], fix it.
-
-  OUTPUT FORMAT: Return ONLY raw JSON: { "objectives": ["Teacher objective | I can..."] }`
-    : `You are an expert Instructional Designer with a PhD in Learning Science and certified expertise in Bloom's Taxonomy.
+  const systemInstruction = `You are an expert Instructional Designer with a PhD in Learning Science and certified expertise in Bloom's Taxonomy.
   Your task is to generate or optimize learning objectives that follow evidence-based instructional design principles.
 
   ======================================
@@ -305,17 +293,14 @@ export async function generateCourseOutline(
     includeSummarySlides?: boolean;
     includeModuleTitleSlides?: boolean;
     includeKnowledgeChecks?: boolean;
-    pathway?: 'corporate' | 'k12';
-    k12config?: { gradeLevel: string; unitTitle?: string; lessonTitle?: string; standards?: string; uiStyle: 'early' | 'upper'; includeFormative: boolean; };
+    pathway?: 'corporate';
     // Source conversion mode (file upload)
     isSourceConversion?: boolean;
     sourceContent?: string;
     conversionPreferences?: string[];
   }
 ): Promise<CourseOutlineDraft> {
-  const isK12 = configParams.pathway === 'k12';
-  
-  const systemInstruction = `You are an Expert ${isK12 ? 'K-12 Curriculum Developer' : 'Senior Corporate Instructional Designer'}.
+  const systemInstruction = `You are an Expert Senior Corporate Instructional Designer.
   Your ONLY job right now is to draft the TABLE OF CONTENTS (Outline) for a course. Do NOT write the actual content yet.
   
   COURSE STRUCTURE REQUIREMENTS:
@@ -327,7 +312,7 @@ export async function generateCourseOutline(
      - accordion, flashcards, timeline, sorting, matching, branching -> use the exact string as the slide 'type'
      - tabbed-horizontal, tabbed-vertical, folder-explorer, carousel-panel -> use the exact string as the slide 'type'
      - choice -> use type: "quiz" with interactions array
-  4. ${isK12 && configParams.k12config?.includeFormative ? "Formative Assessment / Exit Ticket slide (type: quiz or interaction)" : configParams.includeKnowledgeChecks !== false ? "Knowledge Check Slides (type: quiz)" : "NO knowledge check slides"}
+  4. ${configParams.includeKnowledgeChecks !== false ? 'Knowledge Check Slides (type: quiz)' : 'NO knowledge check slides'}
   5. ${configParams.includeSummarySlides !== false ? "Summary Slide (type: content)" : "NO summary slide"}
   
   GAME TEMPLATE INTEGRATION:
@@ -356,7 +341,7 @@ export async function generateCourseOutline(
     ? `\n\nIMPORTANT: This course is being CONVERTED from an uploaded source document. Use the source material below as the primary content reference. Apply instructional design best practices: chunk dense content, convert lecture-style material into interactive learning segments, and apply progressive disclosure.\nConversion Preferences: ${(configParams.conversionPreferences || []).join(', ') || 'Default conversion'}\n\nSOURCE MATERIAL (first 4000 chars):\n${configParams.sourceContent.slice(0, 4000)}`
     : '';
 
-    const userPrompt = `Draft the outline for a ${isK12 ? "K-12 Educational Lesson" : "Corporate Training Course"}. Topic: "${prompt}".
+    const userPrompt = `Draft the outline for a Corporate Training Course. Topic: "${prompt}".
     Learning Objectives: ${JSON.stringify(objectives)}
     Total Target Slide Count: ~${configParams.slideCount || 10}
     AVAILABLE VISUAL THEMES: ${availableThemes.length > 0 ? availableThemes.join(", ") : "Neutral"}
@@ -374,7 +359,7 @@ export async function generateCourseOutline(
 export async function hydrateCourseContent(
   outlineDraft: CourseOutlineDraft,
   originalPrompt: string,
-  configParams: { pathway?: 'corporate' | 'k12'; courseType: 'quick' | 'standard' | 'comprehensive'; k12config?: any; sourceContent?: string; conversionPreferences?: string[]; },
+  configParams: { pathway?: 'corporate'; courseType: 'quick' | 'standard' | 'comprehensive'; sourceContent?: string; conversionPreferences?: string[]; },
   onProgress?: (pct: number) => void
 ): Promise<CourseOutline> {
   const fullCourse: CourseOutline = {

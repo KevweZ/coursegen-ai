@@ -103,14 +103,12 @@ export const GAME_TEMPLATES: GameTemplateMeta[] = [
 ];
 
 export function getRecommendedGames(
-  pathway: 'corporate' | 'k12',
   preset?: 'quick' | 'standard' | 'comprehensive'
 ): GameTemplateMeta[] {
-  // ALL templates are always shown — no preset filtering per MASTER_RECOVERY_DOCUMENT spec
-  // Sort: pathway-emphasized templates first (Best Fit)
+  // ALL templates are always shown — sort by corporate emphasis (Best Fit first)
   return [...GAME_TEMPLATES].sort((a, b) => {
-    const aScore = (pathway === 'corporate' ? a.corporateEmphasis : a.k12Emphasis) ? 1 : 0;
-    const bScore = (pathway === 'corporate' ? b.corporateEmphasis : b.k12Emphasis) ? 1 : 0;
-    return bScore - aScore; // Higher score = Best Fit = shown first
+    const aScore = a.corporateEmphasis ? 1 : 0;
+    const bScore = b.corporateEmphasis ? 1 : 0;
+    return bScore - aScore;
   });
 }
