@@ -1039,7 +1039,7 @@ export default function App() {
                             setCourseTitle('Advanced Workplace Communication');
                             setCourseDescription('A comprehensive eLearning course covering modern workplace communication strategies.');
                             setLearningObjectives([{ terminalObjective: 'Given a workplace scenario, the learner will identify the communication strategy that best supports effective collaboration.', enablingObjectives: [] }]);
-                            setPathway('corporate'); setCourseType('standard'); setPreset('standard');
+                            setCourseType('standard'); setPreset('standard');
                             setIsSandboxMode(true); setShowPlayerProperties(false); setStep('details');
                           }}
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-purple-300 hover:bg-purple-500/10 text-sm font-medium transition-all text-left"
@@ -1059,6 +1059,20 @@ export default function App() {
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-purple-300 hover:bg-purple-500/10 text-sm font-medium transition-all text-left"
                         >
                           <Eye className="w-3.5 h-3.5" /> Demo — Course Preview
+                        </button>
+                        <button
+                          onClick={() => {
+                            setBuildMode('game');
+                            setSelectedGameType('jeopardy');
+                            setPrompt('Workplace Communication Skills');
+                            setUploadedFile(null);
+                            setExtractedFileText('');
+                            setIsSandboxMode(true);
+                            setStep('home');
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-purple-300 hover:bg-purple-500/10 text-sm font-medium transition-all text-left"
+                        >
+                          <Gamepad2 className="w-3.5 h-3.5" /> Demo — Game Mode
                         </button>
                         <div className="border-t border-slate-800 my-1" />
                       </>
