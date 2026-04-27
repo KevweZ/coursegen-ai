@@ -575,7 +575,13 @@ app.post('/api/support/contact', supportRateLimit, async (req, res) => {
 
 // ─── 11. Health Check ───────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', mode: isProd ? 'production' : 'development' });
+  res.json({
+    status: 'ok',
+    mode: isProd ? 'production' : 'development',
+    resend_configured: !!resend,
+    support_email: SUPPORT_EMAIL,
+    version: 'ca0c182',
+  });
 });
 
 // ─── 9. Serve Static Build (production only) ────────────────────────────────
