@@ -7,7 +7,7 @@
  *  - SPA fallback: serve index.html for unknown paths (React Router)
  */
 
-const RENDER_API = 'https://nexcourse-api.onrender.com';
+const RENDER_API = 'https://nexcourse-ai-api.onrender.com';
 
 export default {
   async fetch(request, env) {
