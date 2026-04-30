@@ -2624,15 +2624,30 @@ export default function App() {
                                })()}
 
                                {/* EXTERNAL COMPONENTS (zomako + interactions) */}
-                               {currentSlide?.type === 'matching' && (
-                                  <div className="space-y-6 w-full">
-                                     <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
-                                     <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
-                                     <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
-                                        <MatchingActivity {...(currentSlide.data || currentSlide.interactions?.[0] || {})} />
-                                     </div>
-                                  </div>
-                               )}
+                               {currentSlide?.type === 'matching' && (() => {
+                                  // MatchingActivity expects {items:[{id,content}], targets:[{id,content}]}
+                                  // AI may produce {pairs:[{id,term,definition}]} — normalise either format
+                                  const rawData = currentSlide.data || currentSlide.interactions?.[0] || {};
+                                  const matchingProps = (() => {
+                                    if (Array.isArray(rawData.items) && rawData.items.length > 0) return rawData;
+                                    if (Array.isArray(rawData.pairs) && rawData.pairs.length > 0) {
+                                      return {
+                                        items:   rawData.pairs.map((p: any) => ({ id: p.id + '_item',   content: p.term })),
+                                        targets: rawData.pairs.map((p: any) => ({ id: p.id + '_target', content: p.definition })),
+                                      };
+                                    }
+                                    return { items: [], targets: [] };
+                                  })();
+                                  return (
+                                    <div className="space-y-6 w-full">
+                                      <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                      <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
+                                      <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
+                                        <MatchingActivity {...matchingProps} />
+                                      </div>
+                                    </div>
+                                  );
+                               })()}
                                {currentSlide?.type === 'accordion' && (
                                  <div className="space-y-6 w-full">
                                    <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>

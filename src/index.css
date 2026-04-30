@@ -48,20 +48,56 @@ button, [role="button"], a { cursor: pointer; }
 }
 
 /* ── Light-theme text fix for external @zomako/elearning-components ──────────
-   Applied on all slides to correct text-gray-400/text-slate-400 which renders
-   as barely-visible light gray on white/light background themes.
-   The wrapper uses the same 'interaction-dark-override' class but has its own
-   per-theme cascade via the AccordionDarkWrapper MutationObserver (dark themes)
-   and this rule for light themes. */
+   Covers both Tailwind class names AND CSS-module scoped classes (InteractiveTimeline etc.)
+   that use element-level or inline color styles not catchable by class selectors. */
+
+/* 1) Element-level override: force dark text on all text elements */
+.interaction-light-fix p,
+.interaction-light-fix span,
+.interaction-light-fix li,
+.interaction-light-fix h1,
+.interaction-light-fix h2,
+.interaction-light-fix h3,
+.interaction-light-fix h4,
+.interaction-light-fix h5,
+.interaction-light-fix label,
+.interaction-light-fix strong,
+.interaction-light-fix em,
+.interaction-light-fix div {
+  color: #1e293b; /* slate-800 — readable on white */
+}
+
+/* 2) Preserve accent colours (buttons, badges, links) */
+.interaction-light-fix button {
+  color: inherit;
+}
+.interaction-light-fix [class*="text-indigo"],
+.interaction-light-fix [class*="text-blue"],
+.interaction-light-fix [class*="text-purple"],
+.interaction-light-fix [class*="text-emerald"],
+.interaction-light-fix [class*="text-green"] {
+  color: inherit !important;
+}
+
+/* 3) Background: force white panels (not dark slate) */
+.interaction-light-fix [class*="bg-gray-8"],
+.interaction-light-fix [class*="bg-gray-9"],
+.interaction-light-fix [class*="bg-slate-7"],
+.interaction-light-fix [class*="bg-slate-8"],
+.interaction-light-fix [class*="bg-slate-9"] {
+  background-color: #f8fafc !important; /* slate-50 */
+}
+
+/* 4) Tailwind class-name fallbacks (legacy, kept for other components) */
 .interaction-light-fix [class*="text-gray-4"],
 .interaction-light-fix [class*="text-gray-5"],
 .interaction-light-fix [class*="text-slate-4"],
 .interaction-light-fix [class*="text-slate-5"] {
-  color: #334155 !important; /* slate-700: readable on white */
+  color: #334155 !important;
 }
 .interaction-light-fix [class*="text-gray-3"],
 .interaction-light-fix [class*="text-slate-3"] {
-  color: #475569 !important; /* slate-600 */
+  color: #475569 !important;
 }
 
 /* â”€â”€ Dark-mode CSS overrides for external @zomako/elearning-components â”€â”€

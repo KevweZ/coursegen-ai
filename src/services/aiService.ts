@@ -499,7 +499,7 @@ export async function hydrateCourseContent(
   - flashcards: { cards: [{ front: string, back: string }] }
   - timeline: { events: [{ id: string, year: string, title: string, content: string }] }
   - sorting: { items: [{ id: string, content: string }], correctOrder: string[] }
-  - matching: { items: [{ id: string, content: string, matchId: string }], targets: [{ id: string, content: string }] }
+  - matching: { items: [{ id: string, content: string }], targets: [{ id: string, content: string }] } — NEVER use 'pairs', NEVER use 'term'/'definition'. Always use 'items' and 'targets' arrays. Each item must have a matching target with a unique id.
   - branching: { nodes: { [id]: { id, type: 'scenario'|'ending', title, content, isDeadEnd: boolean, feedback: string, choices: [{ id, text, nextNodeId, isCorrectPath: boolean }] } }, startNodeId: string }
   - quiz interactions: [{ type: 'multiple-choice', questionText: string, options: [{ id, text, isCorrect: boolean }], feedback: string }]
   - jeopardy: { templateType: 'jeopardy', instructions: string, categories: [{ id, name, questions: [{ id, value: number, prompt: string, correctAnswer: string, isDailyDouble: boolean }] }] }
