@@ -33,7 +33,7 @@ export default function CarouselPanel({ cards = [], title }: Props) {
   };
 
   return (
-    <div className="w-full flex flex-col items-center gap-6 select-none bg-slate-900 overflow-hidden py-6 rounded-2xl border border-slate-800 shadow-xl">
+    <div className="w-full flex flex-col items-center gap-4 select-none bg-slate-900 py-6 rounded-2xl border border-slate-800 shadow-xl">
       {title && (
         <div className="w-full px-8 text-left">
           <p className="text-white text-lg font-bold bg-slate-800 inline-block px-4 py-2 border border-slate-700 rounded-md">
@@ -42,14 +42,16 @@ export default function CarouselPanel({ cards = [], title }: Props) {
         </div>
       )}
 
-      {/* Main card stage */}
-      <div className="relative w-full h-[320px] flex items-center justify-center pt-8">
+      {/* Main card stage — height grows when expanded to prevent nav-dot overlap */}
+      <div
+        className="relative w-full flex items-start justify-center pt-8 transition-all duration-500"
+        style={{ minHeight: expanded ? 420 : 300 }}
+      >
         <AnimatePresence>
           {cards.map((card, i) => {
             const pos = getPosition(i);
             const isCenter = pos === 0;
             const cardColor = card.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length];
-            const darkColor = DARK_COLORS[i % DARK_COLORS.length];
             if (pos < -1 || pos > 1) return null;
 
             return (
@@ -66,8 +68,8 @@ export default function CarouselPanel({ cards = [], title }: Props) {
                 }}
                 exit={{ opacity: 0, scale: 0.5, transition: { duration: 0.2 } }}
                 transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                className={`absolute w-[400px] rounded-2xl shadow-2xl border border-white/20 overflow-hidden flex flex-col ${isCenter ? 'cursor-default' : 'cursor-pointer'}`}
-                style={{ background: cardColor, minHeight: isCenter && expanded ? 280 : 180 }}
+                className={`absolute w-[400px] rounded-2xl shadow-2xl border border-white/20 flex flex-col ${isCenter ? 'cursor-default' : 'cursor-pointer'} ${isCenter && expanded ? '' : 'overflow-hidden'}`}
+                style={{ background: cardColor, minHeight: 180 }}
                 onClick={() => {
                   if (!isCenter) {
                     setActiveIndex(i);
@@ -105,11 +107,11 @@ export default function CarouselPanel({ cards = [], title }: Props) {
                          initial={{ opacity: 0, height: 0 }}
                          animate={{ opacity: 1, height: 'auto' }}
                          exit={{ opacity: 0, height: 0 }}
-                         className="flex-1 mt-2 border-t border-white/30 pt-4"
+                         className="mt-2 border-t border-white/30 pt-4 overflow-hidden"
                        >
-                         <p className="text-white font-bold mb-2">Expanded Information:</p>
+                         <p className="text-white font-bold mb-2">Details:</p>
                          <p className="text-white/80 text-sm whitespace-pre-wrap">{card.expandedContent}</p>
-                         <button onClick={() => setExpanded(false)} className="mt-4 text-white text-xs underline font-bold opacity-80 hover:opacity-100">Collapse</button>
+                         <button onClick={() => setExpanded(false)} className="mt-4 text-white text-xs underline font-bold opacity-80 hover:opacity-100">Collapse ↑</button>
                        </motion.div>
                      )}
                   </AnimatePresence>
@@ -129,8 +131,8 @@ export default function CarouselPanel({ cards = [], title }: Props) {
           })}
         </AnimatePresence>
 
-        {/* Outer navigation arrows mapping to array bounds */}
-        <div className="absolute inset-x-4 top-1/2 -translate-y-1/2 flex items-center justify-between pointer-events-none z-40">
+        {/* Outer navigation arrows */}
+        <div className="absolute inset-x-4 top-[90px] flex items-center justify-between pointer-events-none z-40">
            {activeIndex > 0 ? (
              <button onClick={() => { setActiveIndex(activeIndex - 1); setExpanded(false); }} className="w-12 h-12 bg-black/60 rounded-full flex items-center justify-center text-white pointer-events-auto hover:bg-black/80 transition-colors shadow-2xl backdrop-blur-md">
                <ChevronLeft className="w-6 h-6" />
@@ -145,8 +147,8 @@ export default function CarouselPanel({ cards = [], title }: Props) {
 
       </div>
 
-      {/* Navigation Circles underneath */}
-      <div className="flex items-center gap-6 mt-8 z-50">
+      {/* Navigation Circles — always below the stage, never overlapping */}
+      <div className="flex items-center gap-6 z-50 relative">
         {cards.map((card, i) => {
           const isActive = i === activeIndex;
           const bg = card.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length];
@@ -164,3 +166,4 @@ export default function CarouselPanel({ cards = [], title }: Props) {
     </div>
   );
 }
+

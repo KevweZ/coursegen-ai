@@ -288,7 +288,9 @@ export async function generateCourseOutline(
     courseType: 'quick' | 'standard' | 'comprehensive';
     interactionTypes: string[];
     slideCount: number;
-    gameTemplateId?: string | null;
+    /** @deprecated use gameTemplateIds */ gameTemplateId?: string | null;
+    /** Array of game template IDs selected by the user */
+    gameTemplateIds?: string[];
     includeObjectiveSlides?: boolean;
     includeSummarySlides?: boolean;
     includeModuleTitleSlides?: boolean;
@@ -300,6 +302,12 @@ export async function generateCourseOutline(
     conversionPreferences?: string[];
   }
 ): Promise<CourseOutlineDraft> {
+  // Normalise: support both legacy single ID and new array
+  const gameIds: string[] = configParams.gameTemplateIds?.length
+    ? configParams.gameTemplateIds
+    : configParams.gameTemplateId
+    ? [configParams.gameTemplateId]
+    : [];
   const systemInstruction = `You are an Expert Senior Corporate Instructional Designer.
   Your ONLY job right now is to draft the TABLE OF CONTENTS (Outline) for a course. Do NOT write the actual content yet.
   
@@ -316,7 +324,15 @@ export async function generateCourseOutline(
   5. ${configParams.includeSummarySlides !== false ? "Summary Slide (type: content)" : "NO summary slide"}
   
   GAME TEMPLATE INTEGRATION:
-  ${configParams.gameTemplateId ? `The user has requested a comprehensive "${configParams.gameTemplateId}" game at the end of the course! YOU MUST APPEND exactly one slide with type: "game-template" and gameType: "${configParams.gameTemplateId}" as the VERY LAST slide in the VERY LAST module.` : 'Do not include any game templates.'}
+  ${gameIds.length === 0
+    ? 'Do not include any game templates.'
+    : gameIds.length === 1
+    ? `The user has selected the "${gameIds[0]}" game mode. YOU MUST APPEND exactly one slide with type: "game-template" and gameType: "${gameIds[0]}" as the VERY LAST slide in the VERY LAST module. This slide represents a full interactive game covering the entire course content.`
+    : `The user has selected ${gameIds.length} game modes: ${gameIds.map(id => `"${id}"`).join(', ')}.
+Distribute one game slide per game type across the LAST ${gameIds.length} modules. Specifically:
+${gameIds.map((id, i) => `  - Append a slide with type: "game-template" and gameType: "${id}" as the LAST slide of module ${i + 1} (counting from the end — i.e. the ${gameIds.length - i} last module).`).join('\n')}
+Each game slide must have a unique title like "[Game Name] Knowledge Challenge".`
+  }
   
   OUTPUT FORMAT: You must return ONLY raw JSON matching this EXACT schema:
   {
@@ -458,9 +474,12 @@ export async function hydrateCourseContent(
   - Use distinct colors per card. description <= 30 words. expandedContent must exist.
   - FAIL CONDITION: fewer than 2 cards, or missing expandedContent -> regenerate
 
-  CONTENT / KEY-TAKEAWAYS:
+  CONTENT / KEY-TAKEAWAYS / SUMMARY:
   - Do NOT embed full-slide images. Use mediaPrompt to describe what image should appear.
   - content must use ### headers, bullet lists, or callout blocks -- NOT bare paragraphs.
+  - SUMMARY AND KEY-TAKEAWAY SLIDES: MAXIMUM 6 BULLETS. No prose. Each bullet = 1 key learning point from the module.
+  - BOLD USAGE: Only bold specific key terms (nouns, verbs, named concepts). NEVER bold entire sentences, random adjectives, or more than 2-3 words per bullet.
+  - Example correct: "- **Phishing** is the most common attack vector" — Example incorrect: "- **This module covered several important security practices**"
 
   ========================================
   CRITICAL VALIDATION RULES

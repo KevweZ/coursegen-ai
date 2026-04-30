@@ -479,6 +479,50 @@ function checkEmptyInteraction(slide: any, modIdx: number, slideIdx: number, mod
   })];
 }
 
+// ── Stub / Placeholder Content Check ─────────────────────────────────────────
+// Detects AI-generated "under construction", placeholder, or stub text that
+// slipped through the hydration pipeline and reached the learner view.
+const STUB_PATTERNS = [
+  /under construction/i,
+  /\[hotspot\]\s*interaction/i,
+  /\[.*?\]\s*interaction/i,
+  /coming soon/i,
+  /placeholder/i,
+  /\[TODO\]/i,
+  /to be (added|completed|filled|written)/i,
+  /this slide covers key content for module/i,
+];
+
+function checkStubContent(slide: any, modIdx: number, slideIdx: number, modTitle: string): QCIssue[] {
+  const issues: QCIssue[] = [];
+  const fieldsToCheck: { field: string; value: string }[] = [];
+
+  if (slide.content) fieldsToCheck.push({ field: 'content', value: slide.content });
+  if (slide.voiceOverText) fieldsToCheck.push({ field: 'voiceOverText', value: slide.voiceOverText });
+
+  // Also check common data fields
+  (slide.data?.items ?? []).forEach((item: any, i: number) => {
+    if (item.content) fieldsToCheck.push({ field: `data.items.${i}.content`, value: item.content });
+  });
+
+  for (const { field, value } of fieldsToCheck) {
+    if (STUB_PATTERNS.some(rx => rx.test(value))) {
+      issues.push(baseIssue(slide, modIdx, slideIdx, modTitle, {
+        field,
+        type: 'interaction_empty',
+        severity: 'error',
+        message: `Slide contains placeholder/stub text that will confuse learners. The interaction may not have generated correctly.`,
+        originalText: value.slice(0, 200),
+        suggestion: '',
+        autoFixable: false,
+        fixActions: ['simplify', 'regenerate'],
+      }));
+      break; // one issue per slide is enough
+    }
+  }
+  return issues;
+}
+
 // ── Score calculation ────────────────────────────────────────────────────────
 function calcScore(issues: QCIssue[], totalSlides: number): number {
   if (totalSlides === 0) return 100;
@@ -509,6 +553,7 @@ export function validateCourse(course: any, narrationEnabled = false): QCReport 
       issues.push(...checkFlashcards(slide, modIdx, slideIdx, modTitle));
       issues.push(...checkTimeline(slide, modIdx, slideIdx, modTitle));
       issues.push(...checkEmptyInteraction(slide, modIdx, slideIdx, modTitle));
+      issues.push(...checkStubContent(slide, modIdx, slideIdx, modTitle));  // A3: hotspot stubs
       issues.push(...checkColorContrast(slide, modIdx, slideIdx, modTitle));
       issues.push(...checkThemeConsistency(slide, modIdx, slideIdx, modTitle));
     });

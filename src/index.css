@@ -1,4 +1,4 @@
-﻿@import "tailwindcss";
+@import "tailwindcss";
 
 html, body, #root {
   overflow-x: clip;
@@ -45,6 +45,23 @@ button, [role="button"], a { cursor: pointer; }
   --component-text: #831843;
   --component-accent: #db2777;
   --component-hover: #fce7f3;
+}
+
+/* ── Light-theme text fix for external @zomako/elearning-components ──────────
+   Applied on all slides to correct text-gray-400/text-slate-400 which renders
+   as barely-visible light gray on white/light background themes.
+   The wrapper uses the same 'interaction-dark-override' class but has its own
+   per-theme cascade via the AccordionDarkWrapper MutationObserver (dark themes)
+   and this rule for light themes. */
+.interaction-light-fix [class*="text-gray-4"],
+.interaction-light-fix [class*="text-gray-5"],
+.interaction-light-fix [class*="text-slate-4"],
+.interaction-light-fix [class*="text-slate-5"] {
+  color: #334155 !important; /* slate-700: readable on white */
+}
+.interaction-light-fix [class*="text-gray-3"],
+.interaction-light-fix [class*="text-slate-3"] {
+  color: #475569 !important; /* slate-600 */
 }
 
 /* â”€â”€ Dark-mode CSS overrides for external @zomako/elearning-components â”€â”€

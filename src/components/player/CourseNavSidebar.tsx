@@ -25,7 +25,7 @@ interface Props {
 }
 
 const SLIDE_TYPE_ICON: Record<string, string> = {
-  title: '🎯', content: '📄', quiz: '❓', 'key-takeaways': '✅',
+  cover: '🎬', title: '🎯', content: '📄', quiz: '❓', 'key-takeaways': '✅',
   accordion: '📂', flashcards: '🃏', timeline: '📅', sorting: '↕️',
   matching: '🔗', hotspot: '📍', branching: '🌿', interaction: '⚙️',
   summary: '📋', 'game-template': '🎮', intro: '🎬', outro: '🏁',
@@ -150,6 +150,24 @@ export function CourseNavSidebar({
 
       {/* Module + Slide List */}
       <div className="flex-1 overflow-y-auto py-2 custom-scrollbar">
+        {/* Cover slide — always shown at top, navigates to index 0 */}
+        {allSlides.length > 0 && allSlides[0]?.type === 'cover' && (() => {
+          const isActive = currentSlideIndex === 0;
+          return (
+            <button
+              key="__cover__"
+              onClick={() => onNavigate(0)}
+              className={cn(
+                'w-full flex items-center gap-2.5 pl-4 pr-4 py-2.5 text-left transition-all mb-1',
+                isActive ? activeRow : inactiveRow
+              )}
+              title="Course Cover"
+            >
+              <span className="text-base shrink-0">🎬</span>
+              <span className="text-sm leading-snug font-medium">Course Cover</span>
+            </button>
+          );
+        })()}
         {modules.map((mod, mi) => (
           <div key={mod.id} className="mb-1">
             {/* Module heading */}

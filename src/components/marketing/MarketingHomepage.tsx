@@ -14,6 +14,7 @@ import { useAuth } from '../../contexts/AuthContext';
 interface Props {
   onGetStarted: () => void;
   onSignIn: () => void;
+  onMethodology?: () => void;
 }
 
 // ── Animated Counter ──────────────────────────────────────────────────────────
@@ -872,7 +873,7 @@ function smoothScrollTo(id: string) {
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
-export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
+export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology }: Props) {
   const [menuOpen, setMenuOpen]           = useState(false);
   const [showSignIn, setShowSignIn]       = useState(false);
 
@@ -1057,7 +1058,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
             className="text-slate-400 text-base md:text-lg max-w-2xl mb-10 leading-relaxed">
             AI generates your slides, quizzes, games, and voice-over narration. Export SCORM-ready packages to any LMS. Built for{' '}
             <span className="text-indigo-300 font-semibold">corporate trainers</span> and{' '}
-            <span className="text-emerald-300 font-semibold">K-12 educators</span>.
+            <span className="text-emerald-300 font-semibold">subject matter experts</span>.
           </motion.p>
 
           <motion.div initial={{ opacity:0, y:16 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.5, delay:0.28 }}
@@ -1149,27 +1150,37 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
             <motion.p initial={{ opacity:0 }} whileInView={{ opacity:1 }} viewport={{ once:true }}
-              className="text-emerald-400 text-sm font-black uppercase tracking-widest mb-3">Built For Two Worlds</motion.p>
+              className="text-emerald-400 text-sm font-black uppercase tracking-widest mb-3">Two Audiences. One Magic Button.</motion.p>
             <motion.h2 initial={{ opacity:0, y:16 }} whileInView={{ opacity:1, y:0 }} viewport={{ once:true }}
-              transition={{ duration:0.5 }} className="text-4xl md:text-5xl font-black text-white">One Tool. Two Tracks.</motion.h2>
+              transition={{ duration:0.5 }} className="text-4xl md:text-5xl font-black text-white mb-6">Built for the People Who Build Training.</motion.h2>
+            <p className="text-slate-400 text-lg max-w-3xl mx-auto leading-relaxed">
+              In traditional eLearning, a{' '}
+              <span className="text-indigo-300 font-semibold">Subject Matter Expert</span> provides the content while an{' '}
+              <span className="text-purple-300 font-semibold">Instructional Designer</span> transforms it into a structured course.
+              NexCourse AI collapses both workflows into a single click.
+            </p>
           </div>
-          <div className="grid md:grid-cols-2 gap-6">
+          <div className="grid md:grid-cols-2 gap-6 mb-12">
             <motion.div initial={{ opacity:0, x:-30 }} whileInView={{ opacity:1, x:0 }} viewport={{ once:true }} transition={{ duration:0.5 }}
               className="p-8 rounded-3xl border border-indigo-500/20 bg-gradient-to-br from-indigo-900/20 to-purple-900/10">
               <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center mb-5">
                 <Building2 className="w-6 h-6 text-indigo-400" />
               </div>
-              <h3 className="text-2xl font-black text-white mb-2">Corporate Training</h3>
-              <p className="text-slate-400 mb-6 leading-relaxed">Onboarding, compliance, soft skills, product training — delivered in polished SCORM-exportable formats your LMS will love.</p>
+              <h3 className="text-2xl font-black text-white mb-2">Instructional Designers</h3>
+              <p className="text-slate-400 mb-6 leading-relaxed">
+                Stop spending hours manually authoring slides in Storyline or Captivate.
+                NexCourse AI drafts your full course structure — quizzes, interactions, narration scripts, and SCORM export —
+                so you can focus on strategy, not production.
+              </p>
               <ul className="space-y-2.5">
-                {['SCORM 1.2 & 2004 export','Compliance & HR course templates','Mastery quiz with score reporting','Branching scenarios & simulations','Enterprise DPA agreements available'].map(item => (
+                {['Full course outline in seconds','SCORM 1.2 & 2004 export for any LMS','Built-in mastery quiz & score reporting','Branching scenarios & gamified assessments','AI narration + voice-over generation'].map(item => (
                   <li key={item} className="flex items-center gap-3 text-sm text-slate-300">
                     <CheckCircle2 className="w-4 h-4 text-indigo-400 shrink-0" />{item}
                   </li>
                 ))}
               </ul>
               <button onClick={onGetStarted} className="mt-8 flex items-center gap-2 text-sm font-bold text-indigo-300 hover:text-indigo-200 transition-colors group">
-                Explore Corporate Plans <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                Start Building <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </button>
             </motion.div>
             <motion.div initial={{ opacity:0, x:30 }} whileInView={{ opacity:1, x:0 }} viewport={{ once:true }} transition={{ duration:0.5 }}
@@ -1177,20 +1188,41 @@ export function MarketingHomepage({ onGetStarted, onSignIn }: Props) {
               <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center mb-5">
                 <GraduationCap className="w-6 h-6 text-emerald-400" />
               </div>
-              <h3 className="text-2xl font-black text-white mb-2">Education (K-12)</h3>
-              <p className="text-slate-400 mb-6 leading-relaxed">From lesson plans to engaging digital experiences. Built with teachers in mind — I Can statements, formative assessments, and age-appropriate interactions.</p>
+              <h3 className="text-2xl font-black text-white mb-2">Subject Matter Experts</h3>
+              <p className="text-slate-400 mb-6 leading-relaxed">
+                You know your field. Now you can publish a polished, interactive eLearning course without needing a developer or an expensive authoring tool.
+                Upload your PPT, PDF, or Word docs — and NexCourse AI does the rest.
+              </p>
               <ul className="space-y-2.5">
-                {['"I Can" learning targets (K-12 aligned)','Early & upper elementary UI modes','Formative assessment & exit tickets','Interactive games students love','FERPA-compliant, district-ready'].map(item => (
+                {['Upload PDF, Word, or PowerPoint files','AI extracts topics, objectives & structure','No design skills or coding required','Publish directly to any LMS via SCORM','Professional output in minutes, not weeks'].map(item => (
                   <li key={item} className="flex items-center gap-3 text-sm text-slate-300">
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />{item}
                   </li>
                 ))}
               </ul>
               <button onClick={onGetStarted} className="mt-8 flex items-center gap-2 text-sm font-bold text-emerald-300 hover:text-emerald-200 transition-colors group">
-                Explore Education Plans <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                Upload Your Content <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </button>
             </motion.div>
           </div>
+          <motion.div initial={{ opacity:0, y:20 }} whileInView={{ opacity:1, y:0 }} viewport={{ once:true }} transition={{ duration:0.5 }}
+            className="text-center p-8 rounded-3xl border border-slate-700/50 bg-gradient-to-br from-slate-900/80 to-slate-800/40">
+            <p className="text-slate-300 text-lg leading-relaxed max-w-3xl mx-auto">
+              Whether you are an <span className="text-indigo-300 font-bold">instructional designer</span> looking to 10x your output, or a{' '}
+              <span className="text-emerald-300 font-bold">subject matter expert</span> who wants to share knowledge without a technical team —
+              NexCourse AI puts a complete eLearning production pipeline at your fingertips.
+            </p>
+            <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
+              <button onClick={onGetStarted} className="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black text-sm px-8 py-3 rounded-xl shadow-lg shadow-indigo-500/20 transition-all">
+                Try It Free <ArrowRight className="w-4 h-4" />
+              </button>
+              {onMethodology && (
+                <button onClick={onMethodology} className="inline-flex items-center gap-2 text-slate-400 hover:text-indigo-300 text-sm font-semibold transition-colors">
+                  Learn about our methodology <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </motion.div>
         </div>
       </section>
 

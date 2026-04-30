@@ -108,6 +108,7 @@ import { PaymentCancelPage } from './components/PaymentCancelPage';
 import { useAuth } from './contexts/AuthContext';
 import { AuthPage } from './components/auth/AuthPage';
 import { MarketingHomepage } from './components/marketing/MarketingHomepage';
+import { MethodologyPage } from './components/marketing/MethodologyPage';
 import { HelpWidget } from './components/HelpWidget';
 
 const renderInstructionalText = (children: React.ReactNode, theme: string, isList: boolean = false) => {
@@ -163,6 +164,40 @@ const sanitizeContent = (content: string) => {
     .trim();
 };
 
+/**
+ * Group B fix: lightweight Markdown → HTML converter for accordion / interaction item content.
+ * The external @zomako Accordion component renders its item.content as plain text,
+ * so we convert markdown to HTML before passing data in.
+ */
+function markdownToHtml(text: string): string {
+  if (!text) return '';
+  if (isHTML(text)) return text; // already HTML, don't double-process
+  return text
+    // Bold + italic (***)
+    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+    // Bold (**text** or __text__)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/__(.+?)__/g, '<strong>$1</strong>')
+    // Inline code
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    // Bullet lists: lines starting with - or *
+    .replace(/^[\-\*]\s+(.+)$/gm, '<li>$1</li>')
+    .replace(/(<li>[\s\S]*?<\/li>)/, '<ul>$1</ul>')
+    // Line breaks
+    .replace(/\n/g, '<br/>');
+}
+
+/** Pre-processes accordion data so item content renders markdown correctly. */
+function preprocessAccordionData(data: any): any {
+  if (!data?.items) return data;
+  return {
+    ...data,
+    items: data.items.map((item: any) => ({
+      ...item,
+      content: item.content ? markdownToHtml(item.content) : item.content,
+    })),
+  };
+}
 
 const SlideContent = ({ content, theme }: { content: string, theme: string }) => {
   if (isHTML(content)) {
@@ -228,7 +263,7 @@ export default function App() {
   const { user, loading: authLoading, signOut, isAdmin } = useAuth();
 
   // Controls which pre-auth view to show: public marketing homepage OR login/signup
-  const [publicView, setPublicView] = useState<'homepage' | 'auth'>('homepage');
+  const [publicView, setPublicView] = useState<'homepage' | 'auth' | 'methodology'>('homepage');
   const [authInitialMode, setAuthInitialMode] = useState<'login' | 'signup'>('login');
   
   const [step, setStep] = useState<AppStep>(isScormPlayer ? 'preview' : 'home');
@@ -242,6 +277,9 @@ export default function App() {
     } else if (path === '/payment-cancel') {
       setStep('payment-cancel');
       window.history.replaceState({}, '', '/');
+    } else if (path === '/methodology') {
+      setPublicView('methodology');
+      window.history.replaceState({}, '', '/methodology');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -399,15 +437,24 @@ export default function App() {
 
   // Virtual exam slides appended after all content slides
   const contentSlides: Slide[] = course ? course.modules.map((m: any) => m.slides).flat() : [];
+  // Item 12: Inject a synthetic cover slide at position 0
+  const coverSlide: Slide = course ? {
+    id: '__cover__',
+    title: course.title,
+    type: 'cover' as any,
+    content: course.description || '',
+    narration: `Welcome to ${course.title}. ${course.description || ''}`.trim(),
+  } as Slide : null as any;
   const examVirtualSlides: Slide[] = examConfig.enabled && contentSlides.length > 0 ? [
     { id: '__exam-intro__',   title: 'Mastery Quiz',   type: 'exam-intro',   content: '' } as Slide,
     { id: '__mastery-exam__', title: 'Quiz Questions', type: 'mastery-exam', content: '' } as Slide,
     { id: '__exam-results__', title: 'Quiz Results',   type: 'exam-results', content: '' } as Slide,
   ] : [];
-  const allSlides: Slide[] = [...contentSlides, ...examVirtualSlides];
-  const examIntroIndex   = contentSlides.length;
-  const examQIndex       = contentSlides.length + 1;
-  const examResultsIndex = contentSlides.length + 2;
+  // Cover slide prepended, not included in TOC (contentSlides)
+  const allSlides: Slide[] = course ? [coverSlide, ...contentSlides, ...examVirtualSlides] : [];
+  const examIntroIndex   = contentSlides.length + 1; // +1 for cover slide
+  const examQIndex       = contentSlides.length + 2;
+  const examResultsIndex = contentSlides.length + 3;
   const currentSlide = allSlides[currentSlideIndex];
 
   const canNavigateTo = (targetIdx: number): boolean => {
@@ -474,12 +521,28 @@ export default function App() {
     }
   }, [currentSlideIndex, examPhase, examSession.score, examSession.passed]);
 
-  // Set courseBg stably
+  // Set courseBg stably — Item 11: skip background for light theme (stays white)
   useEffect(() => {
     if (course && !courseBg) {
-      setCourseBg(getRandomBackgroundForTheme(course.visualTheme));
+      // Light theme stays white by default; dark/unified get the themed background
+      if (course.visualTheme !== 'light') {
+        setCourseBg(getRandomBackgroundForTheme(course.visualTheme));
+      }
     }
   }, [course]);
+
+  // Item 13: Auto-play voice-over when slide changes
+  useEffect(() => {
+    if (!voiceOverEnabled) return;
+    // Small delay lets loadSlide settle metadata before play is called
+    const timer = setTimeout(() => {
+      if (player.hasAudio && !player.isPlaying) {
+        player.play();
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSlide?.id, player.hasAudio, voiceOverEnabled]);
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
@@ -488,6 +551,11 @@ export default function App() {
     if (file) {
       setUploadedFile(file);
       setIsAnalyzing(true);
+      // Item 4: Animate progress during upload analysis
+      setProgress(15);
+      const analysisTimer = setInterval(() => {
+        setProgress(prev => prev < 80 ? Math.min(80, prev + 5) : prev);
+      }, 500);
       try {
         const text = await extractTextFromFile(file);
         setExtractedFileText(text);
@@ -496,11 +564,15 @@ export default function App() {
           // Game Mode: extract text only, derive topic from filename, stay on home screen
           const baseName = file.name.replace(/\.(pdf|docx|pptx|txt)$/i, '').replace(/[-_]/g, ' ');
           setPrompt(baseName);
+          clearInterval(analysisTimer);
+          setProgress(100);
           return;
         }
 
         // Course Builder: full AI analysis
         const result = await analyzeUploadedFile(text, file.name);
+        clearInterval(analysisTimer);
+        setProgress(100);
         setPrompt(result.title || file.name);
         setCourseTitle(result.title || file.name);
         if (result.summary) setCourseDescription(result.summary);
@@ -514,11 +586,15 @@ export default function App() {
            setInteractionTypes(config.interactions);
            if (config.objectiveFormat) setObjectiveFormat(config.objectiveFormat);
         }
+        await new Promise(r => setTimeout(r, 300));
+        setProgress(0);
         setStep('details');
       } catch (err: any) {
+        clearInterval(analysisTimer);
         console.error("File analysis error:", err);
         setError(`Could not process file: ${err?.message ?? 'Unknown error'}. Please try a PDF or Word document.`);
         setUploadedFile(null);
+        setProgress(0);
       } finally {
         setIsAnalyzing(false);
       }
@@ -723,7 +799,8 @@ export default function App() {
           slideCount,
           includeModuleTitleSlides,
           includeObjectiveSlides,
-          gameTemplateId: null
+          // A1 FIX: Pass the full array of selected game template IDs
+          gameTemplateIds: gameTemplateIds.length > 0 ? gameTemplateIds : undefined,
         }
       );
       setOutlineDraft(draft);
@@ -733,6 +810,9 @@ export default function App() {
         setCourse(finalCourse);
         setStep('preview');
       } else {
+        // Item 7: Jump to 100% when outline generation is done
+        setProgress(100);
+        await new Promise(r => setTimeout(r, 300));
         setStep('outline');
       }
     } catch (e: any) {
@@ -745,20 +825,15 @@ export default function App() {
 
   const hydrateCourse = async () => {
     setIsHydrating(true);
-    setProgress(20);
-    // Animate progress smoothly while AI works
-    const progressInterval = setInterval(() => {
-      setProgress(prev => {
-        if (prev >= 90) { clearInterval(progressInterval); return 90; }
-        const increment = prev < 50 ? 4 : prev < 75 ? 2 : 0.5;
-        return Math.min(90, prev + increment);
-      });
-    }, 600);
+    setProgress(10);
+    // Item 10: use real onProgress callback from AI service — no artificial 90% cap
     try {
-      const finalCourse = await hydrateCourseContent(outlineDraft!, prompt, { courseType });
-      clearInterval(progressInterval);
-      setProgress(100);
-      await new Promise(r => setTimeout(r, 300));
+      const finalCourse = await hydrateCourseContent(
+        outlineDraft!, prompt, { courseType },
+        (pct) => setProgress(pct)  // real progress from module hydration
+      );
+      setProgress(99);
+      await new Promise(r => setTimeout(r, 200));
       setCourse(finalCourse);
       setOriginalCourse(finalCourse);
       // ── Auto QC: run immediately before showing preview ──
@@ -782,13 +857,13 @@ export default function App() {
         setIsRunningQC(false);
         setQcPhase(null);
       }
+      setProgress(100);
       setStep('preview');
       // ── Kick off TTS generation in the background ──
       if (voiceOverEnabled) {
         generateTTS(finalCourse, setCourse, ttsVoice);
       }
     } catch (e: any) {
-      clearInterval(progressInterval);
       setError(e.message);
     } finally {
       setIsHydrating(false);
@@ -956,10 +1031,19 @@ export default function App() {
         <AuthPage onBackToHome={() => setPublicView('homepage')} initialMode={authInitialMode} />
       );
     }
+    if (publicView === 'methodology') {
+      return (
+        <MethodologyPage
+          onGetStarted={() => { setAuthInitialMode('signup'); setPublicView('auth'); }}
+          onBack={() => { setPublicView('homepage'); window.history.replaceState({}, '', '/'); }}
+        />
+      );
+    }
     return (
       <MarketingHomepage
         onGetStarted={() => { setAuthInitialMode('signup'); setPublicView('auth'); }}
         onSignIn={() => { setAuthInitialMode('login'); setPublicView('auth'); }}
+        onMethodology={() => { setPublicView('methodology'); window.history.replaceState({}, '', '/methodology'); }}
       />
     );
   }
@@ -1881,6 +1965,19 @@ export default function App() {
                          </div>
                      </div>
 
+                      {/* Item 5: Soft advisory warning for large interaction selections */}
+                      {(interactionTypes.length + gameTemplateIds.length) > 5 && (
+                        <div className="flex items-start gap-3 p-4 rounded-xl border border-amber-500/30 bg-amber-500/10">
+                          <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-sm font-bold text-amber-300">Large selection detected</p>
+                            <p className="text-xs text-amber-400/80 mt-0.5 leading-relaxed">
+                              {`You've selected ${interactionTypes.length + gameTemplateIds.length} interaction/game types. Larger selections increase slide count and generation time. Consider narrowing to 3-5 types for best results.`}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
                      {/* Audio & Accessibility Section */}
                      <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-6 shadow-xl">
                        <div className="flex items-center gap-3 mb-5">
@@ -1892,7 +1989,7 @@ export default function App() {
                            <p className="text-slate-400 text-sm">Control narration and audio settings for the generated course.</p>
                          </div>
                        </div>
-                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                       <div className="grid grid-cols-1 gap-4">
                          {/* Voice-Over Toggle */}
                          <div className="flex items-center justify-between p-4 bg-slate-950 rounded-xl border border-slate-800 hover:border-slate-700 transition-all">
                            <div className="flex items-center gap-3">
@@ -1909,24 +2006,6 @@ export default function App() {
                              className={`w-12 h-6 rounded-full transition-colors relative flex-shrink-0 ${voiceOverEnabled ? 'bg-emerald-500' : 'bg-slate-700'}`}
                            >
                              <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform shadow-sm ${voiceOverEnabled ? 'translate-x-6' : ''}`} />
-                           </button>
-                         </div>
-                         {/* Sound Effects Toggle */}
-                         <div className="flex items-center justify-between p-4 bg-slate-950 rounded-xl border border-slate-800 hover:border-slate-700 transition-all">
-                           <div className="flex items-center gap-3">
-                             <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
-                               <Gamepad2 className="w-4 h-4 text-purple-400" />
-                             </div>
-                             <div>
-                               <span className="text-slate-200 font-bold block text-sm">Sound Effects</span>
-                               <span className="text-slate-500 text-xs">Sounds for interactions & quizzes</span>
-                             </div>
-                           </div>
-                           <button
-                             onClick={() => setSoundEffectsEnabled(!soundEffectsEnabled)}
-                             className={`w-12 h-6 rounded-full transition-colors relative flex-shrink-0 ${soundEffectsEnabled ? 'bg-purple-500' : 'bg-slate-700'}`}
-                           >
-                             <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform shadow-sm ${soundEffectsEnabled ? 'translate-x-6' : ''}`} />
                            </button>
                          </div>
                        </div>
@@ -2042,7 +2121,7 @@ export default function App() {
           )}
 
           {step === 'preview' && course && (
-            <motion.div key="preview" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="w-full min-h-screen bg-slate-900 absolute top-0 left-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] bg-opacity-20 z-50 overflow-hidden flex flex-col">
+            <motion.div key="preview" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="w-full h-screen bg-slate-900 absolute top-0 left-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] bg-opacity-20 z-50 overflow-hidden flex flex-col">
               {/* ── Preview Top Bar — Row 1: Navigation + title + view controls + export ── */}
               <div className="px-3 bg-slate-900 border-b border-slate-800 shrink-0">
                 <div className="h-11 flex items-center justify-between gap-2">
@@ -2379,8 +2458,8 @@ export default function App() {
 
                           <div className="relative z-10 w-full flex flex-col md:flex-row gap-8">
                             <div className="flex-1 w-full flex flex-col justify-center min-h-[50vh]">
-                               {/* TITLE SLIDE */}
-                               {currentSlide?.type === 'title' && (
+                               {/* TITLE / COVER SLIDE (cover is the injected slide at index 0) */}
+                               {(currentSlide?.type === 'title' || currentSlide?.type === 'cover') && (
                                  <div className="w-full h-full flex flex-col justify-center items-center text-center space-y-6">
                                    <div className={cn('relative z-10 flex items-center gap-2 px-4 py-1.5 rounded-full border text-xs font-bold uppercase tracking-widest mb-8', theme === 'light' ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-indigo-900/40 border-indigo-500/40 text-indigo-300')}>
                                      <Sparkles className="w-3 h-3" />eLearning Course
@@ -2428,7 +2507,7 @@ export default function App() {
                                  const correctLabel = correctIdx >= 0 ? (quiz.options[correctIdx]?.text || quiz.options[correctIdx]?.label || quiz.options[correctIdx]) : null;
                                  return (
                                    <div className="space-y-5 w-full">
-                                     <h2 className={cn('text-2xl font-extrabold', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                     <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
                                      {currentSlide.content && <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />}
                                      <p className={cn('font-bold text-lg', theme === 'light' ? 'text-slate-800' : 'text-slate-100')}>{quiz.questionText || quiz.prompt || quiz.question}</p>
                                      <div className="space-y-2.5 w-full">
@@ -2489,7 +2568,7 @@ export default function App() {
                                  const isAllCorrect = maState.submitted && maState.selected.length === correctIndices.length && maState.selected.every((i: number) => correctIndices.includes(i));
                                  return (
                                    <div className="space-y-5 w-full">
-                                     <h2 className={cn('text-2xl font-extrabold', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                     <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
                                      {currentSlide.content && <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />}
                                      <p className={cn('font-bold text-lg', theme === 'light' ? 'text-slate-800' : 'text-slate-100')}>{quiz.questionText || quiz.prompt || quiz.question}</p>
                                      <p className={cn('text-xs font-bold uppercase tracking-wider', theme === 'light' ? 'text-indigo-600' : 'text-indigo-400')}>Select all correct answers</p>
@@ -2547,54 +2626,54 @@ export default function App() {
                                {/* EXTERNAL COMPONENTS (zomako + interactions) */}
                                {currentSlide?.type === 'matching' && (
                                   <div className="space-y-6 w-full">
-                                     <h2 className={cn('text-3xl font-extrabold', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                     <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
                                      <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
-                                     <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : '')}>
+                                     <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                         <MatchingActivity {...(currentSlide.data || currentSlide.interactions?.[0] || {})} />
                                      </div>
                                   </div>
                                )}
                                {currentSlide?.type === 'accordion' && (
                                  <div className="space-y-6 w-full">
-                                   <h2 className={cn('text-3xl font-extrabold', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                   <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
                                    <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                    <AccordionDarkWrapper theme={theme}>
-                                     <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : '')}>
-                                       <Accordion {...(currentSlide.data || currentSlide.interactions?.[0] || {})} />
+                                     <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
+                                       <Accordion {...preprocessAccordionData((currentSlide.data || currentSlide.interactions?.[0] || {}))} />
                                      </div>
                                    </AccordionDarkWrapper>
                                  </div>
                                )}
                                {currentSlide?.type === 'flashcards' && (
                                  <div className="space-y-6 w-full">
-                                   <h2 className={cn('text-3xl font-extrabold', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                   <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
                                    <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                    <FlashcardGrid cards={currentSlide.data?.cards || currentSlide.interactions?.[0]?.cards || []} theme={theme} />
                                  </div>
                                )}
                                {currentSlide?.type === 'timeline' && (
                                   <div className="space-y-6 w-full">
-                                    <h2 className={cn('text-3xl font-extrabold', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                    <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
                                     <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
-                                    <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : '')}>
+                                    <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                       <InteractiveTimeline {...(currentSlide.data || currentSlide.interactions?.[0] || {})} />
                                     </div>
                                   </div>
                                 )}
                                {currentSlide?.type === 'sorting' && (
                                   <div className="space-y-6 w-full">
-                                     <h2 className={cn('text-3xl font-extrabold', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                     <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
                                      <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
-                                     <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : '')}>
+                                     <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                         <SortingActivity {...(currentSlide.data || currentSlide.interactions?.[0] || {})} />
                                      </div>
                                   </div>
                                )}
                                {currentSlide?.type === 'branching' && (
                                   <div className="space-y-6 w-full">
-                                     <h2 className={cn('text-3xl font-extrabold', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                     <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
                                      <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
-                                     <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : '')}>
+                                     <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                         <BranchingScenario {...(currentSlide.data || currentSlide.interactions?.[0] || {})} />
                                      </div>
                                   </div>
@@ -2603,36 +2682,36 @@ export default function App() {
                                {/* CUSTOM TAB/FOLDER INTERACTIONS */}
                                {currentSlide?.type === 'tabbed-horizontal' && (
                                  <div className="space-y-6 w-full">
-                                   <h2 className={cn('text-3xl font-extrabold', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                   <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
                                    <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
-                                   <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : '')}>
+                                   <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                      <TabbedHorizontal tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []} />
                                    </div>
                                  </div>
                                )}
                                {currentSlide?.type === 'tabbed-vertical' && (
                                  <div className="space-y-6 w-full">
-                                   <h2 className={cn('text-3xl font-extrabold', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                   <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
                                    <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
-                                   <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : '')}>
+                                   <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                      <TabbedVertical tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []} />
                                    </div>
                                  </div>
                                )}
                                {currentSlide?.type === 'folder-explorer' && (
                                   <div className="space-y-6 w-full">
-                                    <h2 className={cn('text-3xl font-extrabold', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                    <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
                                     <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
-                                    <div className={cn('overflow-visible', theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : '')}>
+                                    <div className={cn('overflow-visible', theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                       <FolderExplorer items={currentSlide.data?.items || currentSlide.interactions?.[0]?.items || []} />
                                     </div>
                                   </div>
                                 )}
                                {currentSlide?.type === 'carousel-panel' && (
                                  <div className="space-y-6 w-full">
-                                   <h2 className={cn('text-3xl font-extrabold', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                   <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
                                    <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
-                                   <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : '')}>
+                                   <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                      <CarouselPanel cards={currentSlide.data?.cards || currentSlide.data?.items || currentSlide.interactions?.[0]?.cards || currentSlide.interactions?.[0]?.items || []} />
                                    </div>
                                  </div>
@@ -2711,7 +2790,7 @@ export default function App() {
                                {/* ANY UNHANDLED GENERIC INTERACTION */}
                                {['hotspot', 'drop-targets', 'memory-match'].includes(currentSlide?.type) && (
                                   <div className="space-y-6 w-full">
-                                     <h2 className={cn('text-3xl font-extrabold', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                     <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
                                      <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                      <div className="p-8 border-2 border-dashed border-indigo-400/50 bg-indigo-500/10 rounded-2xl text-center">
                                        <Gamepad2 className="w-12 h-12 text-indigo-400 mx-auto mb-4 opacity-50" />
@@ -3304,4 +3383,5 @@ function MultipleAnswersPreviewDemo() {
     </div>
   );
 }
+
 
