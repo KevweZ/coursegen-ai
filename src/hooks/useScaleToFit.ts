@@ -15,12 +15,12 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 
 // Base design dimensions for each aspect ratio mode
 export const DESIGN_SIZES: Record<string, { w: number; h: number }> = {
-  'widescreen': { w: 960,  h: 540  },  // 16:9
-  '4:3':        { w: 960,  h: 720  },  // 4:3
-  'full':       { w: 1280, h: 720  },  // fills available — same logic but wider base
+  '16:9':  { w: 960,  h: 540  },  // 16:9 widescreen
+  '4:3':   { w: 960,  h: 720  },  // 4:3 classic
+  'full':  { w: 1280, h: 720  },  // fills available — handled separately
 };
 
-type Resolution = 'widescreen' | '4:3' | 'full';
+type Resolution = '16:9' | '4:3' | 'full';
 
 export function useScaleToFit(resolution: Resolution | string, active: boolean = true) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -28,7 +28,7 @@ export function useScaleToFit(resolution: Resolution | string, active: boolean =
   const [containerW, setContainerW] = useState(0);
   const [containerH, setContainerH] = useState(0);
 
-  const design = DESIGN_SIZES[resolution] ?? DESIGN_SIZES['widescreen'];
+  const design = DESIGN_SIZES[resolution] ?? DESIGN_SIZES['16:9'];
 
   const recalculate = useCallback(() => {
     if (!active) { setScale(1); return; }

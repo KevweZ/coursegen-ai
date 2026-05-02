@@ -366,7 +366,7 @@ export default function App() {
 
   // Articulate-style scale-to-fit: always called at hook level regardless of step
   const scaler = useScaleToFit(
-    playerConfig?.playerResolution ?? 'widescreen',
+    playerConfig?.playerResolution ?? '16:9',
     step === 'preview' && viewMode === 'desktop' && playerConfig?.playerResolution !== 'full'
   );
   const [ttsVoice, setTtsVoice] = useState<string>('alloy');
@@ -1146,6 +1146,7 @@ export default function App() {
                             setIsSandboxMode(true); setShowPlayerProperties(false);
                             setExamQuestions(DUMMY_EXAM_QUESTIONS); setExamConfig(DUMMY_COURSE.examConfig!);
                             setExamPhase('idle'); setHighestVisitedIndex(0);
+                            setPlayerConfig(prev => ({ ...prev, playerResolution: '16:9' }));
                             setNavigationMode(DUMMY_COURSE.navigationMode ?? 'free'); setStep('preview');
                           }}
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-purple-300 hover:bg-purple-500/10 text-sm font-medium transition-all text-left"
