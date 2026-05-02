@@ -2424,8 +2424,9 @@ export default function App() {
 
                 {/* Main slide area */}
                 <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
-                  {/* Background canvas */}
+                  {/* Background canvas — scaler measures this div to compute transform scale */}
                   <div
+                    ref={viewMode === 'desktop' && playerConfig.playerResolution !== 'full' ? scaler.containerRef : undefined}
                     className={cn(
                       "bg-cover bg-center relative",
                       playerConfig.playerResolution === 'full'
@@ -2434,8 +2435,7 @@ export default function App() {
                     )}
                     style={{
                       backgroundImage: courseBg && !courseBg.startsWith('#') ? `url('${courseBg}')` : undefined,
-                      // Canvas is always white — theme color lives on the SLIDE FRAME not the canvas
-                      backgroundColor: courseBg && courseBg.startsWith('#') ? courseBg : '#ffffff',
+                      backgroundColor: '#ffffff',
                     }}
                   >
                     {/* Overlay only for image backgrounds */}

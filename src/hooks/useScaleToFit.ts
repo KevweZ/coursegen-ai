@@ -6,75 +6,80 @@ import { useRef, useState, useEffect, useCallback } from 'react';
  * Measures the available canvas area and computes a CSS transform scale factor
  * so the slide frame always fills the container while maintaining its aspect ratio.
  *
- * Usage:
- *   const { containerRef, frameStyle, designW, designH } = useScaleToFit(resolution);
- *
- * The container div gets `ref={containerRef}` and a fixed size via inline style.
- * The frame div gets `style={frameStyle}` — this gives it the transform: scale(n).
+ * The container div gets `ref={containerRef}`.
+ * The frame div gets `style={frameStyle}` — this applies transform: scale(n).
  */
 
 // Base design dimensions for each aspect ratio mode
 export const DESIGN_SIZES: Record<string, { w: number; h: number }> = {
-  '16:9':  { w: 960,  h: 540  },  // 16:9 widescreen
-  '4:3':   { w: 960,  h: 720  },  // 4:3 classic
-  'full':  { w: 1280, h: 720  },  // fills available — handled separately
+  '16:9': { w: 960, h: 540 },  // 16:9 widescreen
+  '4:3':  { w: 960, h: 720 },  // 4:3 classic
+  'full': { w: 1280, h: 720 }, // handled separately (flex-fill, not scaled)
 };
 
 type Resolution = '16:9' | '4:3' | 'full';
 
 export function useScaleToFit(resolution: Resolution | string, active: boolean = true) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale]         = useState(1);
-  const [containerW, setContainerW] = useState(0);
-  const [containerH, setContainerH] = useState(0);
+  const [scale, setScale] = useState(1);
+  const rafRef = useRef<number | null>(null);
 
   const design = DESIGN_SIZES[resolution] ?? DESIGN_SIZES['16:9'];
 
   const recalculate = useCallback(() => {
-    if (!active) { setScale(1); return; }
+    if (!active) {
+      setScale(1);
+      return;
+    }
     const el = containerRef.current;
     if (!el) return;
-    const w = el.clientWidth;
-    const h = el.clientHeight;
-    if (w === 0 || h === 0) return;
-    setContainerW(w);
-    setContainerH(h);
-    // Fit the design inside the container — like CSS object-fit: contain
+
+    // getBoundingClientRect is more reliable than clientWidth during flex reflows
+    const rect = el.getBoundingClientRect();
+    const w = rect.width;
+    const h = rect.height;
+    if (w < 10 || h < 10) return; // skip if layout not ready
+
     const scaleX = w / design.w;
     const scaleY = h / design.h;
-    setScale(Math.min(scaleX, scaleY));
+    // Use 0.98 factor so frame never clips at edges
+    setScale(Math.min(scaleX, scaleY) * 0.98);
   }, [active, design.w, design.h]);
 
-  useEffect(() => {
-    recalculate();
-    const ro = new ResizeObserver(recalculate);
-    if (containerRef.current) ro.observe(containerRef.current);
-    window.addEventListener('resize', recalculate);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener('resize', recalculate);
-    };
+  // Schedule recalculate via rAF so layout is always settled before measuring
+  const scheduleRecalculate = useCallback(() => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      recalculate();
+      rafRef.current = null;
+    });
   }, [recalculate]);
 
-  // The container fills all available space
-  const containerStyle: React.CSSProperties = {
-    position: 'relative',
-    width: '100%',
-    height: '100%',
-    overflow: 'hidden',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  };
+  useEffect(() => {
+    // Measure immediately in rAF after mount/update
+    scheduleRecalculate();
 
-  // The frame sits at its fixed design size, transformed to fit
+    const ro = new ResizeObserver(scheduleRecalculate);
+    if (containerRef.current) ro.observe(containerRef.current);
+    window.addEventListener('resize', scheduleRecalculate);
+
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      ro.disconnect();
+      window.removeEventListener('resize', scheduleRecalculate);
+    };
+  }, [scheduleRecalculate]);
+
+  // The frame: fixed design dimensions + CSS scale to fill container
   const frameStyle: React.CSSProperties = {
     width:  design.w,
     height: design.h,
     transform: `scale(${scale})`,
     transformOrigin: 'center center',
     flexShrink: 0,
+    // Prevent layout interference from the scaled visual
+    willChange: 'transform',
   };
 
-  return { containerRef, containerStyle, frameStyle, scale, designW: design.w, designH: design.h };
+  return { containerRef, frameStyle, scale, designW: design.w, designH: design.h };
 }
