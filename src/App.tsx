@@ -85,6 +85,7 @@ import { usePlayer } from './lib/usePlayer';
 import { PlayerBar } from './components/player/PlayerBar';
 import { getRecommendedGames } from './lib/gameEngine';
 import { DUMMY_COURSE, DUMMY_EXAM_QUESTIONS } from './lib/dummyCourse';
+import { useScaleToFit } from './hooks/useScaleToFit';
 import { FloatingImageCanvas } from './components/FloatingImageCanvas';
 import { FloatingImage } from './types/course';
 import TabbedHorizontal from './components/interactions/TabbedContentHorizontal';
@@ -362,6 +363,12 @@ export default function App() {
   const [selectedGameType, setSelectedGameType] = useState<GameTemplateType>('jeopardy');
   const [extractedFileText, setExtractedFileText] = useState<string>('');
   const [voiceOverEnabled, setVoiceOverEnabled] = useState(true);
+
+  // Articulate-style scale-to-fit: always called at hook level regardless of step
+  const scaler = useScaleToFit(
+    playerConfig?.playerResolution ?? 'widescreen',
+    step === 'preview' && viewMode === 'desktop' && playerConfig?.playerResolution !== 'full'
+  );
   const [ttsVoice, setTtsVoice] = useState<string>('alloy');
   // Per-slide TTS regeneration state
   const [regenSlideId, setRegenSlideId] = useState<string | null>(null);
@@ -2426,11 +2433,8 @@ export default function App() {
                     )}
                     style={{
                       backgroundImage: courseBg && !courseBg.startsWith('#') ? `url('${courseBg}')` : undefined,
-                      backgroundColor: courseBg && courseBg.startsWith('#')
-                        ? courseBg
-                        : !courseBg
-                          ? (theme === 'light' ? '#ffffff' : '#0f172a')
-                          : undefined,
+                      // Canvas is always white — theme color lives on the SLIDE FRAME not the canvas
+                      backgroundColor: courseBg && courseBg.startsWith('#') ? courseBg : '#ffffff',
                     }}
                   >
                     {/* Overlay only for image backgrounds */}
@@ -2440,20 +2444,27 @@ export default function App() {
                   <div className={cn(`theme-${theme}`,
                     "transition-all duration-500 flex flex-col relative z-10",
                     viewMode === 'desktop'
-                      ? playerConfig.playerResolution === '4:3'
-                        ? 'shadow-2xl overflow-hidden mx-auto my-4 md:rounded-2xl border border-white/20'
-                        : playerConfig.playerResolution === 'full'
-                        ? 'flex-1 overflow-hidden w-full'  /* fills flex-col parent; PlayerBar stays visible */
-                        : 'shadow-2xl overflow-hidden w-full max-w-5xl mx-auto my-4 h-[calc(100vh-260px)] md:rounded-2xl border border-white/20'
+                      ? playerConfig.playerResolution === 'full'
+                        ? 'flex-1 overflow-hidden w-full'
+                        : '' /* sizing applied via scaler.frameStyle */
                       : 'shadow-2xl overflow-hidden w-[375px] h-[667px] my-4 rounded-[3rem] border-[8px] border-gray-800',
                     theme === 'light' ? 'bg-white' : theme === 'unified' ? 'bg-indigo-950' : 'bg-slate-900'
                   )}
-                  style={viewMode === 'desktop' && playerConfig.playerResolution === '4:3'
-                    ? { aspectRatio: '4/3', maxWidth: '900px', width: '100%' }
+                  style={viewMode === 'desktop'
+                    ? playerConfig.playerResolution === 'full'
+                      ? undefined
+                      : {
+                          // Articulate-style: fixed design size + CSS scale to fill viewport
+                          ...scaler.frameStyle,
+                          borderRadius: '1rem',
+                          overflow: 'hidden',
+                          boxShadow: '0 25px 50px -12px rgba(0,0,0,0.4)',
+                          border: '1px solid rgba(255,255,255,0.12)',
+                        }
                     : undefined
                   }>
                     <div className={cn("flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar w-full",
-                      playerConfig.playerResolution === 'full' ? 'p-6 md:p-12 pb-4 text-lg' : 'p-4 md:p-8 pb-4',
+                      playerConfig.playerResolution === 'full' ? 'p-8 md:p-12 pb-4 text-lg' : 'p-6 md:p-10 pb-4',
                       theme === 'light' ? 'bg-white text-slate-900' : theme === 'unified' ? 'bg-indigo-950 text-slate-100' : 'bg-slate-900 text-white'
                     )}>
                       <AnimatePresence mode="wait">
