@@ -532,14 +532,15 @@ export default function App() {
   }, [course]);
 
   // Item 13: Auto-play voice-over when slide changes
+  // Uses a ref so the setTimeout closure always calls the LATEST play() — avoids stale isPlaying=true skip
+  const playerPlayRef = useRef<() => void>(() => {});
+  useEffect(() => { playerPlayRef.current = player.play; }, [player.play]);
   useEffect(() => {
     if (!voiceOverEnabled) return;
-    // Small delay lets loadSlide settle metadata before play is called
     const timer = setTimeout(() => {
-      if (player.hasAudio && !player.isPlaying) {
-        player.play();
-      }
-    }, 300);
+      // Call via ref — guaranteed to use state from the most recent render
+      playerPlayRef.current();
+    }, 400);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSlide?.id, player.hasAudio, voiceOverEnabled]);
@@ -2401,7 +2402,7 @@ export default function App() {
                   allSlides={allSlides}
                   onNavigate={(idx) => {
                     if (canNavigateTo(idx)) {
-                      setHighestVisitedIndex(prev => Math.max(prev, idx));
+                              setHighestVisitedIndex(prev => Math.max(prev, idx));
                       setCurrentSlideIndex(idx);
                     }
                   }}
@@ -2425,7 +2426,11 @@ export default function App() {
                     )}
                     style={{
                       backgroundImage: courseBg && !courseBg.startsWith('#') ? `url('${courseBg}')` : undefined,
-                      backgroundColor: courseBg && courseBg.startsWith('#') ? courseBg : undefined,
+                      backgroundColor: courseBg && courseBg.startsWith('#')
+                        ? courseBg
+                        : !courseBg
+                          ? (theme === 'light' ? '#ffffff' : '#0f172a')
+                          : undefined,
                     }}
                   >
                     {/* Overlay only for image backgrounds */}
@@ -2684,16 +2689,35 @@ export default function App() {
                                      </div>
                                   </div>
                                )}
-                               {currentSlide?.type === 'branching' && (
-                                  <div className="space-y-6 w-full">
-                                     <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
-                                     <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
-                                     <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
-                                        <BranchingScenario {...(currentSlide.data || currentSlide.interactions?.[0] || {})} />
-                                     </div>
-                                  </div>
-                               )}
-
+                               {currentSlide?.type === 'branching' && (() => {
+                                  const rawData = currentSlide.data || currentSlide.interactions?.[0] || {};
+                                  const normNodes: Record<string, any> = (() => {
+                                    if (!rawData.nodes) return {};
+                                    if (Array.isArray(rawData.nodes)) return Object.fromEntries(rawData.nodes.map((n: any) => [n.id, n]));
+                                    return rawData.nodes;
+                                  })();
+                                  const startId: string = rawData.startNodeId || Object.keys(normNodes)[0] || '';
+                                  if (!startId || !normNodes[startId]) {
+                                    return (
+                                      <div className="space-y-4 w-full">
+                                        <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                        <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300 text-sm flex items-start gap-3">
+                                          <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                                          <span>Branching scenario data is invalid. Use <strong>Edit Text &amp; Audio</strong> or regenerate this slide.</span>
+                                        </div>
+                                      </div>
+                                    );
+                                  }
+                                  return (
+                                    <div className="space-y-6 w-full">
+                                      <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                      <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
+                                      <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
+                                        <BranchingScenario nodes={normNodes} startNodeId={startId} />
+                                      </div>
+                                    </div>
+                                  );
+                               })()}
                                {/* CUSTOM TAB/FOLDER INTERACTIONS */}
                                {currentSlide?.type === 'tabbed-horizontal' && (
                                  <div className="space-y-6 w-full">

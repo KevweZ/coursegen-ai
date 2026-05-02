@@ -100,16 +100,16 @@ button, [role="button"], a { cursor: pointer; }
   color: #475569 !important;
 }
 
-/* â”€â”€ Dark-mode CSS overrides for external @zomako/elearning-components â”€â”€
+/* ── Dark-mode CSS overrides for external @zomako/elearning-components ──────────
    Applied via .interaction-dark-override wrapper when theme !== 'light'.
-   Uses concrete dark colors â€” NOT transparent â€” to preserve component structure. */
+   Rules ordered from broadest to most specific. */
 
 .interaction-dark-override {
   color-scheme: dark;
   color: #e2e8f0;
 }
 
-/* â”€â”€ Text: force light colours everywhere â”€â”€ */
+/* ── Text: force light colours on all text elements ── */
 .interaction-dark-override p,
 .interaction-dark-override span,
 .interaction-dark-override h1, .interaction-dark-override h2,
@@ -128,10 +128,18 @@ button, [role="button"], a { cursor: pointer; }
   color: #a5b4fc !important;
 }
 
-/* â”€â”€ Card/panel surfaces: dark slate, NOT transparent â”€â”€ */
-.interaction-dark-override [class*="bg-white"] {
-  background-color: #1e293b !important;
+/* ── Backgrounds: CSS-module panels (timeline reveal, matching containers) ──
+   Use element-level selectors because CSS modules use scoped class names,
+   not Tailwind classes, so [class*="bg-white"] won't catch them. */
+.interaction-dark-override div,
+.interaction-dark-override section,
+.interaction-dark-override article,
+.interaction-dark-override aside {
+  background-color: #1e293b;
 }
+
+/* Override Tailwind bg classes too (belt-and-suspenders) */
+.interaction-dark-override [class*="bg-white"],
 .interaction-dark-override [class*="bg-gray-50"],
 .interaction-dark-override [class*="bg-gray-100"],
 .interaction-dark-override [class*="bg-slate-50"],
@@ -143,31 +151,30 @@ button, [role="button"], a { cursor: pointer; }
   background-color: rgba(99,102,241,0.15) !important;
 }
 
-/* â”€â”€ Borders â”€â”€ */
+/* ── Borders ── */
 .interaction-dark-override [class*="border-gray"],
 .interaction-dark-override [class*="border-slate-2"],
 .interaction-dark-override [class*="border-slate-3"] {
   border-color: rgba(100, 116, 139, 0.35) !important;
 }
 
-/* â”€â”€ Buttons (accordion triggers, timeline steps) â”€â”€ */
-.interaction-dark-override button {
+/* ── Buttons: ONLY target component trigger buttons (accordion, timeline steps)
+   NOT DnD draggable items — those are li/div elements with role attributes.
+   Exclude [role="option"] and [draggable] from button override. ── */
+.interaction-dark-override button:not([draggable]):not([role="option"]):not([data-dnd-draggable]) {
   background-color: rgba(30, 41, 59, 0.85) !important;
   border-color: rgba(100, 116, 139, 0.3) !important;
   color: #e2e8f0 !important;
 }
-.interaction-dark-override button:hover {
+.interaction-dark-override button:not([draggable]):not([role="option"]):hover {
   background-color: rgba(51, 65, 85, 0.95) !important;
   border-color: rgba(99, 102, 241, 0.5) !important;
 }
 
-/* â”€â”€ Timeline: active/selected step highlight â”€â”€ */
-.interaction-dark-override button[class*="active"],
+/* ── Timeline: active/selected step highlight ── */
 .interaction-dark-override button[aria-selected="true"],
 .interaction-dark-override button[aria-pressed="true"],
 .interaction-dark-override [class*="active"] button,
-.interaction-dark-override li[class*="active"],
-.interaction-dark-override [class*="step"][class*="active"],
 .interaction-dark-override [class*="selected"] {
   background-color: rgba(99, 102, 241, 0.25) !important;
   border-color: rgba(99, 102, 241, 0.7) !important;
@@ -175,13 +182,11 @@ button, [role="button"], a { cursor: pointer; }
   box-shadow: 0 0 0 2px rgba(99,102,241,0.3) !important;
 }
 
-/* Timeline connector line */
+/* Timeline connector lines & dots */
 .interaction-dark-override [class*="border-l"],
 .interaction-dark-override [class*="border-r"] {
   border-color: rgba(99, 102, 241, 0.35) !important;
 }
-
-/* Timeline dots */
 .interaction-dark-override [class*="rounded-full"] {
   border-color: rgba(99, 102, 241, 0.6) !important;
   background-color: rgba(30, 41, 59, 0.9) !important;
@@ -191,29 +196,27 @@ button, [role="button"], a { cursor: pointer; }
   background-color: rgba(99, 102, 241, 0.7) !important;
 }
 
-/* â”€â”€ Matching: draggable items and droppable targets â”€â”€ */
-.interaction-dark-override [draggable="true"],
-.interaction-dark-override [class*="draggable"],
-.interaction-dark-override [class*="drag-item"] {
-  background-color: #1e3a5f !important;
-  border-color: rgba(99, 102, 241, 0.4) !important;
+/* ── Matching/Sorting: DnD items and target zones ──
+   These are li elements managed by @dnd-kit — don't override their transforms. */
+.interaction-dark-override li {
+  background-color: #1e3a5f;
+  border-color: rgba(99, 102, 241, 0.3);
   color: #bfdbfe !important;
 }
-.interaction-dark-override [class*="droppable"],
-.interaction-dark-override [class*="drop-target"],
 .interaction-dark-override [role="listitem"],
 .interaction-dark-override [role="option"] {
   background-color: rgba(15, 23, 42, 0.7) !important;
   border-color: rgba(100, 116, 139, 0.35) !important;
   color: #e2e8f0 !important;
 }
-
-/* â”€â”€ Drag & Drop: source items and target zones â”€â”€ */
 .interaction-dark-override [class*="drop-zone"],
-.interaction-dark-override [class*="target-zone"] {
+.interaction-dark-override [class*="target-zone"],
+.interaction-dark-override [class*="target_"] {
   background-color: rgba(15, 23, 42, 0.6) !important;
   border-color: rgba(99, 102, 241, 0.3) !important;
 }
+
+/* Inputs */
 .interaction-dark-override input {
   background-color: rgba(30, 41, 59, 0.9) !important;
   border-color: rgba(100, 116, 139, 0.4) !important;

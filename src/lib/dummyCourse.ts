@@ -293,55 +293,51 @@ export const DUMMY_COURSE: CourseOutline = {
           narration: 'This is a branching scenario. Read the situation and choose the best action. Your choice will affect the path through the scenario.',
           voiceOverText: 'Read the situation and choose the best option. Your choice determines the next step.',
           data: {
-            nodes: [
-              {
-                id: 'node-start',
-                type: 'scenario',
+            startNodeId: 'node-start',
+            nodes: {
+              'node-start': {
+                id: 'node-start', type: 'scenario',
                 title: 'Getting Started',
                 content: 'Your manager asks you to build a 30-minute onboarding course for new hires. What is your first step?',
+                isDeadEnd: false, feedback: '',
                 choices: [
                   { id: 'c1', text: 'Upload existing HR documents to NexCourse AI', nextNodeId: 'node-good', isCorrectPath: true },
-                  { id: 'c2', text: 'Start writing slide content from scratch manually', nextNodeId: 'node-bad' },
-                  { id: 'c3', text: 'Ask IT to build a custom LMS module', nextNodeId: 'node-bad' },
+                  { id: 'c2', text: 'Start writing slide content from scratch manually', nextNodeId: 'node-bad', isCorrectPath: false },
+                  { id: 'c3', text: 'Ask IT to build a custom LMS module', nextNodeId: 'node-bad', isCorrectPath: false },
                 ],
               },
-              {
-                id: 'node-good',
-                type: 'scenario',
+              'node-good': {
+                id: 'node-good', type: 'scenario',
                 title: 'Great Choice!',
                 content: 'You uploaded the HR documents. NexCourse AI analysed the content and generated a 15-slide outline. Your manager wants interactive elements added. What do you do?',
+                isDeadEnd: false, feedback: '',
                 choices: [
                   { id: 'c4', text: 'Select quiz and accordion interactions from the Course Details page', nextNodeId: 'node-success', isCorrectPath: true },
-                  { id: 'c5', text: 'Export the course as-is without interactions', nextNodeId: 'node-partial' },
+                  { id: 'c5', text: 'Export the course as-is without interactions', nextNodeId: 'node-partial', isCorrectPath: false },
                 ],
               },
-              {
-                id: 'node-bad',
-                type: 'scenario',
+              'node-bad': {
+                id: 'node-bad', type: 'scenario',
                 title: 'Reconsider Your Approach',
                 content: 'That approach would take significantly longer and may not produce SCORM-compliant output. A better approach is to use AI to accelerate the process.',
-                feedback: 'Tip: NexCourse AI can convert existing documents into full interactive courses in minutes.',
+                isDeadEnd: true, feedback: 'Tip: NexCourse AI can convert existing documents into full interactive courses in minutes.',
                 choices: [
-                  { id: 'c6', text: 'Start again with a better approach', nextNodeId: 'node-start' },
+                  { id: 'c6', text: 'Start again with a better approach', nextNodeId: 'node-start', isCorrectPath: true },
                 ],
               },
-              {
-                id: 'node-partial',
-                type: 'ending',
+              'node-partial': {
+                id: 'node-partial', type: 'ending',
                 title: 'Course Published — But Missing Interactions',
                 content: 'Your course was exported and published, but learner engagement data shows a 40% drop-off rate. Adding interactive elements would have significantly improved completion rates.',
-                isDeadEnd: false,
-                choices: [],
+                isDeadEnd: false, feedback: '', choices: [],
               },
-              {
-                id: 'node-success',
-                type: 'ending',
-                title: '🎉 Course Successfully Launched!',
+              'node-success': {
+                id: 'node-success', type: 'ending',
+                title: 'Course Successfully Launched!',
                 content: 'Your onboarding course was published with quizzes, accordion components, and flashcards. Learner completion rates are at 94% and your manager is thrilled. Well done!',
-                isDeadEnd: false,
-                choices: [],
+                isDeadEnd: false, feedback: '', choices: [],
               },
-            ],
+            },
           },
         },
       ],
