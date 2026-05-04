@@ -74,10 +74,19 @@ export const DUMMY_COURSE: CourseOutline = {
           id: 'slide-key-takeaways',
           type: 'key-takeaways',
           title: 'Key Takeaways — Module 1',
-          content: `## What You Covered\n\n✅ **Slide Types** — This course demonstrates every slide layout the player supports\n\n✅ **Interaction Components** — All gamifiable interaction types are included\n\n✅ **Navigation Controls** — The player bar provides seekbar, play, and slide controls\n\n✅ **Admin Mode** — Use Preview Mode any time to test player changes without generating a full course`,
+          content: '',
+          data: {
+            objectives: [
+              { id: 'kt1', label: 'Slide Types', content: 'This course demonstrates every slide layout the player supports' },
+              { id: 'kt2', label: 'Interaction Components', content: 'All gamifiable interaction types are included in the player' },
+              { id: 'kt3', label: 'Navigation Controls', content: 'The player bar provides seekbar, play/pause, and slide navigation' },
+              { id: 'kt4', label: 'Admin Mode', content: 'Use Preview Mode any time to test player changes without generating a full course' },
+            ],
+          },
           narration: 'Let\'s consolidate what we covered in this module. You explored the player architecture, its navigation controls, and how the slide canvas dynamically renders different content types.',
           voiceOverText: 'Let\'s consolidate what we covered. You explored the player architecture, navigation controls, and the slide canvas.',
           imagePlaceholder: false,
+
         },
       ],
     },
@@ -232,13 +241,15 @@ export const DUMMY_COURSE: CourseOutline = {
           data: {
             prompt: 'Arrange the CourseGEN development phases in the correct order:',
             items: [
-              { id: 'si-1', content: 'AI Generation Pipeline', correctPosition: 2 },
-              { id: 'si-2', content: 'SCORM Export', correctPosition: 5 },
-              { id: 'si-3', content: 'Core Player Built', correctPosition: 1 },
-              { id: 'si-4', content: 'Gamification Engine', correctPosition: 4 },
-              { id: 'si-5', content: 'Interactive Components', correctPosition: 3 },
+              { id: 'si-3', content: 'Core Player Built' },
+              { id: 'si-1', content: 'AI Generation Pipeline' },
+              { id: 'si-5', content: 'Interactive Components' },
+              { id: 'si-4', content: 'Gamification Engine' },
+              { id: 'si-2', content: 'SCORM Export' },
             ],
+            correctOrder: ['si-3', 'si-1', 'si-5', 'si-4', 'si-2'],
           },
+
         },
         // Matching
         {

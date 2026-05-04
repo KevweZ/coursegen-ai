@@ -1,6 +1,5 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { cn } from '../../lib/utils';
 
 type Theme = 'light' | 'dark' | 'unified';
 
@@ -10,7 +9,6 @@ interface Objective {
   title?: string;
   content?: string;
   description?: string;
-  icon?: string;
 }
 
 interface LearningObjectivesSlideProps {
@@ -21,46 +19,65 @@ interface LearningObjectivesSlideProps {
 }
 
 const THEME_LEFT_BG: Record<Theme, string> = {
-  light:   '#1e3a8a', // deep indigo
-  dark:    '#1e1b4b', // dark indigo
-  unified: '#2e1065', // deep purple
+  light:   '#1e3a8a',
+  dark:    '#1e1b4b',
+  unified: '#2e1065',
 };
-
 const THEME_PRIMARY_BAR: Record<Theme, string> = {
   light:   '#1e3a8a',
   dark:    '#3730a3',
   unified: '#4c1d95',
 };
-
 const THEME_ACCENT_BAR: Record<Theme, string> = {
-  light:   '#f59e0b', // amber
-  dark:    '#818cf8', // indigo-400
-  unified: '#a78bfa', // violet-400
+  light:   '#f59e0b',
+  dark:    '#818cf8',
+  unified: '#a78bfa',
 };
-
 const THEME_CIRCLE: Record<Theme, string> = {
   light:   '#1e3a8a',
   dark:    '#818cf8',
   unified: '#a78bfa',
 };
-
 const THEME_TITLE_COLOR: Record<Theme, string> = {
   light:   '#1e3a8a',
   dark:    '#818cf8',
   unified: '#a78bfa',
 };
-
 const THEME_BODY_BG: Record<Theme, string> = {
   light:   '#f8fafc',
   dark:    '#0f172a',
   unified: '#1e1b4b',
 };
-
 const THEME_BODY_TEXT: Record<Theme, string> = {
   light:   '#374151',
   dark:    '#cbd5e1',
   unified: '#c4b5fd',
 };
+const THEME_HEADER_TEXT: Record<Theme, string> = {
+  light:   '#1e3a8a',
+  dark:    '#818cf8',
+  unified: '#a78bfa',
+};
+
+/**
+ * Parse a raw markdown-formatted string into plain text.
+ * Strips: ## headings, **bold markers**, leading emoji, ✅ ☑ etc.
+ */
+function parseObjectiveText(raw: string): { label: string; content: string } {
+  let text = raw
+    .replace(/^#{1,6}\s+/, '')          // strip ## headers
+    .replace(/\*\*(.*?)\*\*/g, '$1')    // **bold** → plain
+    .replace(/__(.*?)__/g, '$1')        // __bold__ → plain
+    .replace(/^[✅☑✓•\-]\s*/u, '')     // strip leading emoji/bullets
+    .trim();
+
+  // Split on " — " or " - " to get label vs body
+  const parts = text.split(/\s[—\-]\s/);
+  if (parts.length >= 2) {
+    return { label: parts[0].trim(), content: parts.slice(1).join(' — ').trim() };
+  }
+  return { label: text, content: '' };
+}
 
 export const LearningObjectivesSlide: React.FC<LearningObjectivesSlideProps> = ({
   title,
@@ -68,49 +85,52 @@ export const LearningObjectivesSlide: React.FC<LearningObjectivesSlideProps> = (
   accentColor,
   theme,
 }) => {
-  const leftBg     = accentColor || THEME_LEFT_BG[theme];
-  const primaryBar = THEME_PRIMARY_BAR[theme];
-  const accentBar  = accentColor ? `${accentColor}aa` : THEME_ACCENT_BAR[theme];
+  const leftBg      = accentColor || THEME_LEFT_BG[theme];
+  const primaryBar  = THEME_PRIMARY_BAR[theme];
+  const accentBar   = accentColor ? `${accentColor}bb` : THEME_ACCENT_BAR[theme];
   const circleColor = THEME_CIRCLE[theme];
   const titleColor  = THEME_TITLE_COLOR[theme];
   const bodyBg      = THEME_BODY_BG[theme];
   const bodyText    = THEME_BODY_TEXT[theme];
+  const headerText  = THEME_HEADER_TEXT[theme];
 
   return (
     <div className="w-full h-full flex flex-row overflow-hidden">
-      {/* ── Left color panel ──────────────────────────────────── */}
+      {/* Left color panel */}
       <div
-        className="flex items-center justify-center"
-        style={{ width: '28%', flexShrink: 0, backgroundColor: leftBg }}
-      >
-        {/* Future: character image slot */}
-        <div className="w-full h-full opacity-10 bg-[url('https://grainy-gradients.vercel.app/noise.svg')]" />
-      </div>
+        className="shrink-0"
+        style={{ width: '26%', backgroundColor: leftBg }}
+      />
 
-      {/* ── Split border ──────────────────────────────────────── */}
+      {/* Split border */}
       <div className="flex flex-row shrink-0">
-        <div style={{ width: '8px', backgroundColor: primaryBar }} />
-        <div style={{ width: '14px', backgroundColor: accentBar }} />
+        <div style={{ width: '8px',  backgroundColor: primaryBar, height: '100%' }} />
+        <div style={{ width: '14px', backgroundColor: accentBar,  height: '100%' }} />
       </div>
 
-      {/* ── Right content panel ───────────────────────────────── */}
+      {/* Right content panel */}
       <div
-        className="flex-1 flex flex-col justify-center px-8 py-6 overflow-hidden"
+        className="flex-1 flex flex-col justify-start px-8 py-8 overflow-hidden"
         style={{ backgroundColor: bodyBg }}
       >
-        {/* Slide header */}
+        {/* Slide title header */}
         <h2
           className="font-extrabold text-2xl mb-6 leading-tight"
-          style={{ color: titleColor }}
+          style={{ color: headerText }}
         >
           {title}
         </h2>
 
         {/* Objectives list */}
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-5 overflow-y-auto">
           {objectives.map((obj, i) => {
-            const label   = obj.label || obj.title || `Objective ${i + 1}`;
-            const content = obj.content || obj.description || '';
+            // Parse raw content which may contain markdown
+            const rawLabel = obj.label || obj.title || '';
+            const rawContent = obj.content || obj.description || '';
+            const parsed = rawLabel
+              ? { label: parseObjectiveText(rawLabel).label, content: rawContent }
+              : parseObjectiveText(rawContent);
+
             return (
               <motion.div
                 key={obj.id || i}
@@ -119,12 +139,12 @@ export const LearningObjectivesSlide: React.FC<LearningObjectivesSlideProps> = (
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.35, delay: i * 0.08 }}
               >
-                {/* Circle number indicator */}
+                {/* Circle number */}
                 <div
                   className="shrink-0 flex items-center justify-center rounded-full font-bold text-xl"
                   style={{
-                    width: '52px',
-                    height: '52px',
+                    width: '50px',
+                    height: '50px',
                     border: `2.5px solid ${circleColor}`,
                     color: circleColor,
                   }}
@@ -132,17 +152,22 @@ export const LearningObjectivesSlide: React.FC<LearningObjectivesSlideProps> = (
                   {i + 1}
                 </div>
 
-                {/* Title + body */}
-                <div className="flex flex-col justify-center">
-                  <p
-                    className="font-bold text-sm uppercase tracking-wide leading-snug"
-                    style={{ color: titleColor }}
-                  >
-                    {label}
-                  </p>
-                  {content && (
-                    <p className="text-sm mt-0.5 leading-relaxed" style={{ color: bodyText }}>
-                      {content}
+                {/* Label + body */}
+                <div className="flex flex-col justify-center min-w-0">
+                  {parsed.label && (
+                    <p
+                      className="font-bold text-sm uppercase tracking-wide leading-snug"
+                      style={{ color: titleColor }}
+                    >
+                      {parsed.label}
+                    </p>
+                  )}
+                  {parsed.content && (
+                    <p
+                      className="text-sm mt-0.5 leading-relaxed"
+                      style={{ color: bodyText }}
+                    >
+                      {parsed.content}
                     </p>
                   )}
                 </div>

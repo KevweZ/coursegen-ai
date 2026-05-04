@@ -89,6 +89,9 @@ import { ClosingSlide } from './components/player/ClosingSlide';
 import { ModuleCoverSlide } from './components/player/ModuleCoverSlide';
 import { LearningObjectivesSlide } from './components/player/LearningObjectivesSlide';
 import { WheelDiagram } from './components/interactions/WheelDiagram';
+import { CustomMatchingActivity } from './components/interactions/CustomMatchingActivity';
+import { CustomSortingActivity } from './components/interactions/CustomSortingActivity';
+import { HotspotInteraction } from './components/interactions/HotspotInteraction';
 import { getRecommendedGames } from './lib/gameEngine';
 import { DUMMY_COURSE, DUMMY_EXAM_QUESTIONS } from './lib/dummyCourse';
 import { useScaleToFit } from './hooks/useScaleToFit';
@@ -489,6 +492,8 @@ export default function App() {
   const examQIndex       = contentSlides.length + 2;
   const examResultsIndex = contentSlides.length + 3;
   const currentSlide = allSlides[currentSlideIndex];
+  const FULL_BLEED_TYPES = ['cover', 'title', 'module-cover', 'closing', 'key-takeaways'];
+  const isFullBleed = FULL_BLEED_TYPES.includes(currentSlide?.type as string);
 
   const canNavigateTo = (targetIdx: number): boolean => {
     const isExamIntro    = targetIdx === examIntroIndex;
@@ -2490,17 +2495,38 @@ export default function App() {
                         }
                     : undefined
                   }>
-                    <div className={cn("flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar w-full",
-                      playerConfig.playerResolution === 'full' ? 'p-8 md:p-12 pb-4 text-lg' : 'p-6 md:p-10 pb-4',
-                      theme === 'light' ? 'bg-white text-slate-900' : theme === 'unified' ? 'bg-indigo-950 text-slate-100' : 'bg-slate-900 text-white'
-                    )}>
-                      <AnimatePresence mode="wait">
-                        <motion.div key={currentSlide?.id || currentSlideIndex} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="w-full relative min-h-full">
-                          {/* Dynamic Content Layers */}
+                    {/* ── Full-bleed slide frame ─────────────────────── */}
+                    <AnimatePresence mode="wait">
+                      <motion.div
+                        key={currentSlide?.id || currentSlideIndex}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.25 }}
+                        className={cn(
+                          "w-full",
+                          isFullBleed
+                            ? "absolute inset-0 overflow-hidden"
+                            : cn(
+                                "flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar",
+                                playerConfig.playerResolution === 'full' ? 'p-8 md:p-12 pb-4 text-lg' : 'p-6 md:p-10 pb-4',
+                                theme === 'light' ? 'bg-white text-slate-900' : theme === 'unified' ? 'bg-indigo-950 text-slate-100' : 'bg-slate-900 text-white'
+                              )
+                        )}
+                      >
+                        {!isFullBleed && (
                           <div className="w-[120%] h-[120%] absolute -top-[10%] -left-[10%] pointer-events-none opacity-[0.03] bg-[url('https://grainy-gradients.vercel.app/noise.svg')] mix-blend-overlay"></div>
-
-                          <div className="relative z-10 w-full flex flex-col md:flex-row gap-8">
-                            <div className="flex-1 w-full flex flex-col justify-center min-h-[50vh]">
+                        )}
+                        <div className={cn(
+                          isFullBleed
+                            ? "w-full h-full"
+                            : "relative z-10 w-full flex flex-col"
+                        )}>
+                          <div className={cn(
+                            isFullBleed
+                              ? "w-full h-full"
+                              : "flex-1 w-full flex flex-col justify-start"
+                          )}>
                                {/* TITLE / COVER SLIDE — redesigned CourseTitleSlide */}
                                {(currentSlide?.type === 'title' || currentSlide?.type === 'cover') && (
                                  <div className="w-full h-full -m-4 md:-m-8" style={{ margin: '-1.5rem -2.5rem' }}>
@@ -2579,7 +2605,7 @@ export default function App() {
                                  const correctLabel = correctIdx >= 0 ? (quiz.options[correctIdx]?.text || quiz.options[correctIdx]?.label || quiz.options[correctIdx]) : null;
                                  return (
                                    <div className="space-y-5 w-full">
-                                     <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                     <SlideHeader title={currentSlide.title} theme={theme} />
                                      {currentSlide.content && <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />}
                                      <p className={cn('font-bold text-lg', theme === 'light' ? 'text-slate-800' : 'text-slate-100')}>{quiz.questionText || quiz.prompt || quiz.question}</p>
                                      <div className="space-y-2.5 w-full">
@@ -2640,7 +2666,7 @@ export default function App() {
                                  const isAllCorrect = maState.submitted && maState.selected.length === correctIndices.length && maState.selected.every((i: number) => correctIndices.includes(i));
                                  return (
                                    <div className="space-y-5 w-full">
-                                     <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                     <SlideHeader title={currentSlide.title} theme={theme} />
                                      {currentSlide.content && <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />}
                                      <p className={cn('font-bold text-lg', theme === 'light' ? 'text-slate-800' : 'text-slate-100')}>{quiz.questionText || quiz.prompt || quiz.question}</p>
                                      <p className={cn('text-xs font-bold uppercase tracking-wider', theme === 'light' ? 'text-indigo-600' : 'text-indigo-400')}>Select all correct answers</p>
@@ -2712,17 +2738,20 @@ export default function App() {
                                   })();
                                   return (
                                     <div className="space-y-6 w-full">
-                                      <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                      <SlideHeader title={currentSlide.title} theme={theme} />
                                       <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                       <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
-                                        <MatchingActivity {...matchingProps} />
+                                        <CustomMatchingActivity
+                                         items={matchingProps.items || []}
+                                         targets={matchingProps.targets || []}
+                                       />
                                       </div>
                                     </div>
                                   );
                                })()}
                                {currentSlide?.type === 'accordion' && (
                                  <div className="space-y-6 w-full">
-                                   <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                   <SlideHeader title={currentSlide.title} theme={theme} />
                                    <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                    <AccordionDarkWrapper theme={theme}>
                                      <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
@@ -2733,14 +2762,14 @@ export default function App() {
                                )}
                                {currentSlide?.type === 'flashcards' && (
                                  <div className="space-y-6 w-full">
-                                   <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                   <SlideHeader title={currentSlide.title} theme={theme} />
                                    <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                    <FlashcardGrid cards={currentSlide.data?.cards || currentSlide.interactions?.[0]?.cards || []} theme={theme} />
                                  </div>
                                )}
                                {currentSlide?.type === 'timeline' && (
                                   <div className="space-y-6 w-full">
-                                    <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                    <SlideHeader title={currentSlide.title} theme={theme} />
                                     <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                     <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                       <InteractiveTimeline {...(currentSlide.data || currentSlide.interactions?.[0] || {})} />
@@ -2749,10 +2778,10 @@ export default function App() {
                                 )}
                                {currentSlide?.type === 'sorting' && (
                                   <div className="space-y-6 w-full">
-                                     <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                     <SlideHeader title={currentSlide.title} theme={theme} />
                                      <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                      <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
-                                        <SortingActivity {...(currentSlide.data || currentSlide.interactions?.[0] || {})} />
+                                        <CustomSortingActivity items={(currentSlide.data || currentSlide.interactions?.[0] || {}).items || []} correctOrder={(currentSlide.data || currentSlide.interactions?.[0] || {}).correctOrder || []} prompt="Drag items or use arrows to reorder" />
                                      </div>
                                   </div>
                                )}
@@ -2785,7 +2814,7 @@ export default function App() {
                                   if (!startId || !normNodes[startId]) {
                                     return (
                                       <div className="space-y-4 w-full">
-                                        <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                        <SlideHeader title={currentSlide.title} theme={theme} />
                                         <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300 text-sm flex items-start gap-3">
                                           <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
                                           <span>Branching scenario data is invalid. Use <strong>Edit Text &amp; Audio</strong> or regenerate this slide.</span>
@@ -2795,7 +2824,7 @@ export default function App() {
                                   }
                                   return (
                                     <div className="space-y-6 w-full">
-                                      <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                      <SlideHeader title={currentSlide.title} theme={theme} />
                                       <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                       <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                         <BranchingScenario nodes={normNodes} startNodeId={startId} />
@@ -2806,7 +2835,7 @@ export default function App() {
                                {/* CUSTOM TAB/FOLDER INTERACTIONS */}
                                {currentSlide?.type === 'tabbed-horizontal' && (
                                  <div className="space-y-6 w-full">
-                                   <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                   <SlideHeader title={currentSlide.title} theme={theme} />
                                    <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                    <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                      <TabbedHorizontal tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []} />
@@ -2815,7 +2844,7 @@ export default function App() {
                                )}
                                {currentSlide?.type === 'tabbed-vertical' && (
                                  <div className="space-y-6 w-full">
-                                   <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                   <SlideHeader title={currentSlide.title} theme={theme} />
                                    <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                    <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                      <TabbedVertical tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []} />
@@ -2824,7 +2853,7 @@ export default function App() {
                                )}
                                {currentSlide?.type === 'folder-explorer' && (
                                   <div className="space-y-6 w-full">
-                                    <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                    <SlideHeader title={currentSlide.title} theme={theme} />
                                     <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                     <div className={cn('overflow-visible', theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                       <FolderExplorer items={currentSlide.data?.items || currentSlide.interactions?.[0]?.items || []} />
@@ -2833,7 +2862,7 @@ export default function App() {
                                 )}
                                {currentSlide?.type === 'carousel-panel' && (
                                  <div className="space-y-6 w-full">
-                                   <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                   <SlideHeader title={currentSlide.title} theme={theme} />
                                    <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                    <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                      <CarouselPanel cards={currentSlide.data?.cards || currentSlide.data?.items || currentSlide.interactions?.[0]?.cards || currentSlide.interactions?.[0]?.items || []} />
@@ -2912,9 +2941,24 @@ export default function App() {
                                )}
 
                                {/* ANY UNHANDLED GENERIC INTERACTION */}
-                               {['hotspot', 'drop-targets', 'memory-match'].includes(currentSlide?.type) && (
+                               {currentSlide?.type === 'hotspot' && (() => {
+                                  const hd = currentSlide.data || currentSlide.interactions?.[0] || {};
+                                  return (
+                                    <div className="space-y-4 w-full">
+                                      <SlideHeader title={currentSlide.title} theme={theme} />
+                                      <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
+                                      <HotspotInteraction
+                                        imageUrl={hd.imageUrl || hd.image}
+                                        points={hd.points || hd.hotspots || []}
+                                        theme={theme}
+                                      />
+                                    </div>
+                                  );
+                               })()}
+
+                               {['drop-targets', 'memory-match'].includes(currentSlide?.type) && (
                                   <div className="space-y-6 w-full">
-                                     <h2 className={cn('text-2xl md:text-3xl font-extrabold leading-snug', theme === 'light' ? 'text-slate-900' : 'text-white')}>{currentSlide.title}</h2>
+                                     <SlideHeader title={currentSlide.title} theme={theme} />
                                      <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                      <div className="p-8 border-2 border-dashed border-indigo-400/50 bg-indigo-500/10 rounded-2xl text-center">
                                        <Gamepad2 className="w-12 h-12 text-indigo-400 mx-auto mb-4 opacity-50" />
@@ -3016,7 +3060,6 @@ export default function App() {
                         </motion.div>
                        </AnimatePresence>
 
-                     </div>{/* end slide content scroll area */}
 
                     {/* Learner Player Navigation Bar — sticky at bottom in full-screen mode */}
                     <div className={cn(
