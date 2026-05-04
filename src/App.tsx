@@ -89,6 +89,7 @@ import { ClosingSlide } from './components/player/ClosingSlide';
 import { ModuleCoverSlide } from './components/player/ModuleCoverSlide';
 import { LearningObjectivesSlide } from './components/player/LearningObjectivesSlide';
 import { WheelDiagram } from './components/interactions/WheelDiagram';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { CustomMatchingActivity } from './components/interactions/CustomMatchingActivity';
 import { CustomSortingActivity } from './components/interactions/CustomSortingActivity';
 import { HotspotInteraction } from './components/interactions/HotspotInteraction';
@@ -2495,6 +2496,8 @@ export default function App() {
                         }
                     : undefined
                   }>
+                    {/* ── Content zone: flex-1 so PlayerBar stays at bottom ── */}
+                    <div className="flex-1 relative overflow-hidden flex flex-col">
                     {/* ── Full-bleed slide frame ─────────────────────── */}
                     <AnimatePresence mode="wait">
                       <motion.div
@@ -2529,7 +2532,7 @@ export default function App() {
                           )}>
                                {/* TITLE / COVER SLIDE — redesigned CourseTitleSlide */}
                                {(currentSlide?.type === 'title' || currentSlide?.type === 'cover') && (
-                                 <div className="w-full h-full -m-4 md:-m-8" style={{ margin: '-1.5rem -2.5rem' }}>
+                                 <div className="w-full h-full">
                                    <CourseTitleSlide
                                      title={currentSlide.title}
                                      description={currentSlide.content || undefined}
@@ -2566,7 +2569,7 @@ export default function App() {
 
                                {/* MODULE COVER SLIDE */}
                                {currentSlide?.type === 'module-cover' && (
-                                 <div className="w-full h-full" style={{ margin: '-1.5rem -2.5rem' }}>
+                                 <div className="w-full h-full">
                                    <ModuleCoverSlide
                                      moduleNumber={(currentSlide as any)._moduleNumber || 1}
                                      moduleTitle={(currentSlide as any)._moduleTitle || currentSlide.title}
@@ -2578,7 +2581,7 @@ export default function App() {
 
                                {/* CLOSING SLIDE */}
                                {currentSlide?.type === 'closing' && (
-                                 <div className="w-full h-full" style={{ margin: '-1.5rem -2.5rem' }}>
+                                 <div className="w-full h-full">
                                    <ClosingSlide
                                      coverImage={(currentSlide as any).coverImage || courseBg || undefined}
                                      theme={theme}
@@ -2727,14 +2730,17 @@ export default function App() {
                                   // AI may produce {pairs:[{id,term,definition}]} — normalise either format
                                   const rawData = currentSlide.data || currentSlide.interactions?.[0] || {};
                                   const matchingProps = (() => {
-                                    if (Array.isArray(rawData.items) && rawData.items.length > 0) return rawData;
                                     if (Array.isArray(rawData.pairs) && rawData.pairs.length > 0) {
-                                      return {
-                                        items:   rawData.pairs.map((p: any) => ({ id: p.id + '_item',   content: p.term })),
-                                        targets: rawData.pairs.map((p: any) => ({ id: p.id + '_target', content: p.definition })),
-                                      };
+                                      const items   = rawData.pairs.map((p) => ({ id: p.id + '_item',   content: p.term }));
+                                      const targets = rawData.pairs.map((p) => ({ id: p.id + '_target', content: p.definition }));
+                                      const correctAnswers = rawData.correctAnswers ||
+                                        Object.fromEntries(rawData.pairs.map((p) => [p.id + '_item', p.id + '_target']));
+                                      return { items, targets, correctAnswers };
                                     }
-                                    return { items: [], targets: [] };
+                                    if (Array.isArray(rawData.items) && rawData.items.length > 0) {
+                                      return { items: rawData.items, targets: rawData.targets || [], correctAnswers: rawData.correctAnswers || {} };
+                                    }
+                                    return { items: [], targets: [], correctAnswers: {} };
                                   })();
                                   return (
                                     <div className="space-y-6 w-full">
@@ -2744,6 +2750,7 @@ export default function App() {
                                         <CustomMatchingActivity
                                          items={matchingProps.items || []}
                                          targets={matchingProps.targets || []}
+                                         correctAnswers={matchingProps.correctAnswers || {}}
                                        />
                                       </div>
                                     </div>
@@ -2827,7 +2834,9 @@ export default function App() {
                                       <SlideHeader title={currentSlide.title} theme={theme} />
                                       <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                       <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
-                                        <BranchingScenario nodes={normNodes} startNodeId={startId} />
+                                         <ErrorBoundary fallbackTitle="Branching scenario error — a node may have an invalid nextNodeId reference.">
+                                           <BranchingScenario nodes={normNodes} startNodeId={startId} />
+                                         </ErrorBoundary>
                                       </div>
                                     </div>
                                   );
@@ -2947,11 +2956,13 @@ export default function App() {
                                     <div className="space-y-4 w-full">
                                       <SlideHeader title={currentSlide.title} theme={theme} />
                                       <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
-                                      <HotspotInteraction
-                                        imageUrl={hd.imageUrl || hd.image}
-                                        points={hd.points || hd.hotspots || []}
-                                        theme={theme}
-                                      />
+                                      <div style={{ height: 'clamp(220px, 50vh, 400px)' }}>
+                                        <HotspotInteraction
+                                          imageUrl={hd.imageUrl || hd.image || hd.backgroundImage}
+                                          points={hd.points || hd.hotspots || []}
+                                          theme={theme}
+                                        />
+                                      </div>
                                     </div>
                                   );
                                })()}
@@ -3059,9 +3070,9 @@ export default function App() {
                        />
                         </motion.div>
                        </AnimatePresence>
+                    </div>{/* end content zone */}
 
-
-                    {/* Learner Player Navigation Bar — sticky at bottom in full-screen mode */}
+                     {/* Learner Player Navigation Bar — sticky at bottom in full-screen mode */}
                     <div className={cn(
                       "w-full z-[100] shrink-0 border-t backdrop-blur-md",
                       playerConfig.playerResolution === 'full' ? 'sticky bottom-0' : 'relative',

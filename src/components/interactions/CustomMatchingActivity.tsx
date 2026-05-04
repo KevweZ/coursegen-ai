@@ -169,23 +169,47 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
         </div>
       </div>
 
+      {/* ── Score summary ─────────────────────────────────── */}
+      {checked && hasCorrectAnswers && (() => {
+        const total   = targets.length;
+        const correct = targets.filter(t => isCorrect(t.id) === true).length;
+        const allOk   = correct === total;
+        return (
+          <div className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm font-semibold ${allOk ? 'bg-green-500/20 text-green-300' : 'bg-amber-500/20 text-amber-300'}`}>
+            {allOk ? '🎉' : '📝'} {correct} / {total} correct
+            {!allOk && <span className="font-normal opacity-70">— review the incorrect items and try again</span>}
+          </div>
+        );
+      })()}
+
       {/* ── Action buttons ───────────────────────────────── */}
       <div className="flex gap-3">
-        {allMatched && !checked && hasCorrectAnswers && (
+        {allMatched && !checked && (
           <button
             onClick={handleCheck}
             className="px-5 py-2 rounded-lg bg-indigo-600 text-white font-semibold text-sm hover:bg-indigo-500 transition-colors"
           >
-            Check Answers
+            Submit Answers
           </button>
         )}
-        <button
-          onClick={handleReset}
-          className="px-5 py-2 rounded-lg bg-slate-700 text-white font-semibold text-sm hover:bg-slate-600 transition-colors"
-        >
-          Reset
-        </button>
+        {checked && (
+          <button
+            onClick={handleReset}
+            className="px-5 py-2 rounded-lg bg-slate-700 text-white font-semibold text-sm hover:bg-slate-600 transition-colors"
+          >
+            Try Again
+          </button>
+        )}
+        {!checked && (
+          <button
+            onClick={handleReset}
+            className="px-5 py-2 rounded-lg bg-slate-700/50 text-slate-400 font-semibold text-sm hover:bg-slate-600 hover:text-white transition-colors"
+          >
+            Reset
+          </button>
+        )}
       </div>
+
     </div>
   );
 };

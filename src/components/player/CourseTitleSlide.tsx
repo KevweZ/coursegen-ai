@@ -85,7 +85,7 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
     <div className="w-full h-full flex flex-row overflow-hidden">
       {/* ── Left text panel ───────────────────────────────────── */}
       <div
-        className="flex flex-col justify-center px-10 py-10"
+        className="flex flex-col justify-center px-14 py-10"
         style={{ width: '52%', flexShrink: 0, backgroundColor: leftBg }}
       >
         {/* Two-tone title — wider wrap zone */}
