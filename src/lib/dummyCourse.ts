@@ -343,16 +343,42 @@ export const DUMMY_COURSE: CourseOutline = {
       ],
     },
 
-    // ── MODULE 6: Summary ──────────────────────────────────────────────────
+    // ── MODULE 6: Wheel Diagram Demo ───────────────────────────────────────
     {
       id: 'mod-6',
-      title: 'Module 6 — Course Summary',
+      title: 'Module 6 — New Interaction Types',
+      slides: [
+        {
+          id: 'slide-wheel',
+          type: 'wheel-diagram',
+          title: 'The eLearning Development Lifecycle',
+          content: 'Click on any segment to explore each phase of the eLearning development process.',
+          narration: 'The eLearning development lifecycle consists of several key phases. Click on each segment to explore them in detail.',
+          data: {
+            centerLabel: 'ADDIE\nModel',
+            segments: [
+              { id: 'w1', label: 'Analysis',     icon: '🔍', content: 'The Analysis phase identifies the learning problem, audience, goals, and delivery environment. It answers: What do learners need to know and why?' },
+              { id: 'w2', label: 'Design',        icon: '✏️', content: 'The Design phase creates a blueprint — learning objectives, assessment strategy, media selection, and storyboard. The instructional approach is defined here.' },
+              { id: 'w3', label: 'Development',   icon: '🛠️', content: 'The Development phase builds the actual course using authoring tools. Slides, interactions, audio, and video are produced and assembled.' },
+              { id: 'w4', label: 'Implementation',icon: '🚀', content: 'Implementation is the delivery phase. The course is uploaded to an LMS, SCORM packages are configured, and learners are enrolled.' },
+              { id: 'w5', label: 'Evaluation',    icon: '📊', content: 'Evaluation measures effectiveness — through learner feedback (Level 1), knowledge tests (Level 2), behavior change (Level 3), and business impact (Level 4).' },
+              { id: 'w6', label: 'Revision',      icon: '🔄', content: 'Based on evaluation data, content is revised and improved. This makes eLearning development an iterative, continuous process.' },
+            ],
+          },
+        },
+      ],
+    },
+
+    // ── MODULE 7: Summary ──────────────────────────────────────────────────
+    {
+      id: 'mod-7',
+      title: 'Module 7 — Course Summary',
       slides: [
         {
           id: 'slide-summary',
           type: 'summary',
           title: 'Course Summary — Player Sandbox Complete',
-          content: `## What This Course Covered\n\n**Module 1** — Core slide types: Title, Content, Key Takeaways\n\n**Module 2** — Knowledge checks: Multiple Choice Quiz\n\n**Module 3** — Exploratory interactions: Accordion, Flashcards, Timeline\n\n**Module 4** — Drag-and-drop interactions: Sorting, Matching\n\n**Module 5** — Advanced interactions: Hotspot, Branching Scenario\n\n---\n\n> Use this sandbox any time via **Admin → Preview Mode** to test player changes without generating a full course.`,
+          content: `## What This Course Covered\n\n**Module 1** — Core slide types: Title, Content, Key Takeaways\n\n**Module 2** — Knowledge checks: Multiple Choice Quiz\n\n**Module 3** — Exploratory interactions: Accordion, Flashcards, Timeline\n\n**Module 4** — Drag-and-drop interactions: Sorting, Matching\n\n**Module 5** — Advanced interactions: Hotspot, Branching Scenario\n\n**Module 6** — New interaction: Wheel Diagram\n\n---\n\n> Use this sandbox any time via **Admin → Preview Mode** to test player changes without generating a full course.`,
           narration: 'Congratulations on completing the Admin Preview Mode sandbox. You have now seen every slide type and interaction component the NexCourse player supports.',
           voiceOverText: 'Congratulations on completing the sandbox. You have now tested every component in the player.',
           imagePlaceholder: false,
