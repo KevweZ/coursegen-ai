@@ -536,7 +536,7 @@ export default function App() {
     closingVirtualSlide,
   ] : [closingVirtualSlide];
   // Cover slide + 2 synthetic pre-content slides (Player Tour + Course Objectives)
-  const playerTourSlide: Slide = course ? { id: '__player-tour__', title: 'Player Navigation Guide', type: 'player-tour' as any, content: '' } as Slide : null as any;
+  const playerTourSlide: Slide = course ? { id: '__player-tour__', title: 'Player Navigation Guide', type: 'player-tour' as any, content: '', narration: 'Before we begin, take a moment to explore the player controls. Hover over each card on the right to see the corresponding element highlighted in the player preview on the left.', voiceOverText: 'Before we begin, take a moment to explore the player controls. Hover over each card to see the corresponding element highlighted.' } as Slide : null as any;
   const courseObjectivesSlide: Slide = course ? { id: '__course-objectives__', title: 'Course Objectives', type: 'course-objectives' as any, content: '', _objectives: (course as any).learningObjectives || [] } as Slide : null as any;
   const PRE_CONTENT = 3; // cover + player-tour + course-objectives
   const allSlides: Slide[] = course ? [coverSlide, playerTourSlide, courseObjectivesSlide, ...contentSlides, ...examVirtualSlides] : [];
