@@ -2971,7 +2971,7 @@ export default function App() {
                                     <div className="space-y-4 w-full">
                                       <SlideHeader title={currentSlide.title} theme={theme} />
                                       <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
-                                      <div style={{ height: 'clamp(220px, 50vh, 400px)' }}>
+                                      <div style={{ minHeight: '320px' }}>
                                         <HotspotInteraction
                                           imageUrl={hd.imageUrl || hd.image || hd.backgroundImage}
                                           points={hd.points || hd.hotspots || []}

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, MapPin, Upload, Move } from 'lucide-react';
+import { Upload, Move, ChevronDown } from 'lucide-react';
 
 interface HotspotPoint {
   id: string;
@@ -14,14 +14,15 @@ interface HotspotInteractionProps {
   imageUrl?: string;
   points?: HotspotPoint[];
   theme?: string;
-  /** Enables image upload + draggable pin repositioning (authoring mode) */
   editable?: boolean;
 }
 
 const PIN_COLORS = [
   '#4f46e5', '#d9582a', '#2d8b4e', '#f0a500',
-  '#00a8a8', '#c94a1c', '#7a3a9e',
+  '#00a8a8', '#c94a1c', '#7a3a9e', '#e5a000', '#1e6e78', '#8b3a3a',
 ];
+
+function cn(...c: (string | false | undefined | null)[]) { return c.filter(Boolean).join(' '); }
 
 export const HotspotInteraction: React.FC<HotspotInteractionProps> = ({
   imageUrl,
@@ -33,16 +34,15 @@ export const HotspotInteraction: React.FC<HotspotInteractionProps> = ({
   const [localImageUrl, setLocalImageUrl] = useState<string | undefined>(imageUrl);
   const [localPoints, setLocalPoints]     = useState<HotspotPoint[]>([...points]);
   const [draggingPinId, setDraggingPinId] = useState<string | null>(null);
-  const [imgOffset, setImgOffset]         = useState({ x: 50, y: 50 }); // object-position %
+  const [imgOffset, setImgOffset]         = useState({ x: 50, y: 50 });
   const [isPanningImg, setIsPanningImg]   = useState(false);
-  const panStart   = useRef<{ mx: number; my: number; ox: number; oy: number } | null>(null);
-  const fileInputRef  = useRef<HTMLInputElement>(null);
-  const containerRef  = useRef<HTMLDivElement>(null);
+  const panStart     = useRef<{ mx: number; my: number; ox: number; oy: number } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  const activePoint = localPoints.find(p => p.id === active);
-  const panelBg     = theme === 'light' ? '#f8fafc' : '#1e293b';
-  const panelText   = theme === 'light' ? '#1e293b' : '#e2e8f0';
-  const borderClr   = theme === 'light' ? '#e2e8f0' : 'rgba(255,255,255,0.1)';
+  const panelBg   = theme === 'light' ? '#f8fafc' : '#1e293b';
+  const panelText = theme === 'light' ? '#1e293b' : '#e2e8f0';
+  const borderClr = theme === 'light' ? '#e2e8f0' : 'rgba(255,255,255,0.12)';
 
   // ── Image upload ──────────────────────────────────────────────────────────
   const handleUploadClick = () => { if (editable) fileInputRef.current?.click(); };
@@ -66,13 +66,12 @@ export const HotspotInteraction: React.FC<HotspotInteractionProps> = ({
     panStart.current = { mx: e.clientX, my: e.clientY, ox: imgOffset.x, oy: imgOffset.y };
   };
 
-  // ── Shared mousemove on the container ─────────────────────────────────────
   const handleContainerMouseMove = useCallback((e: React.MouseEvent) => {
     const container = containerRef.current;
     if (!container) return;
     const rect = container.getBoundingClientRect();
-    const x    = Math.max(0, Math.min(100, ((e.clientX - rect.left)  / rect.width)  * 100));
-    const y    = Math.max(0, Math.min(100, ((e.clientY - rect.top)   / rect.height) * 100));
+    const x = Math.max(0, Math.min(100, ((e.clientX - rect.left)  / rect.width)  * 100));
+    const y = Math.max(0, Math.min(100, ((e.clientY - rect.top)   / rect.height) * 100));
 
     if (draggingPinId) {
       setLocalPoints(pts => pts.map(p => p.id === draggingPinId ? { ...p, x, y } : p));
@@ -93,17 +92,17 @@ export const HotspotInteraction: React.FC<HotspotInteractionProps> = ({
   }, []);
 
   return (
-    <div className="w-full flex gap-4" style={{ height: '100%', minHeight: 0 }}>
-      {/* Hidden file input */}
+    <div className="w-full flex gap-5 items-start">
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
 
-      {/* ── Left: image canvas + pins ──────────────────────────────────── */}
+      {/* ── Left: image canvas ─────────────────────────────────────────────── */}
       <div
         ref={containerRef}
         className="relative rounded-xl overflow-hidden border shrink-0 select-none"
         style={{
-          width: '58%',
-          minHeight: '260px',
+          /* Responsive image area: smaller to leave more room for many pins */
+          width: 'clamp(240px, 44%, 420px)',
+          minHeight: '300px',
           backgroundColor: '#0f172a',
           borderColor: borderClr,
           cursor: draggingPinId ? 'grabbing' : isPanningImg ? 'grabbing' : 'default',
@@ -112,7 +111,6 @@ export const HotspotInteraction: React.FC<HotspotInteractionProps> = ({
         onMouseUp={handleContainerMouseUp}
         onMouseLeave={handleContainerMouseUp}
       >
-        {/* Background image or upload placeholder */}
         {localImageUrl ? (
           <img
             src={localImageUrl}
@@ -139,7 +137,6 @@ export const HotspotInteraction: React.FC<HotspotInteractionProps> = ({
           </div>
         )}
 
-        {/* Change image button (shown when image is already set) */}
         {localImageUrl && editable && (
           <button
             onClick={handleUploadClick}
@@ -150,20 +147,19 @@ export const HotspotInteraction: React.FC<HotspotInteractionProps> = ({
           </button>
         )}
 
-        {/* Pan + drag hint bar */}
         {editable && (
           <div className="absolute bottom-2 left-2 right-2 flex items-center justify-center pointer-events-none">
             <span className="bg-black/50 text-white/60 rounded-full px-3 py-0.5 text-[10px] flex items-center gap-1.5">
               <Move className="w-3 h-3" />
-              {localImageUrl ? 'Drag image to pan · Drag numbered pins to reposition' : 'Drag numbered pins to reposition'}
+              {localImageUrl ? 'Drag image to pan · Drag pins to reposition' : 'Drag pins to reposition'}
             </span>
           </div>
         )}
 
-        {/* Pins — draggable when editable */}
+        {/* Pins */}
         {localPoints.map((pt, i) => {
-          const color        = PIN_COLORS[i % PIN_COLORS.length];
-          const isActive     = active === pt.id;
+          const color          = PIN_COLORS[i % PIN_COLORS.length];
+          const isActive       = active === pt.id;
           const isDraggingThis = draggingPinId === pt.id;
           return (
             <motion.div
@@ -200,70 +196,75 @@ export const HotspotInteraction: React.FC<HotspotInteractionProps> = ({
         })}
       </div>
 
-      {/* ── Right: legend + content reveal ────────────────────────────── */}
-      <div className="flex-1 flex flex-col gap-3 min-w-0 min-h-0 overflow-y-auto">
-        <div className="space-y-2">
-          <p className="text-xs font-bold uppercase tracking-widest opacity-50">Click a pin</p>
+      {/* ── Right: inline accordion pin list — scales to any number of pins ─ */}
+      <div className="flex-1 flex flex-col min-w-0 gap-2">
+        <p className="text-xs font-bold uppercase tracking-widest opacity-50 shrink-0">Click a pin</p>
+
+        {/* Scrollable pin list — handles many hotspots gracefully */}
+        <div className="space-y-1.5 overflow-y-auto" style={{ maxHeight: '65vh' }}>
           {localPoints.map((pt, i) => {
             const color    = PIN_COLORS[i % PIN_COLORS.length];
             const isActive = active === pt.id;
             return (
-              <button
-                key={pt.id}
-                onClick={() => setActive(isActive ? null : pt.id)}
-                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg border-2 text-left transition-all text-sm"
-                style={{
-                  backgroundColor: isActive ? `${color}22` : 'transparent',
-                  borderColor:     isActive ? color : borderClr,
-                  color: isActive
-                    ? (theme === 'light' ? '#1e293b' : 'white')
-                    : (theme === 'light' ? '#374151' : '#94a3b8'),
-                }}
-              >
-                <span
-                  className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-white text-sm font-bold"
-                  style={{ backgroundColor: color }}
+              <div key={pt.id} className="rounded-lg overflow-hidden">
+                {/* Pin row — acts as accordion trigger */}
+                <button
+                  onClick={() => setActive(isActive ? null : pt.id)}
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 border-2 text-left transition-all text-sm"
+                  style={{
+                    backgroundColor: isActive ? `${color}22` : 'transparent',
+                    borderColor:     isActive ? color : borderClr,
+                    borderRadius:    isActive ? '8px 8px 0 0' : '8px',
+                    color: isActive
+                      ? (theme === 'light' ? '#1e293b' : 'white')
+                      : (theme === 'light' ? '#374151' : '#94a3b8'),
+                  }}
                 >
-                  {i + 1}
-                </span>
-                <span className="font-semibold truncate">{pt.label}</span>
-              </button>
+                  <span
+                    className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-white text-sm font-bold"
+                    style={{ backgroundColor: color }}
+                  >
+                    {i + 1}
+                  </span>
+                  <span className="font-semibold flex-1 truncate">{pt.label}</span>
+                  <motion.span
+                    animate={{ rotate: isActive ? 180 : 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="shrink-0"
+                  >
+                    <ChevronDown className="w-4 h-4" />
+                  </motion.span>
+                </button>
+
+                {/* Inline content panel — expands below the pin row */}
+                <AnimatePresence initial={false}>
+                  {isActive && (
+                    <motion.div
+                      key="content"
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.24, ease: 'easeInOut' }}
+                      className="overflow-hidden"
+                    >
+                      <div
+                        className="px-4 py-3 text-sm leading-relaxed border-x-2 border-b-2"
+                        style={{
+                          borderColor:     color,
+                          backgroundColor: panelBg,
+                          color:           panelText,
+                          borderRadius:    '0 0 8px 8px',
+                        }}
+                      >
+                        {pt.content}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             );
           })}
         </div>
-
-        {/* Content reveal */}
-        <AnimatePresence>
-          {activePoint && (
-            <motion.div
-              key={activePoint.id}
-              className="rounded-xl overflow-hidden border"
-              style={{
-                backgroundColor: panelBg,
-                borderColor: PIN_COLORS[localPoints.indexOf(activePoint) % PIN_COLORS.length] + '55',
-              }}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 8 }}
-              transition={{ duration: 0.2 }}
-            >
-              <div
-                className="flex items-center justify-between px-4 py-2.5"
-                style={{ backgroundColor: PIN_COLORS[localPoints.indexOf(activePoint) % PIN_COLORS.length] }}
-              >
-                <h3 className="text-white font-bold text-sm">{activePoint.label}</h3>
-                <button onClick={() => setActive(null)} className="text-white/80 hover:text-white">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="px-4 py-3">
-                <p className="text-sm leading-relaxed" style={{ color: panelText }}>
-                  {activePoint.content}
-                </p>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
     </div>
   );
