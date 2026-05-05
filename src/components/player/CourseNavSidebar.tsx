@@ -30,6 +30,7 @@ const SLIDE_TYPE_ICON: Record<string, string> = {
   matching: '🔗', hotspot: '📍', branching: '🌿', interaction: '⚙️',
   summary: '📋', 'game-template': '🎮', intro: '🎬', outro: '🏁',
   'exam-intro': '🎓', 'mastery-exam': '📝', 'exam-results': '🏆',
+  'player-tour': '🗺️', 'course-objectives': '🎯',
 };
 
 export function CourseNavSidebar({
@@ -168,6 +169,47 @@ export function CourseNavSidebar({
             </button>
           );
         })()}
+        {/* Player Tour — navigates to slide index 1 */}
+        {allSlides[1]?.type === 'player-tour' && (() => {
+          const idx = 1;
+          const isActive = currentSlideIndex === idx;
+          return (
+            <button
+              key="__player-tour__"
+              onClick={() => onNavigate(idx)}
+              className={cn(
+                'w-full flex items-center gap-2.5 pl-4 pr-4 py-2.5 text-left transition-all mb-1',
+                isActive ? activeRow : inactiveRow
+              )}
+              title="Player Navigation Guide"
+            >
+              <span className="text-base shrink-0">🗺️</span>
+              <span className="text-sm leading-snug font-medium">Player Tour</span>
+              <span className="ml-auto text-xs px-1.5 py-0.5 rounded font-semibold opacity-60" style={{ backgroundColor: 'rgba(79,70,229,0.25)', color: '#818cf8' }}>Skip</span>
+            </button>
+          );
+        })()}
+
+        {/* Course Objectives — navigates to slide index 2 */}
+        {allSlides[2]?.type === 'course-objectives' && (() => {
+          const idx = 2;
+          const isActive = currentSlideIndex === idx;
+          return (
+            <button
+              key="__course-objectives__"
+              onClick={() => onNavigate(idx)}
+              className={cn(
+                'w-full flex items-center gap-2.5 pl-4 pr-4 py-2.5 text-left transition-all mb-1',
+                isActive ? activeRow : inactiveRow
+              )}
+              title="Course Objectives"
+            >
+              <span className="text-base shrink-0">🎯</span>
+              <span className="text-sm leading-snug font-medium">Course Objectives</span>
+            </button>
+          );
+        })()}
+
         {modules.map((mod, mi) => (
           <div key={mod.id} className="mb-1">
             {/* Module heading */}

@@ -87,7 +87,9 @@ import { SlideHeader } from './components/player/SlideHeader';
 import { CourseTitleSlide } from './components/player/CourseTitleSlide';
 import { ClosingSlide } from './components/player/ClosingSlide';
 import { ModuleCoverSlide } from './components/player/ModuleCoverSlide';
-import { LearningObjectivesSlide } from './components/player/LearningObjectivesSlide';
+import { LearningObjectivesSlide }  from './components/player/LearningObjectivesSlide';
+import { CourseObjectivesSlide } from './components/player/CourseObjectivesSlide';
+import { PlayerTourSlide }       from './components/player/PlayerTourSlide';
 import { WheelDiagram } from './components/interactions/WheelDiagram';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { CustomMatchingActivity } from './components/interactions/CustomMatchingActivity';
@@ -484,17 +486,23 @@ export default function App() {
   // Virtual exam slides appended after all content slides
   // Inject module-cover slides: one before the first slide of each module
   const contentSlides: Slide[] = course
-    ? course.modules.flatMap((m: any, moduleIdx: number) => [
-        {
-          id: `__module-cover-${moduleIdx + 1}__`,
-          title: m.title || `Module ${moduleIdx + 1}`,
-          type: 'module-cover' as any,
-          content: m.description || '',
-          _moduleNumber: moduleIdx + 1,
-          _moduleTitle:  m.title || `Module ${moduleIdx + 1}`,
-        } as Slide,
-        ...m.slides,
-      ])
+    ? course.modules.flatMap((m: any, moduleIdx: number) => {
+        const moduleObj = (course as any).learningObjectives?.[moduleIdx];
+        const slides = (m.slides as any[]).map((sl: any, si: number) =>
+          si === 0 && moduleObj ? { ...sl, _moduleObjectives: moduleObj } : sl
+        );
+        return [
+          {
+            id: `__module-cover-${moduleIdx + 1}__`,
+            title: m.title || `Module ${moduleIdx + 1}`,
+            type: 'module-cover' as any,
+            content: m.description || '',
+            _moduleNumber: moduleIdx + 1,
+            _moduleTitle:  m.title || `Module ${moduleIdx + 1}`,
+          } as Slide,
+          ...slides,
+        ];
+      })
     : [];
   // Item 12: Inject a synthetic cover slide at position 0
   const coverSlide: Slide = course ? {
@@ -516,13 +524,16 @@ export default function App() {
     { id: '__exam-results__', title: 'Quiz Results',   type: 'exam-results', content: '' } as Slide,
     closingVirtualSlide,
   ] : [closingVirtualSlide];
-  // Cover slide prepended, not included in TOC (contentSlides)
-  const allSlides: Slide[] = course ? [coverSlide, ...contentSlides, ...examVirtualSlides] : [];
-  const examIntroIndex   = contentSlides.length + 1; // +1 for cover slide
-  const examQIndex       = contentSlides.length + 2;
-  const examResultsIndex = contentSlides.length + 3;
+  // Cover slide + 2 synthetic pre-content slides (Player Tour + Course Objectives)
+  const playerTourSlide: Slide = course ? { id: '__player-tour__', title: 'Player Navigation Guide', type: 'player-tour' as any, content: '' } as Slide : null as any;
+  const courseObjectivesSlide: Slide = course ? { id: '__course-objectives__', title: 'Course Objectives', type: 'course-objectives' as any, content: '', _objectives: (course as any).learningObjectives || [] } as Slide : null as any;
+  const PRE_CONTENT = 3; // cover + player-tour + course-objectives
+  const allSlides: Slide[] = course ? [coverSlide, playerTourSlide, courseObjectivesSlide, ...contentSlides, ...examVirtualSlides] : [];
+  const examIntroIndex   = contentSlides.length + PRE_CONTENT;
+  const examQIndex       = contentSlides.length + PRE_CONTENT + 1;
+  const examResultsIndex = contentSlides.length + PRE_CONTENT + 2;
   const currentSlide = allSlides[currentSlideIndex];
-  const FULL_BLEED_TYPES = ['cover', 'title', 'module-cover', 'closing', 'key-takeaways'];
+  const FULL_BLEED_TYPES = ['cover', 'title', 'module-cover', 'closing', 'key-takeaways', 'player-tour', 'course-objectives'];
   const isFullBleed = FULL_BLEED_TYPES.includes(currentSlide?.type as string);
 
   const canNavigateTo = (targetIdx: number): boolean => {
@@ -2583,13 +2594,49 @@ export default function App() {
                                   );
                                })()}
 
-                               {(currentSlide?.type === 'content' || currentSlide?.type === 'summary') && (
-                                 <div className="space-y-4 w-full">
-                                   <SlideHeader title={currentSlide.title} theme={theme} />
-                                   {currentSlide.content && <SlideContent content={sanitizeContent(currentSlide.content)} theme={theme} />}
+                               {(currentSlide?.type === 'content' || currentSlide?.type === 'summary') && (() => {
+                                 const mo: any = (currentSlide as any)._moduleObjectives;
+                                 const accentClr = theme === 'light' ? '#4f46e5' : '#818cf8';
+                                 const bgClr     = theme === 'light' ? 'rgba(79,70,229,0.06)' : 'rgba(129,140,248,0.08)';
+                                 const textClr   = theme === 'light' ? '#1e293b' : '#e2e8f0';
+                                 const subClr    = theme === 'light' ? '#475569' : '#94a3b8';
+                                 const terminal  = mo ? (typeof mo === 'string' ? mo : mo.terminalObjective || '') : '';
+                                 const enabling: string[] = mo ? (typeof mo === 'string' ? [] : mo.enablingObjectives || []) : [];
+                                 return (
+                                   <div className="space-y-4 w-full">
+                                     <SlideHeader title={currentSlide.title} theme={theme} />
+                                     {currentSlide.content && <SlideContent content={sanitizeContent(currentSlide.content)} theme={theme} />}
+                                     {mo && (
+                                       <div className="w-full rounded-xl p-5 space-y-3 mt-2" style={{ backgroundColor: bgClr, border: `1.5px solid ${accentClr}30` }}>
+                                         <p className="text-xs font-black uppercase tracking-widest" style={{ color: accentClr }}>Module Objectives</p>
+                                         {terminal && <div className="flex items-start gap-2.5">
+                                           <span className="shrink-0 mt-0.5 w-5 h-5 rounded-full flex items-center justify-center text-xs font-black" style={{ backgroundColor: `${accentClr}22`, color: accentClr }}>T</span>
+                                           <p className="text-sm font-semibold leading-snug" style={{ color: textClr }}>{terminal}</p>
+                                         </div>}
+                                         {enabling.length > 0 && <div className="ml-7 space-y-1.5">{enabling.map((eo: string, j: number) => (
+                                           <div key={j} className="flex items-start gap-2">
+                                             <span className="shrink-0 mt-1 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: accentClr }} />
+                                             <p className="text-xs leading-relaxed" style={{ color: subClr }}>{eo}</p>
+                                           </div>
+                                         ))}</div>}
+                                       </div>
+                                     )}
+                                   </div>
+                                 );
+                               })()}
+
+                               {/* PLAYER TOUR SLIDE */}
+                               {(currentSlide as any)?.type === 'player-tour' && (
+                                 <div className="w-full h-full">
+                                   <PlayerTourSlide theme={theme} onSkip={() => setCurrentSlideIndex((si: number) => Math.min(allSlides.length - 1, si + 1))} />
                                  </div>
                                )}
-
+                               {/* COURSE OBJECTIVES SLIDE */}
+                               {(currentSlide as any)?.type === 'course-objectives' && (
+                                 <div className="w-full h-full">
+                                   <CourseObjectivesSlide objectives={(currentSlide as any)._objectives || []} theme={theme} />
+                                 </div>
+                               )}
                                {/* MODULE COVER SLIDE */}
                                {currentSlide?.type === 'module-cover' && (
                                  <div className="w-full h-full">
