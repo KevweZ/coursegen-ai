@@ -85,8 +85,9 @@ export const WheelDiagram: React.FC<WheelDiagramProps> = ({
   const LABEL_R = (OUTER_R + INNER_R) / 2; // text sits in the middle of the ring
 
   return (
-    <div className="w-full h-full flex items-center justify-center gap-4 px-2">
-      {/* ── SVG Pie Wheel ─────────────────────────────────────── */}
+    /* Outer: relative so the reveal panel can be absolutely placed to the right of the wheel */
+    <div className="w-full relative" style={{ minHeight: 540 }}>
+      {/* ── SVG Pie Wheel — stays fixed at left, never moves ──── */}
       <div className="shrink-0" style={{ width: 520, height: 520 }}>
         <svg
           width="100%"
@@ -209,22 +210,26 @@ export const WheelDiagram: React.FC<WheelDiagramProps> = ({
         </svg>
       </div>
 
-      {/* ── Content reveal panel ──────────────────────────────── */}
+      {/* ── Content reveal panel — absolutely positioned right of the wheel, never displaces it ── */}
       <AnimatePresence>
         {selectedSeg && (
           <motion.div
             key={selectedSeg.id}
-            className="flex-1 flex flex-col rounded-xl overflow-hidden shadow-2xl"
+            className="rounded-xl overflow-hidden shadow-2xl flex flex-col"
             style={{
-              maxWidth: '45%',
+              position: 'absolute',
+              left: 540,          // wheel (520px) + 20px gap
+              top: 0,
+              width: 'calc(100% - 548px)',
+              maxWidth: 420,
+              maxHeight: 520,
               backgroundColor: panelBg,
               borderLeft: `4px solid ${getColor(selectedSeg, segments.indexOf(selectedSeg))}`,
-              maxHeight: 520,
             }}
-            initial={{ opacity: 0, x: 30 }}
+            initial={{ opacity: 0, x: -16 }}
             animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 30 }}
-            transition={{ duration: 0.22, ease: 'easeOut' }}
+            exit={{ opacity: 0, x: -16 }}
+            transition={{ duration: 0.28, ease: 'easeOut' }}
           >
             {/* Header */}
             <div
