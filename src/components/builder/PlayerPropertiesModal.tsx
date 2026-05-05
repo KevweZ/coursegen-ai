@@ -36,6 +36,10 @@ export interface PlayerConfig {
   playerResolution: '16:9' | '4:3' | 'full';
   navigationMode: NavigationMode;
   examPresentationMode: ExamPresentationMode;
+  /** 'module' = per-module color from palette; 'global' = single user-picked color */
+  accentMode: 'module' | 'global';
+  /** Hex color used when accentMode === 'global' */
+  globalAccentColor: string;
 }
 
 export const defaultPlayerConfig: PlayerConfig = {
@@ -58,6 +62,8 @@ export const defaultPlayerConfig: PlayerConfig = {
   playerResolution: 'full',
   navigationMode: 'free',
   examPresentationMode: 'one-at-a-time',
+  accentMode: 'module',
+  globalAccentColor: '#4f46e5',
 };
 
 // ─── Props ───────────────────────────────────────────────────────────────────
@@ -450,6 +456,43 @@ export function PlayerPropertiesModal({ config, onChange, onClose }: Props) {
                   label={label}
                 />
               ))}
+            </div>
+
+            <SectionTitle>Slide Accent Colors</SectionTitle>
+            <div className="space-y-3">
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                A colored accent strip is shown on each slide. By default it matches the module's color. You can override this with a single global color.
+              </p>
+              <Toggle
+                checked={local.accentMode === 'module'}
+                onChange={() => update({ accentMode: local.accentMode === 'module' ? 'global' : 'module' })}
+                label="Use module accent colors"
+              />
+              {local.accentMode === 'global' && (
+                <div className="flex items-center gap-3 pl-1">
+                  <label className="text-xs text-slate-300 shrink-0">Global accent color</label>
+                  <input
+                    type="color"
+                    value={local.globalAccentColor || '#4f46e5'}
+                    onChange={e => update({ globalAccentColor: e.target.value })}
+                    className="w-8 h-8 rounded cursor-pointer border-0 bg-transparent"
+                    title="Pick global accent color"
+                  />
+                  <span className="text-xs text-slate-500 font-mono">{local.globalAccentColor || '#4f46e5'}</span>
+                </div>
+              )}
+              {local.accentMode === 'module' && (
+                <div className="flex flex-wrap gap-1.5 pl-1">
+                  {['#4f46e5','#0891b2','#16a34a','#d97706','#9333ea','#e11d48','#0d9488','#b45309'].map((c, i) => (
+                    <div
+                      key={c}
+                      className="w-5 h-5 rounded-full border-2 border-white/20"
+                      style={{ backgroundColor: c }}
+                      title={`Module ${i + 1}`}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
 
             <SectionTitle>Navigation Mode</SectionTitle>

@@ -34,6 +34,8 @@ export interface PlayerState {
   hasAudio: boolean;
   /** True while audio metadata is loading. */
   isLoading: boolean;
+  /** Master volume 0–1. Default 1. */
+  volume: number;
 }
 
 export interface PlayerActions {
@@ -43,6 +45,8 @@ export interface PlayerActions {
   beginSeek: () => void;
   endSeek: (time: number) => void;
   loadSlide: (slideId: string, audioSrc?: string | null, ttsText?: string | null) => void;
+  /** Set master volume 0–1. Applies immediately to audio element. */
+  setVolume: (v: number) => void;
 }
 
 export type Player = PlayerState & PlayerActions;
@@ -62,6 +66,7 @@ const DEFAULT_STATE: PlayerState = {
   isEnded: false,
   hasAudio: false,
   isLoading: false,
+  volume: 1,
 };
 
 // ---------------------------------------------------------------------------
@@ -381,6 +386,12 @@ export function usePlayer(): Player {
     audio.load();
   }, []);
 
+  const setVolume = useCallback((v: number) => {
+    const clamped = Math.max(0, Math.min(1, v));
+    if (audioRef.current) audioRef.current.volume = clamped;
+    setState(prev => ({ ...prev, volume: clamped }));
+  }, []);
+
   return {
     ...state,
     play,
@@ -389,5 +400,6 @@ export function usePlayer(): Player {
     beginSeek,
     endSeek,
     loadSlide,
+    setVolume,
   };
 }

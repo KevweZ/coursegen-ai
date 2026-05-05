@@ -19,6 +19,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
+  Volume1,
   Volume2,
   VolumeX,
   Loader2,
@@ -60,10 +61,10 @@ interface PlayerBarProps {
   disablePrev?: boolean;
   /** Force-disable the Next button (e.g. on exam-intro / quiz slides) */
   disableNext?: boolean;
-  /** Whether narration voice-over is currently enabled */
-  voiceOverEnabled?: boolean;
-  /** Callback to toggle narration on/off */
-  onToggleVoiceOver?: () => void;
+  /** Current volume 0–1 */
+  volume?: number;
+  /** Callback when user adjusts the volume slider */
+  onVolumeChange?: (v: number) => void;
 }
 
 export const PlayerBar: React.FC<PlayerBarProps> = ({
@@ -77,8 +78,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   editorActions,
   disablePrev = false,
   disableNext = false,
-  voiceOverEnabled = true,
-  onToggleVoiceOver,
+  volume = 1,
+  onVolumeChange,
 }) => {
   const barRef = useRef<HTMLDivElement>(null);
 
@@ -216,28 +217,38 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           </div>
         )}
 
-        {/* Volume mute/unmute toggle — always visible when audio exists */}
-        {onToggleVoiceOver && (
-          <button
-            onClick={onToggleVoiceOver}
-            title={voiceOverEnabled ? 'Mute narration' : 'Unmute narration'}
-            aria-label={voiceOverEnabled ? 'Mute narration' : 'Unmute narration'}
-            className={cn(
-              'w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-all focus:outline-none border',
-              voiceOverEnabled
-                ? isLight
-                  ? 'border-emerald-300 bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
-                  : 'border-emerald-500/40 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25'
-                : isLight
-                  ? 'border-gray-200 bg-gray-100 text-gray-400 hover:bg-gray-200'
-                  : 'border-gray-700 bg-gray-800/60 text-gray-500 hover:bg-gray-700'
-            )}
-          >
-            {voiceOverEnabled
-              ? <Volume2 className="w-3.5 h-3.5" />
-              : <VolumeX  className="w-3.5 h-3.5" />
-            }
-          </button>
+        {/* Volume slider — only shown when audio exists & callback is provided */}
+        {onVolumeChange && (
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={() => onVolumeChange(volume > 0 ? 0 : 1)}
+              title={volume === 0 ? 'Unmute' : 'Mute'}
+              aria-label={volume === 0 ? 'Unmute narration' : 'Mute narration'}
+              className={cn(
+                'w-6 h-6 rounded-full flex items-center justify-center transition-all focus:outline-none',
+                isLight ? 'text-gray-500 hover:text-gray-800' : 'text-gray-400 hover:text-white'
+              )}
+            >
+              {volume === 0
+                ? <VolumeX  className="w-3.5 h-3.5" />
+                : volume < 0.5
+                ? <Volume1  className="w-3.5 h-3.5" />
+                : <Volume2  className="w-3.5 h-3.5" />
+              }
+            </button>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={volume}
+              onChange={e => onVolumeChange(parseFloat(e.target.value))}
+              className="w-14 h-1 cursor-pointer appearance-none rounded-full"
+              style={{ accentColor: '#6366f1' }}
+              title={`Volume: ${Math.round(volume * 100)}%`}
+              aria-label="Volume"
+            />
+          </div>
         )}
 
         <div className={cn('h-4 w-px shrink-0', divider)} />

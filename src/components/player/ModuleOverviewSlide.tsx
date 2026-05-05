@@ -19,7 +19,7 @@ function normalize(obj: string | TerminalObjectiveGroup): TerminalObjectiveGroup
 }
 
 // Distinct accent per module number (cycles)
-const MODULE_COLORS = ['#4f46e5', '#0891b2', '#16a34a', '#d97706', '#9333ea', '#e11d48', '#0d9488', '#b45309'];
+export const MODULE_COLORS = ['#4f46e5', '#0891b2', '#16a34a', '#d97706', '#9333ea', '#e11d48', '#0d9488', '#b45309'];
 
 const PANELS: Record<Theme, {
   leftBg: string; rightBg: string;

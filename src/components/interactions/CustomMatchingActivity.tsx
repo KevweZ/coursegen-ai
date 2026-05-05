@@ -109,12 +109,12 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
                 onDragEnd={handleDragEnd}
                 className="px-4 py-3.5 rounded-lg font-semibold text-base select-none transition-all"
                 style={{
-                  /* Colorful left border + tinted background */
-                  borderLeft: placed ? '4px solid rgba(255,255,255,0.1)' : `4px solid ${color}`,
+                  /* Colorful left border + tinted background — dimmed when placed */
+                  borderLeft: placed ? `4px solid ${color}60` : `4px solid ${color}`,
                   backgroundColor: placed
-                    ? 'rgba(255,255,255,0.04)'
-                    : `${color}26`,           // ~15% opacity tint
-                  color:  placed ? 'rgba(255,255,255,0.25)' : 'white',
+                    ? `${color}12`          // ~7% — keep hue, clearly dimmed
+                    : `${color}26`,         // ~15% opacity tint
+                  color:  placed ? `${color}80` : 'white',
                   cursor: placed || checked ? 'default' : 'grab',
                   opacity: isDragging ? 0.45 : 1,
                   boxShadow: (!placed && !checked) ? `0 2px 8px ${color}33` : 'none',
@@ -123,7 +123,10 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
                 transition={{ duration: 0.14 }}
               >
                 {placed ? (
-                  <span className="italic text-sm opacity-40">Placed ✓</span>
+                  <span className="italic text-sm flex items-center gap-2">
+                    <span style={{ color: `${color}aa` }}>✓</span>
+                    <span style={{ color: `${color}80` }}>{item.content}</span>
+                  </span>
                 ) : (
                   item.content
                 )}

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Sparkles, 
@@ -89,7 +89,7 @@ import { ClosingSlide } from './components/player/ClosingSlide';
 import { ModuleCoverSlide } from './components/player/ModuleCoverSlide';
 import { LearningObjectivesSlide }  from './components/player/LearningObjectivesSlide';
 import { CourseObjectivesSlide }   from './components/player/CourseObjectivesSlide';
-import { ModuleOverviewSlide }    from './components/player/ModuleOverviewSlide';
+import { ModuleOverviewSlide, MODULE_COLORS } from './components/player/ModuleOverviewSlide';
 import { PlayerTourSlide }       from './components/player/PlayerTourSlide';
 import { WheelDiagram } from './components/interactions/WheelDiagram';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -540,7 +540,27 @@ export default function App() {
   const courseObjectivesSlide: Slide = course ? { id: '__course-objectives__', title: 'Course Objectives', type: 'course-objectives' as any, content: '', _objectives: (course as any).learningObjectives || [] } as Slide : null as any;
   const PRE_CONTENT = 3; // cover + player-tour + course-objectives
   const allSlides: Slide[] = course ? [coverSlide, playerTourSlide, courseObjectivesSlide, ...contentSlides, ...examVirtualSlides] : [];
-  const examIntroIndex   = contentSlides.length + PRE_CONTENT;
+  // Compute which module the current slide belongs to (for accent color)
+  const currentModuleNumber = React.useMemo(() => {
+    let mod = 0;
+    for (let i = 0; i <= currentSlideIndex; i++) {
+      const s = allSlides[i];
+      if (s && typeof (s as any).id === 'string') {
+        const m = (s as any).id.match(/__module-overview-(\d+)__/);
+        if (m) mod = parseInt(m[1]);
+      }
+    }
+    return mod;
+  }, [allSlides, currentSlideIndex]);
+
+  const slideAccentColor = React.useMemo(() => {
+    if ((playerConfig as any).accentMode === 'global') {
+      return (playerConfig as any).globalAccentColor || '#4f46e5';
+    }
+    return MODULE_COLORS[(currentModuleNumber - 1) % MODULE_COLORS.length] || '#4f46e5';
+  }, [playerConfig, currentModuleNumber]);
+
+    const examIntroIndex   = contentSlides.length + PRE_CONTENT;
   const examQIndex       = contentSlides.length + PRE_CONTENT + 1;
   const examResultsIndex = contentSlides.length + PRE_CONTENT + 2;
   const currentSlide = allSlides[currentSlideIndex];
@@ -2541,6 +2561,13 @@ export default function App() {
                       : undefined
                     : undefined
                   }>
+                    {/* Global per-module accent strip (absolute, left edge) */}
+                    {!['cover','module-cover','module-overview','player-tour','course-objectives','closing','exam-intro','mastery-exam','exam-results'].includes((currentSlide as any)?.type) && (
+                      <div
+                        className="absolute left-0 top-0 bottom-0 w-[3px] z-20 pointer-events-none"
+                        style={{ background: `linear-gradient(to bottom, ${slideAccentColor}, ${slideAccentColor}40)` }}
+                      />
+                    )}
                     {/* ── Content zone: flex-1 so PlayerBar stays at bottom ── */}
                     <div className="flex-1 relative overflow-hidden flex flex-col">
                     {/* ── Full-bleed slide frame ─────────────────────── */}
@@ -2606,28 +2633,21 @@ export default function App() {
                                })()}
 
                                {(currentSlide?.type === 'content' || currentSlide?.type === 'summary') && (() => {
-                                 const accent = theme === 'light' ? '#4338ca' : theme === 'unified' ? '#a78bfa' : '#818cf8';
-                                 const accentFaint = `${accent}40`;
-                                 const labelClr = theme === 'light' ? '#6366f1' : theme === 'unified' ? '#c4b5fd' : '#818cf8';
                                  const typeLabel = currentSlide.type === 'summary' ? 'Summary' : 'Overview';
+                                 const accentFaint = `${slideAccentColor}40`;
                                  return (
-                                   <div className="w-full h-full flex gap-0 overflow-hidden">
-                                     {/* Left accent strip */}
-                                     <div className="shrink-0 w-[3px] rounded-full mr-5 self-stretch" style={{ background: `linear-gradient(to bottom, ${accent}, ${accentFaint})` }} />
-                                     {/* Content area */}
-                                     <div className="flex-1 min-w-0 space-y-4">
-                                       {/* Section label */}
-                                       <p className="text-[10px] font-black uppercase tracking-[0.25em]" style={{ color: labelClr }}>
-                                         {typeLabel}
-                                       </p>
-                                       {/* Title + animated underline */}
-                                       <div className="space-y-1.5">
-                                         <SlideHeader title={currentSlide.title} theme={theme} className="mb-0" />
-                                         <div className="h-[2px] w-full rounded-full" style={{ background: `linear-gradient(to right, ${accent}, ${accentFaint}, transparent)` }} />
-                                       </div>
-                                       {/* Body content */}
-                                       {currentSlide.content && <SlideContent content={sanitizeContent(currentSlide.content)} theme={theme} />}
+                                   <div className="w-full space-y-4">
+                                     {/* Section label */}
+                                     <p className="text-[10px] font-black uppercase tracking-[0.25em]" style={{ color: slideAccentColor }}>
+                                       {typeLabel}
+                                     </p>
+                                     {/* Title + animated underline */}
+                                     <div className="space-y-1.5">
+                                       <SlideHeader title={currentSlide.title} theme={theme} className="mb-0" />
+                                       <div className="h-[2px] w-full rounded-full" style={{ background: `linear-gradient(to right, ${slideAccentColor}, ${accentFaint}, transparent)` }} />
                                      </div>
+                                     {/* Body content */}
+                                     {currentSlide.content && <SlideContent content={sanitizeContent(currentSlide.content)} theme={theme} />}
                                    </div>
                                  );
                                })()}
@@ -3175,8 +3195,8 @@ export default function App() {
                         theme={theme}
                         disableNext={currentSlide?.type === 'exam-intro' || currentSlide?.type === 'mastery-exam'}
                         disablePrev={currentSlide?.type === 'mastery-exam'}
-                        voiceOverEnabled={voiceOverEnabled}
-                        onToggleVoiceOver={() => setVoiceOverEnabled(v => !v)}
+                        volume={player.volume}
+                        onVolumeChange={player.setVolume}
                       />
                      </div>{/* end PlayerBar */}
                   </div>{/* end slide frame */}

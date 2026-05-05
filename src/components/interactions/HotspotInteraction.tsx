@@ -92,7 +92,7 @@ export const HotspotInteraction: React.FC<HotspotInteractionProps> = ({
   }, []);
 
   return (
-    <div className="w-full flex gap-5 items-start">
+    <div className="w-full h-full flex gap-5 items-stretch">
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
 
       {/* ── Left: image canvas ─────────────────────────────────────────────── */}
@@ -102,7 +102,8 @@ export const HotspotInteraction: React.FC<HotspotInteractionProps> = ({
         style={{
           /* Responsive image area: larger to give image more space */
           width: 'clamp(280px, 60%, 600px)',
-          minHeight: '300px',
+          minHeight: '420px',
+          height: '100%',
           backgroundColor: '#0f172a',
           borderColor: borderClr,
           cursor: draggingPinId ? 'grabbing' : isPanningImg ? 'grabbing' : 'default',
