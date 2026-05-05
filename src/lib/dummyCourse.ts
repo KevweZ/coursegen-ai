@@ -47,17 +47,6 @@ export const DUMMY_COURSE: CourseOutline = {
       id: 'mod-1',
       title: 'Module 1 — Core Slide Types',
       slides: [
-        // Title
-        {
-          id: 'slide-title',
-          type: 'title',
-          title: 'NexCourse player Sandbox',
-          content: 'Welcome to the **Admin Preview Mode**. This course lets you test every player component without generating a real course. Use the navigation controls below to move between slides.',
-          narration: 'Welcome to the Admin Preview Mode. This is a sandbox course that contains every slide type and interactive component. Use this environment to test and debug the course player.',
-          voiceOverText: 'Welcome to the Admin Preview Mode. This is a sandbox course that contains every slide type.',
-          imagePlaceholder: true,
-          mediaPrompt: 'Professional eLearning studio with glowing screens',
-        },
         // Content
         {
           id: 'slide-content-1',
