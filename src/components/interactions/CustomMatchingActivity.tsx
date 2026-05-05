@@ -89,7 +89,7 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
       <div className="flex gap-4">
         {/* ── Draggable items column ──────────────────────── */}
         <div className="flex-1 space-y-2">
-          <p className="text-xs font-bold uppercase tracking-widest opacity-60 mb-2">ITEMS</p>
+          <p className="text-sm font-bold uppercase tracking-widest opacity-60 mb-3">ITEMS</p>
           {items.map(item => {
             const placed = placedItemIds.has(item.id);
             const isDragging = draggingId === item.id;
@@ -99,7 +99,7 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
                 draggable={!placed && !checked}
                 onDragStart={(e) => handleDragStart(item.id, e as any)}
                 onDragEnd={handleDragEnd}
-                className="px-4 py-3 rounded-lg font-semibold text-sm cursor-grab select-none transition-all"
+                className="px-5 py-4 rounded-lg font-semibold text-base cursor-grab select-none transition-all"
                 style={{
                   backgroundColor: placed ? 'transparent' : '#3b4a6b',
                   border: placed ? '2px dashed rgba(255,255,255,0.2)' : '2px solid transparent',
@@ -117,7 +117,7 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
 
         {/* ── Drop targets column ──────────────────────────── */}
         <div className="flex-1 space-y-2">
-          <p className="text-xs font-bold uppercase tracking-widest opacity-60 mb-2">MATCHES</p>
+          <p className="text-sm font-bold uppercase tracking-widest opacity-60 mb-3">MATCHES</p>
           {targets.map(target => {
             const matchedItemId = userMatches[target.id];
             const status = checked ? isCorrect(target.id) : null;
@@ -127,7 +127,7 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
                 key={target.id}
                 onDragOver={handleDragOver}
                 onDrop={(e) => handleDrop(target.id, e)}
-                className="rounded-lg border-2 transition-colors min-h-[48px]"
+                className="rounded-lg border-2 transition-colors min-h-[72px]"
                 style={{
                   borderColor: matchedItemId
                     ? (status === true ? '#22c55e' : status === false ? '#ef4444' : 'rgba(255,255,255,0.35)')
@@ -135,14 +135,14 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
                   backgroundColor: matchedItemId ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.03)',
                 }}
               >
-                <div className="flex items-center gap-2 px-3 py-2">
+                <div className="flex items-center gap-2 px-4 py-3">
                   {/* Target label */}
-                  <div className="flex-1 text-xs text-slate-300">{target.content}</div>
+                  <div className="flex-1 text-sm text-slate-200 leading-snug">{target.content}</div>
 
                   {/* Matched item pill */}
                   {matchedItemId && (
                     <div className="flex items-center gap-1">
-                      <span className="text-xs font-semibold text-white bg-indigo-600 px-2 py-1 rounded">
+                      <span className="text-sm font-semibold text-white bg-indigo-600 px-3 py-1.5 rounded">
                         {getItemContent(matchedItemId)}
                       </span>
                       {!checked && (
@@ -160,7 +160,7 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
 
                   {/* Drop hint */}
                   {!matchedItemId && (
-                    <span className="text-xs text-slate-500 italic">Drop here</span>
+                    <span className="text-sm text-slate-400 italic">Drop here</span>
                   )}
                 </div>
               </div>

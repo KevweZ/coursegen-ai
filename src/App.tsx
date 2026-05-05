@@ -2801,9 +2801,9 @@ export default function App() {
                                {currentSlide?.type === 'sorting' && (
                                   <div className="space-y-6 w-full">
                                      <SlideHeader title={currentSlide.title} theme={theme} />
-                                     <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
+                                     <SmartContent content={sanitizeContent(currentSlide.content) + '\n\nDrag items or use ↑ ↓ arrows to reorder.'} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                      <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
-                                        <CustomSortingActivity items={(currentSlide.data || currentSlide.interactions?.[0] || {}).items || []} correctOrder={(currentSlide.data || currentSlide.interactions?.[0] || {}).correctOrder || []} prompt="Drag items or use arrows to reorder" />
+                                        <CustomSortingActivity items={(currentSlide.data || currentSlide.interactions?.[0] || {}).items || []} correctOrder={(currentSlide.data || currentSlide.interactions?.[0] || {}).correctOrder || []}  />
                                      </div>
                                   </div>
                                )}
@@ -3101,6 +3101,8 @@ export default function App() {
                         onPrev={handlePrev}
                         onNext={handleNext}
                         theme={theme}
+                        disableNext={currentSlide?.type === 'exam-intro' || currentSlide?.type === 'mastery-exam'}
+                        disablePrev={currentSlide?.type === 'mastery-exam'}
                       />
                      </div>{/* end PlayerBar */}
                   </div>{/* end slide frame */}

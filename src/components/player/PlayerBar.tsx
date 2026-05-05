@@ -55,6 +55,10 @@ interface PlayerBarProps {
   onNext: () => void;
   theme?: 'light' | 'dark' | 'unified';
   editorActions?: SlideEditorActions;
+  /** Force-disable the Prev button (e.g. on exam slides) */
+  disablePrev?: boolean;
+  /** Force-disable the Next button (e.g. on exam-intro / quiz slides) */
+  disableNext?: boolean;
 }
 
 export const PlayerBar: React.FC<PlayerBarProps> = ({
@@ -66,6 +70,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   onNext,
   theme = 'dark',
   editorActions,
+  disablePrev = false,
+  disableNext = false,
 }) => {
   const barRef = useRef<HTMLDivElement>(null);
 
@@ -234,7 +240,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
         <div className={cn('h-4 w-px shrink-0', divider)} />
 
         <button
-          disabled={currentSlideIndex === 0}
+          disabled={currentSlideIndex === 0 || disablePrev}
           onClick={onPrev}
           aria-label="Previous slide"
           className={btnSecondary}
@@ -244,10 +250,11 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
         </button>
 
         <button
-          disabled={isLast}
+          disabled={isLast || disableNext}
           onClick={onNext}
           aria-label="Next slide"
           className={btnPrimary}
+          title={disableNext ? 'Complete the interaction to continue' : undefined}
         >
           Next
           <ChevronRight className="w-3.5 h-3.5" />

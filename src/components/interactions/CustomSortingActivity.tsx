@@ -64,7 +64,6 @@ export const CustomSortingActivity: React.FC<CustomSortingActivityProps> = ({
 
   return (
     <div className="w-full space-y-3">
-      {prompt && <p className="text-sm text-slate-400 mb-1">{prompt}</p>}
 
       <div className="space-y-2">
         {order.map((item, idx) => {
@@ -96,10 +95,10 @@ export const CustomSortingActivity: React.FC<CustomSortingActivityProps> = ({
               }}
             >
               {/* Drag handle */}
-              <GripVertical className="w-4 h-4 text-slate-500 shrink-0" />
+              <GripVertical className="w-5 h-5 text-slate-400 shrink-0" />
 
               {/* Item text */}
-              <span className="flex-1 text-sm font-semibold text-white">{item.content}</span>
+              <span className="flex-1 text-base font-bold text-white leading-snug">{item.content}</span>
 
               {/* Status icon */}
               {status === true  && <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />}
@@ -131,12 +130,7 @@ export const CustomSortingActivity: React.FC<CustomSortingActivityProps> = ({
         })}
       </div>
 
-      {/* Hint text */}
-      {!checked && (
-        <p className="text-xs text-slate-500 italic">
-          Drag items or use ↑ ↓ arrows to reorder
-        </p>
-      )}
+
 
       {/* Success message */}
       {allCorrect && (
