@@ -210,6 +210,27 @@ function preprocessAccordionData(data: any): any {
   };
 }
 
+/**
+ * autoFormatAsBullets — converts multi-paragraph plain text to bullet points.
+ * Skips blockquotes (>), headers (#), existing lists, HRs, and code fences.
+ * Only fires when there are 2+ plain-text paragraphs.
+ */
+function autoFormatAsBullets(raw: string): string {
+  const blocks = raw.split(/\n{2,}/);
+  const isPlain = (b: string) => {
+    const t = b.trim();
+    if (!t) return false;
+    if (/^#{1,6}\s/.test(t)) return false;
+    if (/^[-*+]\s|^\d+\.\s/.test(t)) return false;
+    if (/^>/.test(t)) return false;
+    if (/^```/.test(t)) return false;
+    if (/^---/.test(t)) return false;
+    return true;
+  };
+  if (blocks.filter(isPlain).length < 2) return raw;
+  return blocks.map(b => isPlain(b) ? `- ${b.trim()}` : b).join('\n\n');
+}
+
 const SlideContent = ({ content, theme }: { content: string, theme: string }) => {
   if (isHTML(content)) {
     return (
@@ -244,7 +265,7 @@ const SlideContent = ({ content, theme }: { content: string, theme: string }) =>
         ),
       }}
     >
-      {content}
+      {autoFormatAsBullets(content)}
     </ReactMarkdown>
   );
 };
@@ -264,7 +285,7 @@ const SmartContent = ({ content, className, theme }: { content: string; classNam
   }
   return (
     <ReactMarkdown className={className}>
-      {content}
+      {autoFormatAsBullets(content)}
     </ReactMarkdown>
   );
 };

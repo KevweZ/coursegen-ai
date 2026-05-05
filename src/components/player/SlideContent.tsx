@@ -15,8 +15,53 @@ interface SlideContentProps {
   compact?: boolean;
 }
 
+/**
+ * autoFormatAsBullets — pre-render content transformer.
+ *
+ * Rule: if the content has 2+ standalone plain-text paragraphs
+ * (i.e. not headers, blockquotes, lists, code, or HRs), convert
+ * each plain paragraph into a markdown bullet (`- ...`).
+ *
+ * Exceptions intentionally preserved as-is:
+ *   - Blockquotes (>) — direct quotes / passages
+ *   - Already-bulleted / numbered lists
+ *   - Headers (#)
+ *   - Horizontal rules / code fences
+ *   - Content with only 1 plain-text paragraph
+ */
+function autoFormatAsBullets(raw: string): string {
+  // Split into paragraph blocks on one or more blank lines
+  const blocks = raw.split(/\n{2,}/);
+
+  const isPlain = (b: string) => {
+    const t = b.trim();
+    if (!t) return false;
+    if (/^#{1,6}\s/.test(t)) return false;        // heading
+    if (/^[-*+]\s|^\d+\.\s/.test(t)) return false; // already a list
+    if (/^>/.test(t)) return false;                 // blockquote / quote
+    if (/^```/.test(t)) return false;               // code fence
+    if (/^---/.test(t)) return false;               // HR
+    return true;
+  };
+
+  const plainCount = blocks.filter(isPlain).length;
+
+  // Only reformat when there are 2+ plain paragraphs
+  if (plainCount < 2) return raw;
+
+  return blocks
+    .map(b => {
+      if (isPlain(b)) return `- ${b.trim()}`;
+      return b;
+    })
+    .join('\n\n');
+}
+
 export function SlideContent({ content, theme, compact = false }: SlideContentProps) {
   const isLight = theme === 'light';
+  // Apply global bullet-formatting rule before rendering
+  const processedContent = autoFormatAsBullets(content);
+
 
   const mdComponents: React.ComponentProps<typeof ReactMarkdown>['components'] = {
     // HEADING styles
@@ -135,7 +180,8 @@ export function SlideContent({ content, theme, compact = false }: SlideContentPr
 
   return (
     <div className="w-full space-y-0">
-      <ReactMarkdown components={mdComponents}>{content}</ReactMarkdown>
+      <ReactMarkdown components={mdComponents}>{processedContent}</ReactMarkdown>
     </div>
   );
+
 }
