@@ -161,10 +161,10 @@ export function CourseNavSidebar({
                 'w-full flex items-center gap-2.5 pl-4 pr-4 py-2.5 text-left transition-all mb-1',
                 isActive ? activeRow : inactiveRow
               )}
-              title="Course Cover"
+              title="Course Introduction"
             >
               <span className="text-base shrink-0">🎬</span>
-              <span className="text-sm leading-snug font-medium">Course Cover</span>
+              <span className="text-sm leading-snug font-medium">Course Introduction</span>
             </button>
           );
         })()}
