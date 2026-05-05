@@ -2460,10 +2460,7 @@ export default function App() {
                   <div
                     ref={viewMode === 'desktop' && playerConfig.playerResolution !== 'full' ? scaler.containerRef : undefined}
                     className={cn(
-                      "bg-cover bg-center relative",
-                      playerConfig.playerResolution === 'full'
-                        ? 'flex flex-col flex-1 overflow-hidden'
-                        : 'flex-1 flex items-center justify-center overflow-hidden'
+                      "bg-cover bg-center relative flex flex-col flex-1 overflow-hidden"
                     )}
                     style={{
                       backgroundImage: courseBg && !courseBg.startsWith('#') ? `url('${courseBg}')` : undefined,
@@ -2477,23 +2474,20 @@ export default function App() {
                   <div className={cn(`theme-${theme}`,
                     "transition-all duration-500 flex flex-col relative z-10",
                     viewMode === 'desktop'
-                      ? playerConfig.playerResolution === 'full'
-                        ? 'flex-1 overflow-hidden w-full'
-                        : '' /* sizing applied via scaler.frameStyle */
+                      ? 'flex-1 overflow-hidden w-full'
                       : 'shadow-2xl overflow-hidden w-[375px] h-[667px] my-4 rounded-[3rem] border-[8px] border-gray-800',
                     theme === 'light' ? 'bg-white' : theme === 'unified' ? 'bg-indigo-950' : 'bg-slate-900'
                   )}
                   style={viewMode === 'desktop'
-                    ? playerConfig.playerResolution === 'full'
-                      ? undefined
-                      : {
-                          // Articulate-style: fixed design size + CSS scale to fill viewport
-                          ...scaler.frameStyle,
+                    ? playerConfig.playerResolution !== 'full'
+                      ? {
                           borderRadius: '1rem',
                           overflow: 'hidden',
                           boxShadow: '0 25px 50px -12px rgba(0,0,0,0.4)',
                           border: '1px solid rgba(255,255,255,0.12)',
+                          margin: '0.75rem',
                         }
+                      : undefined
                     : undefined
                   }>
                     {/* ── Content zone: flex-1 so PlayerBar stays at bottom ── */}
