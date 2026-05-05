@@ -216,7 +216,6 @@ function preprocessAccordionData(data: any): any {
  * Only fires when there are 2+ plain-text paragraphs.
  */
 function autoFormatAsBullets(raw: string): string {
-  const blocks = raw.split(/\n{2,}/);
   const isPlain = (b: string) => {
     const t = b.trim();
     if (!t) return false;
@@ -227,8 +226,17 @@ function autoFormatAsBullets(raw: string): string {
     if (/^---/.test(t)) return false;
     return true;
   };
-  if (blocks.filter(isPlain).length < 2) return raw;
-  return blocks.map(b => isPlain(b) ? `- ${b.trim()}` : b).join('\n\n');
+  // First try double-newline paragraphs (original behaviour)
+  const dblBlocks = raw.split(/\n{2,}/);
+  if (dblBlocks.filter(isPlain).length >= 2) {
+    return dblBlocks.map(b => isPlain(b) ? `- ${b.trim()}` : b).join('\n\n');
+  }
+  // Fall back: single-newline lines (e.g. two instruction sentences joined with \n)
+  const lines = raw.split(/\n/);
+  if (lines.filter(isPlain).length >= 2) {
+    return lines.map(b => isPlain(b) ? `- ${b.trim()}` : b).join('\n');
+  }
+  return raw;
 }
 
 const SlideContent = ({ content, theme }: { content: string, theme: string }) => {
