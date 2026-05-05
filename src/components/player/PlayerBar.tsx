@@ -19,6 +19,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
+  Volume2,
   VolumeX,
   Loader2,
   PenLine,
@@ -59,6 +60,10 @@ interface PlayerBarProps {
   disablePrev?: boolean;
   /** Force-disable the Next button (e.g. on exam-intro / quiz slides) */
   disableNext?: boolean;
+  /** Whether narration voice-over is currently enabled */
+  voiceOverEnabled?: boolean;
+  /** Callback to toggle narration on/off */
+  onToggleVoiceOver?: () => void;
 }
 
 export const PlayerBar: React.FC<PlayerBarProps> = ({
@@ -72,6 +77,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   editorActions,
   disablePrev = false,
   disableNext = false,
+  voiceOverEnabled = true,
+  onToggleVoiceOver,
 }) => {
   const barRef = useRef<HTMLDivElement>(null);
 
@@ -207,6 +214,30 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
             <VolumeX className="w-3 h-3" />
             No narration
           </div>
+        )}
+
+        {/* Volume mute/unmute toggle — always visible when audio exists */}
+        {onToggleVoiceOver && (
+          <button
+            onClick={onToggleVoiceOver}
+            title={voiceOverEnabled ? 'Mute narration' : 'Unmute narration'}
+            aria-label={voiceOverEnabled ? 'Mute narration' : 'Unmute narration'}
+            className={cn(
+              'w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-all focus:outline-none border',
+              voiceOverEnabled
+                ? isLight
+                  ? 'border-emerald-300 bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
+                  : 'border-emerald-500/40 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25'
+                : isLight
+                  ? 'border-gray-200 bg-gray-100 text-gray-400 hover:bg-gray-200'
+                  : 'border-gray-700 bg-gray-800/60 text-gray-500 hover:bg-gray-700'
+            )}
+          >
+            {voiceOverEnabled
+              ? <Volume2 className="w-3.5 h-3.5" />
+              : <VolumeX  className="w-3.5 h-3.5" />
+            }
+          </button>
         )}
 
         <div className={cn('h-4 w-px shrink-0', divider)} />

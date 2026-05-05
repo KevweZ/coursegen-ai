@@ -100,8 +100,8 @@ export const HotspotInteraction: React.FC<HotspotInteractionProps> = ({
         ref={containerRef}
         className="relative rounded-xl overflow-hidden border shrink-0 select-none"
         style={{
-          /* Responsive image area: smaller to leave more room for many pins */
-          width: 'clamp(240px, 44%, 420px)',
+          /* Responsive image area: larger to give image more space */
+          width: 'clamp(280px, 60%, 600px)',
           minHeight: '300px',
           backgroundColor: '#0f172a',
           borderColor: borderClr,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+﻿import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Sparkles, 
@@ -2605,12 +2605,32 @@ export default function App() {
                                   );
                                })()}
 
-                               {(currentSlide?.type === 'content' || currentSlide?.type === 'summary') && (
-                                 <div className="space-y-4 w-full">
-                                   <SlideHeader title={currentSlide.title} theme={theme} />
-                                   {currentSlide.content && <SlideContent content={sanitizeContent(currentSlide.content)} theme={theme} />}
-                                 </div>
-                               )}
+                               {(currentSlide?.type === 'content' || currentSlide?.type === 'summary') && (() => {
+                                 const accent = theme === 'light' ? '#4338ca' : theme === 'unified' ? '#a78bfa' : '#818cf8';
+                                 const accentFaint = `${accent}40`;
+                                 const labelClr = theme === 'light' ? '#6366f1' : theme === 'unified' ? '#c4b5fd' : '#818cf8';
+                                 const typeLabel = currentSlide.type === 'summary' ? 'Summary' : 'Overview';
+                                 return (
+                                   <div className="w-full h-full flex gap-0 overflow-hidden">
+                                     {/* Left accent strip */}
+                                     <div className="shrink-0 w-[3px] rounded-full mr-5 self-stretch" style={{ background: `linear-gradient(to bottom, ${accent}, ${accentFaint})` }} />
+                                     {/* Content area */}
+                                     <div className="flex-1 min-w-0 space-y-4">
+                                       {/* Section label */}
+                                       <p className="text-[10px] font-black uppercase tracking-[0.25em]" style={{ color: labelClr }}>
+                                         {typeLabel}
+                                       </p>
+                                       {/* Title + animated underline */}
+                                       <div className="space-y-1.5">
+                                         <SlideHeader title={currentSlide.title} theme={theme} className="mb-0" />
+                                         <div className="h-[2px] w-full rounded-full" style={{ background: `linear-gradient(to right, ${accent}, ${accentFaint}, transparent)` }} />
+                                       </div>
+                                       {/* Body content */}
+                                       {currentSlide.content && <SlideContent content={sanitizeContent(currentSlide.content)} theme={theme} />}
+                                     </div>
+                                   </div>
+                                 );
+                               })()}
 
                                {/* PLAYER TOUR SLIDE */}
                                {(currentSlide as any)?.type === 'player-tour' && (
@@ -2815,13 +2835,11 @@ export default function App() {
                                     <div className="space-y-6 w-full">
                                       <SlideHeader title={currentSlide.title} theme={theme} />
                                       <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
-                                      <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
-                                        <CustomMatchingActivity
-                                         items={matchingProps.items || []}
-                                         targets={matchingProps.targets || []}
-                                         correctAnswers={matchingProps.correctAnswers || {}}
+                                                                             <CustomMatchingActivity
+                                        items={matchingProps.items || []}
+                                        targets={matchingProps.targets || []}
+                                        correctAnswers={matchingProps.correctAnswers || {}}
                                        />
-                                      </div>
                                     </div>
                                   );
                                })()}
@@ -3157,6 +3175,8 @@ export default function App() {
                         theme={theme}
                         disableNext={currentSlide?.type === 'exam-intro' || currentSlide?.type === 'mastery-exam'}
                         disablePrev={currentSlide?.type === 'mastery-exam'}
+                        voiceOverEnabled={voiceOverEnabled}
+                        onToggleVoiceOver={() => setVoiceOverEnabled(v => !v)}
                       />
                      </div>{/* end PlayerBar */}
                   </div>{/* end slide frame */}

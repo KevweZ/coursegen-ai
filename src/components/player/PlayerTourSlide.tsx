@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ArrowLeft, ArrowRight, Volume2, PanelLeft, Palette,
-  BookOpen, Gamepad2, Play, ChevronLeft, ChevronRight,
+  ArrowLeft, ArrowRight, Volume2, VolumeX, PanelLeft, Palette,
+  BookOpen, Gamepad2, Play,
+  ChevronLeft, ChevronRight, BarChart2,
 } from 'lucide-react';
 
 type Theme = 'light' | 'dark' | 'unified';
@@ -18,166 +19,194 @@ const CARDS = [
     id: 'prev-next',
     icon: ArrowRight,
     title: 'Previous & Next',
-    desc: 'Use the Prev and Next buttons at the bottom of the player to move between slides.',
+    desc: 'Prev and Next buttons sit together at the bottom-right. Move between slides at your own pace.',
     color: '#4f46e5',
   },
   {
     id: 'sidebar',
     icon: PanelLeft,
     title: 'Course Outline',
-    desc: 'The sidebar lists all modules and slides. Click any entry to jump directly to it.',
+    desc: 'The left sidebar lists every module and slide. Click any entry to jump directly to it.',
     color: '#0891b2',
   },
   {
-    id: 'play-btn',
+    id: 'volume',
     icon: Volume2,
-    title: 'Narration',
-    desc: 'Click the play button in the bottom bar to hear the audio narration for each slide.',
+    title: 'Narration & Volume',
+    desc: 'Use the play button to start narration and the volume button to mute or unmute at any time.',
     color: '#16a34a',
   },
   {
     id: 'toolbar',
     icon: Palette,
     title: 'Theme & Tools',
-    desc: 'Switch between Dark, Light, and Unified themes using the toolbar at the top.',
+    desc: 'Switch between Dark, Light, and Unified themes. The toolbar also holds editing and export tools.',
     color: '#d97706',
   },
   {
     id: 'seekbar',
-    icon: ArrowLeft,
+    icon: BarChart2,
     title: 'Progress Bar',
-    desc: 'The seekbar at the bottom tracks your progress. Click anywhere to jump to that slide.',
+    desc: 'The seekbar tracks your slide progress. Click anywhere on it to jump directly to that point.',
     color: '#9333ea',
   },
   {
     id: 'canvas',
     icon: Gamepad2,
     title: 'Interactive Slides',
-    desc: 'Some slides require you to click, drag items, or engage with game-mode challenges. Read each slide\'s instructions carefully.',
+    desc: 'Some slides require you to click, drag items, or engage with game-mode challenges — read each slide\'s instructions.',
     color: '#e11d48',
   },
 ];
 
-// ── Theme tokens ────────────────────────────────────────────────────────────
-const BG: Record<Theme, string>      = { dark: '#0f172a',  light: '#f8fafc',  unified: '#1e1b4b' };
+// ── Theme tokens ─────────────────────────────────────────────────────────────
+const BG: Record<Theme, string>      = { dark: '#0f172a',  light: '#f1f5f9',  unified: '#1e1b4b' };
 const CARD_BG: Record<Theme, string> = { dark: '#1e293b',  light: '#ffffff',  unified: '#2e1065' };
 const TEXT: Record<Theme, string>    = { dark: '#e2e8f0',  light: '#1e293b',  unified: '#e0e7ff' };
 const SUB: Record<Theme, string>     = { dark: '#94a3b8',  light: '#475569',  unified: '#a5b4fc' };
-const MOCK_BG: Record<Theme, string> = { dark: '#0d1526',  light: '#e2e8f0',  unified: '#130d2e' };
-const MOCK_BAR: Record<Theme, string>= { dark: '#1a2640',  light: '#cbd5e1',  unified: '#1e1052' };
-const MOCK_TXT: Record<Theme, string>= { dark: '#475569',  light: '#94a3b8',  unified: '#4338ca' };
 
 // ── Glow helper ─────────────────────────────────────────────────────────────
-function glowStyle(active: boolean, color: string) {
-  return active
-    ? { boxShadow: `0 0 0 2px ${color}, 0 0 18px ${color}60`, transition: 'all 0.22s ease' }
-    : { boxShadow: 'none', transition: 'all 0.22s ease' };
+function glowStyle(active: boolean, color: string): React.CSSProperties {
+  return {
+    boxShadow: active ? `0 0 0 2px ${color}, 0 0 14px ${color}55` : 'none',
+    transition: 'box-shadow 0.18s ease',
+    outline: active ? `2px solid ${color}` : '2px solid transparent',
+    outlineOffset: '1px',
+  };
 }
 
 // ── Mini Player Mockup ───────────────────────────────────────────────────────
 const MiniPlayer: React.FC<{ hovered: string | null; theme: Theme }> = ({ hovered, theme }) => {
-  const mockBg  = MOCK_BG[theme]  || MOCK_BG.dark;
-  const mockBar = MOCK_BAR[theme] || MOCK_BAR.dark;
-  const mockTxt = MOCK_TXT[theme] || MOCK_TXT.dark;
+  const isDark = theme !== 'light';
+
+  const mockBg   = isDark ? '#0d1526' : '#e2e8f0';
+  const mockBar  = isDark ? '#1a2640' : '#cbd5e1';
+  const mockSide = isDark ? '#172035' : '#dde4ee';
+  const accent   = '#4f46e5';
+  const txtFaint = isDark ? '#2d4166' : '#a8b8cc';
+  const txtMid   = isDark ? '#3d5580' : '#8fa5bc';
 
   return (
     <div
-      className="w-full h-full rounded-2xl overflow-hidden flex flex-col"
-      style={{ backgroundColor: mockBg, border: '1.5px solid rgba(255,255,255,0.07)' }}
+      className="w-full h-full rounded-2xl overflow-hidden flex flex-col text-[0px]"
+      style={{ backgroundColor: mockBg, border: `1.5px solid ${isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.1)'}` }}
     >
-      {/* ── Top toolbar ───────────────────────────────────────────── */}
+      {/* ── Top toolbar ──────────────────────────────────────────── */}
       <div
-        className="shrink-0 h-7 flex items-center justify-between px-3 rounded-t-xl"
-        style={{ ...glowStyle(hovered === 'toolbar', '#d97706'), backgroundColor: mockBar }}
+        className="shrink-0 h-7 flex items-center justify-between px-2.5 rounded-t-xl"
+        style={{ ...glowStyle(hovered === 'toolbar', '#d97706'), backgroundColor: mockBar, borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.08)'}` }}
       >
-        <div className="flex gap-1.5">
-          {['#ef4444','#f59e0b','#22c55e'].map(c => (
-            <div key={c} className="w-2 h-2 rounded-full" style={{ backgroundColor: c }} />
-          ))}
+        {/* Left: logo placeholder */}
+        <div className="flex items-center gap-1">
+          <div className="w-4 h-4 rounded" style={{ backgroundColor: accent, opacity: 0.8 }} />
+          <div className="h-2 w-12 rounded" style={{ backgroundColor: txtFaint }} />
         </div>
-        <div className="flex gap-1.5">
-          <div className="h-3 w-10 rounded" style={{ backgroundColor: mockTxt }} />
-          <div className="h-3 w-8 rounded" style={{ backgroundColor: mockTxt }} />
-          <div className="h-3 w-12 rounded" style={{ backgroundColor: mockTxt }} />
+        {/* Right: tool buttons */}
+        <div className="flex gap-1">
+          {['#7c3aed', '#0891b2', '#d97706', '#16a34a'].map((c, i) => (
+            <div key={i} className="h-3 w-8 rounded-sm" style={{ backgroundColor: c, opacity: 0.6 }} />
+          ))}
         </div>
       </div>
 
-      {/* ── Main body: sidebar + canvas ───────────────────────────── */}
+      {/* ── Body: sidebar + canvas ───────────────────────────────── */}
       <div className="flex-1 flex min-h-0">
         {/* Sidebar */}
         <div
-          className="shrink-0 w-[28%] flex flex-col gap-1.5 p-2 border-r"
+          className="shrink-0 w-[30%] flex flex-col py-1.5 px-1.5 gap-1 border-r"
           style={{
             ...glowStyle(hovered === 'sidebar', '#0891b2'),
-            backgroundColor: mockBar,
-            borderColor: 'rgba(255,255,255,0.05)',
+            backgroundColor: mockSide,
+            borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.07)',
           }}
         >
-          <div className="h-2.5 w-full rounded" style={{ backgroundColor: mockTxt, opacity: 0.8 }} />
-          {[70, 55, 85, 60, 75, 50, 65].map((w, i) => (
-            <div
-              key={i}
-              className="h-2 rounded ml-2"
-              style={{ width: `${w}%`, backgroundColor: i === 0 ? '#4f46e5' : mockTxt, opacity: i === 0 ? 1 : 0.5 }}
+          {/* Module headers + slides mock */}
+          {[
+            { label: 'MOD 1', indent: false, active: false },
+            { label: 'Overview', indent: true, active: true },
+            { label: 'Content', indent: true, active: false },
+            { label: 'MOD 2', indent: false, active: false },
+            { label: 'Overview', indent: true, active: false },
+            { label: 'Quiz', indent: true, active: false },
+          ].map((row, i) => (
+            <div key={i} className={`h-[9px] rounded-sm ${row.indent ? 'ml-2' : ''}`}
+              style={{ backgroundColor: row.active ? accent : txtFaint, opacity: row.indent ? 0.7 : 1, width: row.indent ? '80%' : '100%' }}
             />
           ))}
         </div>
 
         {/* Slide canvas */}
         <div
-          className="flex-1 flex flex-col items-center justify-center gap-2 p-3"
+          className="flex-1 flex flex-col items-start justify-start p-3 gap-2"
           style={{ ...glowStyle(hovered === 'canvas', '#e11d48') }}
         >
-          {/* Fake slide content */}
-          <div className="w-full space-y-1.5">
-            <div className="h-3 w-3/4 rounded" style={{ backgroundColor: mockTxt, opacity: 0.7 }} />
-            <div className="h-2 w-full rounded" style={{ backgroundColor: mockTxt, opacity: 0.4 }} />
-            <div className="h-2 w-5/6 rounded" style={{ backgroundColor: mockTxt, opacity: 0.4 }} />
-            <div className="h-2 w-4/5 rounded" style={{ backgroundColor: mockTxt, opacity: 0.4 }} />
+          {/* Slide title mock */}
+          <div className="h-3 w-4/5 rounded" style={{ backgroundColor: accent, opacity: 0.5 }} />
+          <div className="h-[2px] w-full rounded" style={{ background: `linear-gradient(to right, ${accent}80, transparent)` }} />
+          {/* Content lines */}
+          {[90, 75, 85, 65].map((w, i) => (
+            <div key={i} className="h-[7px] rounded" style={{ width: `${w}%`, backgroundColor: txtFaint }} />
+          ))}
+          {/* Interactive element placeholder */}
+          <div className="w-full mt-1 rounded-lg border border-dashed h-10 flex items-center justify-center"
+            style={{ borderColor: txtMid, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)' }}
+          >
+            <div className="h-[7px] w-1/2 rounded" style={{ backgroundColor: txtMid }} />
           </div>
-          <div className="w-full h-14 rounded-lg mt-1" style={{ backgroundColor: mockBar, opacity: 0.8 }} />
         </div>
       </div>
 
-      {/* ── Bottom player bar ──────────────────────────────────────── */}
+      {/* ── Bottom player bar ────────────────────────────────────── */}
       <div
-        className="shrink-0 flex flex-col gap-1.5 px-3 py-2"
-        style={{ backgroundColor: mockBar }}
+        className="shrink-0 flex flex-col border-t"
+        style={{ backgroundColor: mockBar, borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)' }}
       >
         {/* Seekbar */}
         <div
-          className="w-full h-1.5 rounded-full overflow-hidden"
-          style={{ ...glowStyle(hovered === 'seekbar', '#9333ea'), backgroundColor: 'rgba(255,255,255,0.1)' }}
+          className="mx-2 mt-1.5 h-1.5 rounded-full overflow-hidden"
+          style={{ ...glowStyle(hovered === 'seekbar', '#9333ea'), backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.12)' }}
         >
           <div className="h-full w-2/5 rounded-full" style={{ backgroundColor: '#4f46e5' }} />
         </div>
 
-        {/* Controls row */}
-        <div className="flex items-center justify-between">
-          {/* Prev */}
-          <div
-            className="flex items-center gap-1 px-2 py-0.5 rounded"
-            style={{ ...glowStyle(hovered === 'prev-next', '#4f46e5'), backgroundColor: 'rgba(255,255,255,0.05)' }}
-          >
-            <ChevronLeft className="w-3 h-3" style={{ color: mockTxt }} />
-            <span className="text-[9px] font-bold" style={{ color: mockTxt }}>Prev</span>
+        {/* Controls row: Play + Volume left | slide info center | Prev+Next right */}
+        <div className="flex items-center justify-between px-2 py-1.5">
+          {/* Left: Play + Volume */}
+          <div className="flex items-center gap-1">
+            {/* Play button */}
+            <div
+              className="w-5 h-5 rounded-full flex items-center justify-center"
+              style={{ ...glowStyle(hovered === 'volume', '#16a34a'), backgroundColor: '#4f46e5' }}
+            >
+              <Play className="w-2 h-2 text-white" />
+            </div>
+            {/* Volume button */}
+            <div
+              className="w-4 h-4 rounded-full flex items-center justify-center"
+              style={{ ...glowStyle(hovered === 'volume', '#16a34a'), backgroundColor: isDark ? 'rgba(22,163,74,0.2)' : 'rgba(22,163,74,0.1)', border: '1px solid rgba(22,163,74,0.4)' }}
+            >
+              <Volume2 className="w-[7px] h-[7px]" style={{ color: '#16a34a' }} />
+            </div>
           </div>
 
-          {/* Play button */}
-          <div
-            className="w-7 h-7 rounded-full flex items-center justify-center"
-            style={{ ...glowStyle(hovered === 'play-btn', '#16a34a'), backgroundColor: '#4f46e5' }}
-          >
-            <Play className="w-3 h-3 text-white" />
-          </div>
+          {/* Center: slide counter */}
+          <div className="h-[7px] w-10 rounded" style={{ backgroundColor: txtFaint }} />
 
-          {/* Next */}
+          {/* Right: Prev + Next — both together */}
           <div
-            className="flex items-center gap-1 px-2 py-0.5 rounded"
-            style={{ ...glowStyle(hovered === 'prev-next', '#4f46e5'), backgroundColor: 'rgba(255,255,255,0.05)' }}
+            className="flex items-center gap-1"
+            style={glowStyle(hovered === 'prev-next', '#4f46e5')}
           >
-            <span className="text-[9px] font-bold" style={{ color: mockTxt }}>Next</span>
-            <ChevronRight className="w-3 h-3" style={{ color: mockTxt }} />
+            <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded"
+              style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)' }}>
+              <ChevronLeft className="w-2.5 h-2.5" style={{ color: txtMid }} />
+              <span className="text-[7px] font-bold" style={{ color: txtMid }}>Prev</span>
+            </div>
+            <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded"
+              style={{ backgroundColor: '#4f46e5' }}>
+              <span className="text-[7px] font-bold text-white">Next</span>
+              <ChevronRight className="w-2.5 h-2.5 text-white" />
+            </div>
           </div>
         </div>
       </div>
@@ -185,7 +214,7 @@ const MiniPlayer: React.FC<{ hovered: string | null; theme: Theme }> = ({ hovere
   );
 };
 
-// ── Main component ───────────────────────────────────────────────────────────
+// ── Main component ────────────────────────────────────────────────────────────
 export const PlayerTourSlide: React.FC<Props> = ({ theme, onSkip }) => {
   const [showModal, setShowModal] = useState(true);
   const [hovered, setHovered]     = useState<string | null>(null);
@@ -198,14 +227,14 @@ export const PlayerTourSlide: React.FC<Props> = ({ theme, onSkip }) => {
   return (
     <div className="w-full h-full relative flex overflow-hidden" style={{ backgroundColor: bg }}>
 
-      {/* ── Left: mini player mockup (40%) ──────────────────────────────── */}
-      <div className="w-[40%] shrink-0 flex flex-col p-6 gap-4">
+      {/* ── Left: mini player mockup (42%) ───────────────────────────────── */}
+      <div className="w-[42%] shrink-0 flex flex-col p-6 gap-3">
         <div className="shrink-0">
-          <p className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: '#818cf8' }}>
+          <p className="text-xs font-black uppercase tracking-widest mb-0.5" style={{ color: '#818cf8' }}>
             Interactive Preview
           </p>
-          <p className="text-xs" style={{ color: subClr }}>
-            Hover a card to highlight its control →
+          <p className="text-[11px]" style={{ color: subClr }}>
+            Hover a card on the right to illuminate its control →
           </p>
         </div>
         <div className="flex-1 min-h-0">
@@ -213,7 +242,7 @@ export const PlayerTourSlide: React.FC<Props> = ({ theme, onSkip }) => {
         </div>
       </div>
 
-      {/* ── Right: tour cards (60%) ──────────────────────────────────────── */}
+      {/* ── Right: tour cards (58%) ───────────────────────────────────────── */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
         <div className="px-6 pt-6 pb-3 shrink-0">
@@ -239,7 +268,7 @@ export const PlayerTourSlide: React.FC<Props> = ({ theme, onSkip }) => {
                   transition={{ duration: 0.3, delay: showModal ? 0 : i * 0.07 }}
                   onMouseEnter={() => setHovered(card.id)}
                   onMouseLeave={() => setHovered(null)}
-                  className="rounded-xl p-4 flex flex-col gap-2 cursor-default transition-all"
+                  className="rounded-xl p-4 flex flex-col gap-2 cursor-default"
                   style={{
                     backgroundColor: isHov ? `${card.color}18` : cardBg,
                     border: `1.5px solid ${isHov ? card.color : `${card.color}28`}`,
@@ -260,13 +289,13 @@ export const PlayerTourSlide: React.FC<Props> = ({ theme, onSkip }) => {
               );
             })}
 
-            {/* Continue card */}
+            {/* Continue button — full width */}
             <motion.button
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3, delay: showModal ? 0 : CARDS.length * 0.07 }}
               onClick={onSkip}
-              className="rounded-xl p-4 flex flex-col items-center justify-center gap-2 col-span-2 transition-all"
+              className="rounded-xl p-4 flex flex-col items-center justify-center gap-2 col-span-2"
               style={{
                 backgroundColor: 'rgba(79,70,229,0.12)',
                 border: '1.5px dashed #4f46e5',

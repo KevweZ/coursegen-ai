@@ -147,26 +147,36 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
                 onDragOver={(e) => handleDragOver(target.id, e)}
                 onDragLeave={handleDragLeave}
                 onDrop={(e) => handleDrop(target.id, e)}
-                className="rounded-lg border-2 transition-all min-h-[68px]"
+                className="rounded-xl transition-all min-h-[72px]"
                 style={{
+                  borderWidth: matchedItemId ? '2px' : '2.5px',
                   borderStyle: matchedItemId ? 'solid' : 'dashed',
                   borderColor: status === true
                     ? '#22c55e'
                     : status === false
                     ? '#ef4444'
                     : matchedItemId
-                    ? matchColor + 'cc'
+                    ? (matchColor ?? '#4f46e5') + 'cc'
                     : isHovering
-                    ? 'rgba(255,255,255,0.55)'
-                    : 'rgba(255,255,255,0.22)',
-                  backgroundColor: matchedItemId
-                    ? `${matchColor}14`
+                    ? 'rgba(255,255,255,0.65)'
+                    : 'rgba(255,255,255,0.30)',
+                  backgroundColor: status === true
+                    ? 'rgba(34,197,94,0.08)'
+                    : status === false
+                    ? 'rgba(239,68,68,0.08)'
+                    : matchedItemId
+                    ? `${matchColor}18`
                     : isHovering
-                    ? 'rgba(255,255,255,0.08)'
-                    : 'rgba(255,255,255,0.04)',
+                    ? 'rgba(255,255,255,0.10)'
+                    : 'rgba(255,255,255,0.035)',
+                  boxShadow: isHovering && !matchedItemId
+                    ? '0 0 0 3px rgba(255,255,255,0.15) inset'
+                    : matchedItemId
+                    ? `0 0 0 1px ${matchColor ?? '#4f46e5'}40 inset`
+                    : 'none',
                 }}
               >
-                <div className="flex items-center gap-3 px-4 py-3 h-full min-h-[68px]">
+                <div className="flex items-center gap-3 px-4 py-3 h-full min-h-[72px]">
                   {/* Target description */}
                   <div className="flex-1 text-sm text-slate-200 leading-snug">{target.content}</div>
 
@@ -192,7 +202,7 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
                       {status === false && <XCircle    className="w-4 h-4 text-red-400  shrink-0" />}
                     </div>
                   ) : (
-                    <span className="text-xs text-slate-500 italic shrink-0">
+                    <span className={`text-xs italic shrink-0 transition-colors ${isHovering ? 'text-white' : 'text-slate-500'}`}>
                       {isHovering ? '↓ Drop here' : 'Drop here'}
                     </span>
                   )}
