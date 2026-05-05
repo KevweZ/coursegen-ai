@@ -60,11 +60,11 @@ function midAngle(start: number, end: number) {
   return (start + end) / 2;
 }
 
-const SVG_SIZE = 340;
+const SVG_SIZE = 420;
 const CX = SVG_SIZE / 2;
 const CY = SVG_SIZE / 2;
-const OUTER_R = 158;
-const INNER_R = 72;  // hub radius
+const OUTER_R = 196;
+const INNER_R = 88;  // hub radius
 
 export const WheelDiagram: React.FC<WheelDiagramProps> = ({
   centerLabel,
@@ -87,10 +87,10 @@ export const WheelDiagram: React.FC<WheelDiagramProps> = ({
   return (
     <div className="w-full h-full flex items-center justify-center gap-4 px-2">
       {/* ── SVG Pie Wheel ─────────────────────────────────────── */}
-      <div className="shrink-0" style={{ width: SVG_SIZE, height: SVG_SIZE }}>
+      <div className="shrink-0" style={{ width: 'min(50%, 440px)', height: 'min(50%, 440px)', minWidth: 260, minHeight: 260 }}>
         <svg
-          width={SVG_SIZE}
-          height={SVG_SIZE}
+          width="100%"
+          height="100%"
           viewBox={`0 0 ${SVG_SIZE} ${SVG_SIZE}`}
           style={{ overflow: 'visible' }}
         >

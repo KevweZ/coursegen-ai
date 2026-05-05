@@ -55,7 +55,7 @@ export const defaultPlayerConfig: PlayerConfig = {
   showPrevNext: true,
   allowFullscreen: true,
   logoUrl: null,
-  playerResolution: '16:9',
+  playerResolution: 'full',
   navigationMode: 'free',
   examPresentationMode: 'one-at-a-time',
 };
@@ -429,36 +429,7 @@ export function PlayerPropertiesModal({ config, onChange, onClose }: Props) {
               />
             )}
 
-            <SectionTitle>Aspect Ratio &amp; Resolution</SectionTitle>
-            <div className="grid grid-cols-3 gap-2 mb-1">
-              {([
-                { ratio: '16:9' as const, res: '1920×1080', label: 'Widescreen', icon: '▐▐▐▐▐▐▐' },
-                { ratio: '4:3'  as const, res: '1024×768',  label: 'Classic',    icon: '▐▐▐▐▐' },
-                { ratio: 'full' as const, res: 'Full viewport', label: 'Max Size', icon: '■' },
-              ]).map(({ ratio, res, label, icon }) => (
-                <button
-                  key={ratio}
-                  type="button"
-                  onClick={() => update({ playerResolution: ratio })}
-                  className={cn(
-                    'flex flex-col items-center gap-1 px-2 py-3 rounded-xl border text-xs font-bold transition-all',
-                    local.playerResolution === ratio
-                      ? 'border-indigo-500 bg-indigo-600/20 text-indigo-300'
-                      : 'border-slate-700 bg-slate-800/40 text-slate-400 hover:border-slate-500 hover:text-slate-200'
-                  )}
-                >
-                  <div className={cn(
-                    'border-2 rounded flex items-center justify-center shrink-0',
-                    local.playerResolution === ratio ? 'border-indigo-400' : 'border-slate-600',
-                    ratio === '16:9' ? 'w-12 h-[27px]' : ratio === '4:3' ? 'w-10 h-[30px]' : 'w-12 h-[27px] bg-indigo-500/10'
-                  )}>
-                    <span className="text-[8px] font-black opacity-60">{ratio === 'full' ? '⛶' : ratio}</span>
-                  </div>
-                  <span className="font-black text-[10px]">{label}</span>
-                  <span className={cn('text-[9px] font-normal text-center leading-tight', local.playerResolution === ratio ? 'text-indigo-400/70' : 'text-slate-600')}>{res}</span>
-                </button>
-              ))}
-            </div>
+            {/* Aspect ratio is always Full — fills the available canvas. */}
 
             <SectionTitle>Player Controls</SectionTitle>
             <div className="space-y-2">
@@ -574,7 +545,7 @@ export function PlayerPropertiesModal({ config, onChange, onClose }: Props) {
             <div className="flex flex-wrap gap-2">
               {[
                 { label: local.theme + ' theme', color: 'text-slate-300 bg-slate-700/50 border-slate-600' },
-                { label: local.playerResolution + ' · ' + (local.playerResolution === '16:9' ? '1920×1080' : '1024×768'), color: 'text-purple-300 bg-purple-500/10 border-purple-500/20' },
+                { label: 'Full viewport · responsive', color: 'text-purple-300 bg-purple-500/10 border-purple-500/20' },
                 { label: local.tocPosition.replace(/-/g, ' '), color: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20' },
                 ...(local.tocStartsCollapsed ? [{ label: 'TOC collapsed', color: 'text-amber-300 bg-amber-500/10 border-amber-500/20' }] : []),
               ].map(chip => (

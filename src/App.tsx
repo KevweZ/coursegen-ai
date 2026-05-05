@@ -242,7 +242,7 @@ const SlideContent = ({ content, theme }: { content: string, theme: string }) =>
   }
   return (
     <ReactMarkdown
-      className={cn('prose max-w-none text-lg lg:text-xl leading-relaxed', theme !== 'light' ? 'prose-invert' : '')}
+      className={cn('prose max-w-none text-xl leading-relaxed', theme !== 'light' ? 'prose-invert' : '')}
       components={{
         p: ({ node, children, ...props }) => {
           const instructional = renderInstructionalText(children, theme);
@@ -1111,8 +1111,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-900 font-sans selection:bg-indigo-500/30 selection:text-indigo-200 overflow-x-hidden">
-      {/* Help & Support floating widget — visible to all authenticated users */}
-      <HelpWidget userEmail={user?.email ?? ''} userId={user?.id} />
+      {/* Help & Support floating widget — hidden during course preview to avoid covering Next button */}
+      {step !== 'preview' && <HelpWidget userEmail={user?.email ?? ''} userId={user?.id} />}
       {/* Background decoration */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-indigo-900/20 rounded-full blur-[120px] mix-blend-screen overflow-hidden transform translate-x-1/3 -translate-y-1/3" />
@@ -2527,7 +2527,7 @@ export default function App() {
                             ? "absolute inset-0 overflow-hidden"
                             : cn(
                                 "flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar",
-                                playerConfig.playerResolution === 'full' ? 'p-8 md:p-12 pb-4 text-lg' : 'p-6 md:p-10 pb-4',
+                                'p-8 md:p-12 pb-4',
                                 theme === 'light' ? 'bg-white text-slate-900' : theme === 'unified' ? 'bg-indigo-950 text-slate-100' : 'bg-slate-900 text-white'
                               )
                         )}
@@ -2543,7 +2543,7 @@ export default function App() {
                           <div className={cn(
                             isFullBleed
                               ? "w-full h-full"
-                              : "flex-1 w-full flex flex-col justify-start"
+                              : "flex-1 w-full max-w-4xl flex flex-col justify-start"
                           )}>
                                {/* TITLE / COVER SLIDE — redesigned CourseTitleSlide */}
                                {(currentSlide?.type === 'title' || currentSlide?.type === 'cover') && (
@@ -2813,7 +2813,7 @@ export default function App() {
                                     <div className="space-y-4 w-full">
                                       <SlideHeader title={currentSlide.title} theme={theme} />
                                       <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
-                                      <div className="w-full" style={{ height: '340px' }}>
+                                      <div className="w-full" style={{ height: '440px' }}>
                                         <WheelDiagram
                                           centerLabel={wd.centerLabel || currentSlide.title}
                                           centerImage={wd.centerImage}
@@ -3090,7 +3090,7 @@ export default function App() {
                      {/* Learner Player Navigation Bar — sticky at bottom in full-screen mode */}
                     <div className={cn(
                       "w-full z-[100] shrink-0 border-t backdrop-blur-md",
-                      playerConfig.playerResolution === 'full' ? 'sticky bottom-0' : 'relative',
+                      'sticky bottom-0',
                       theme === 'light' ? 'bg-white/80 border-slate-200' : theme === 'unified' ? 'bg-indigo-950 border-indigo-800' : 'bg-slate-900 border-slate-800'
                     )}>
                       <PlayerBar
