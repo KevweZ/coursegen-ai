@@ -220,36 +220,40 @@ export function CourseNavSidebar({
               <span className="text-xs font-black uppercase tracking-wider leading-tight">{mod.title}</span>
             </button>
 
-            {/* Slides */}
-            {expandedModules.has(mod.id) && mod.slides.map((slide, si) => {
-              const globalIdx = getSlideGlobalIndex(slide);
-              const isActive = globalIdx === currentSlideIndex;
-              const locked = isContentLocked(globalIdx);
-              let tooltip = '';
-              if (locked && examPhase === 'active') tooltip = 'Complete the quiz to return to course content';
-              else if (locked && navigationMode === 'linear') tooltip = 'Complete slides in order';
-              else if (locked && navigationMode === 'restricted') tooltip = 'Complete previous slides first';
-              return (
-                <button
-                  key={slide.id}
-                  onClick={() => !locked && onNavigate(globalIdx)}
-                  disabled={locked}
-                  title={locked ? tooltip : slide.title}
-                  className={cn(
-                    'w-full flex items-center gap-2.5 pl-7 pr-4 py-2.5 text-left transition-all',
-                    isActive ? activeRow : locked ? lockedRow : inactiveRow
-                  )}
-                >
-                  {tocNumbering === 'numbered'
-                    ? <span className="text-xs font-black shrink-0 w-8 text-right pr-1 opacity-70">{mi + 1}.{si + 1}</span>
-                    : locked
-                    ? <Lock className="w-3 h-3 shrink-0 opacity-50" />
-                    : <span className="text-base shrink-0">{SLIDE_TYPE_ICON[slide.type] || '📄'}</span>
-                  }
-                  <span className="text-sm leading-snug line-clamp-2 font-medium">{slide.title}</span>
-                </button>
-              );
-            })}
+            {/* Slides — prepend synthetic module-overview slide */}
+            {expandedModules.has(mod.id) && (() => {
+              const overviewSlide = allSlides.find(s => s.id === `__module-overview-${mi + 1}__`);
+              const slidesToShow: Slide[] = overviewSlide ? [overviewSlide, ...mod.slides] : mod.slides;
+              return slidesToShow.map((slide, si) => {
+                const globalIdx = getSlideGlobalIndex(slide);
+                const isActive = globalIdx === currentSlideIndex;
+                const locked = isContentLocked(globalIdx);
+                let tooltip = '';
+                if (locked && examPhase === 'active') tooltip = 'Complete the quiz to return to course content';
+                else if (locked && navigationMode === 'linear') tooltip = 'Complete slides in order';
+                else if (locked && navigationMode === 'restricted') tooltip = 'Complete previous slides first';
+                return (
+                  <button
+                    key={slide.id}
+                    onClick={() => !locked && onNavigate(globalIdx)}
+                    disabled={locked}
+                    title={locked ? tooltip : slide.title}
+                    className={cn(
+                      'w-full flex items-center gap-2.5 pl-7 pr-4 py-2.5 text-left transition-all',
+                      isActive ? activeRow : locked ? lockedRow : inactiveRow
+                    )}
+                  >
+                    {tocNumbering === 'numbered'
+                      ? <span className="text-xs font-black shrink-0 w-8 text-right pr-1 opacity-70">{mi + 1}.{si + 1}</span>
+                      : locked
+                      ? <Lock className="w-3 h-3 shrink-0 opacity-50" />
+                      : <span className="text-base shrink-0">{SLIDE_TYPE_ICON[slide.type] || '📄'}</span>
+                    }
+                    <span className="text-sm leading-snug line-clamp-2 font-medium">{slide.title}</span>
+                  </button>
+                );
+              });
+            })()}
           </div>
         ))}
 

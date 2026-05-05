@@ -314,7 +314,7 @@ export async function generateCourseOutline(
   COURSE STRUCTURE REQUIREMENTS:
   You must create EXACTLY ONE module per provided Learning Objective/Target.
   Every module MUST follow this exact sequence of slides:
-  1. ${configParams.includeModuleTitleSlides !== false ? "Title Slide (type: content) — IMPORTANT: OMIT this title slide for Module 1 ONLY. The course already begins with a dedicated Cover/Introduction slide, so Module 1 must start directly with an Objectives or Content slide to avoid redundancy. Modules 2 and beyond should include their title slides as normal." : "NO title slide"}
+  1. NO title slide — The course player now automatically injects a styled "Module X — Overview" slide as the FIRST slide of EVERY module. This slide displays the module description and its learning objectives. Do NOT generate a title, intro, or overview slide for any module. Each module must start directly with its first content or interaction slide.
   2. ${configParams.includeObjectiveSlides !== false ? "Objectives Slide (type: content)" : "NO objectives slide"}
   3. Content & Interaction Slides -- use the SPECIFIC allowed interaction type as the slide type. Allowed interaction types: ${configParams.interactionTypes.join(", ")}. Map them to slide types like this:
      - accordion, flashcards, timeline, sorting, matching, branching -> use the exact string as the slide 'type'
@@ -323,7 +323,7 @@ export async function generateCourseOutline(
   4. ${configParams.includeKnowledgeChecks !== false ? 'Knowledge Check Slides (type: quiz)' : 'NO knowledge check slides'}
   5. ${configParams.includeSummarySlides !== false ? "Summary Slide (type: content)" : "NO summary slide"}
   
-  CRITICAL: The course player automatically injects a Cover/Introduction slide BEFORE all modules. Do NOT create an intro, overview, or welcome slide as the first slide of Module 1 — it would be redundant. Module 1 should open directly with its learning objectives or first content slide.
+  CRITICAL: The course player automatically injects (1) a Cover/Introduction slide before all modules, and (2) a "Module X — Overview" slide as the FIRST slide of EVERY module. Do NOT create any intro, overview, title, or welcome slide for ANY module. All modules must start directly with their first content or interaction slide.
   
   GAME TEMPLATE INTEGRATION:
   ${gameIds.length === 0

@@ -88,7 +88,8 @@ import { CourseTitleSlide } from './components/player/CourseTitleSlide';
 import { ClosingSlide } from './components/player/ClosingSlide';
 import { ModuleCoverSlide } from './components/player/ModuleCoverSlide';
 import { LearningObjectivesSlide }  from './components/player/LearningObjectivesSlide';
-import { CourseObjectivesSlide } from './components/player/CourseObjectivesSlide';
+import { CourseObjectivesSlide }   from './components/player/CourseObjectivesSlide';
+import { ModuleOverviewSlide }    from './components/player/ModuleOverviewSlide';
 import { PlayerTourSlide }       from './components/player/PlayerTourSlide';
 import { WheelDiagram } from './components/interactions/WheelDiagram';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -488,19 +489,29 @@ export default function App() {
   const contentSlides: Slide[] = course
     ? course.modules.flatMap((m: any, moduleIdx: number) => {
         const moduleObj = (course as any).learningObjectives?.[moduleIdx];
-        const slides = (m.slides as any[]).map((sl: any, si: number) =>
-          si === 0 && moduleObj ? { ...sl, _moduleObjectives: moduleObj } : sl
-        );
+        const modNum = moduleIdx + 1;
         return [
+          // Full-bleed animated module cover (stays as-is)
           {
-            id: `__module-cover-${moduleIdx + 1}__`,
-            title: m.title || `Module ${moduleIdx + 1}`,
+            id: `__module-cover-${modNum}__`,
+            title: m.title || `Module ${modNum}`,
             type: 'module-cover' as any,
             content: m.description || '',
-            _moduleNumber: moduleIdx + 1,
-            _moduleTitle:  m.title || `Module ${moduleIdx + 1}`,
+            _moduleNumber: modNum,
+            _moduleTitle:  m.title || `Module ${modNum}`,
           } as Slide,
-          ...slides,
+          // Synthetic Module Overview slide: objectives accordion, full-bleed
+          {
+            id: `__module-overview-${modNum}__`,
+            title: `Module ${modNum} — Overview`,
+            type: 'module-overview' as any,
+            content: m.description || '',
+            _moduleNumber: modNum,
+            _moduleTitle:  m.title || `Module ${modNum}`,
+            _objectives: moduleObj ? [moduleObj] : [],
+          } as Slide,
+          // Real module slides (no _moduleObjectives tagging needed any more)
+          ...m.slides,
         ];
       })
     : [];
@@ -533,7 +544,7 @@ export default function App() {
   const examQIndex       = contentSlides.length + PRE_CONTENT + 1;
   const examResultsIndex = contentSlides.length + PRE_CONTENT + 2;
   const currentSlide = allSlides[currentSlideIndex];
-  const FULL_BLEED_TYPES = ['cover', 'title', 'module-cover', 'closing', 'key-takeaways', 'player-tour', 'course-objectives'];
+  const FULL_BLEED_TYPES = ['cover', 'title', 'module-cover', 'closing', 'key-takeaways', 'player-tour', 'course-objectives', 'module-overview'];
   const isFullBleed = FULL_BLEED_TYPES.includes(currentSlide?.type as string);
 
   const canNavigateTo = (targetIdx: number): boolean => {
@@ -2594,36 +2605,12 @@ export default function App() {
                                   );
                                })()}
 
-                               {(currentSlide?.type === 'content' || currentSlide?.type === 'summary') && (() => {
-                                 const mo: any = (currentSlide as any)._moduleObjectives;
-                                 const accentClr = theme === 'light' ? '#4f46e5' : '#818cf8';
-                                 const bgClr     = theme === 'light' ? 'rgba(79,70,229,0.06)' : 'rgba(129,140,248,0.08)';
-                                 const textClr   = theme === 'light' ? '#1e293b' : '#e2e8f0';
-                                 const subClr    = theme === 'light' ? '#475569' : '#94a3b8';
-                                 const terminal  = mo ? (typeof mo === 'string' ? mo : mo.terminalObjective || '') : '';
-                                 const enabling: string[] = mo ? (typeof mo === 'string' ? [] : mo.enablingObjectives || []) : [];
-                                 return (
-                                   <div className="space-y-4 w-full">
-                                     <SlideHeader title={currentSlide.title} theme={theme} />
-                                     {currentSlide.content && <SlideContent content={sanitizeContent(currentSlide.content)} theme={theme} />}
-                                     {mo && (
-                                       <div className="w-full rounded-xl p-5 space-y-3 mt-2" style={{ backgroundColor: bgClr, border: `1.5px solid ${accentClr}30` }}>
-                                         <p className="text-xs font-black uppercase tracking-widest" style={{ color: accentClr }}>Module Objectives</p>
-                                         {terminal && <div className="flex items-start gap-2.5">
-                                           <span className="shrink-0 mt-0.5 w-5 h-5 rounded-full flex items-center justify-center text-xs font-black" style={{ backgroundColor: `${accentClr}22`, color: accentClr }}>T</span>
-                                           <p className="text-sm font-semibold leading-snug" style={{ color: textClr }}>{terminal}</p>
-                                         </div>}
-                                         {enabling.length > 0 && <div className="ml-7 space-y-1.5">{enabling.map((eo: string, j: number) => (
-                                           <div key={j} className="flex items-start gap-2">
-                                             <span className="shrink-0 mt-1 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: accentClr }} />
-                                             <p className="text-xs leading-relaxed" style={{ color: subClr }}>{eo}</p>
-                                           </div>
-                                         ))}</div>}
-                                       </div>
-                                     )}
-                                   </div>
-                                 );
-                               })()}
+                               {(currentSlide?.type === 'content' || currentSlide?.type === 'summary') && (
+                                 <div className="space-y-4 w-full">
+                                   <SlideHeader title={currentSlide.title} theme={theme} />
+                                   {currentSlide.content && <SlideContent content={sanitizeContent(currentSlide.content)} theme={theme} />}
+                                 </div>
+                               )}
 
                                {/* PLAYER TOUR SLIDE */}
                                {(currentSlide as any)?.type === 'player-tour' && (
@@ -2635,6 +2622,18 @@ export default function App() {
                                {(currentSlide as any)?.type === 'course-objectives' && (
                                  <div className="w-full h-full">
                                    <CourseObjectivesSlide objectives={(currentSlide as any)._objectives || []} theme={theme} />
+                                 </div>
+                               )}
+                               {/* MODULE OVERVIEW SLIDE */}
+                               {(currentSlide as any)?.type === 'module-overview' && (
+                                 <div className="w-full h-full">
+                                   <ModuleOverviewSlide
+                                     moduleNumber={(currentSlide as any)._moduleNumber || 1}
+                                     moduleTitle={(currentSlide as any)._moduleTitle || ''}
+                                     description={currentSlide.content || undefined}
+                                     objectives={(currentSlide as any)._objectives || []}
+                                     theme={theme}
+                                   />
                                  </div>
                                )}
                                {/* MODULE COVER SLIDE */}

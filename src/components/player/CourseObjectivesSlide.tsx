@@ -74,7 +74,7 @@ export const CourseObjectivesSlide: React.FC<Props> = ({ objectives, theme }) =>
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="font-extrabold text-2xl mb-6"
+          className="font-extrabold text-4xl mb-6"
           style={{ color: p.headerText }}
         >
           Course Objectives
@@ -104,13 +104,13 @@ export const CourseObjectivesSlide: React.FC<Props> = ({ objectives, theme }) =>
                 >
                   {/* Numbered circle */}
                   <span
-                    className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center font-black text-sm"
+                    className="shrink-0 w-11 h-11 rounded-full flex items-center justify-center font-black text-base"
                     style={{ backgroundColor: `${color}30`, color }}
                   >
                     {i + 1}
                   </span>
 
-                  <span className="flex-1 font-semibold text-sm leading-snug" style={{ color: p.bodyText }}>
+                  <span className="flex-1 font-semibold text-base leading-snug" style={{ color: p.bodyText }}>
                     {obj.terminalObjective}
                   </span>
 
@@ -144,7 +144,7 @@ export const CourseObjectivesSlide: React.FC<Props> = ({ objectives, theme }) =>
                         {obj.enablingObjectives.map((eo, j) => (
                           <div key={j} className="flex items-start gap-2">
                             <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" style={{ color }} />
-                            <p className="text-xs leading-relaxed" style={{ color: p.subText }}>{eo}</p>
+                            <p className="text-sm leading-relaxed" style={{ color: p.subText }}>{eo}</p>
                           </div>
                         ))}
                       </div>

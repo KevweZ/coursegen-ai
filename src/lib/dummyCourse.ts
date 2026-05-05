@@ -85,14 +85,6 @@ export const DUMMY_COURSE: CourseOutline = {
       id: 'mod-2',
       title: 'Module 2 — Knowledge Checks',
       slides: [
-        {
-          id: 'slide-mod2-intro',
-          type: 'content',
-          title: 'Module 2 — Knowledge Checks',
-          content: '## Testing Quiz Components\n\nThis module demonstrates the **Quiz** and **Multiple Answer** slide types. These are the core assessment tools in the NexCourse player.\n\nTry selecting an answer and clicking Submit to see the feedback logic in action.',
-          narration: 'Module 2 focuses on knowledge checks. Here you will test the quiz slide type which provides immediate feedback when a learner selects and submits their answer.',
-          voiceOverText: 'Module 2 focuses on knowledge checks. Test the quiz slide by selecting an answer and clicking submit.',
-        },
         // Quiz
         {
           id: 'slide-quiz-1',
@@ -142,14 +134,6 @@ export const DUMMY_COURSE: CourseOutline = {
       id: 'mod-3',
       title: 'Module 3 — Interactive Components',
       slides: [
-        {
-          id: 'slide-mod3-intro',
-          type: 'content',
-          title: 'Module 3 — Interactive Components',
-          content: '## Accordion, Flashcards, Timeline\n\nThis module demonstrates the three most-used **exploratory interaction** slide types. Each requires the learner to click or interact to reveal information rather than passively reading.',
-          narration: 'Module 3 covers interactive components. These slides require the learner to actively engage by clicking to reveal content, flipping cards, or exploring a timeline.',
-          voiceOverText: 'Module 3 covers interactive components: accordion, flashcards, and timeline.',
-        },
         // Accordion
         {
           id: 'slide-accordion',
