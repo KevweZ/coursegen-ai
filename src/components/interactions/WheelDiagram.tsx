@@ -60,11 +60,11 @@ function midAngle(start: number, end: number) {
   return (start + end) / 2;
 }
 
-const SVG_SIZE = 420;
+const SVG_SIZE = 500;
 const CX = SVG_SIZE / 2;
 const CY = SVG_SIZE / 2;
-const OUTER_R = 196;
-const INNER_R = 88;  // hub radius
+const OUTER_R = 232;
+const INNER_R = 104;  // hub radius
 
 export const WheelDiagram: React.FC<WheelDiagramProps> = ({
   centerLabel,
@@ -87,7 +87,7 @@ export const WheelDiagram: React.FC<WheelDiagramProps> = ({
   return (
     <div className="w-full h-full flex items-center justify-center gap-4 px-2">
       {/* ── SVG Pie Wheel ─────────────────────────────────────── */}
-      <div className="shrink-0" style={{ width: 'min(50%, 440px)', height: 'min(50%, 440px)', minWidth: 260, minHeight: 260 }}>
+      <div className="shrink-0" style={{ width: 520, height: 520 }}>
         <svg
           width="100%"
           height="100%"
@@ -162,7 +162,7 @@ export const WheelDiagram: React.FC<WheelDiagramProps> = ({
                   y={textPos.y}
                   textAnchor="middle"
                   dominantBaseline="middle"
-                  fontSize={n >= 8 ? 8 : n >= 6 ? 9 : 11}
+                  fontSize={n >= 8 ? 10 : n >= 6 ? 12 : 14}
                   fontWeight="700"
                   fill="white"
                   style={{ pointerEvents: 'none', userSelect: 'none' }}
@@ -219,7 +219,7 @@ export const WheelDiagram: React.FC<WheelDiagramProps> = ({
               maxWidth: '45%',
               backgroundColor: panelBg,
               borderLeft: `4px solid ${getColor(selectedSeg, segments.indexOf(selectedSeg))}`,
-              maxHeight: SVG_SIZE,
+              maxHeight: 520,
             }}
             initial={{ opacity: 0, x: 30 }}
             animate={{ opacity: 1, x: 0 }}

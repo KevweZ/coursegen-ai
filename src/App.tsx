@@ -2813,7 +2813,7 @@ export default function App() {
                                     <div className="space-y-4 w-full">
                                       <SlideHeader title={currentSlide.title} theme={theme} />
                                       <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
-                                      <div className="w-full" style={{ height: '440px' }}>
+                                      <div className="w-full overflow-x-auto" style={{ height: '560px' }}>
                                         <WheelDiagram
                                           centerLabel={wd.centerLabel || currentSlide.title}
                                           centerImage={wd.centerImage}
