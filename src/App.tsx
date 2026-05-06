@@ -66,6 +66,7 @@ import {
   GamePreview 
 } from './components/interactions/ExtraPreviews';
 import { DialogueBranchingScenario } from './components/interactions/DialogueBranchingScenario';
+import { stripSlideTypePrefix } from './lib/stripSlideTypePrefix';
 import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft, generateMasteryExam } from './services/aiService';
 import { createScormPackage } from './services/scormService';
 import { FlashcardGrid } from './components/FlashcardGrid';
@@ -3225,7 +3226,7 @@ export default function App() {
                         player={player}
                         currentSlideIndex={currentSlideIndex}
                         totalSlides={allSlides.length}
-                        currentSlideTitle={currentSlide?.title ?? ''}
+                        currentSlideTitle={stripSlideTypePrefix(currentSlide?.title ?? '')}
                         onPrev={handlePrev}
                         onNext={handleNext}
                         theme={theme}

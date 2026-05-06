@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, BookOpen, ChevronDown, Lock, GraduationCap } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { NavigationMode } from '../../types/course';
+import { stripSlideTypePrefix } from '../../lib/stripSlideTypePrefix';
 
 interface Slide { id: string; title: string; type: string; }
 interface Module { id: string; title: string; slides: Slide[]; }
@@ -237,7 +238,7 @@ export function CourseNavSidebar({
                     key={slide.id}
                     onClick={() => !locked && onNavigate(globalIdx)}
                     disabled={locked}
-                    title={locked ? tooltip : slide.title}
+                    title={locked ? tooltip : stripSlideTypePrefix(slide.title)}
                     className={cn(
                       'w-full flex items-center gap-2.5 pl-7 pr-4 py-2.5 text-left transition-all',
                       isActive ? activeRow : locked ? lockedRow : inactiveRow
@@ -249,7 +250,7 @@ export function CourseNavSidebar({
                       ? <Lock className="w-3 h-3 shrink-0 opacity-50" />
                       : <span className="text-base shrink-0">{SLIDE_TYPE_ICON[slide.type] || '📄'}</span>
                     }
-                    <span className="text-sm leading-snug line-clamp-2 font-medium">{slide.title}</span>
+                    <span className="text-sm leading-snug line-clamp-2 font-medium">{stripSlideTypePrefix(slide.title)}</span>
                   </button>
                 );
               });

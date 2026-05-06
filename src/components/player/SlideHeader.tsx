@@ -1,5 +1,6 @@
 import React from 'react';
 import { cn } from '../../lib/utils';
+import { stripSlideTypePrefix } from '../../lib/stripSlideTypePrefix';
 
 type Theme = 'light' | 'dark' | 'unified';
 
@@ -30,7 +31,7 @@ export const SlideHeader: React.FC<SlideHeaderProps> = ({ title, theme, classNam
         className
       )}
     >
-      {title}
+      {stripSlideTypePrefix(title)}
     </h2>
   );
 };
