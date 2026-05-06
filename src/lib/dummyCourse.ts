@@ -173,7 +173,7 @@ export const DUMMY_COURSE: CourseOutline = {
         {
           id: 'slide-timeline',
           type: 'timeline',
-          title: 'Timeline — CourseGEN Development Milestones',
+          title: 'Timeline — NexCourse Development Milestones',
           content: 'Explore the key milestones in the development of the NexCourse platform.',
           narration: 'This is the timeline interaction. Click each node to expand its detail panel.',
           voiceOverText: 'This is the timeline interaction. Click each node to reveal its detail panel.',
@@ -212,7 +212,7 @@ export const DUMMY_COURSE: CourseOutline = {
           narration: 'This is the sorting interaction. Drag and drop the items to arrange them in the correct order.',
           voiceOverText: 'Drag the items to arrange them in the correct order.',
           data: {
-            prompt: 'Arrange the CourseGEN development phases in the correct order:',
+            prompt: 'Arrange the NexCourse development phases in the correct order:',
             items: [
               { id: 'si-3', content: 'Core Player Built' },
               { id: 'si-1', content: 'AI Generation Pipeline' },
@@ -233,7 +233,7 @@ export const DUMMY_COURSE: CourseOutline = {
           narration: 'This is the matching interaction. Connect each item on the left to its matching definition on the right.',
           voiceOverText: 'Match each component to its correct description.',
           data: {
-            prompt: 'Match each CourseGEN component to its function:',
+            prompt: 'Match each NexCourse component to its function:',
             pairs: [
               { id: 'pair-1', term: 'Player Bar',     definition: 'Bottom navigation with seekbar and slide controls' },
               { id: 'pair-2', term: 'Edit Drawer',    definition: 'Right-panel for inline slide text and audio editing' },
