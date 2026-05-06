@@ -104,7 +104,9 @@ import { FloatingImage } from './types/course';
 import TabbedHorizontal from './components/interactions/TabbedContentHorizontal';
 import TabbedVertical from './components/interactions/TabbedContentVertical';
 import FolderExplorer from './components/interactions/FolderExplorer';
-import CarouselPanel from './components/interactions/CarouselPanel';import ReactMarkdown from 'react-markdown';
+import CarouselPanel from './components/interactions/CarouselPanel';
+import { ChevronTimeline } from './components/interactions/ChevronTimeline';
+import ReactMarkdown from 'react-markdown';
 import { cn } from './lib/utils';
 import { SlideEditorBar } from './components/player/SlideEditorBar';
 import { CourseNavSidebar } from './components/player/CourseNavSidebar';
@@ -2883,14 +2885,19 @@ export default function App() {
                                  </div>
                                )}
                                {currentSlide?.type === 'timeline' && (
-                                  <div className="space-y-6 w-full">
-                                    <SlideHeader title={currentSlide.title} theme={theme} />
-                                    <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
-                                    <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
-                                      <InteractiveTimeline {...(currentSlide.data || currentSlide.interactions?.[0] || {})} />
-                                    </div>
-                                  </div>
-                                )}
+                                   <div className="space-y-4 w-full">
+                                     <SlideHeader title={currentSlide.title} theme={theme} />
+                                     {currentSlide.content && (
+                                       <SlideContent content={sanitizeContent(currentSlide.content)} theme={theme} compact />
+                                     )}
+                                     <ChevronTimeline
+                                       events={(currentSlide.data || currentSlide.interactions?.[0] || {}).events || []}
+                                       theme={theme}
+                                       accentColor={slideAccentColor}
+                                     />
+                                   </div>
+                                 )}
+
                                {currentSlide?.type === 'sorting' && (
                                   <div className="space-y-6 w-full">
                                      <SlideHeader title={currentSlide.title} theme={theme} />
