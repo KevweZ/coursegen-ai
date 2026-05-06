@@ -87,6 +87,8 @@ import { usePlayer } from './lib/usePlayer';
 import { PlayerBar } from './components/player/PlayerBar';
 import { SlideHeader } from './components/player/SlideHeader';
 import { SlideErrorBoundary } from './components/player/SlideErrorBoundary';
+import { useDraftCourses } from './lib/useDraftCourses';
+import { DraftCoursesPanel } from './components/player/DraftCoursesPanel';
 import { CourseTitleSlide } from './components/player/CourseTitleSlide';
 import { ClosingSlide } from './components/player/ClosingSlide';
 import { ModuleCoverSlide } from './components/player/ModuleCoverSlide';
@@ -313,6 +315,38 @@ const SmartContent = ({ content, className, theme }: { content: string; classNam
 export default function App() {
   const isScormPlayer = typeof window !== 'undefined' && !!(window as any).__COURSE_DATA__;
   const { user, loading: authLoading, signOut, isAdmin } = useAuth();
+
+  // ── Draft Courses (Pro feature) ───────────────────────────────────────────
+  const draftManager = useDraftCourses(user?.id ?? null);
+  const [showDraftsPanel, setShowDraftsPanel] = React.useState(false);
+  const [draftSaveMessage, setDraftSaveMessage] = React.useState<string | null>(null);
+
+  const showDraftMessage = (msg: string) => {
+    setDraftSaveMessage(msg);
+    setTimeout(() => setDraftSaveMessage(null), 3500);
+  };
+
+  const handleSaveDraft = () => {
+    if (!course) return;
+    const result = draftManager.saveDraft(course, playerConfig, theme);
+    showDraftMessage(result.message);
+  };
+
+  const handleLoadDraft = (id: string) => {
+    const snapshot = draftManager.loadDraft(id);
+    if (!snapshot) return;
+    setCourse(snapshot.course);
+    setPlayerConfig(snapshot.playerConfig || playerConfig);
+    setCurrentSlideIndex(0);
+    setShowDraftsPanel(false);
+    showDraftMessage('Draft loaded ✓');
+  };
+
+  const handleReplaceDraft = (id: string) => {
+    if (!course) return;
+    draftManager.replaceDraft(id, course, playerConfig, theme);
+    showDraftMessage('Draft updated ✓');
+  };
 
   // Controls which pre-auth view to show: public marketing homepage OR login/signup
   const [publicView, setPublicView] = useState<'homepage' | 'auth' | 'methodology'>('homepage');
@@ -1387,6 +1421,26 @@ export default function App() {
             </div>
           )}
 
+          {/* Draft Courses Panel - Pro feature */}
+          {course && (
+            <DraftCoursesPanel
+              isOpen={showDraftsPanel}
+              onClose={() => setShowDraftsPanel(false)}
+              theme={theme}
+              drafts={draftManager.drafts}
+              slotsUsed={draftManager.slotsUsed}
+              slotsTotal={draftManager.slotsTotal}
+              canSave={draftManager.canSave}
+              isAuthenticated={!!user}
+              currentCourseTitle={course?.title}
+              onSave={handleSaveDraft}
+              onLoad={handleLoadDraft}
+              onDelete={(id) => draftManager.deleteDraft(id)}
+              onReplace={handleReplaceDraft}
+              saveMessage={draftSaveMessage}
+            />
+          )}
+
           {/* QC Track Changes Modal — overlays preview, persists across open/close */}
           <QCTrackChangesModal
             open={qcModalOpen}
@@ -2354,6 +2408,22 @@ export default function App() {
                     })()}
 
                     <div className="w-px h-4 bg-slate-700 mx-0.5" />
+
+                    {/* Saved Drafts (Pro) */}
+                    <button
+                      title={`Saved Drafts (${draftManager.slotsUsed}/${draftManager.slotsTotal})`}
+                      onClick={() => setShowDraftsPanel(true)}
+                      className="relative flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-bold text-xs transition-colors text-slate-300 hover:bg-slate-700/60 border border-slate-700/50"
+                    >
+                      <BookOpen className="w-3.5 h-3.5" />
+                      <span className="hidden lg:inline">Drafts</span>
+                      {draftManager.slotsUsed > 0 && (
+                        <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-indigo-500 text-white text-[10px] font-black rounded-full flex items-center justify-center">
+                          {draftManager.slotsUsed}
+                        </span>
+                      )}
+                    </button>
+
 
                     {/* Export SCORM — warns if pending QC items exist */}
                     <button
