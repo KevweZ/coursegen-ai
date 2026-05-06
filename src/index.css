@@ -130,11 +130,13 @@ button, [role="button"], a { cursor: pointer; }
 
 /* ── Backgrounds: CSS-module panels (timeline reveal, matching containers) ──
    Use element-level selectors because CSS modules use scoped class names,
-   not Tailwind classes, so [class*="bg-white"] won't catch them. */
-.interaction-dark-override div,
-.interaction-dark-override section,
-.interaction-dark-override article,
-.interaction-dark-override aside {
+   not Tailwind classes, so [class*="bg-white"] won't catch them.
+   IMPORTANT: exclude elements with inline styles so custom-colored blocks
+   (e.g. CustomMatchingActivity draggable items) are not tinted over. */
+.interaction-dark-override div:not([style]),
+.interaction-dark-override section:not([style]),
+.interaction-dark-override article:not([style]),
+.interaction-dark-override aside:not([style]) {
   background-color: #1e293b;
 }
 
@@ -406,9 +408,9 @@ img:not([loading]) {
   color: #e2e8f0 !important;
 }
 /* Catch any element with an inline white/light background via forced inheritance */
-.interaction-dark-override div,
-.interaction-dark-override section,
-.interaction-dark-override article {
+.interaction-dark-override div:not([style]),
+.interaction-dark-override section:not([style]),
+.interaction-dark-override article:not([style]) {
   color: inherit;
 }
 

@@ -2606,6 +2606,28 @@ export default function App() {
                               ? "w-full h-full"
                               : "flex-1 w-full max-w-4xl flex flex-col justify-start"
                           )}>
+                               {/* ── Universal accent label + underline — all interactive/quiz slides ── */}
+                               {!isFullBleed && !['content','summary','title','cover','key-takeaways'].includes(currentSlide?.type as string) && (() => {
+                                 const TYPE_LABELS: Record<string,string> = {
+                                   'quiz': 'Knowledge Check', 'multiple-answers': 'Knowledge Check',
+                                   'matching': 'Matching Activity', 'sorting': 'Sorting Activity',
+                                   'accordion': 'Explore', 'flashcards': 'Flashcards',
+                                   'timeline': 'Timeline', 'hotspot': 'Hotspot',
+                                   'branching': 'Branching Scenario', 'wheel-diagram': 'Diagram',
+                                   'tabbed-horizontal': 'Tabbed Content', 'tabbed-vertical': 'Tabbed Content',
+                                   'folder-explorer': 'Explorer', 'carousel-panel': 'Carousel',
+                                   'game-template': 'Game',
+                                 };
+                                 const label = TYPE_LABELS[currentSlide?.type as string];
+                                 if (!label) return null;
+                                 return (
+                                   <div className="mb-4">
+                                     <p className="text-[10px] font-black uppercase tracking-[0.25em] mb-2" style={{ color: slideAccentColor }}>{label}</p>
+                                     <div className="h-[2px] w-full rounded-full" style={{ background: `linear-gradient(to right, ${slideAccentColor}, ${slideAccentColor}40, transparent)` }} />
+                                   </div>
+                                 );
+                               })()}
+
                                {/* TITLE / COVER SLIDE — redesigned CourseTitleSlide */}
                                {(currentSlide?.type === 'title' || currentSlide?.type === 'cover') && (
                                  <div className="w-full h-full">
