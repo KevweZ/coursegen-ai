@@ -106,7 +106,7 @@ import TabbedHorizontal from './components/interactions/TabbedContentHorizontal'
 import TabbedVertical from './components/interactions/TabbedContentVertical';
 import FolderExplorer from './components/interactions/FolderExplorer';
 import CarouselPanel from './components/interactions/CarouselPanel';
-import { ChevronTimeline } from './components/interactions/ChevronTimeline';
+import { VerticalTimeline } from './components/interactions/VerticalTimeline';
 import ReactMarkdown from 'react-markdown';
 import { cn } from './lib/utils';
 import { SlideEditorBar } from './components/player/SlideEditorBar';
@@ -2911,7 +2911,7 @@ export default function App() {
                                    <div className="space-y-4 w-full">
                                      <SlideHeader title={currentSlide.title} theme={theme} />
                                      {currentSlide.content && (
-                                       <SlideContent content={sanitizeContent(currentSlide.content)} theme={theme} compact />
+                                       <SlideContent content={sanitizeContent(currentSlide.content)} theme={theme} />
                                      )}
                                      <ChevronTimeline
                                        events={(currentSlide.data || currentSlide.interactions?.[0] || {}).events || []}
