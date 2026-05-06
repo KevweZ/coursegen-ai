@@ -106,23 +106,46 @@ export function SlideContent({ content, theme, compact = false }: SlideContentPr
       <ol className="space-y-2 mb-3 pl-0 list-none counter-reset-list">{children}</ol>
     ),
 
-    // LIST ITEM — styled with a colored diamond bullet
-    li: ({ children, ordered }: any) => (
-      <li className={cn(
-        'flex items-start gap-3 rounded-lg px-3 py-2.5',
-        isLight
-          ? 'bg-indigo-50/80 text-slate-800'
-          : theme === 'unified'
-          ? 'bg-indigo-900/30 text-slate-100'
-          : 'bg-slate-800/60 text-slate-200'
-      )}>
-        <span className={cn(
-          'shrink-0 mt-0.5 font-black text-base leading-none select-none',
-          isLight ? 'text-indigo-500' : 'text-indigo-400'
-        )}>◆</span>
-        <span className={cn('flex-1 leading-snug', compact ? 'text-sm' : 'text-[15px]')}>{children}</span>
-      </li>
-    ),
+    // LIST ITEM — intro lines (ending ':') rendered as plain bold label; rest get diamond bullet
+    li: ({ children }: any) => {
+      // Extract raw text to detect intro/parent lines
+      const extractText = (node: any): string => {
+        if (!node) return '';
+        if (typeof node === 'string') return node;
+        if (Array.isArray(node)) return node.map(extractText).join('');
+        if (node?.props?.children) return extractText(node.props.children);
+        return '';
+      };
+      const textContent = extractText(children).trim();
+      const isIntroLine = textContent.endsWith(':');
+
+      if (isIntroLine) {
+        // Render as a non-bulleted section-intro line
+        return (
+          <li className={cn(
+            'font-semibold text-[15px] leading-snug mt-2 mb-0.5 list-none',
+            isLight ? 'text-slate-600' : 'text-slate-400'
+          )}>
+            {children}
+          </li>
+        );
+      }
+
+      return (
+        <li className={cn(
+          'flex items-start gap-3',
+          compact ? 'py-1.5' : 'py-2'
+        )}>
+          <span className={cn(
+            'shrink-0 mt-[3px] font-black text-sm leading-none select-none',
+            isLight ? 'text-indigo-500' : 'text-indigo-400'
+          )}>◆</span>
+          <span className={cn('flex-1 leading-snug', compact ? 'text-sm' : 'text-[15px]',
+            isLight ? 'text-slate-800' : 'text-slate-200'
+          )}>{children}</span>
+        </li>
+      );
+    },
 
     // STRONG / BOLD
     strong: ({ children }) => (

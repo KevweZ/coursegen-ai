@@ -139,7 +139,7 @@ export function CourseNavSidebar({
       <div className={cn('flex items-center justify-between px-4 py-3 border-b', headerBg)}>
         <div className="flex items-center gap-2">
           <BookOpen className="w-4 h-4 text-indigo-400 shrink-0" />
-          <span className="text-sm font-black uppercase tracking-widest">Course Outline</span>
+          <span className="text-sm font-black uppercase tracking-widest">Table of Contents</span>
         </div>
         <div className="flex items-center gap-1">
           <span className="text-xs font-bold text-slate-500 bg-slate-700/50 px-2 py-0.5 rounded-full">{contentSlideCount} Slides</span>

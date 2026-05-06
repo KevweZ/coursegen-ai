@@ -2561,14 +2561,15 @@ export default function App() {
                       : undefined
                     : undefined
                   }>
-                    {/* Global per-module accent strip (absolute, left edge) */}
-                    {!['cover','module-cover','module-overview','player-tour','course-objectives','closing','exam-intro','mastery-exam','exam-results'].includes((currentSlide as any)?.type) && (
+                    {/* ── Content zone + accent strip ── */}
+                    <div className="flex-1 flex flex-row overflow-hidden">
+                    {/* Per-module accent strip — flex column, no z-index issues */}
+                    {!isFullBleed && (
                       <div
-                        className="absolute left-0 top-0 bottom-0 w-[3px] z-20 pointer-events-none"
+                        className="w-[3px] shrink-0 self-stretch pointer-events-none"
                         style={{ background: `linear-gradient(to bottom, ${slideAccentColor}, ${slideAccentColor}40)` }}
                       />
                     )}
-                    {/* ── Content zone: flex-1 so PlayerBar stays at bottom ── */}
                     <div className="flex-1 relative overflow-hidden flex flex-col">
                     {/* ── Full-bleed slide frame ─────────────────────── */}
                     <AnimatePresence mode="wait">
@@ -3177,7 +3178,8 @@ export default function App() {
                        />
                         </motion.div>
                        </AnimatePresence>
-                    </div>{/* end content zone */}
+                     </div>{/* end inner content */}
+                     </div>{/* end accent+content row */}
 
                      {/* Learner Player Navigation Bar — sticky at bottom in full-screen mode */}
                     <div className={cn(

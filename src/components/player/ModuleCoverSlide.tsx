@@ -1,5 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import { MODULE_COLORS } from './ModuleOverviewSlide';
 
 type Theme = 'light' | 'dark' | 'unified';
 
@@ -10,10 +11,6 @@ interface ModuleCoverSlideProps {
   theme: Theme;
 }
 
-const MODULE_COLORS = [
-  '#3b7dd8', '#d9582a', '#2d8b4e', '#f0a500',
-  '#00a8a8', '#c94a1c', '#1e6e78', '#7a3a9e', '#e5a000', '#00808a',
-];
 
 function getModuleColor(n: number): string {
   return MODULE_COLORS[(n - 1) % MODULE_COLORS.length];

@@ -25,7 +25,7 @@ const CARDS = [
   {
     id: 'sidebar',
     icon: PanelLeft,
-    title: 'Course Outline',
+    title: 'Table of Contents',
     desc: 'The left sidebar lists every module and slide. Click any entry to jump directly to it.',
     color: '#0891b2',
   },

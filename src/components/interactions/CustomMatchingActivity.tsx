@@ -111,9 +111,7 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
                 style={{
                   /* Colorful left border + tinted background — dimmed when placed */
                   borderLeft: placed ? `4px solid ${color}60` : `4px solid ${color}`,
-                  backgroundColor: placed
-                    ? `${color}12`          // ~7% — keep hue, clearly dimmed
-                    : `${color}26`,         // ~15% opacity tint
+                  backgroundColor: placed ? `${color}12` : 'transparent',
                   color:  placed ? `${color}80` : 'white',
                   cursor: placed || checked ? 'default' : 'grab',
                   opacity: isDragging ? 0.45 : 1,

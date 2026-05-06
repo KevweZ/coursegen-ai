@@ -243,8 +243,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               step="0.05"
               value={volume}
               onChange={e => onVolumeChange(parseFloat(e.target.value))}
-              className="w-14 h-1 cursor-pointer appearance-none rounded-full"
-              style={{ accentColor: '#6366f1' }}
+              className="vol-slider w-16"
+              style={{ '--vol': Math.round(volume * 100) } as React.CSSProperties}
               title={`Volume: ${Math.round(volume * 100)}%`}
               aria-label="Volume"
             />

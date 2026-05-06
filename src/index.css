@@ -411,3 +411,48 @@ img:not([loading]) {
 .interaction-dark-override article {
   color: inherit;
 }
+
+/* ── Volume slider track styling ───────────────────────────────────────── */
+.vol-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 9999px;
+  background: linear-gradient(
+    to right,
+    #6366f1 0%,
+    #6366f1 calc(var(--vol, 100) * 1%),
+    rgba(255,255,255,0.18) calc(var(--vol, 100) * 1%),
+    rgba(255,255,255,0.18) 100%
+  );
+  outline: none;
+  cursor: pointer;
+}
+.vol-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 2px #6366f1;
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+.vol-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+.vol-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 2px #6366f1;
+  cursor: pointer;
+  border: none;
+}
+.vol-slider::-moz-range-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: rgba(255,255,255,0.18);
+}
