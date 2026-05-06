@@ -65,6 +65,7 @@ import {
   SortingPreview, MatchingPreview, TimelinePreview, DropTargetsPreview,
   GamePreview 
 } from './components/interactions/ExtraPreviews';
+import { DialogueBranchingScenario } from './components/interactions/DialogueBranchingScenario';
 import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft, generateMasteryExam } from './services/aiService';
 import { createScormPackage } from './services/scormService';
 import { FlashcardGrid } from './components/FlashcardGrid';
@@ -2950,7 +2951,7 @@ export default function App() {
                                       <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                       <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                          <ErrorBoundary fallbackTitle="Branching scenario error — a node may have an invalid nextNodeId reference.">
-                                           <BranchingScenario nodes={normNodes} startNodeId={startId} />
+                                           <DialogueBranchingScenario nodes={normNodes} startNodeId={startId} theme={theme} accentColor={slideAccentColor} />
                                          </ErrorBoundary>
                                       </div>
                                     </div>
