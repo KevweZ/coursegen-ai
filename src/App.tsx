@@ -222,6 +222,10 @@ function preprocessAccordionData(data: any): any {
  * Only fires when there are 2+ plain-text paragraphs.
  */
 function autoFormatAsBullets(raw: string): string {
+  // If content already has markdown structure (headings or lists), leave it as-is.
+  if (/^#{1,6}\s/m.test(raw) || /^[-*+]\s/m.test(raw) || /^\d+\.\s/m.test(raw)) {
+    return raw;
+  }
   const isPlain = (b: string) => {
     const t = b.trim();
     if (!t) return false;

@@ -30,6 +30,12 @@ interface SlideContentProps {
  *   - Content with only 1 plain-text paragraph
  */
 function autoFormatAsBullets(raw: string): string {
+  // If content already has markdown structure (headings or lists), leave it as-is.
+  // Auto-bulleting is only for truly plain paragraphs with no existing structure.
+  if (/^#{1,6}\s/m.test(raw) || /^[-*+]\s/m.test(raw) || /^\d+\.\s/m.test(raw)) {
+    return raw;
+  }
+
   // Split into paragraph blocks on one or more blank lines
   const blocks = raw.split(/\n{2,}/);
 
