@@ -3,6 +3,7 @@
  * Shown to authenticated (Pro) users only.
  */
 import React, { useState } from 'react';
+import ReactDOM from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, BookOpen, Trash2, FolderOpen, Clock, Layers, Save, AlertCircle, CheckCircle2, Lock } from 'lucide-react';
 import { cn } from '../../lib/utils';
@@ -65,7 +66,7 @@ export const DraftCoursesPanel: React.FC<Props> = ({
   const cardBg = theme === 'light' ? 'bg-slate-50 border-slate-200 hover:border-indigo-300' : theme === 'unified' ? 'bg-indigo-900/40 border-indigo-500/20 hover:border-purple-400/50' : 'bg-slate-800/60 border-slate-700 hover:border-indigo-500/50';
   const subText = theme === 'light' ? 'text-slate-500' : 'text-slate-400';
 
-  return (
+  const content = (
     <AnimatePresence>
       {isOpen && (
         <>
@@ -74,7 +75,7 @@ export const DraftCoursesPanel: React.FC<Props> = ({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[600]"
             onClick={onClose}
           />
 
@@ -85,7 +86,7 @@ export const DraftCoursesPanel: React.FC<Props> = ({
             exit={{ x: '100%' }}
             transition={{ type: 'spring', stiffness: 320, damping: 32 }}
             className={cn(
-              'fixed right-0 top-0 bottom-0 w-[380px] max-w-[95vw] z-50 flex flex-col border-l shadow-2xl',
+              'fixed right-0 top-0 bottom-0 w-[380px] max-w-[95vw] z-[601] flex flex-col border-l shadow-2xl',
               bg
             )}
           >
@@ -260,4 +261,6 @@ export const DraftCoursesPanel: React.FC<Props> = ({
       )}
     </AnimatePresence>
   );
+
+  return ReactDOM.createPortal(content, document.body);
 };

@@ -2428,14 +2428,14 @@ export default function App() {
 
                     <div className="w-px h-4 bg-slate-700 mx-0.5" />
 
-                    {/* Saved Drafts (Pro) */}
+                    {/* Save Drafts (Pro) */}
                     <button
-                      title={`Saved Drafts (${draftManager.slotsUsed}/${draftManager.slotsTotal})`}
+                      title={`Save Draft (${draftManager.slotsUsed}/${draftManager.slotsTotal} slots used)`}
                       onClick={() => setShowDraftsPanel(true)}
                       className="relative flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-bold text-xs transition-colors text-slate-300 hover:bg-slate-700/60 border border-slate-700/50"
                     >
-                      <BookOpen className="w-3.5 h-3.5" />
-                      <span className="hidden lg:inline">Drafts</span>
+                      <Save className="w-3.5 h-3.5" />
+                      <span className="hidden lg:inline">Save</span>
                       {draftManager.slotsUsed > 0 && (
                         <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-indigo-500 text-white text-[10px] font-black rounded-full flex items-center justify-center">
                           {draftManager.slotsUsed}
