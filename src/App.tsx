@@ -63,7 +63,7 @@ import {
 import { 
   AccordionPreview, HotspotPreview, MultipleChoicePreview, 
   SortingPreview, MatchingPreview, TimelinePreview, DropTargetsPreview,
-  GamePreview 
+  GamePreview, ScenarioPreview
 } from './components/interactions/ExtraPreviews';
 import { stripSlideTypePrefix } from './lib/stripSlideTypePrefix';
 import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft, generateMasteryExam } from './services/aiService';
@@ -327,6 +327,7 @@ export default function App() {
   const draftManager = useDraftCourses(user?.id ?? null);
   const [showDraftsPanel, setShowDraftsPanel] = React.useState(false);
   const [showAppImagePicker, setShowAppImagePicker] = React.useState(false);
+  const [showImageDropdown, setShowImageDropdown] = React.useState(false);
   const [draftSaveMessage, setDraftSaveMessage] = React.useState<string | null>(null);
 
   const showDraftMessage = (msg: string) => {
@@ -2160,6 +2161,14 @@ export default function App() {
                         </div>
                      </div>
 
+                      {/* Decision Simulation Config — shown immediately when 'scenario' is selected */}
+                      {interactionTypes.includes('scenario') && (
+                        <ScenarioBuilderPanel
+                          config={scenarioConfig}
+                          onChange={setScenarioConfig}
+                        />
+                      )}
+
                      {/* Gamification grid */}
                      <div className="bg-slate-900/80 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
                         <div className="p-6 border-b border-slate-800 bg-slate-900 relative">
@@ -2221,14 +2230,6 @@ export default function App() {
                             </p>
                           </div>
                         </div>
-                      )}
-
-                      {/* Decision Simulation Config — shown when 'scenario' is selected */}
-                      {interactionTypes.includes('scenario') && (
-                        <ScenarioBuilderPanel
-                          config={scenarioConfig}
-                          onChange={setScenarioConfig}
-                        />
                       )}
 
                      {/* Audio & Accessibility Section */}
@@ -2559,51 +2560,61 @@ export default function App() {
                     <button
                       title="Edit via AI — make targeted changes to this interaction using plain language"
                       onClick={() => setShowAIEditDrawer(true)}
-                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-purple-700/50 hover:bg-purple-800/20 text-purple-300 text-[11px] font-semibold"
+                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-cyan-700/50 hover:bg-cyan-800/20 text-cyan-300 text-[11px] font-semibold"
                     >
                       <Sparkles className="w-3 h-3" /><span>Edit via AI</span>
                     </button>
                   )}
 
-                  {/* App Image Library */}
-                  <button
-                    onClick={() => setShowAppImagePicker(true)}
-                    title="App Image Library — insert backgrounds or character silhouettes onto the slide"
-                    className="flex items-center gap-1 px-2 py-1 rounded-md border border-violet-700/50 hover:bg-violet-800/20 text-violet-300 text-[11px] font-semibold"
-                  >
-                    <ImageIcon className="w-3 h-3" /><span>Slide Images</span>
-                  </button>
-
-                                    {/* Upload Image (floating) */}
-                  <label
-                    htmlFor="topbar-img-upload"
-                    title="Upload Image — add images to the current slide"
-                    className="flex items-center gap-1 px-2 py-1 rounded-md border border-emerald-700/50 hover:bg-emerald-800/20 text-emerald-300 text-[11px] font-semibold cursor-pointer"
-                  >
-                    <Upload className="w-3 h-3" /><span>Upload Image</span>
-                    <input id="topbar-img-upload" type="file" accept="image/*" multiple className="hidden"
-                      onChange={e => {
-                        if (e.target.files?.length) {
-                          const newImgs: FloatingImage[] = Array.from(e.target.files).map((f, i) => ({
-                            id: `fi-${Date.now()}-${i}`,
-                            url: URL.createObjectURL(f),
-                            x: 40 + i * 20, y: 40 + i * 20, width: 320, height: 240,
-                          }));
-                          setFloatingImagesMap(prev => ({ ...prev, [currentSlide?.id]: [...(prev[currentSlide?.id] || []), ...newImgs] }));
-                          e.target.value = '';
-                        }
-                      }}
-                    />
-                  </label>
-
-                  {/* Source Image */}
-                  <button
-                    title="Source Image — pick an image from your uploaded source document"
-                    onClick={() => setShowImageGalleryForSlide(currentSlide?.id || null)}
-                    className="flex items-center gap-1 px-2 py-1 rounded-md border border-teal-700/50 hover:bg-teal-800/20 text-teal-300 text-[11px] font-semibold"
-                  >
-                    <Layers className="w-3 h-3" /><span>Source Image</span>
-                  </button>
+                  {/* Images dropdown — consolidates Slide Images, Upload, Source Image */}
+                  <div className="relative" onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setShowImageDropdown(false); }} tabIndex={-1}>
+                    <button
+                      onClick={() => setShowImageDropdown(v => !v)}
+                      title="Images — add or manage images on this slide"
+                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-violet-700/50 hover:bg-violet-800/20 text-violet-300 text-[11px] font-semibold"
+                    >
+                      <ImageIcon className="w-3 h-3" /><span>Images</span><ChevronDown className="w-2.5 h-2.5 ml-0.5" />
+                    </button>
+                    {showImageDropdown && (
+                      <div className="absolute top-full left-0 mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 py-1 min-w-[150px]">
+                        {/* Slide Images */}
+                        <button
+                          onClick={() => { setShowAppImagePicker(true); setShowImageDropdown(false); }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+                        >
+                          <ImageIcon className="w-3 h-3 text-violet-400 shrink-0" /> Slide Images
+                        </button>
+                        {/* Upload Image */}
+                        <label
+                          htmlFor="topbar-img-upload"
+                          onClick={() => setShowImageDropdown(false)}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-white transition-colors cursor-pointer"
+                        >
+                          <Upload className="w-3 h-3 text-emerald-400 shrink-0" /> Upload Image
+                          <input id="topbar-img-upload" type="file" accept="image/*" multiple className="hidden"
+                            onChange={e => {
+                              if (e.target.files?.length) {
+                                const newImgs: FloatingImage[] = Array.from(e.target.files).map((f, i) => ({
+                                  id: `fi-${Date.now()}-${i}`,
+                                  url: URL.createObjectURL(f),
+                                  x: 40 + i * 20, y: 40 + i * 20, width: 320, height: 240,
+                                }));
+                                setFloatingImagesMap(prev => ({ ...prev, [currentSlide?.id]: [...(prev[currentSlide?.id] || []), ...newImgs] }));
+                                e.target.value = '';
+                              }
+                            }}
+                          />
+                        </label>
+                        {/* Source Image */}
+                        <button
+                          onClick={() => { setShowImageGalleryForSlide(currentSlide?.id || null); setShowImageDropdown(false); }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+                        >
+                          <Layers className="w-3 h-3 text-teal-400 shrink-0" /> Source Image
+                        </button>
+                      </div>
+                    )}
+                  </div>
 
                   <div className="w-px h-4 bg-slate-700 mx-0.5" />
 
@@ -3706,6 +3717,11 @@ export default function App() {
                          {previewModalOption === 'Timeline' && <TimelinePreview />}
                          {previewModalOption === 'Sorting' && <SortingPreview />}
                          {previewModalOption === 'Drop Targets' && <DropTargetsPreview />}
+                         {previewModalOption === 'Scenario' && (
+                           <div className="w-full max-w-2xl">
+                             <ScenarioPreview />
+                           </div>
+                         )}
                          {previewModalOption === 'Tabs (Horizontal)' && (
                             <div className="w-full max-w-2xl">
                               <TabbedHorizontal tabs={[

@@ -6,22 +6,31 @@ import { GameContainer } from '../game-templates/core/GameContainer';
 export function AccordionPreview() {
   const [openIdx, setOpenIdx] = useState<number>(0);
   const items = [
-    { title: '🔒 Confidentiality', content: 'Ensuring only authorized parties can access sensitive information. Implemented through encryption, access controls, and need-to-know policies.' },
-    { title: '✅ Integrity', content: 'Safeguarding the accuracy and completeness of data. Prevents unauthorized modification.' },
-    { title: '⚡ Availability', content: 'Ensuring systems and data are accessible when needed by authorized users.' }
+    { title: 'Leadership Communication', content: 'Effective leaders communicate with clarity and empathy. This includes active listening, transparent messaging, and tailoring communication style to the audience — whether peers, direct reports, or senior stakeholders.' },
+    { title: 'Conflict Resolution', content: 'Conflict is inevitable in high-performance teams. The best leaders address it directly, early, and privately — focusing on behaviors and outcomes rather than personalities.' },
+    { title: 'Accountability Management', content: 'Holding people accountable without micromanaging requires clear expectations, consistent follow-through, and a culture where ownership is celebrated and performance gaps are addressed constructively.' },
   ];
   return (
     <div className="w-full max-w-2xl space-y-2 select-none">
-      <p className="text-white font-bold text-lg mb-4">Security Principles — click to expand:</p>
+      <p className="text-white font-bold text-base mb-4">Core Leadership Competencies — click to expand</p>
       {items.map((item, i) => (
-        <div key={i} className="rounded-xl overflow-hidden border border-slate-700 cursor-pointer" onClick={() => setOpenIdx(openIdx === i ? -1 : i)}>
-          <div className={openIdx === i ? 'bg-indigo-600 text-white p-4 font-bold flex items-center justify-between transition-colors' : 'bg-slate-800 text-slate-300 p-4 font-bold flex items-center justify-between hover:bg-slate-750 transition-colors'}>
-            <span>{item.title}</span><span className="text-lg">{openIdx === i ? '−' : '+'}</span>
+        <div
+          key={i}
+          className={`rounded-xl overflow-hidden border-2 cursor-pointer transition-all ${
+            openIdx === i ? 'border-indigo-500/60 shadow-lg shadow-indigo-900/20' : 'border-slate-700/60 hover:border-slate-600'
+          }`}
+          onClick={() => setOpenIdx(openIdx === i ? -1 : i)}
+        >
+          <div className={`flex items-center justify-between px-5 py-3.5 font-bold text-sm transition-colors ${
+            openIdx === i ? 'bg-indigo-600/20 text-indigo-100 border-l-4 border-indigo-500' : 'bg-slate-800 text-slate-300 border-l-4 border-transparent'
+          }`}>
+            <span>{item.title}</span>
+            <span className={`text-lg transition-transform ${openIdx === i ? 'rotate-180 text-indigo-400' : 'text-slate-500'}`}>⌃</span>
           </div>
           <AnimatePresence>
             {openIdx === i && (
-              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="bg-slate-800/50 text-slate-300 text-sm leading-relaxed overflow-hidden">
-                <div className="p-4">{item.content}</div>
+              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="bg-slate-900/60 text-slate-300 text-sm leading-relaxed overflow-hidden">
+                <div className="px-5 py-4 border-l-4 border-indigo-500/30">{item.content}</div>
               </motion.div>
             )}
           </AnimatePresence>
@@ -348,7 +357,7 @@ export function DropTargetsPreview() {
 }
 
 export function TimelinePreview({ isPreview = true }: { isPreview?: boolean }) {
-  const [openStep, setOpenStep] = useState<number | null>(null);
+  const [openStep, setOpenStep] = useState<number | null>(0);
   const [layout, setLayout] = useState<'vertical' | 'horizontal'>('horizontal');
   const steps = [
     { n: 1, title: 'Preparation', content: 'Establish IR policies, train teams.', color: 'bg-blue-500', border: 'border-blue-500' },
@@ -562,3 +571,120 @@ export function GamePreview({ option }: { option: string }) {
   );
 }
 
+
+// ── Scenario Preview ─────────────────────────────────────────────────────────
+export function ScenarioPreview() {
+  const [phase, setPhase] = useState<'q1'|'consequence1'|'q2'|'consequence2'>('q1');
+  const [sel1, setSel1] = useState<string|null>(null);
+  const [sel2, setSel2] = useState<string|null>(null);
+
+  const opts1 = [
+    { id:'a', text:"Reply to the client immediately with assurances to buy time", consequence:"The client appreciates the speed. But when your director asks for specifics later, you don't have them. Credibility takes a small hit.", score:'mixed' },
+    { id:'b', text:"Speak privately with Ethan before responding to anyone", consequence:"Ethan reveals his father was hospitalized over the weekend. You now have the full picture before making any commitments — a sound leadership call.", score:'good' },
+    { id:'c', text:"CC your director and ask for escalation guidance", consequence:"Your director responds: \"You should be handling this.\" It signals a lack of initiative at a critical moment.", score:'bad' },
+    { id:'d', text:"Ask Priya to draft the client email while you investigate", consequence:"Delegating without full context leads to an imprecise message. The client asks follow-up questions you aren't ready to answer.", score:'mixed' },
+  ];
+  const opts2 = [
+    { id:'a', text:"Bring a recovery plan with revised timelines to the director meeting", consequence:"Your director nods. You've demonstrated both strategic thinking and accountability. Trust is fully restored.", score:'good' },
+    { id:'b', text:"Tell the director everything is under control — you'll sort it out", consequence:"Without specifics, \"under control\" sounds like avoidance. The director's confidence drops noticeably.", score:'bad' },
+    { id:'c', text:"Escalate Ethan's performance to HR before the meeting", consequence:"Jumping to HR before a one-on-one conversation is perceived as punitive. Team morale suffers and your judgment is questioned.", score:'bad' },
+  ];
+
+  const scoreColor = (s:string) => s==='good'?'border-emerald-500 bg-emerald-900/20':s==='bad'?'border-red-500/50 bg-red-900/10':'border-amber-500/50 bg-amber-900/10';
+  const scoreLabel = (s:string) => s==='good'?'✦ Strong choice':s==='bad'?'⚠ Consider the impact':'~ Mixed outcome';
+  const scoreLc = (s:string) => s==='good'?'text-emerald-400':s==='bad'?'text-red-400':'text-amber-400';
+
+  return (
+    <div className="w-full max-w-2xl select-none">
+      <div className="flex items-center gap-3 mb-4 p-3 bg-slate-800/60 rounded-xl border border-slate-700">
+        <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white font-black text-sm shrink-0">JR</div>
+        <div>
+          <p className="text-white font-bold text-xs">Jordan Reyes — Operations Manager</p>
+          <p className="text-slate-400 text-[10px]">Decision Simulation · Phases 1–2 of 4</p>
+        </div>
+        <div className="ml-auto flex gap-1">
+          {[0,1,2,3].map(i => (
+            <div key={i} className={`w-5 h-1.5 rounded-full transition-colors ${i===0?'bg-indigo-500':i===1&&(phase==='q2'||phase==='consequence2')?'bg-indigo-500':'bg-slate-700'}`} />
+          ))}
+        </div>
+      </div>
+
+      <AnimatePresence mode="wait">
+        {phase==='q1' && (
+          <motion.div key="q1" initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-10}} className="space-y-3">
+            <div className="bg-slate-800 rounded-xl border-l-4 border-indigo-500 p-4">
+              <p className="text-[10px] text-indigo-400 font-black uppercase tracking-widest mb-1">Phase 1 — First Response</p>
+              <p className="text-white text-sm font-semibold leading-snug">It's Monday morning. Priya flagged that Ethan missed two critical deliverables. An urgent client status email sits in your inbox.</p>
+              <p className="text-slate-300 text-xs mt-2 font-medium">What is your first move?</p>
+            </div>
+            <div className="space-y-2">
+              {opts1.map(o => (
+                <button key={o.id} onClick={() => { setSel1(o.id); setPhase('consequence1'); }}
+                  className="w-full text-left p-3 rounded-xl border-2 border-slate-700 bg-slate-800/60 hover:border-indigo-500/60 hover:bg-slate-800 text-slate-300 text-xs font-medium transition-all">
+                  {o.text}
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        )}
+        {phase==='consequence1' && sel1 && (() => {
+          const opt = opts1.find(o=>o.id===sel1)!;
+          return (
+            <motion.div key="c1" initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-10}} className="space-y-3">
+              <div className={`rounded-xl border-2 p-4 ${scoreColor(opt.score)}`}>
+                <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${scoreLc(opt.score)}`}>{scoreLabel(opt.score)}</p>
+                <p className="text-white text-xs leading-relaxed">{opt.consequence}</p>
+              </div>
+              <button onClick={() => setPhase('q2')} className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition-colors">
+                Continue to Phase 2 →
+              </button>
+            </motion.div>
+          );
+        })()}
+        {phase==='q2' && (
+          <motion.div key="q2" initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-10}} className="space-y-3">
+            <div className="bg-slate-800 rounded-xl border-l-4 border-violet-500 p-4">
+              <p className="text-[10px] text-violet-400 font-black uppercase tracking-widest mb-1">Phase 2 — Director Meeting</p>
+              <p className="text-white text-sm font-semibold leading-snug">Priya pulls you aside: she believes Ethan's behavior suggests something personal. Your director's check-in is in 3 hours.</p>
+              <p className="text-slate-300 text-xs mt-2 font-medium">How do you approach the meeting?</p>
+            </div>
+            <div className="space-y-2">
+              {opts2.map(o => (
+                <button key={o.id} onClick={() => { setSel2(o.id); setPhase('consequence2'); }}
+                  className="w-full text-left p-3 rounded-xl border-2 border-slate-700 bg-slate-800/60 hover:border-violet-500/60 hover:bg-slate-800 text-slate-300 text-xs font-medium transition-all">
+                  {o.text}
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        )}
+        {phase==='consequence2' && sel2 && (() => {
+          const opt = opts2.find(o=>o.id===sel2)!;
+          const bars = [{label:'Trust',val:opt.score==='good'?82:44},{label:'Morale',val:opt.score==='good'?75:38},{label:'Accountability',val:opt.score==='good'?90:55}];
+          return (
+            <motion.div key="c2" initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-10}} className="space-y-3">
+              <div className={`rounded-xl border-2 p-4 ${scoreColor(opt.score)}`}>
+                <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${scoreLc(opt.score)}`}>{scoreLabel(opt.score)}</p>
+                <p className="text-white text-xs leading-relaxed">{opt.consequence}</p>
+              </div>
+              <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
+                <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-3">Your Decision Profile (so far)</p>
+                {bars.map(b => (
+                  <div key={b.label} className="mb-2">
+                    <div className="flex justify-between text-[10px] mb-1"><span className="text-slate-300">{b.label}</span><span className="text-white font-bold">{b.val}%</span></div>
+                    <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                      <motion.div initial={{width:0}} animate={{width:`${b.val}%`}} transition={{duration:0.8,delay:0.2}} className={`h-full rounded-full ${b.val>=70?'bg-indigo-500':'bg-amber-500'}`} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button onClick={() => { setPhase('q1'); setSel1(null); setSel2(null); }} className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-bold rounded-xl transition-colors">
+                ↩ Restart Preview
+              </button>
+            </motion.div>
+          );
+        })()}
+      </AnimatePresence>
+    </div>
+  );
+}

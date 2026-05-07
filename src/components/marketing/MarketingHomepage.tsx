@@ -461,95 +461,118 @@ function ShowcaseScroller({ children }: { children: React.ReactNode }) {
   );
 }
 
-// ── Branching Scenario Preview (auto-looping) ───────────────────────────────
+// ── Decision Simulation Preview (auto-looping) ───────────────────────────────
 function BranchingScenarioPreview() {
-  // Phase 0: question visible, no answer selected
-  // Phase 1: correct answer highlighted (before advancing)
-  // Phase 2: follow-up question visible, no answer
-  // Phase 3: follow-up correct answer highlighted
-  // Phase 4: success outcome
+  // Phase 0: role card appears, situation loads
+  // Phase 1: options fade in
+  // Phase 2: option B highlighted (selected)
+  // Phase 3: consequence revealed
+  // Phase 4: "Phase 2" transition + question
+  // Phase 5: option A selected + consequence
+  // Phase 6: Decision Profile bars animate
   // then loops back to 0
   const [phase, setPhase] = useState(0);
-  const durations = [2000, 1200, 2000, 1200, 2500];
+  const durations = [1200, 1800, 1200, 2000, 1800, 1500, 2800];
   useEffect(() => {
-    const id = setTimeout(() => setPhase(p => (p + 1) % 5), durations[phase]);
+    const id = setTimeout(() => setPhase(p => (p + 1) % 7), durations[phase]);
     return () => clearTimeout(id);
   }, [phase]);
 
+  const phaseActive = (phase >= 1);
+  const selB = (phase >= 2);
+  const showConsequence = (phase >= 3);
+  const inPhase2 = (phase >= 4);
+  const selA2 = (phase >= 5);
+  const showProfile = (phase >= 6);
+
   return (
-    <div className="select-none">
+    <div className="select-none space-y-2">
+      {/* Role badge */}
+      <div className="flex items-center gap-2 mb-2 p-2 bg-slate-800/60 rounded-xl border border-slate-700">
+        <div className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center text-white font-black text-[9px] shrink-0">JR</div>
+        <div>
+          <p className="text-white font-bold text-[9px]">Jordan Reyes — Operations Manager</p>
+          <p className="text-slate-400 text-[8px]">Decision Simulation · AI-Generated</p>
+        </div>
+        <div className="ml-auto flex gap-1">
+          {[0,1,2,3].map(i => (
+            <div key={i} className={`w-3 h-1 rounded-full transition-all duration-500 ${i===0?'bg-indigo-500':i===1&&inPhase2?'bg-indigo-500':'bg-slate-700'}`} />
+          ))}
+        </div>
+      </div>
+
       <AnimatePresence mode="wait">
-        {/* Q1 */}
-        {(phase === 0 || phase === 1) && (
-          <motion.div key="q1" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
-            <div className="bg-slate-800 rounded-xl border border-slate-700 p-3 mb-3 shadow-md">
-              <p className="text-[9px] text-indigo-400 font-black uppercase tracking-widest mb-1">📖 Scenario — Week 3 of Sprint</p>
-              <p className="text-white text-[10px] font-bold leading-snug">
-                Your team lead flags that 3 key deliverables are at risk due to scope creep. The client expects the original launch date.
-                <span className="block mt-1 text-slate-300 font-normal">How do you respond as the project manager?</span>
+        {!inPhase2 ? (
+          <motion.div key="phase1" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.3 }}>
+            {/* Situation block */}
+            <div className="bg-slate-800 rounded-xl border-l-[3px] border-indigo-500 p-2.5 mb-2">
+              <p className="text-[8px] text-indigo-400 font-black uppercase tracking-widest mb-0.5">Phase 1 — First Response</p>
+              <p className="text-white text-[9px] font-semibold leading-snug">
+                It's Monday morning. Priya flagged that Ethan missed two deliverables. An urgent client email is waiting.
+              </p>
+              <p className="text-slate-300 text-[8px] mt-1">What is your first move?</p>
+            </div>
+            {/* Options */}
+            <div className="space-y-1.5">
+              {[
+                { text: 'Reply to the client immediately to buy time', sel: false },
+                { text: 'Speak privately with Ethan before responding', sel: selB },
+                { text: 'CC your director and ask for guidance', sel: false },
+              ].map((o, i) => (
+                <div key={i} className={`p-2 rounded-lg border transition-all duration-500 text-[8px] font-medium ${
+                  o.sel ? 'border-indigo-500 bg-indigo-900/30 text-white' : 'border-slate-700 bg-slate-800/50 text-slate-400'
+                }`}>
+                  {o.text}
+                  {o.sel && <span className="ml-1 text-indigo-400 font-black">✓</span>}
+                </div>
+              ))}
+            </div>
+            {/* Consequence */}
+            {showConsequence && (
+              <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="mt-2 p-2 rounded-lg border border-emerald-500/60 bg-emerald-900/20">
+                <p className="text-[8px] text-emerald-400 font-black uppercase tracking-widest mb-0.5">✦ Strong choice</p>
+                <p className="text-[8px] text-white leading-snug">Ethan reveals a family emergency. You now have full context before making any commitments.</p>
+              </motion.div>
+            )}
+          </motion.div>
+        ) : (
+          <motion.div key="phase2" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }}>
+            {/* Phase 2 */}
+            <div className="bg-slate-800 rounded-xl border-l-[3px] border-violet-500 p-2.5 mb-2">
+              <p className="text-[8px] text-violet-400 font-black uppercase tracking-widest mb-0.5">Phase 2 — Director Meeting</p>
+              <p className="text-white text-[9px] font-semibold leading-snug">
+                Your director's check-in is in 3 hours. How do you approach the meeting?
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className={`p-2.5 border-2 rounded-xl text-center transition-all duration-500 ${
-                phase === 1
-                  ? 'bg-slate-800 border-slate-600 opacity-40'
-                  : 'bg-slate-800 border-slate-700'
-              }`}>
-                <p className="text-white text-[9px] font-bold leading-snug">⚠️ Tell the team lead to push through — protect the deadline at all costs</p>
-              </div>
-              <div className={`p-2.5 border-2 rounded-xl text-center transition-all duration-500 ${
-                phase === 1
-                  ? 'bg-emerald-500/20 border-emerald-400 shadow-lg shadow-emerald-500/20'
-                  : 'bg-slate-800 border-slate-700'
-              }`}>
-                <p className="text-white text-[9px] font-bold leading-snug">✅ Acknowledge the risk &amp; schedule an immediate stakeholder sync</p>
-                {phase === 1 && (
-                  <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
-                    className="mt-1 text-[8px] font-black text-emerald-300 uppercase tracking-widest">Selected ✓</motion.div>
-                )}
-              </div>
+            <div className="space-y-1.5">
+              {[
+                { text: 'Bring a recovery plan with revised timelines', sel: selA2 },
+                { text: 'Tell the director everything is under control', sel: false },
+                { text: 'Escalate to HR before the meeting', sel: false },
+              ].map((o, i) => (
+                <div key={i} className={`p-2 rounded-lg border transition-all duration-500 text-[8px] font-medium ${
+                  o.sel ? 'border-indigo-500 bg-indigo-900/30 text-white' : 'border-slate-700 bg-slate-800/50 text-slate-400'
+                }`}>
+                  {o.text}
+                  {o.sel && <span className="ml-1 text-indigo-400 font-black">✓</span>}
+                </div>
+              ))}
             </div>
-          </motion.div>
-        )}
-        {/* Q2 — direct follow-up to choosing the stakeholder sync */}
-        {(phase === 2 || phase === 3) && (
-          <motion.div key="q2" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
-            <div className="bg-slate-800 rounded-xl border border-indigo-700/60 p-3 mb-3 shadow-md">
-              <p className="text-[9px] text-indigo-400 font-black uppercase tracking-widest mb-1">📖 In the Stakeholder Sync...</p>
-              <p className="text-white text-[10px] font-bold leading-snug">
-                The client agrees scope must be trimmed, but asks which features to cut first.
-                <span className="block mt-1 text-slate-300 font-normal">You chose transparency — now prioritise wisely. What do you recommend?</span>
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className={`p-2.5 border-2 rounded-xl text-center transition-all duration-500 ${
-                phase === 3
-                  ? 'bg-emerald-500/20 border-emerald-400 shadow-lg shadow-emerald-500/20'
-                  : 'bg-slate-800 border-slate-700'
-              }`}>
-                <p className="text-white text-[9px] font-bold leading-snug">✅ Cut lowest-value features &amp; re-scope with a revised delivery plan</p>
-                {phase === 3 && (
-                  <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
-                    className="mt-1 text-[8px] font-black text-emerald-300 uppercase tracking-widest">Selected ✓</motion.div>
-                )}
-              </div>
-              <div className={`p-2.5 border-2 rounded-xl text-center transition-all duration-500 ${
-                phase === 3
-                  ? 'bg-slate-800 border-slate-600 opacity-40'
-                  : 'bg-slate-800 border-slate-700'
-              }`}>
-                <p className="text-white text-[9px] font-bold leading-snug">⚠️ Ask the team to work overtime and keep all features intact</p>
-              </div>
-            </div>
-          </motion.div>
-        )}
-        {/* Success */}
-        {phase === 4 && (
-          <motion.div key="success" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ duration: 0.3 }}
-            className="bg-emerald-900/40 border border-emerald-500/50 p-4 rounded-xl text-center">
-            <CheckCircle2 className="w-7 h-7 text-emerald-400 mx-auto mb-2" />
-            <p className="text-white font-black text-xs mb-1">Project Delivered! 🎉</p>
-            <p className="text-emerald-200 text-[9px] leading-relaxed">By surfacing the risk early and cutting low-priority scope, the team hit the revised deadline with full client sign-off.</p>
+            {/* Decision Profile */}
+            {showProfile && (
+              <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="mt-2 p-2.5 bg-slate-800 rounded-xl border border-slate-700">
+                <p className="text-[7px] text-slate-400 font-black uppercase tracking-widest mb-2">Your Decision Profile</p>
+                {[{label:'Trust',val:82},{label:'Accountability',val:90},{label:'Morale',val:75}].map(b => (
+                  <div key={b.label} className="mb-1.5">
+                    <div className="flex justify-between text-[7px] mb-0.5"><span className="text-slate-300">{b.label}</span><span className="text-white font-bold">{b.val}%</span></div>
+                    <div className="h-1 bg-slate-700 rounded-full overflow-hidden">
+                      <motion.div initial={{ width: 0 }} animate={{ width: `${b.val}%` }} transition={{ duration: 0.8, delay: 0.1 }}
+                        className="h-full bg-indigo-500 rounded-full" />
+                    </div>
+                  </div>
+                ))}
+              </motion.div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
