@@ -1,4 +1,4 @@
-import React, { useReducer, useCallback } from 'react';
+import React, { useReducer, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight, CheckSquare, Square, RotateCcw, Award, AlertTriangle, TrendingUp } from 'lucide-react';
 import { cn } from '../../lib/utils';
@@ -104,6 +104,19 @@ function reducer(state: ScenarioEngineState, action: Action): ScenarioEngineStat
   }
 }
 
+// ── Markdown inline renderer ─────────────────────────────────────────────────
+// Converts **bold** markers to <strong> elements. Preserves line breaks.
+function renderMd(text: string): React.ReactNode {
+  return text.split('\n').map((line, li) => (
+    <React.Fragment key={li}>
+      {li > 0 && '\n'}
+      {line.split(/\*\*(.+?)\*\*/g).map((part, i) =>
+        i % 2 === 1 ? <strong key={i}>{part}</strong> : part
+      )}
+    </React.Fragment>
+  ));
+}
+
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 const SituationBlock: React.FC<{ text: string; theme: string }> = ({ text, theme }) => (
@@ -111,7 +124,7 @@ const SituationBlock: React.FC<{ text: string; theme: string }> = ({ text, theme
     'rounded-xl border-l-4 border-indigo-500 px-5 py-4 text-sm leading-relaxed whitespace-pre-line',
     theme === 'light' ? 'bg-slate-50 text-slate-700' : 'bg-slate-800/50 text-slate-300',
   )}>
-    {text}
+    {renderMd(text)}
   </div>
 );
 
@@ -348,9 +361,10 @@ const EndingScreen: React.FC<{
 interface Props {
   data: ScenarioData;
   theme: 'light' | 'dark' | 'unified';
+  onComplete?: () => void;
 }
 
-export const ScenarioEngine: React.FC<Props> = ({ data, theme }) => {
+export const ScenarioEngine: React.FC<Props> = ({ data, theme, onComplete }) => {
   const isLight = theme === 'light';
 
   const [state, dispatch] = useReducer(reducer, {
@@ -362,6 +376,11 @@ export const ScenarioEngine: React.FC<Props> = ({ data, theme }) => {
     pendingMultiSelections: [],
     endingId: null,
   });
+
+  // Notify parent when scenario is completed so the Next button can unlock
+  useEffect(() => {
+    if (state.phase === 'ended') onComplete?.();
+  }, [state.phase, onComplete]);
 
   const node: ScenarioNode | undefined = data.nodes[state.currentNodeId];
   const chosenIds = state.selectedOptions[state.currentNodeId] ?? [];
@@ -384,7 +403,7 @@ export const ScenarioEngine: React.FC<Props> = ({ data, theme }) => {
           </div>
           <div className={cn('border-t pt-4', isLight ? 'border-slate-200' : 'border-slate-700')}>
             <p className={cn('text-sm leading-relaxed whitespace-pre-line', isLight ? 'text-slate-700' : 'text-slate-300')}>
-              {data.introduction}
+              {renderMd(data.introduction)}
             </p>
           </div>
         </div>
@@ -409,7 +428,7 @@ export const ScenarioEngine: React.FC<Props> = ({ data, theme }) => {
     return (
       <EndingScreen
         data={data} endingId={state.endingId} scores={state.scores}
-        theme={theme} onRestart={() => dispatch({ type: 'RESTART' })}
+        theme={theme} onRestart={() => { dispatch({ type: 'RESTART' }); }}
       />
     );
   }

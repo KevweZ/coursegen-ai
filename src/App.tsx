@@ -427,6 +427,8 @@ export default function App() {
   const [adminDropdownOpen, setAdminDropdownOpen] = useState(false); // kept for compat
   // Sandbox mode flag (dummy course active)
   const [isSandboxMode, setIsSandboxMode] = useState(false);
+  // Scenario slide completion gate (unlocks Next button)
+  const [scenarioCompleted, setScenarioCompleted] = useState(false);
   // Sandbox outline (derived from DUMMY_COURSE for outline step)
   const [sandboxOutline, setSandboxOutline] = useState<any>(null);
   // Theme dropdown in preview top bar
@@ -670,6 +672,11 @@ export default function App() {
   }, []);
 
   useEffect(() => { scormSetLocation(currentSlideIndex); }, [currentSlideIndex]);
+
+  // Reset scenario gate when entering a scenario slide
+  useEffect(() => {
+    if (currentSlide?.type === 'scenario') setScenarioCompleted(false);
+  }, [currentSlideIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (examPhase !== 'idle') {
@@ -3152,7 +3159,11 @@ export default function App() {
                                  return (
                                    <div className="space-y-6 w-full">
                                      <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                     <ScenarioEngine data={scenarioData} theme={theme} />
+                                     <ScenarioEngine
+                                       data={scenarioData}
+                                       theme={theme}
+                                       onComplete={() => setScenarioCompleted(true)}
+                                     />
                                    </div>
                                  );
                                })()}
@@ -3266,7 +3277,7 @@ export default function App() {
                         onPrev={handlePrev}
                         onNext={handleNext}
                         theme={theme}
-                        disableNext={currentSlide?.type === 'exam-intro' || currentSlide?.type === 'mastery-exam' || currentSlide?.type === 'exam-results'}
+                        disableNext={currentSlide?.type === 'exam-intro' || currentSlide?.type === 'mastery-exam' || currentSlide?.type === 'exam-results' || (currentSlide?.type === 'scenario' && !scenarioCompleted)}
                         disablePrev={currentSlide?.type === 'mastery-exam'}
                         volume={player.volume}
                         onVolumeChange={player.setVolume}
