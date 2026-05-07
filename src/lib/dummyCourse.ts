@@ -1,4 +1,5 @@
 import { CourseOutline, ExamConfig, ExamQuestion } from '../types/course';
+import { deadlineSpiral } from '../data/deadlineSpiral';
 
 /**
  * A comprehensive dummy course used by the Admin "Preview Mode" shortcut.
@@ -372,6 +373,29 @@ export const DUMMY_COURSE: CourseOutline = {
           narration: 'Congratulations on completing the Admin Preview Mode sandbox. You have now seen every slide type and interaction component the NexCourse player supports.',
           voiceOverText: 'Congratulations on completing the sandbox. You have now tested every component in the player.',
           imagePlaceholder: false,
+        },
+      ],
+    },
+    {
+      id: 'mod-8',
+      title: 'Module 8 — Decision Simulation',
+      slides: [
+        {
+          id: 'slide-scenario-intro',
+          type: 'content',
+          title: 'Decision Simulation — The Deadline Spiral',
+          content: `## Workplace Decision Simulation\n\nThe following scenario places you in a realistic leadership situation. You will navigate multiple decision points, each with realistic consequences. Your accumulated choices determine the outcome.\n\nThis simulation assesses:\n- Leadership Communication\n- Conflict Resolution\n- Emotional Intelligence\n- Accountability Management\n- Stakeholder Communication`,
+          narration: 'In this module you will experience a workplace decision simulation.',
+          imagePlaceholder: false,
+        },
+        {
+          id: 'slide-scenario',
+          type: 'scenario',
+          title: 'Scenario — The Deadline Spiral',
+          content: '',
+          narration: '',
+          imagePlaceholder: false,
+          data: deadlineSpiral,
         },
       ],
     },

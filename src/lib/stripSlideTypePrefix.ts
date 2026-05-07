@@ -25,6 +25,7 @@ const SLIDE_TYPE_PREFIXES = [
   'Drag and Drop',
   'Drop Targets',
   'Game Template',
+  'Scenario',
   'Summary',
 ];
 

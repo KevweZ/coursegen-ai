@@ -50,9 +50,10 @@ export type SlideType =
   | 'matching'
   | 'hotspot'
   | 'game-template'
-  | 'exam-intro'      // Pre-exam informational slide with Begin button
-  | 'mastery-exam'    // Exam question slide(s)
-  | 'exam-results';   // Pass/fail results page
+  | 'exam-intro'
+  | 'mastery-exam'
+  | 'exam-results'
+  | 'scenario';
 
 export interface FloatingImage {
   id: string;

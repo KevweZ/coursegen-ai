@@ -69,6 +69,8 @@ import { stripSlideTypePrefix } from './lib/stripSlideTypePrefix';
 import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft, generateMasteryExam } from './services/aiService';
 import { createScormPackage } from './services/scormService';
 import { FlashcardGrid } from './components/FlashcardGrid';
+import { ScenarioEngine } from './components/interactions/ScenarioEngine';
+import type { ScenarioData } from './types/scenario';
 import { AccordionDarkWrapper } from './components/AccordionDarkWrapper';
 import { QCTrackChangesModal } from './components/QCTrackChangesModal';
 import { runFullQC, runStructuralQC, autoFixCourse, applyConfirmedFixes, simplifySlide, regenerateSlideData, QCReport } from './services/qcService';
@@ -2084,6 +2086,7 @@ export default function App() {
                                { id: 'sorting', label: 'Sorting' },
                                { id: 'matching', label: 'Matching' },
                                { id: 'drop-targets', label: 'Drop Targets' },
+                               { id: 'scenario', label: 'Scenario' },
                                { id: 'tabbed-horizontal', label: 'Tabs (Horizontal)' },
                                { id: 'tabbed-vertical', label: 'Tabs (Vertical)' },
                                { id: 'folder-explorer', label: 'Folder Explorer' },
@@ -3124,6 +3127,27 @@ export default function App() {
                                      </div>
                                   </div>
                                )}
+
+                               {currentSlide?.type === 'scenario' && (() => {
+                                 const scenarioData = currentSlide.data as ScenarioData | undefined;
+                                 if (!scenarioData?.nodes || !scenarioData?.startNodeId) {
+                                   return (
+                                     <div className="space-y-4 w-full">
+                                       <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
+                                       <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300 text-sm flex items-start gap-3">
+                                         <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                                         <span>Scenario data is missing. Use <strong>Edit Text &amp; Audio</strong> or regenerate this slide.</span>
+                                       </div>
+                                     </div>
+                                   );
+                                 }
+                                 return (
+                                   <div className="space-y-6 w-full">
+                                     <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
+                                     <ScenarioEngine data={scenarioData} theme={theme} />
+                                   </div>
+                                 );
+                               })()}
                              </div>
 
                              {currentSlide?.floatingMedia && currentSlide.floatingMedia.length > 0 && viewMode === 'desktop' && (
