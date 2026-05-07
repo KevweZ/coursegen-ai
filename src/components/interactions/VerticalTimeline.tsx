@@ -143,39 +143,75 @@ export const VerticalTimeline: React.FC<Props> = ({
                 {/* Row: circle + header */}
                 <button
                   onClick={() => toggle(ev.id)}
-                  className="w-full flex items-center gap-4 text-left rounded-xl px-2 py-2 group transition-colors"
+                  className="w-full flex items-center gap-4 text-left rounded-xl px-2 py-2.5 group transition-all duration-200"
                   style={{
-                    background: isActive ? `${color}12` : 'transparent',
+                    background: isActive
+                      ? `linear-gradient(135deg, ${color}22, ${color}0a)`
+                      : 'transparent',
+                    boxShadow: isActive ? `inset 0 0 0 1.5px ${color}55` : 'none',
                   }}
                 >
                   {/* Node circle */}
                   <div className="relative shrink-0" style={{ width: 44, height: 44 }}>
-                    {/* Glow ring — only when active */}
+
+                    {/* Pulsing outer ring — active only */}
+                    <AnimatePresence>
+                      {isActive && (
+                        <motion.div
+                          className="absolute rounded-full"
+                          initial={{ opacity: 0, scale: 0.8 }}
+                          animate={{ opacity: [0.7, 0.3, 0.7], scale: [1.35, 1.5, 1.35] }}
+                          exit={{ opacity: 0, scale: 1 }}
+                          transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+                          style={{
+                            inset: '-4px',
+                            border: `2px solid ${color}`,
+                            borderRadius: '50%',
+                          }}
+                        />
+                      )}
+                    </AnimatePresence>
+
+                    {/* Glow backdrop — active only */}
                     <AnimatePresence>
                       {isActive && (
                         <motion.div
                           className="absolute inset-0 rounded-full"
-                          initial={{ opacity: 0, scale: 0.7 }}
-                          animate={{ opacity: 1, scale: 1.35 }}
-                          exit={{ opacity: 0, scale: 1 }}
-                          transition={{ duration: 0.35 }}
-                          style={{ background: color, filter: 'blur(10px)', opacity: 0.45 }}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.3 }}
+                          style={{
+                            background: color,
+                            filter: 'blur(12px)',
+                            transform: 'scale(1.3)',
+                          }}
                         />
                       )}
                     </AnimatePresence>
 
                     {/* Main circle */}
                     <motion.div
-                      className="absolute inset-0 rounded-full flex items-center justify-center font-black text-white"
+                      className="absolute inset-0 rounded-full flex items-center justify-center font-black z-10"
                       style={{
-                        fontSize: '0.8rem',
-                        background: wasVisited ? color : isLight ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.08)',
-                        border: `2.5px solid ${wasVisited ? color : isLight ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)'}`,
-                        color: wasVisited ? 'white' : textSub,
-                        zIndex: 2,
+                        fontSize: '0.85rem',
+                        background: isActive
+                          ? `linear-gradient(135deg, ${color}, ${colorB})`
+                          : wasVisited
+                          ? color
+                          : isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.08)',
+                        border: isActive
+                          ? `2.5px solid white`
+                          : `2.5px solid ${wasVisited ? color : isLight ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.18)'}`,
+                        color: isActive || wasVisited ? 'white' : textSub,
+                        boxShadow: isActive
+                          ? `0 0 16px ${color}99, 0 0 6px ${color}66`
+                          : wasVisited
+                          ? `0 0 8px ${color}44`
+                          : 'none',
                       }}
-                      animate={{ scale: isActive ? 1.12 : 1 }}
-                      transition={{ type: 'spring', stiffness: 400, damping: 22 }}
+                      animate={{ scale: isActive ? 1.15 : 1 }}
+                      transition={{ type: 'spring', stiffness: 380, damping: 20 }}
                     >
                       {i + 1}
                     </motion.div>
@@ -185,12 +221,15 @@ export const VerticalTimeline: React.FC<Props> = ({
                   <div className="flex-1 min-w-0">
                     {ev.year && (
                       <p className="text-[10px] font-black uppercase tracking-widest mb-0.5"
-                        style={{ color: wasVisited ? color : textSub }}>
+                        style={{ color: isActive ? color : wasVisited ? color : textSub }}>
                         {ev.year}
                       </p>
                     )}
-                    <p className="text-sm font-bold leading-snug truncate"
-                      style={{ color: isActive ? color : textMain }}>
+                    <p className="text-sm font-bold leading-snug truncate transition-colors duration-200"
+                      style={{
+                        color: isActive ? color : textMain,
+                        textShadow: isActive ? `0 0 20px ${color}66` : 'none',
+                      }}>
                       {ev.title}
                     </p>
                   </div>
@@ -199,7 +238,10 @@ export const VerticalTimeline: React.FC<Props> = ({
                   <motion.div
                     animate={{ rotate: isActive ? 180 : 0 }}
                     transition={{ duration: 0.25 }}
-                    style={{ color: isActive ? color : textSub }}
+                    style={{
+                      color: isActive ? color : textSub,
+                      filter: isActive ? `drop-shadow(0 0 4px ${color}99)` : 'none',
+                    }}
                   >
                     <ChevronDown className="w-4 h-4 shrink-0" />
                   </motion.div>
