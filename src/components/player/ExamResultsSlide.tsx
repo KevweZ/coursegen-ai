@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { CheckCircle2, XCircle, RotateCcw, RotateCw, Home } from 'lucide-react';
+import { CheckCircle2, XCircle, RotateCcw, RotateCw, ArrowRight } from 'lucide-react';
 
 interface Props {
   score: number;                // 0–100
@@ -9,14 +9,15 @@ interface Props {
   totalQuestions: number;
   correctCount: number;
   allowRetake: boolean;
-  onRetake: () => void;         // reset exam, return to intro slide
-  onReturnToCourse: () => void; // unlock content slides
+  onContinue: () => void;       // passed: go to closing/thank-you slide
+  onRetake: () => void;         // failed: reset exam, return to intro slide
+  onReturnToCourse: () => void; // unlock content slides (kept for internal use)
   onRestartCourse: () => void;  // restart from slide 0
 }
 
 export const ExamResultsSlide: React.FC<Props> = ({
   score, passed, passingScore, totalQuestions, correctCount,
-  allowRetake, onRetake, onReturnToCourse, onRestartCourse,
+  allowRetake, onContinue, onRetake, onRestartCourse,
 }) => {
   const barRef = useRef<HTMLDivElement>(null);
 
@@ -96,13 +97,17 @@ export const ExamResultsSlide: React.FC<Props> = ({
         {/* Actions */}
         <div className="space-y-3">
           {passed ? (
-            <button
-              onClick={onReturnToCourse}
-              className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-xl transition-colors flex items-center justify-center gap-2"
+            /* PASSED — single green CTA that goes to the closing/thank-you slide */
+            <motion.button
+              onClick={onContinue}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/40 hover:shadow-emerald-900/60 hover:scale-[1.01]"
             >
-              <Home className="w-4 h-4" />
-              Return to Course
-            </button>
+              Finish Course
+              <ArrowRight className="w-4 h-4" />
+            </motion.button>
           ) : (
             <>
               {allowRetake ? (

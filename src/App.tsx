@@ -111,6 +111,7 @@ import TabbedVertical from './components/interactions/TabbedContentVertical';
 import FolderExplorer from './components/interactions/FolderExplorer';
 import CarouselPanel from './components/interactions/CarouselPanel';
 import { VerticalTimeline } from './components/interactions/VerticalTimeline';
+import { HorizontalTimeline } from './components/interactions/HorizontalTimeline';
 import ReactMarkdown from 'react-markdown';
 import { cn } from './lib/utils';
 import { SlideEditorBar } from './components/player/SlideEditorBar';
@@ -2964,11 +2965,18 @@ export default function App() {
                                  <div className="space-y-6 w-full">
                                    <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
                                    <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
-                                   <AccordionDarkWrapper theme={theme}>
-                                     <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
-                                       <Accordion {...preprocessAccordionData((currentSlide.data || currentSlide.interactions?.[0] || {}))} />
-                                     </div>
-                                   </AccordionDarkWrapper>
+                                   <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
+                                     <VerticalTimeline
+                                       events={((currentSlide.data || currentSlide.interactions?.[0] || {}).items || []).map((item, idx) => ({
+                                         id: 'acc-' + idx,
+                                         year: item.subtitle || item.category || undefined,
+                                         title: item.title || item.label || '',
+                                         content: item.content || item.description || '',
+                                       }))}
+                                       theme={theme}
+                                       accentColor={slideAccentColor}
+                                     />
+                                   </div>
                                  </div>
                                )}
                                {currentSlide?.type === 'flashcards' && (
@@ -2984,7 +2992,7 @@ export default function App() {
                                      {currentSlide.content && (
                                        <SlideContent content={sanitizeContent(currentSlide.content)} theme={theme} />
                                      )}
-                                     <VerticalTimeline
+                                     <HorizontalTimeline
                                        events={(currentSlide.data || currentSlide.interactions?.[0] || {}).events || []}
                                        theme={theme}
                                        accentColor={slideAccentColor}
@@ -3137,6 +3145,7 @@ export default function App() {
                                    totalQuestions={examSession.questions.length || examQuestions.length}
                                    correctCount={Math.round(((examSession.score ?? 0) / 100) * (examSession.questions.length || examQuestions.length))}
                                    allowRetake={examConfig.allowRetake}
+                                   onContinue={() => setCurrentSlideIndex(allSlides.length - 1)}
                                    onRetake={() => {
                                      setExamSession({ questions: examQuestions, answers: Object.fromEntries(examQuestions.map(q => [q.id, null])), currentQuestionIdx: 0, submitted: false, score: null, passed: null });
                                      setExamPhase('active');
@@ -3297,7 +3306,7 @@ export default function App() {
                         onPrev={handlePrev}
                         onNext={handleNext}
                         theme={theme}
-                        disableNext={currentSlide?.type === 'exam-intro' || currentSlide?.type === 'mastery-exam'}
+                        disableNext={currentSlide?.type === 'exam-intro' || currentSlide?.type === 'mastery-exam' || currentSlide?.type === 'exam-results'}
                         disablePrev={currentSlide?.type === 'mastery-exam'}
                         volume={player.volume}
                         onVolumeChange={player.setVolume}
