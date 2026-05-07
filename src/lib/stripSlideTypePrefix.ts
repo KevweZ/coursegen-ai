@@ -21,8 +21,6 @@ const SLIDE_TYPE_PREFIXES = [
   'Sorting',
   'Matching',
   'Hotspot',
-  'Branching Scenario',
-  'Branching',
   'Interaction',
   'Drag and Drop',
   'Drop Targets',

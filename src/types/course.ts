@@ -47,7 +47,7 @@ export type SlideType =
   | 'flashcards' 
   | 'timeline' 
   | 'sorting' 
-  | 'matching' | 'branching'
+  | 'matching'
   | 'hotspot'
   | 'game-template'
   | 'exam-intro'      // Pre-exam informational slide with Begin button
@@ -124,33 +124,6 @@ export interface DropTarget {
   label: string;
 }
 
-export interface ScenarioNode {
-  id: string;
-  type: 'scenario' | 'ending';
-  title: string;
-  content: string;
-  image?: string;
-  choices: Choice[];
-  feedback?: string;
-  isDeadEnd?: boolean;
-}
-
-export interface Choice {
-  id: string;
-  text: string;
-  nextNodeId: string;
-  condition?: string;
-  outcomes?: Outcome[];
-  isCorrectPath?: boolean;
-}
-
-export interface Outcome {
-  id: string;
-  text: string;
-  nextNodeId: string;
-  scoreModifier?: number;
-  variableUpdates?: Record<string, any>;
-}
 
 export interface Interaction {
   type: 'choice'  | 'hotspot';

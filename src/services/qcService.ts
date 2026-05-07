@@ -48,8 +48,7 @@ function extractSlideText(slide: any): Record<string, string> {
     if (ev.content) fields[`data.events.${i}.content`] = ev.content;
   });
 
-  // Branching
-  (data.nodes ?? []).forEach((node: any, ni: number) => {
+    (data.nodes ?? []).forEach((node: any, ni: number) => {
     if (node.title)   fields[`data.nodes.${ni}.title`]   = node.title;
     if (node.content) fields[`data.nodes.${ni}.content`] = node.content;
     (node.choices ?? []).forEach((ch: any, ci: number) => {
@@ -211,7 +210,6 @@ const SCHEMA_HINTS: Record<string, string> = {
   timeline:        '{ "events": [{ "id": "string", "year": "string", "title": "string", "content": "string" }] }',
   quiz:            '{ "questionText": "string", "options": [{ "id": "string", "text": "string", "isCorrect": boolean }], "feedback": "string" }',
   'multiple-answer':'{ "questionText": "string", "options": [{ "id": "string", "text": "string", "isCorrect": boolean }] }',
-  branching:       '{ "startNodeId": "string", "nodes": [{ "id": "string", "title": "string", "content": "string", "choices": [{ "id": "string", "text": "string", "nextId": "string" }] }] }',
   jeopardy:        '{ "categories": [{ "id": "string", "title": "string", "questions": [{ "id": "string", "points": number, "question": "string", "answer": "string" }] }] }',
   matching:        '{ "pairs": [{ "id": "string", "left": "string", "right": "string" }] }',
 };

@@ -92,7 +92,7 @@ export function getPresetConfig(pathway: PathwayId, presetId: PresetId): PresetC
         objectiveCountGuide: '5+',
         objectiveCountMin: 5,
         objectiveCountMax: 7,
-        interactions: ['quiz', 'branching', 'timeline', 'matching', 'accordion', 'flashcards'],
+        interactions: ['quiz', 'timeline', 'matching', 'accordion', 'flashcards'],
         includeModuleTitleSlides: true,
         includeObjectiveSlides: true,
         includeKnowledgeChecks: true,
@@ -100,7 +100,7 @@ export function getPresetConfig(pathway: PathwayId, presetId: PresetId): PresetC
         includeExitTickets: false,
         objectiveGenStrategy: 'Generate EXACTLY 5 to 7 detailed ABCD format objectives (Audience, Behavior, Condition, Degree). Cover Application, Analysis, Synthesis, Evaluation levels.',
         assessmentStrategy: 'Generate a pre-assessment, module-level checks, and a comprehensive mastery quiz (Kirkpatrick Level 2) requiring a passing score.',
-        instructionalStrategy: 'Deep-dive mastery course. Use Branching scenarios, Timelines, complex interactions. Strict pre-assessments and mastery checks throughout.',
+        instructionalStrategy: 'Deep-dive mastery course. Use Timelines, complex interactions. Strict pre-assessments and mastery checks throughout.',
       };
   }
 

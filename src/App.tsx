@@ -50,22 +50,21 @@ import {
   Shield,
   ChevronDown,
   Ear,
-  CreditCard
+  CreditCard,
+  Save
 } from 'lucide-react';
 import { 
   Accordion, 
   InteractiveTimeline, 
   SortingActivity, 
   MatchingActivity, 
-  DragAndDropActivity, 
-  BranchingScenario 
+  DragAndDropActivity
 } from '@zomako/elearning-components/dist/elearning-components.es.js';
 import { 
-  AccordionPreview, HotspotPreview, BranchingPreview, MultipleChoicePreview, 
+  AccordionPreview, HotspotPreview, MultipleChoicePreview, 
   SortingPreview, MatchingPreview, TimelinePreview, DropTargetsPreview,
   GamePreview 
 } from './components/interactions/ExtraPreviews';
-import { DialogueBranchingScenario } from './components/interactions/DialogueBranchingScenario';
 import { stripSlideTypePrefix } from './lib/stripSlideTypePrefix';
 import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft, generateMasteryExam } from './services/aiService';
 import { createScormPackage } from './services/scormService';
@@ -2085,7 +2084,6 @@ export default function App() {
                                { id: 'sorting', label: 'Sorting' },
                                { id: 'matching', label: 'Matching' },
                                { id: 'drop-targets', label: 'Drop Targets' },
-                               { id: 'branching', label: 'Branching' },
                                { id: 'tabbed-horizontal', label: 'Tabs (Horizontal)' },
                                { id: 'tabbed-vertical', label: 'Tabs (Vertical)' },
                                { id: 'folder-explorer', label: 'Folder Explorer' },
@@ -2654,8 +2652,7 @@ export default function App() {
                                    'quiz': 'Knowledge Check', 'multiple-answers': 'Knowledge Check',
                                    'matching': 'Matching Activity', 'sorting': 'Sorting Activity',
                                    'accordion': 'Explore', 'flashcards': 'Flashcards',
-                                   'timeline': 'Timeline', 'hotspot': 'Hotspot',
-                                   'branching': 'Branching Scenario', 'wheel-diagram': 'Diagram',
+                                   'timeline': 'Timeline', 'hotspot': 'Hotspot', 'wheel-diagram': 'Diagram',
                                    'tabbed-horizontal': 'Tabbed Content', 'tabbed-vertical': 'Tabbed Content',
                                    'folder-explorer': 'Explorer', 'carousel-panel': 'Carousel',
                                    'game-template': 'Game',
@@ -2989,37 +2986,6 @@ export default function App() {
                                   );
                                })()}
 
-                               {currentSlide?.type === 'branching' && (() => {
-                                  const rawData = currentSlide.data || currentSlide.interactions?.[0] || {};
-                                  const normNodes: Record<string, any> = (() => {
-                                    if (!rawData.nodes) return {};
-                                    if (Array.isArray(rawData.nodes)) return Object.fromEntries(rawData.nodes.map((n: any) => [n.id, n]));
-                                    return rawData.nodes;
-                                  })();
-                                  const startId: string = rawData.startNodeId || Object.keys(normNodes)[0] || '';
-                                  if (!startId || !normNodes[startId]) {
-                                    return (
-                                      <div className="space-y-4 w-full">
-                                        <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                        <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300 text-sm flex items-start gap-3">
-                                          <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                                          <span>Branching scenario data is invalid. Use <strong>Edit Text &amp; Audio</strong> or regenerate this slide.</span>
-                                        </div>
-                                      </div>
-                                    );
-                                  }
-                                  return (
-                                    <div className="space-y-6 w-full">
-                                      <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                      <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
-                                      <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
-                                         <ErrorBoundary fallbackTitle="Branching scenario error — a node may have an invalid nextNodeId reference.">
-                                           <DialogueBranchingScenario nodes={normNodes} startNodeId={startId} theme={theme} accentColor={slideAccentColor} />
-                                         </ErrorBoundary>
-                                      </div>
-                                    </div>
-                                  );
-                               })()}
                                {/* CUSTOM TAB/FOLDER INTERACTIONS */}
                                {currentSlide?.type === 'tabbed-horizontal' && (
                                  <div className="space-y-6 w-full">
@@ -3643,7 +3609,6 @@ export default function App() {
                          {previewModalOption === 'Timeline' && <TimelinePreview />}
                          {previewModalOption === 'Sorting' && <SortingPreview />}
                          {previewModalOption === 'Drop Targets' && <DropTargetsPreview />}
-                         {previewModalOption === 'Branching' && <BranchingPreview />}
                          {previewModalOption === 'Tabs (Horizontal)' && (
                             <div className="w-full max-w-2xl">
                               <TabbedHorizontal tabs={[

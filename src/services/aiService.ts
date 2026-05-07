@@ -317,7 +317,7 @@ export async function generateCourseOutline(
   1. NO title slide — The course player now automatically injects a styled "Module X — Overview" slide as the FIRST slide of EVERY module. This slide displays the module description and its learning objectives. Do NOT generate a title, intro, or overview slide for any module. Each module must start directly with its first content or interaction slide.
   2. ${configParams.includeObjectiveSlides !== false ? "Objectives Slide (type: content)" : "NO objectives slide"}
   3. Content & Interaction Slides -- use the SPECIFIC allowed interaction type as the slide type. Allowed interaction types: ${configParams.interactionTypes.join(", ")}. Map them to slide types like this:
-     - accordion, flashcards, timeline, sorting, matching, branching -> use the exact string as the slide 'type'
+     - accordion, flashcards, timeline, sorting, matching -> use the exact string as the slide 'type'
      - tabbed-horizontal, tabbed-vertical, folder-explorer, carousel-panel -> use the exact string as the slide 'type'
      - choice -> use type: "quiz" with interactions array
   4. ${configParams.includeKnowledgeChecks !== false ? 'Knowledge Check Slides (type: quiz)' : 'NO knowledge check slides'}
@@ -346,7 +346,7 @@ Each game slide must have a unique title like "[Game Name] Knowledge Challenge".
         "id": "uuid",
         "title": "Module Title",
         "slides": [
-          { "id": "uuid", "type": "content|quiz|accordion|flashcards|timeline|sorting|matching|branching|game-template", "title": "Slide Title", "gameType": "optional_string" }
+          { "id": "uuid", "type": "content|quiz|accordion|flashcards|timeline|sorting|matching|game-template", "title": "Slide Title", "gameType": "optional_string" }
         ]
       }
     ]
@@ -502,7 +502,6 @@ export async function hydrateCourseContent(
   - timeline: { events: [{ id: string, year: string, title: string, content: string }] }
   - sorting: { items: [{ id: string, content: string }], correctOrder: string[] }
   - matching: { items: [{ id: string, content: string }], targets: [{ id: string, content: string }] } — NEVER use 'pairs', NEVER use 'term'/'definition'. Always use 'items' and 'targets' arrays. Each item must have a matching target with a unique id.
-  - branching: { nodes: { [id]: { id, type: 'scenario'|'ending', title, content, isDeadEnd: boolean, feedback: string, choices: [{ id, text, nextNodeId, isCorrectPath: boolean }] } }, startNodeId: string }
   - quiz interactions: [{ type: 'multiple-choice', questionText: string, options: [{ id, text, isCorrect: boolean }], feedback: string }]
   - jeopardy: { templateType: 'jeopardy', instructions: string, categories: [{ id, name, questions: [{ id, value: number, prompt: string, correctAnswer: string, isDailyDouble: boolean }] }] }
   - millionaire: { templateType: 'millionaire', instructions: string, questions: [{ id, difficulty: number, prompt: string, options: string[], correctAnswer: string, isSafeHaven: boolean }] }
