@@ -1245,18 +1245,22 @@ export default function App() {
 
             {/* ── User Profile ── */}
             {user && (
-              <div className="relative group">
-                <button className="flex items-center gap-2.5 pl-2 pr-3 py-1.5 rounded-xl bg-slate-800/60 hover:bg-slate-700/60 border border-slate-700/60 hover:border-slate-600 transition-all">
+              <div className="relative">
+                {adminDropdownOpen && (
+                  <div className="fixed inset-0 z-[699]" onClick={() => setAdminDropdownOpen(false)} />
+                )}
+                <button onClick={() => setAdminDropdownOpen(o => !o)} className="flex items-center gap-2.5 pl-2 pr-3 py-1.5 rounded-xl bg-slate-800/60 hover:bg-slate-700/60 border border-slate-700/60 hover:border-slate-600 transition-all">
                   <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-xs font-black text-white shrink-0">
                     {(user.user_metadata?.full_name || user.email || 'U')[0].toUpperCase()}
                   </div>
                   <span className="text-slate-200 text-sm font-semibold max-w-[100px] truncate hidden sm:block">
                     {user.user_metadata?.full_name || user.email?.split('@')[0]}
                   </span>
-                  <ChevronDown className="w-3 h-3 text-slate-400" />
+                  <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform duration-150 ${adminDropdownOpen ? 'rotate-180' : ''}`} />
                 </button>
-                {/* Dropdown */}
-                <div className="absolute right-0 top-full mt-2 w-48 bg-slate-900 border border-slate-700/60 rounded-xl shadow-2xl overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-[700]">
+                {/* Dropdown — click controlled */}
+                {adminDropdownOpen && (
+                <div className="absolute right-0 top-full mt-2 w-52 bg-slate-900 border border-slate-700/60 rounded-xl shadow-2xl overflow-hidden z-[700]">
                   <div className="px-4 py-3 border-b border-slate-800">
                     <p className="text-xs font-bold text-slate-400 truncate">{user.email}</p>
                     <div className="flex items-center gap-2 mt-0.5">
@@ -1277,6 +1281,7 @@ export default function App() {
                         </div>
                         <button
                           onClick={() => {
+                            setAdminDropdownOpen(false);
                             setCourseTitle('Advanced Workplace Communication');
                             setCourseDescription('A comprehensive eLearning course covering modern workplace communication strategies.');
                             setLearningObjectives([{ terminalObjective: 'Given a workplace scenario, the learner will identify the communication strategy that best supports effective collaboration.', enablingObjectives: [] }]);
@@ -1289,6 +1294,7 @@ export default function App() {
                         </button>
                         <button
                           onClick={() => {
+                            setAdminDropdownOpen(false);
                             setCourse(DUMMY_COURSE); setOriginalCourse(DUMMY_COURSE);
                             setCurrentSlideIndex(0); setQuizState({}); setTheme('dark'); setViewMode('desktop');
                             setFloatingImagesMap({}); setCourseBg('/eLearning Template Backgrounds/Neutral/blue background coffee books_01.png');
@@ -1304,6 +1310,7 @@ export default function App() {
                         </button>
                         <button
                           onClick={() => {
+                            setAdminDropdownOpen(false);
                             setBuildMode('game');
                             setSelectedGameType('jeopardy');
                             setPrompt('Workplace Communication Skills');
@@ -1320,14 +1327,14 @@ export default function App() {
                       </>
                     )}
                     <button
-                      onClick={() => { setStep('account'); }}
+                      onClick={() => { setAdminDropdownOpen(false); setStep('account'); }}
                       className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800 text-sm font-medium transition-all text-left"
                     >
                       <CreditCard className="w-3.5 h-3.5 text-indigo-400" />
                       My Account &amp; Billing
                     </button>
                     <button
-                      onClick={() => signOut()}
+                      onClick={() => { setAdminDropdownOpen(false); signOut(); }}
                       className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-red-400 hover:bg-red-500/10 text-sm font-medium transition-all text-left"
                     >
                       <Lock className="w-3.5 h-3.5" />
@@ -1335,6 +1342,7 @@ export default function App() {
                     </button>
                   </div>
                 </div>
+                )}
               </div>
             )}
           </div>
