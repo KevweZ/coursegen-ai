@@ -109,13 +109,13 @@ export const HorizontalTimeline: React.FC<Props> = ({
       <div className="relative overflow-x-auto pb-2">
         <div
           ref={trackRef}
-          className="relative flex items-start"
+          className="relative flex items-start pt-2"
           style={{ minWidth: `${events.length * 120}px` }}
         >
-          {/* Horizontal spine — sits at the node center-line (top-[22px]) */}
+          {/* Horizontal spine — sits at the node center-line (top-[30px] accounting for pt-2) */}
           <div
             className="absolute left-0 right-0 h-0.5 rounded-full overflow-hidden"
-            style={{ top: '22px', background: spineBg }}
+            style={{ top: '30px', background: spineBg }}
           >
             <motion.div
               className="h-full rounded-full origin-left"

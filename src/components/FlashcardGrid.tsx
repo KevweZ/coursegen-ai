@@ -22,10 +22,10 @@ const FlashcardItem: React.FC<{ card: Flashcard; index: number; theme?: string }
       onClick={() => setIsFlipped(!isFlipped)}
     >
       <motion.div
-        className="w-full h-full relative [transform-style:preserve-3d] transition-transform duration-500 ease-in-out"
+        className="w-full h-full relative [transform-style:preserve-3d]"
         initial={false}
         animate={{ rotateY: isFlipped ? 180 : 0 }}
-        transition={{ duration: 0.3, type: 'spring', stiffness: 300, damping: 25 }}
+        transition={{ duration: 0.55, ease: [0.645, 0.045, 0.355, 1.0] }}
       >
         {/* Front */}
         <div
