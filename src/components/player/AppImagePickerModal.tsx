@@ -3,12 +3,10 @@
  * Includes: curated background photos (by category) + silhouette characters.
  * On select, calls onInsert(url) which the parent adds as a floating image.
  */
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Search, Image as ImageIcon, Users } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { SilhouetteCharacter } from '../interactions/silhouettes';
-import type { SilhouetteId } from '../interactions/silhouettes';
 
 // ── Background image library ──────────────────────────────────────────────────
 const BASE = '/eLearning Template Backgrounds';
@@ -65,35 +63,56 @@ const BACKGROUNDS: AppImage[] = [
   { id: 'snw-5', label: 'Arctic Bear',          url: `${BASE}/Snow and Ice/arctic polar bear_01.png`,               category: 'Snow & Ice' },
 ];
 
-// ── Silhouette library ────────────────────────────────────────────────────────
+// ── Silhouette library — PNGs from /public/silhouettes/ ──────────────────────
+// White backgrounds are removed via mix-blend-mode: multiply at display time.
 interface SilhouetteEntry {
-  id: SilhouetteId;
+  id: string;
   label: string;
-  color: string;
+  file: string;
+  category: string;
 }
 
 const SILHOUETTES: SilhouetteEntry[] = [
-  { id: 'casual-male',             label: 'Casual Male',          color: '#334155' },
-  { id: 'casual-female',           label: 'Casual Female',        color: '#334155' },
-  { id: 'casual-male-afro',        label: 'Casual Male (Afro)',   color: '#1e293b' },
-  { id: 'casual-female-afro',      label: 'Casual Female (Afro)', color: '#1e293b' },
-  { id: 'business-male',           label: 'Business Male',        color: '#1e3a5f' },
-  { id: 'business-female',         label: 'Business Female',      color: '#1e3a5f' },
-  { id: 'doctor-male',             label: 'Doctor Male',          color: '#164e63' },
-  { id: 'doctor-female',           label: 'Doctor Female',        color: '#164e63' },
-  { id: 'nurse-male',              label: 'Nurse',                color: '#134e4a' },
-  { id: 'police-male',             label: 'Police Male',          color: '#1e3a5f' },
-  { id: 'police-female',           label: 'Police Female',        color: '#1e3a5f' },
-  { id: 'firefighter-male',        label: 'Firefighter Male',     color: '#7c2d12' },
-  { id: 'firefighter-female',      label: 'Firefighter Female',   color: '#7c2d12' },
-  { id: 'construction-male',       label: 'Construction',         color: '#78350f' },
-  { id: 'pilot-male',              label: 'Pilot',                color: '#1e3a5f' },
-  { id: 'flight-attendant-female', label: 'Flight Attendant',     color: '#4c1d95' },
-  { id: 'farmer-male',             label: 'Farmer',               color: '#14532d' },
-  { id: 'ranger-male',             label: 'Ranger',               color: '#14532d' },
+  // Casual / Everyday
+  { id: 'casual-male',             label: 'Casual Male',           file: 'casual-male.png',             category: 'Casual' },
+  { id: 'casual-female',           label: 'Casual Female',         file: 'casual-female.png',           category: 'Casual' },
+  { id: 'casual-male-afro',        label: 'Casual Male (Afro)',    file: 'casual-male-afro.png',        category: 'Casual' },
+  { id: 'casual-female-afro',      label: 'Casual Female (Afro)',  file: 'casual-female-afro.png',      category: 'Casual' },
+  // Busts
+  { id: 'bust-male',               label: 'Bust — Male',           file: 'bust-male.png',               category: 'Busts' },
+  { id: 'bust-female-long',        label: 'Bust — Long Hair',      file: 'bust-female-long.png',        category: 'Busts' },
+  { id: 'bust-female-bob',         label: 'Bust — Bob',            file: 'bust-female-bob.png',         category: 'Busts' },
+  { id: 'bust-female-afro',        label: 'Bust — Afro',           file: 'bust-female-afro.png',        category: 'Busts' },
+  // Business
+  { id: 'business-male',           label: 'Business Male',         file: 'business-male.png',           category: 'Business' },
+  { id: 'business-female',         label: 'Business Female',       file: 'business-female.png',         category: 'Business' },
+  { id: 'safety-vest-male',        label: 'Safety Vest',           file: 'safety-vest-male.png',        category: 'Business' },
+  { id: 'safety-vest-hardhat',     label: 'Safety Vest + Hardhat', file: 'safety-vest-hardhat.png',     category: 'Business' },
+  // Medical
+  { id: 'doctor-male',             label: 'Doctor Male',           file: 'doctor-male.png',             category: 'Medical' },
+  { id: 'doctor-female',           label: 'Doctor Female',         file: 'doctor-female.png',           category: 'Medical' },
+  { id: 'doctor-male-coat',        label: 'Doctor (White Coat)',   file: 'doctor-male-coat.png',        category: 'Medical' },
+  { id: 'nurse-male',              label: 'Nurse',                 file: 'nurse-male.png',              category: 'Medical' },
+  // Emergency
+  { id: 'police-male',             label: 'Police Male',           file: 'police-male.png',             category: 'Emergency' },
+  { id: 'police-female',           label: 'Police Female',         file: 'police-female.png',           category: 'Emergency' },
+  { id: 'firefighter-male',        label: 'Firefighter Male',      file: 'firefighter-male.png',        category: 'Emergency' },
+  { id: 'firefighter-female',      label: 'Firefighter Female',    file: 'firefighter-female.png',      category: 'Emergency' },
+  { id: 'firefighter-male-emt',    label: 'Firefighter EMT',       file: 'firefighter-male-emt.png',    category: 'Emergency' },
+  { id: 'emt-female',              label: 'EMT Female',            file: 'emt-female.png',              category: 'Emergency' },
+  // Trades / Outdoor
+  { id: 'construction-male',       label: 'Construction',          file: 'construction-male.png',       category: 'Outdoor' },
+  { id: 'farmer-male',             label: 'Farmer Male',           file: 'farmer-male.png',             category: 'Outdoor' },
+  { id: 'farmer-female',           label: 'Farmer Female',         file: 'farmer-female.png',           category: 'Outdoor' },
+  { id: 'ranger-male',             label: 'Ranger',                file: 'ranger-male.png',             category: 'Outdoor' },
+  // Aviation
+  { id: 'pilot-male',              label: 'Pilot',                 file: 'pilot-male.png',              category: 'Aviation' },
+  { id: 'pilot-male-2',            label: 'Pilot (Arms Folded)',   file: 'pilot-male-2.png',            category: 'Aviation' },
+  { id: 'flight-attendant-female', label: 'Flight Attendant',      file: 'flight-attendant-female.png', category: 'Aviation' },
 ];
 
-const BG_CATEGORIES = ['All', ...Array.from(new Set(BACKGROUNDS.map(b => b.category)))];
+const SIL_CATEGORIES = ['All', ...Array.from(new Set(SILHOUETTES.map(s => s.category)))];
+const BG_CATEGORIES  = ['All', ...Array.from(new Set(BACKGROUNDS.map(b => b.category)))];
 
 interface Props {
   isOpen: boolean;
@@ -102,57 +121,55 @@ interface Props {
   theme: 'light' | 'dark' | 'unified';
 }
 
-// Convert a rendered SVG DOM element to a blob URL
-function svgElementToUrl(svgEl: SVGSVGElement | null): string | null {
-  if (!svgEl) return null;
-  // Ensure the SVG has an xmlns attribute for use as an image
-  const clone = svgEl.cloneNode(true) as SVGSVGElement;
-  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-  const blob = new Blob([clone.outerHTML], { type: 'image/svg+xml' });
-  return URL.createObjectURL(blob);
-}
-
-// Thumbnail for each silhouette — holds a ref to its <svg>
+// PNG thumbnail — white bg removed via mix-blend-mode: multiply
 const SilhouetteThumbnail: React.FC<{
   entry: SilhouetteEntry;
   onInsert: (url: string) => void;
   isLight: boolean;
 }> = ({ entry, onInsert, isLight }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [hovered, setHovered] = useState(false);
-
-  const handleClick = () => {
-    const svgEl = containerRef.current?.querySelector('svg') as SVGSVGElement | null;
-    const url = svgElementToUrl(svgEl);
-    if (url) onInsert(url);
-  };
+  const [loaded, setLoaded] = useState(false);
+  const [errored, setErrored] = useState(false);
+  const url = `/silhouettes/${entry.file}`;
 
   return (
     <button
-      onClick={handleClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onClick={() => onInsert(url)}
       className={cn(
-        'relative flex flex-col items-center gap-2 p-2 rounded-xl border-2 transition-all duration-200 overflow-hidden',
-        hovered
-          ? 'border-indigo-500 bg-indigo-900/20 scale-[1.03]'
-          : isLight ? 'border-slate-200 bg-slate-50' : 'border-slate-700/60 bg-slate-800/40'
+        'group relative flex flex-col items-center gap-1.5 p-2 rounded-xl border-2 transition-all duration-200 overflow-hidden',
+        isLight
+          ? 'border-slate-200 bg-slate-100 hover:border-indigo-400 hover:bg-indigo-50'
+          : 'border-slate-700/60 bg-slate-800/40 hover:border-indigo-500 hover:bg-slate-700/40'
       )}
       title={`Insert ${entry.label}`}
     >
       <div
-        ref={containerRef}
-        className="w-full h-28 flex items-end justify-center overflow-hidden"
+        className="w-full h-28 flex items-center justify-center overflow-hidden rounded-lg"
         style={{ background: isLight ? '#e2e8f0' : '#1e293b' }}
       >
-        <div style={{ height: '112px', display: 'flex', alignItems: 'flex-end' }}>
-          <SilhouetteCharacter
-            id={entry.id}
-            color={hovered ? '#6366f1' : entry.color}
+        {errored ? (
+          <div className="flex flex-col items-center gap-1 opacity-40">
+            <Users className="w-8 h-8" />
+            <span className="text-[9px]">No file</span>
+          </div>
+        ) : (
+          <img
+            src={url}
+            alt={entry.label}
+            onLoad={() => setLoaded(true)}
+            onError={() => setErrored(true)}
+            style={{
+              maxHeight: '108px',
+              maxWidth: '100%',
+              objectFit: 'contain',
+              // multiply removes white bg: white×anything=anything, black stays black
+              mixBlendMode: 'multiply',
+              opacity: loaded ? 1 : 0,
+              transition: 'opacity 0.2s',
+            }}
           />
-        </div>
+        )}
       </div>
-      <span className={cn('text-[10px] font-semibold truncate w-full text-center', isLight ? 'text-slate-600' : 'text-slate-400')}>
+      <span className={cn('text-[9px] font-semibold truncate w-full text-center', isLight ? 'text-slate-600' : 'text-slate-400')}>
         {entry.label}
       </span>
     </button>
@@ -162,6 +179,7 @@ const SilhouetteThumbnail: React.FC<{
 export const AppImagePickerModal: React.FC<Props> = ({ isOpen, onClose, onInsert, theme }) => {
   const [tab, setTab] = useState<'backgrounds' | 'silhouettes'>('backgrounds');
   const [category, setCategory] = useState('All');
+  const [silCategory, setSilCategory] = useState('All');
   const [search, setSearch] = useState('');
 
   const isLight = theme === 'light';
@@ -175,7 +193,8 @@ export const AppImagePickerModal: React.FC<Props> = ({ isOpen, onClose, onInsert
   );
 
   const filteredSils = SILHOUETTES.filter(s =>
-    !search || s.label.toLowerCase().includes(search.toLowerCase())
+    (silCategory === 'All' || s.category === silCategory) &&
+    (!search || s.label.toLowerCase().includes(search.toLowerCase()))
   );
 
   const handleInsertBg = (url: string) => { onInsert(url); onClose(); };
@@ -248,7 +267,7 @@ export const AppImagePickerModal: React.FC<Props> = ({ isOpen, onClose, onInsert
                 />
               </div>
 
-              {/* Category filter — backgrounds only */}
+              {/* Category filter — per tab */}
               {tab === 'backgrounds' && (
                 <div className="flex gap-1 flex-wrap">
                   {BG_CATEGORIES.map(cat => (
@@ -258,6 +277,24 @@ export const AppImagePickerModal: React.FC<Props> = ({ isOpen, onClose, onInsert
                       className={cn(
                         'px-2.5 py-1 rounded-full text-[10px] font-bold transition-all',
                         category === cat
+                          ? 'bg-indigo-600 text-white'
+                          : isLight ? 'bg-slate-100 text-slate-600 hover:bg-slate-200' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                      )}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {tab === 'silhouettes' && (
+                <div className="flex gap-1 flex-wrap">
+                  {SIL_CATEGORIES.map(cat => (
+                    <button
+                      key={cat}
+                      onClick={() => setSilCategory(cat)}
+                      className={cn(
+                        'px-2.5 py-1 rounded-full text-[10px] font-bold transition-all',
+                        silCategory === cat
                           ? 'bg-indigo-600 text-white'
                           : isLight ? 'bg-slate-100 text-slate-600 hover:bg-slate-200' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
                       )}
