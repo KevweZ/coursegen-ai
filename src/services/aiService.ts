@@ -377,7 +377,13 @@ Each game slide must have a unique title like "[Game Name] Knowledge Challenge".
 export async function hydrateCourseContent(
   outlineDraft: CourseOutlineDraft,
   originalPrompt: string,
-  configParams: { pathway?: 'corporate'; courseType: 'quick' | 'standard' | 'comprehensive'; sourceContent?: string; conversionPreferences?: string[]; },
+  configParams: {
+    pathway?: 'corporate';
+    courseType: 'quick' | 'standard' | 'comprehensive';
+    sourceContent?: string;
+    conversionPreferences?: string[];
+    scenarioConfig?: ScenarioConfigForGeneration;
+  },
   onProgress?: (pct: number) => void
 ): Promise<CourseOutline> {
   const fullCourse: CourseOutline = {
@@ -558,6 +564,7 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
       slide.type = 'content';
       slide.content = slide.content || 'Game template encountered a structural error.';
     }
+    // Scenario slides — data will be populated async; skip sync validation here
 
     // Density auto-splitter
     if (slide.type === 'content' && slide.content?.length > 800) {
@@ -646,6 +653,24 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
       }
     }
 
+    // ── Post-pass: generate scenario data for scenario-type slides ─────────────
+    if (configParams.scenarioConfig) {
+      for (const slide of hydratedSlides) {
+        if (slide.type === 'scenario' && !slide.data?.nodes) {
+          try {
+            slide.data = await generateScenarioData(
+              originalPrompt,
+              configParams.scenarioConfig,
+              configParams.sourceContent,
+            );
+          } catch (err: any) {
+            console.error(`[Scenario] Failed to generate data for slide "${slide.title}": ${err.message}`);
+            // Leave slide.data undefined — the existing empty-state UI handles this gracefully
+          }
+        }
+      }
+    }
+
     fullCourse.modules.push({ ...emptyModule, slides: hydratedSlides } as any);
   }
 
@@ -724,4 +749,132 @@ Generate ${totalNeeded} questions.`;
   } catch {
     return generateFallbackQuestions(course as any, config);
   }
+}
+
+// ── Scenario Generation ───────────────────────────────────────────────────────
+
+const SCENARIO_SYSTEM_PROMPT = `You are an expert Instructional Designer specializing in workplace decision simulations for SHRM-SCP and ATD CPTD-quality assessments.
+
+CORE RULES — FOLLOW EXACTLY:
+1. Build realistic decision pathways, NOT quizzes. Every option must sound professionally plausible.
+2. Each option represents a distinct decision style: collaborative, avoidant, overly aggressive, overly accommodating, policy-focused, empathetic, etc.
+3. Never write obviously wrong options. The "wrong" answers must reflect real mistakes professionals actually make.
+4. Consequence text is NARRATIVE — show what happens in the story, not just a grade.
+5. Score deltas range from -3 to +3. Use them to reflect nuance, not binary right/wrong.
+6. Routing conditions use: "always", "else", "score >= N", "score < N", "multi_includes:optId", "multi_excludes:optId"
+7. Endings: one success (score >= high), one partial (middle), one negative (low).
+8. Every node must have a "routing" array. If routing is unconditional use [{"condition":"always","nextNodeId":"..."}].
+9. startNodeId must match a key in the "nodes" object.
+10. All text fields use plain English. Use **bold** for names/emphasis only.
+
+OUTPUT: Return ONLY valid JSON — no prose, no code fences:
+{
+  "title": "string",
+  "role": "string",
+  "introduction": "string (multi-paragraph, use **name** for character names)",
+  "startNodeId": "string",
+  "nodes": {
+    "node-id": {
+      "id": "string", "phase": 1, "label": "Phase 1 — Label",
+      "type": "single | multi", "multiSelectCount": 2,
+      "situation": "string", "question": "string",
+      "options": [{ "id": "opt-a", "text": "string", "consequence": "string",
+        "scoreDeltas": { "trust": 0, "accountability": 0, "morale": 0, "risk": 0, "stakeholderConfidence": 0 },
+        "nextNodeId": "optional" }],
+      "routing": [{ "condition": "always", "nextNodeId": "next-id" }]
+    }
+  },
+  "endings": [
+    { "id": "e-success", "type": "success", "title": "string", "condition": "score >= N",
+      "narrative": "string", "outcomes": ["string"], "competencyFeedback": "string" },
+    { "id": "e-partial", "type": "partial", "title": "string", "condition": "score >= M",
+      "narrative": "string", "outcomes": ["string"], "competencyFeedback": "string" },
+    { "id": "e-negative", "type": "negative", "title": "string", "condition": "else",
+      "narrative": "string", "outcomes": ["string"], "competencyFeedback": "string" }
+  ],
+  "competencies": ["string"],
+  "metadata": { "estimatedTime": "string", "difficulty": "string", "audience": ["string"] }
+}`;
+
+export interface ScenarioConfigForGeneration {
+  role: string;
+  context: string;
+  competencies: string[];
+  domain: string;
+  difficulty: 'Beginner' | 'Intermediate' | 'Advanced';
+  phaseCount: number;
+}
+
+export async function generateScenarioData(
+  coursePrompt: string,
+  config: ScenarioConfigForGeneration,
+  sourceContent?: string,
+): Promise<any> {
+  const sourcePart = sourceContent
+    ? `\n\nSource material context (use to ground the workplace setting):\n${sourceContent.slice(0, 2000)}`
+    : '';
+
+  const userPrompt = `Generate a workplace decision simulation for the following course.
+
+Course Topic: "${coursePrompt}"
+Learner Role: "${config.role || 'A mid-level manager'}"
+Scenario Context: "${config.context || 'A team is facing a critical deadline with interpersonal tension and stakeholder pressure.'}"
+Industry / Domain: ${config.domain}
+Difficulty: ${config.difficulty}
+Decision Phases (nodes): ${config.phaseCount}
+Competencies to assess: ${config.competencies.join(', ') || 'Leadership Communication, Conflict Resolution'}
+
+REQUIREMENTS:
+- Create exactly ${config.phaseCount} primary decision nodes.
+- Include at least one multi-select node (type: "multi", multiSelectCount: 2).
+- Difficulty "${config.difficulty}" means: ${config.difficulty === 'Beginner' ? 'clear better vs worse options, gentle consequences' : config.difficulty === 'Advanced' ? 'all options are plausible, consequences are subtle and long-term' : 'moderate ambiguity, some options have mixed consequences'}.
+- Score thresholds: success >= ${config.phaseCount * 3}, partial >= ${config.phaseCount}, negative = else.${sourcePart}
+
+Return ONLY the JSON object.`;
+
+  const tryParse = async (prompt: string) => {
+    const raw = await executeAnthropicAI('complex', SCENARIO_SYSTEM_PROMPT, prompt, 8192);
+    return parseJsonSafely(raw);
+  };
+
+  let parsed: any;
+  try {
+    parsed = await tryParse(userPrompt);
+  } catch {
+    const retryPrompt = `Generate a ${config.phaseCount}-phase workplace decision simulation about "${coursePrompt}" for a ${config.role || 'manager'}. Maximum 3 options per node. Return ONLY JSON.`;
+    parsed = await tryParse(retryPrompt);
+  }
+
+  if (!parsed?.nodes || !parsed?.startNodeId || !parsed?.endings?.length) {
+    throw new Error('Scenario generation failed validation: missing nodes, startNodeId, or endings.');
+  }
+  return parsed;
+}
+
+// ── AI-powered slide data editing ─────────────────────────────────────────────
+
+export async function editSlideDataViaAI(
+  slideType: 'scenario' | 'game-template',
+  currentData: any,
+  userRequest: string,
+  courseContext: string,
+): Promise<any> {
+  const systemPrompt = `You are an expert eLearning content editor making a targeted change to an existing ${slideType} data structure.
+RULES:
+1. Make ONLY the changes the user requests. Preserve all other data exactly.
+2. Return the COMPLETE updated data object as valid JSON — no prose, no code fences.
+3. Maintain all existing IDs, schema structure, and field names.
+4. Never add fields that don't exist in the original schema.`;
+
+  const userPrompt = `Course context: "${courseContext}"
+
+Current ${slideType} data:
+${JSON.stringify(currentData, null, 2).slice(0, 6000)}
+
+User's requested change: "${userRequest}"
+
+Return ONLY the complete updated JSON object.`;
+
+  const raw = await executeAnthropicAI('complex', systemPrompt, userPrompt, 8192);
+  return parseJsonSafely(raw);
 }

@@ -70,7 +70,11 @@ import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent,
 import { createScormPackage } from './services/scormService';
 import { FlashcardGrid } from './components/FlashcardGrid';
 import { ScenarioEngine } from './components/interactions/ScenarioEngine';
-import type { ScenarioData } from './types/scenario';
+import { ScenarioBuilderPanel } from './components/ScenarioBuilderPanel';
+import { AIEditDrawer } from './components/AIEditDrawer';
+import type { ScenarioData, ScenarioConfig } from './types/scenario';
+import { DEFAULT_SCENARIO_CONFIG } from './types/scenario';
+
 import { AccordionDarkWrapper } from './components/AccordionDarkWrapper';
 import { QCTrackChangesModal } from './components/QCTrackChangesModal';
 import { runFullQC, runStructuralQC, autoFixCourse, applyConfirmedFixes, simplifySlide, regenerateSlideData, QCReport } from './services/qcService';
@@ -429,6 +433,10 @@ export default function App() {
   const [isSandboxMode, setIsSandboxMode] = useState(false);
   // Scenario slide completion gate (unlocks Next button)
   const [scenarioCompleted, setScenarioCompleted] = useState(false);
+  // Scenario builder config (feeds AI generation)
+  const [scenarioConfig, setScenarioConfig] = useState<ScenarioConfig>(DEFAULT_SCENARIO_CONFIG);
+  // AI Edit Drawer for scenario / game-template slides
+  const [showAIEditDrawer, setShowAIEditDrawer] = useState(false);
   // Sandbox outline (derived from DUMMY_COURSE for outline step)
   const [sandboxOutline, setSandboxOutline] = useState<any>(null);
   // Theme dropdown in preview top bar
@@ -970,7 +978,7 @@ export default function App() {
       setOutlineDraft(draft);
       if (skipOutlineReview) {
         setProgress(45);
-        const finalCourse = await hydrateCourseContent(draft, prompt, { courseType });
+        const finalCourse = await hydrateCourseContent(draft, prompt, { courseType, scenarioConfig: interactionTypes.includes('scenario') ? scenarioConfig : undefined });
         setCourse(finalCourse);
         setStep('preview');
       } else {
@@ -993,8 +1001,8 @@ export default function App() {
     // Item 10: use real onProgress callback from AI service — no artificial 90% cap
     try {
       const finalCourse = await hydrateCourseContent(
-        outlineDraft!, prompt, { courseType },
-        (pct) => setProgress(pct)  // real progress from module hydration
+        outlineDraft!, prompt, { courseType, scenarioConfig: interactionTypes.includes('scenario') ? scenarioConfig : undefined },
+        (pct) => setProgress(pct)
       );
       setProgress(99);
       await new Promise(r => setTimeout(r, 200));
@@ -1455,6 +1463,33 @@ export default function App() {
               }));
             }}
           />
+
+          {/* AI Edit Drawer — scenario and game-template slides */}
+          <AnimatePresence>
+            {showAIEditDrawer && currentSlide && (currentSlide.type === 'scenario' || currentSlide.type === 'game-template') && (
+              <AIEditDrawer
+                slideType={currentSlide.type as 'scenario' | 'game-template'}
+                slideTitle={currentSlide.title}
+                currentData={currentSlide.data ?? {}}
+                courseContext={course?.title ?? prompt}
+                theme={theme}
+                onApply={(newData) => {
+                  if (!course || !currentSlide) return;
+                  const updated = {
+                    ...course,
+                    modules: course.modules.map(mod => ({
+                      ...mod,
+                      slides: mod.slides.map(sl =>
+                        sl.id === currentSlide.id ? { ...sl, data: newData } : sl
+                      ),
+                    })),
+                  };
+                  setCourse(updated);
+                }}
+                onClose={() => setShowAIEditDrawer(false)}
+              />
+            )}
+          </AnimatePresence>
 
           {/* Draft Courses Panel - Pro feature */}
           {course && (
@@ -2188,6 +2223,14 @@ export default function App() {
                         </div>
                       )}
 
+                      {/* Decision Simulation Config — shown when 'scenario' is selected */}
+                      {interactionTypes.includes('scenario') && (
+                        <ScenarioBuilderPanel
+                          config={scenarioConfig}
+                          onChange={setScenarioConfig}
+                        />
+                      )}
+
                      {/* Audio & Accessibility Section */}
                      <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-6 shadow-xl">
                        <div className="flex items-center gap-3 mb-5">
@@ -2510,6 +2553,17 @@ export default function App() {
                   >
                     <Edit3 className="w-3 h-3" /><span>Edit Text &amp; Audio</span>
                   </button>
+
+                  {/* Edit via AI — scenario and game-template slides only */}
+                  {(currentSlide?.type === 'scenario' || currentSlide?.type === 'game-template') && (
+                    <button
+                      title="Edit via AI — make targeted changes to this interaction using plain language"
+                      onClick={() => setShowAIEditDrawer(true)}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-purple-700/50 hover:bg-purple-800/20 text-purple-300 text-[11px] font-semibold"
+                    >
+                      <Sparkles className="w-3 h-3" /><span>Edit via AI</span>
+                    </button>
+                  )}
 
                   {/* App Image Library */}
                   <button

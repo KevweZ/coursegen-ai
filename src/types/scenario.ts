@@ -64,6 +64,45 @@ export interface ScenarioMetadata {
   audience: string[];
 }
 
+// ── Author-facing configuration (feeds AI generation) ─────────────────────────
+
+export const SCENARIO_COMPETENCIES = [
+  'Leadership Communication',
+  'Conflict Resolution',
+  'Emotional Intelligence',
+  'Accountability Management',
+  'Stakeholder Communication',
+  'Change Management',
+  'Decision Making Under Pressure',
+  'Team Development',
+  'Ethical Judgment',
+] as const;
+
+export type ScenarioCompetency = typeof SCENARIO_COMPETENCIES[number];
+
+export const SCENARIO_DOMAINS = [
+  'General', 'Healthcare', 'Finance', 'Technology',
+  'Manufacturing', 'Human Resources', 'Retail', 'Education', 'Government',
+] as const;
+
+export interface ScenarioConfig {
+  role: string;                     // Learner role, e.g. "Senior Project Manager"
+  context: string;                  // The workplace situation / tension
+  competencies: ScenarioCompetency[];
+  domain: typeof SCENARIO_DOMAINS[number];
+  difficulty: 'Beginner' | 'Intermediate' | 'Advanced';
+  phaseCount: number;               // 3–6
+}
+
+export const DEFAULT_SCENARIO_CONFIG: ScenarioConfig = {
+  role: '',
+  context: '',
+  competencies: ['Leadership Communication', 'Conflict Resolution'],
+  domain: 'General',
+  difficulty: 'Intermediate',
+  phaseCount: 4,
+};
+
 // ── Engine Runtime State ──────────────────────────────────────────────────────
 
 export interface ScenarioEngineState {
