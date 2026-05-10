@@ -32,9 +32,9 @@ const BACKGROUNDS: AppImage[] = [
   { id: 'neu-4', label: 'Coffee & Phone',       url: `${BASE}/Neutral/peach white background with coffee and phone_01.png`, category: 'Neutral' },
   { id: 'neu-5', label: 'Coffee & Donuts',      url: `${BASE}/Neutral/blue background donute coffee paper_01.jpg`,  category: 'Neutral' },
   // People
-  { id: 'peo-1', label: 'Team at Table',        url: `${BASE}/Neutral/People at table working.jpg`,                 category: 'People' },
-  { id: 'peo-2', label: 'Smiling Team',         url: `${BASE}/Neutral/people at table smiling.jpg`,                 category: 'People' },
-  { id: 'peo-3', label: 'Greeting',             url: `${BASE}/Neutral/three people greeting_01.jpg`,                category: 'People' },
+  { id: 'peo-1', label: 'Team at Table',        url: `${BASE}/Office Workplace/People at table working.jpg`,        category: 'People' },
+  { id: 'peo-2', label: 'Smiling Team',         url: `${BASE}/Office Workplace/people at table smiling.jpg`,        category: 'People' },
+  { id: 'peo-3', label: 'Greeting',             url: `${BASE}/Office Workplace/three people greeting_01.jpg`,       category: 'People' },
   // City
   { id: 'cty-1', label: 'City Street',          url: `${BASE}/City/City ground view_01.png`,                        category: 'City' },
   { id: 'cty-2', label: 'Big City',             url: `${BASE}/City/Big City_01.png`,                                category: 'City' },
@@ -61,6 +61,37 @@ const BACKGROUNDS: AppImage[] = [
   { id: 'snw-3', label: 'Frozen Lake',          url: `${BASE}/Snow and Ice/frozen lake_01.png`,                     category: 'Snow & Ice' },
   { id: 'snw-4', label: 'Icebreaker Ship',      url: `${BASE}/Snow and Ice/icebreaker ship_01.png`,                 category: 'Snow & Ice' },
   { id: 'snw-5', label: 'Arctic Bear',          url: `${BASE}/Snow and Ice/arctic polar bear_01.png`,               category: 'Snow & Ice' },
+  // Warehouse
+  { id: 'wh-1',  label: 'Warehouse 1',          url: `${BASE}/Warehouse/warehouse_01.jpeg`,                         category: 'Warehouse' },
+  { id: 'wh-2',  label: 'Warehouse 2',          url: `${BASE}/Warehouse/warehouse_02.jpeg`,                         category: 'Warehouse' },
+  { id: 'wh-3',  label: 'Warehouse 3',          url: `${BASE}/Warehouse/warehouse_03.jpeg`,                         category: 'Warehouse' },
+  // Rigs
+  { id: 'rig-1', label: 'Land Rig 1',           url: `${BASE}/Rigs/Land rig_01.jpeg`,                               category: 'Rigs' },
+  { id: 'rig-2', label: 'Land Rig 2',           url: `${BASE}/Rigs/Land rig_02.jpeg`,                               category: 'Rigs' },
+  { id: 'rig-3', label: 'Offshore Rig 1',       url: `${BASE}/Rigs/offshore rig_01.jpeg`,                           category: 'Rigs' },
+  { id: 'rig-4', label: 'Offshore Rig 2',       url: `${BASE}/Rigs/offshore rig_02.jpeg`,                           category: 'Rigs' },
+  // Workplace Scenes (photography)
+  { id: 'ws-1',  label: 'Workplace Scene 1',    url: `${BASE}/Custom Scenarios/115088300_l.jpg`,                    category: 'Workplace Scenes' },
+  { id: 'ws-2',  label: 'Workplace Scene 2',    url: `${BASE}/Custom Scenarios/118745672_l.jpg`,                    category: 'Workplace Scenes' },
+  { id: 'ws-3',  label: 'Workplace Scene 3',    url: `${BASE}/Custom Scenarios/133169104_l.jpg`,                    category: 'Workplace Scenes' },
+  { id: 'ws-4',  label: 'Workplace Scene 4',    url: `${BASE}/Custom Scenarios/139263622_l.jpg`,                    category: 'Workplace Scenes' },
+  { id: 'ws-5',  label: 'Workplace Scene 5',    url: `${BASE}/Custom Scenarios/139337393_l.jpg`,                    category: 'Workplace Scenes' },
+  { id: 'ws-6',  label: 'Workplace Scene 6',    url: `${BASE}/Custom Scenarios/148700167_l.jpg`,                    category: 'Workplace Scenes' },
+  { id: 'ws-7',  label: 'Workplace Scene 7',    url: `${BASE}/Custom Scenarios/154325570_l.jpg`,                    category: 'Workplace Scenes' },
+  { id: 'ws-8',  label: 'Workplace Scene 8',    url: `${BASE}/Custom Scenarios/158545435_l.jpg`,                    category: 'Workplace Scenes' },
+  { id: 'ws-9',  label: 'Workplace Scene 9',    url: `${BASE}/Custom Scenarios/159781193_l.jpg`,                    category: 'Workplace Scenes' },
+  { id: 'ws-10', label: 'Workplace Scene 10',   url: `${BASE}/Custom Scenarios/160008003_l.jpg`,                    category: 'Workplace Scenes' },
+  { id: 'ws-11', label: 'Workplace Scene 11',   url: `${BASE}/Custom Scenarios/174849752_l.jpg`,                    category: 'Workplace Scenes' },
+  { id: 'ws-12', label: 'Workplace Scene 12',   url: `${BASE}/Custom Scenarios/184063249_l.jpg`,                    category: 'Workplace Scenes' },
+  { id: 'ws-13', label: 'Workplace Scene 13',   url: `${BASE}/Custom Scenarios/190236927_l.jpg`,                    category: 'Workplace Scenes' },
+  { id: 'ws-14', label: 'Workplace Scene 14',   url: `${BASE}/Custom Scenarios/199836032_l.jpg`,                    category: 'Workplace Scenes' },
+  { id: 'ws-15', label: 'Workplace Scene 15',   url: `${BASE}/Custom Scenarios/20109536_l.jpg`,                     category: 'Workplace Scenes' },
+  { id: 'ws-16', label: 'Workplace Scene 16',   url: `${BASE}/Custom Scenarios/211556671_l.jpg`,                    category: 'Workplace Scenes' },
+  { id: 'ws-17', label: 'Workplace Scene 17',   url: `${BASE}/Custom Scenarios/23857765_l.jpg`,                     category: 'Workplace Scenes' },
+  { id: 'ws-18', label: 'Workplace Scene 18',   url: `${BASE}/Custom Scenarios/243803779_l.jpg`,                    category: 'Workplace Scenes' },
+  { id: 'ws-19', label: 'Workplace Scene 19',   url: `${BASE}/Custom Scenarios/246942383_l.jpg`,                    category: 'Workplace Scenes' },
+  { id: 'ws-20', label: 'Workplace Scene 20',   url: `${BASE}/Custom Scenarios/247540229_l.jpg`,                    category: 'Workplace Scenes' },
+  { id: 'ws-21', label: 'Workplace Scene 21',   url: `${BASE}/Custom Scenarios/280442550_l.jpg`,                    category: 'Workplace Scenes' },
 ];
 
 // ── Silhouette library — PNGs from /public/silhouettes/ ──────────────────────
@@ -121,7 +152,7 @@ interface Props {
   theme: 'light' | 'dark' | 'unified';
 }
 
-// PNG thumbnail — white bg removed via mix-blend-mode: multiply
+// PNG thumbnail — always white bg container so multiply blend removes white correctly
 const SilhouetteThumbnail: React.FC<{
   entry: SilhouetteEntry;
   onInsert: (url: string) => void;
@@ -142,14 +173,15 @@ const SilhouetteThumbnail: React.FC<{
       )}
       title={`Insert ${entry.label}`}
     >
+      {/* Always white bg so mix-blend-mode:multiply removes white correctly on any theme */}
       <div
         className="w-full h-28 flex items-center justify-center overflow-hidden rounded-lg"
-        style={{ background: isLight ? '#e2e8f0' : '#1e293b' }}
+        style={{ background: '#ffffff' }}
       >
         {errored ? (
-          <div className="flex flex-col items-center gap-1 opacity-40">
-            <Users className="w-8 h-8" />
-            <span className="text-[9px]">No file</span>
+          <div className="flex flex-col items-center gap-1 opacity-30">
+            <Users className="w-8 h-8 text-slate-400" />
+            <span className="text-[9px] text-slate-400">Missing file</span>
           </div>
         ) : (
           <img
@@ -161,7 +193,6 @@ const SilhouetteThumbnail: React.FC<{
               maxHeight: '108px',
               maxWidth: '100%',
               objectFit: 'contain',
-              // multiply removes white bg: white×anything=anything, black stays black
               mixBlendMode: 'multiply',
               opacity: loaded ? 1 : 0,
               transition: 'opacity 0.2s',
@@ -342,16 +373,29 @@ export const AppImagePickerModal: React.FC<Props> = ({ isOpen, onClose, onInsert
                   )}
                 </div>
               ) : (
-                <div className="grid grid-cols-4 sm:grid-cols-5 gap-3">
-                  {filteredSils.map(sil => (
-                    <SilhouetteThumbnail
-                      key={sil.id}
-                      entry={sil}
-                      onInsert={handleInsertSil}
-                      isLight={isLight}
-                    />
-                  ))}
-                </div>
+                filteredSils.length === 0 && !search ? (
+                  <div className="flex flex-col items-center justify-center py-16 gap-3">
+                    <Users className="w-12 h-12 text-slate-600" />
+                    <p className="text-sm font-bold text-slate-400">No character assets installed</p>
+                    <p className="text-xs text-slate-500 text-center max-w-xs">
+                      Add PNG silhouette files to <code className="bg-slate-800 px-1 rounded text-indigo-400">/public/silhouettes/</code> to enable this library.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-4 sm:grid-cols-5 gap-3">
+                    {filteredSils.map(sil => (
+                      <SilhouetteThumbnail
+                        key={sil.id}
+                        entry={sil}
+                        onInsert={handleInsertSil}
+                        isLight={isLight}
+                      />
+                    ))}
+                    {filteredSils.length === 0 && (
+                      <div className={cn('col-span-5 py-12 text-center text-sm', subText)}>No characters match your search.</div>
+                    )}
+                  </div>
+                )
               )}
             </div>
 

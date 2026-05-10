@@ -2582,7 +2582,7 @@ export default function App() {
                           onClick={() => { setShowAppImagePicker(true); setShowImageDropdown(false); }}
                           className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
                         >
-                          <ImageIcon className="w-3 h-3 text-violet-400 shrink-0" /> Slide Images
+                          <ImageIcon className="w-3 h-3 text-violet-400 shrink-0" /> Image Library
                         </button>
                         {/* Upload Image */}
                         <label
