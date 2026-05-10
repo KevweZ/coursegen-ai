@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, Target, CheckCircle2 } from 'lucide-react';
+import { ChevronDown, Target, CheckCircle2, BookOpen } from 'lucide-react';
 import type { TerminalObjectiveGroup } from '../../types/course';
 
 type Theme = 'light' | 'dark' | 'unified';
@@ -8,6 +8,7 @@ type Theme = 'light' | 'dark' | 'unified';
 interface Props {
   objectives: (string | TerminalObjectiveGroup)[];
   theme: Theme;
+  moduleNumber?: number;
 }
 
 function normalize(obj: string | TerminalObjectiveGroup): TerminalObjectiveGroup {
@@ -35,7 +36,7 @@ const PANELS: Record<Theme, { leftBg: string; rightBg: string; headerText: strin
   },
 };
 
-export const CourseObjectivesSlide: React.FC<Props> = ({ objectives, theme }) => {
+export const CourseObjectivesSlide: React.FC<Props> = ({ objectives, theme, moduleNumber }) => {
   const [expanded, setExpanded] = useState<number | null>(null);
   const p = PANELS[theme] || PANELS.dark;
   const normalized = objectives.map(normalize);
@@ -48,33 +49,44 @@ export const CourseObjectivesSlide: React.FC<Props> = ({ objectives, theme }) =>
         className="shrink-0 relative flex flex-col items-center justify-between py-10"
         style={{ width: '22%', backgroundColor: p.leftBg, borderRight: `4px solid ${ACCENT_COLORS[0]}` }}
       >
-        {/* Giant watermark icon */}
+        {/* Giant watermark icon — behind vertical text */}
         <div className="absolute inset-0 flex items-center justify-center select-none pointer-events-none">
           <Target style={{ width: '12rem', height: '12rem', opacity: 0.07, color: p.headerText }} />
         </div>
 
-        {/* Top: Target icon */}
-        <div className="relative z-10">
-          <Target style={{ width: '3.5rem', height: '3.5rem', color: ACCENT_COLORS[0], opacity: 0.85 }} />
+        {/* Top: BookOpen + "Module" label + number circle (mirrors ModuleOverviewSlide) */}
+        <div className="relative z-10 flex flex-col items-center gap-3">
+          <BookOpen className="opacity-60" style={{ width: '2.5rem', height: '2.5rem', color: ACCENT_COLORS[0] }} />
+          <p className="text-sm font-black uppercase tracking-[0.2em] opacity-60" style={{ color: p.headerText }}>
+            Module
+          </p>
+          {moduleNumber != null && moduleNumber > 0 && (
+            <div
+              className="w-16 h-16 rounded-full flex items-center justify-center font-black text-2xl"
+              style={{ border: `2px solid ${ACCENT_COLORS[0]}`, color: ACCENT_COLORS[0] }}
+            >
+              {moduleNumber}
+            </div>
+          )}
         </div>
 
-        {/* Centre: "Course Objectives" vertical text — large */}
+        {/* Centre: "Objectives" vertical text — large, matches Takeaways scale */}
         <div
           className="relative z-10 font-black uppercase opacity-55 text-center px-2"
           style={{
             writingMode: 'vertical-rl',
             transform: 'rotate(180deg)',
             color: p.headerText,
-            letterSpacing: '0.14em',
-            fontSize: '1.55rem',
-            maxHeight: '72%',
+            letterSpacing: '0.18em',
+            fontSize: '2.4rem',
+            maxHeight: '52%',
             overflow: 'hidden',
           }}
         >
-          Course Objectives
+          Objectives
         </div>
 
-        {/* Bottom spacer for visual balance */}
+        {/* Bottom spacer */}
         <div className="relative z-10 h-14" />
       </div>
 

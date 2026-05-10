@@ -1,5 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import { BookOpen } from 'lucide-react';
 
 type Theme = 'light' | 'dark' | 'unified';
 
@@ -16,6 +17,7 @@ interface LearningObjectivesSlideProps {
   objectives: Objective[];
   accentColor?: string;
   theme: Theme;
+  moduleNumber?: number;
 }
 
 // ── Theme tokens ───────────────────────────────────────────────────────────────
@@ -52,41 +54,30 @@ const ACCENT = '#818cf8';
 
 /**
  * Classic house-key SVG — circular bow with inner hole, diagonal shaft,
- * rectangular teeth. Matches the style in the reference image.
+ * rectangular teeth. Used as a watermark behind the vertical text.
  */
-const ClassicKeyIcon: React.FC<{ size: number; color: string; opacity?: number }> = ({
-  size, color, opacity = 1,
-}) => {
-  const sw = 3.5;
-  return (
-    <svg
-      width={size} height={size}
-      viewBox="0 0 100 100"
-      fill="none"
-      stroke={color}
-      strokeWidth={sw}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={{ opacity }}
-    >
-      {/* Bow — outer circle */}
-      <circle cx="27" cy="27" r="22" strokeWidth={sw} />
-      {/* Bow — inner hole */}
-      <circle cx="27" cy="27" r="9" strokeWidth={sw * 0.85} />
-      {/* Decorative hatching lines inside bow (like reference image) */}
-      <line x1="19" y1="22" x2="24" y2="17" strokeWidth={sw * 0.65} />
-      <line x1="23" y1="28" x2="29" y2="21" strokeWidth={sw * 0.65} />
-      {/* Shaft — thick diagonal stroke from bow to tip */}
-      <line x1="44" y1="44" x2="88" y2="88" strokeWidth={sw * 2.4} />
-      {/* Teeth — perpendicular notches on upper-right edge of shaft */}
-      <line x1="59" y1="59" x2="65" y2="53" strokeWidth={sw * 1.9} strokeLinecap="square" />
-      <line x1="67" y1="67" x2="73" y2="61" strokeWidth={sw * 1.9} strokeLinecap="square" />
-      <line x1="75" y1="75" x2="80" y2="70" strokeWidth={sw * 1.7} strokeLinecap="square" />
-      {/* Tip stop (small perpendicular at blade end) */}
-      <line x1="85" y1="85" x2="89" y2="81" strokeWidth={sw * 1.4} strokeLinecap="square" />
-    </svg>
-  );
-};
+const ClassicKeyWatermark: React.FC<{ size: number; color: string }> = ({ size, color }) => (
+  <svg
+    width={size} height={size}
+    viewBox="0 0 100 100"
+    fill="none"
+    stroke={color}
+    strokeWidth={3.5}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    style={{ opacity: 0.08 }}
+  >
+    <circle cx="27" cy="27" r="22" />
+    <circle cx="27" cy="27" r="9" strokeWidth={3} />
+    <line x1="19" y1="22" x2="24" y2="17" strokeWidth={2.3} />
+    <line x1="23" y1="28" x2="29" y2="21" strokeWidth={2.3} />
+    <line x1="44" y1="44" x2="88" y2="88" strokeWidth={8.4} />
+    <line x1="59" y1="59" x2="65" y2="53" strokeWidth={6.7} strokeLinecap="square" />
+    <line x1="67" y1="67" x2="73" y2="61" strokeWidth={6.7} strokeLinecap="square" />
+    <line x1="75" y1="75" x2="80" y2="70" strokeWidth={6.0} strokeLinecap="square" />
+    <line x1="85" y1="85" x2="89" y2="81" strokeWidth={5.0} strokeLinecap="square" />
+  </svg>
+);
 
 /**
  * Strip markdown artefacts and split "Label — Body" into parts.
@@ -112,6 +103,7 @@ export const LearningObjectivesSlide: React.FC<LearningObjectivesSlideProps> = (
   objectives,
   accentColor,
   theme,
+  moduleNumber,
 }) => {
   const p      = PANELS[theme] || PANELS.dark;
   const accent = accentColor || ACCENT;
@@ -127,19 +119,28 @@ export const LearningObjectivesSlide: React.FC<LearningObjectivesSlideProps> = (
         className="shrink-0 relative flex flex-col items-center justify-between py-10"
         style={{ width: '22%', backgroundColor: p.leftBg, borderRight: `4px solid ${accent}` }}
       >
-        {/* Giant watermark key */}
-        <div
-          className="absolute inset-0 flex items-center justify-center select-none pointer-events-none"
-        >
-          <ClassicKeyIcon size={190} color={p.bodyText} opacity={0.07} />
+        {/* Watermark key icon behind vertical text */}
+        <div className="absolute inset-0 flex items-center justify-center select-none pointer-events-none">
+          <ClassicKeyWatermark size={190} color={p.bodyText} />
         </div>
 
-        {/* Top: classic key icon */}
-        <div className="relative z-10">
-          <ClassicKeyIcon size={56} color={accent} opacity={0.85} />
+        {/* Top: BookOpen + "Module" label + number circle (mirrors ModuleOverviewSlide) */}
+        <div className="relative z-10 flex flex-col items-center gap-3">
+          <BookOpen className="opacity-60" style={{ width: '2.5rem', height: '2.5rem', color: accent }} />
+          <p className="text-sm font-black uppercase tracking-[0.2em] opacity-60" style={{ color: p.bodyText }}>
+            Module
+          </p>
+          {moduleNumber != null && moduleNumber > 0 && (
+            <div
+              className="w-16 h-16 rounded-full flex items-center justify-center font-black text-2xl"
+              style={{ border: `2px solid ${accent}`, color: accent }}
+            >
+              {moduleNumber}
+            </div>
+          )}
         </div>
 
-        {/* Centre: "Takeaways" vertical text */}
+        {/* Centre: "Takeaways" vertical text (large) */}
         <div
           className="relative z-10 font-black uppercase opacity-55 text-center px-2"
           style={{
@@ -148,14 +149,14 @@ export const LearningObjectivesSlide: React.FC<LearningObjectivesSlideProps> = (
             color: p.bodyText,
             letterSpacing: '0.18em',
             fontSize: '2.4rem',
-            maxHeight: '72%',
+            maxHeight: '52%',
             overflow: 'hidden',
           }}
         >
           Takeaways
         </div>
 
-        {/* Bottom spacer for visual balance */}
+        {/* Bottom spacer */}
         <div className="relative z-10 h-14" />
       </div>
 

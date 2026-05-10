@@ -2822,12 +2822,16 @@ export default function App() {
                                   const objectives = raw.length > 0 ? raw : (currentSlide.content || '')
                                     .split(/\n+/).filter(Boolean)
                                     .map((line: string, i: number) => ({ id: String(i), label: line, content: '' }));
+                                  // Derive module number for this slide
+                                  const modIdx = course?.modules.findIndex((m: any) => m.slides.some((s: any) => s.id === currentSlide.id)) ?? -1;
+                                  const slideModuleNumber = modIdx >= 0 ? modIdx + 1 : undefined;
                                   return (
                                     <div className="w-full h-full absolute inset-0">
                                       <LearningObjectivesSlide
                                         title={currentSlide.title}
                                         objectives={objectives}
                                         theme={theme}
+                                        moduleNumber={slideModuleNumber}
                                       />
                                     </div>
                                   );
@@ -2854,7 +2858,7 @@ export default function App() {
                                    <PlayerTourSlide theme={theme} onSkip={() => setCurrentSlideIndex((si: number) => Math.min(allSlides.length - 1, si + 1))} />
                                  </div>
                                )}
-                               {/* COURSE OBJECTIVES SLIDE */}
+                               {/* COURSE OBJECTIVES SLIDE — course-level, no module number */}
                                {(currentSlide as any)?.type === 'course-objectives' && (
                                  <div className="w-full h-full">
                                    <CourseObjectivesSlide objectives={(currentSlide as any)._objectives || []} theme={theme} />
