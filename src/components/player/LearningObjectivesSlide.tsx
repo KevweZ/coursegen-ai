@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Lightbulb } from 'lucide-react';
+import { Key } from 'lucide-react';
 
 type Theme = 'light' | 'dark' | 'unified';
 
@@ -91,29 +91,23 @@ export const LearningObjectivesSlide: React.FC<LearningObjectivesSlideProps> = (
         className="shrink-0 relative flex flex-col items-center justify-between py-10"
         style={{ width: '22%', backgroundColor: p.leftBg, borderRight: `4px solid ${accent}` }}
       >
-        {/* Giant watermark — lightbulb shape built with giant opacity text */}
+        {/* Giant watermark key icon */}
         <div
           className="absolute inset-0 flex items-center justify-center select-none pointer-events-none"
           style={{ color: p.numText }}
         >
-          <Lightbulb
-            style={{ width: '11rem', height: '11rem', opacity: 0.13 }}
+          <Key
+            style={{ width: '12rem', height: '12rem', opacity: 0.13 }}
             strokeWidth={1.2}
           />
         </div>
 
-        {/* Top: icon + "KEY" label */}
+        {/* Top: Key icon */}
         <div className="relative z-10 flex flex-col items-center gap-3">
-          <Lightbulb
-            className="opacity-70"
-            style={{ width: '2.5rem', height: '2.5rem', color: accent }}
+          <Key
+            className="opacity-75"
+            style={{ width: '3rem', height: '3rem', color: accent }}
           />
-          <p
-            className="text-base font-black uppercase tracking-[0.22em] opacity-70 text-center"
-            style={{ color: p.bodyText }}
-          >
-            Key
-          </p>
         </div>
 
         {/* Centre: "KEY TAKEAWAYS" vertical text */}
