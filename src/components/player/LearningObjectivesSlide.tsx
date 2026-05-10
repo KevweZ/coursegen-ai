@@ -109,7 +109,7 @@ export const LearningObjectivesSlide: React.FC<LearningObjectivesSlideProps> = (
             style={{ width: '2.5rem', height: '2.5rem', color: accent }}
           />
           <p
-            className="text-[11px] font-black uppercase tracking-[0.22em] opacity-60 text-center"
+            className="text-base font-black uppercase tracking-[0.22em] opacity-70 text-center"
             style={{ color: p.bodyText }}
           >
             Key
@@ -123,9 +123,9 @@ export const LearningObjectivesSlide: React.FC<LearningObjectivesSlideProps> = (
             writingMode: 'vertical-rl',
             transform: 'rotate(180deg)',
             color: p.bodyText,
-            letterSpacing: '0.2em',
-            fontSize: '0.72rem',
-            maxHeight: '55%',
+            letterSpacing: '0.18em',
+            fontSize: '2.4rem',
+            maxHeight: '72%',
             overflow: 'hidden',
           }}
         >
