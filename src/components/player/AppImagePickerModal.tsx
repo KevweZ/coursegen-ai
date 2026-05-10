@@ -95,6 +95,7 @@ const BACKGROUNDS: AppImage[] = [
 ];
 
 // ── Silhouette library — PNGs from /public/silhouettes/ ──────────────────────
+// NOTE: Place character PNG files in /public/silhouettes/ to populate this tab.
 // White backgrounds are removed via mix-blend-mode: multiply at display time.
 interface SilhouetteEntry {
   id: string;
@@ -103,44 +104,8 @@ interface SilhouetteEntry {
   category: string;
 }
 
-const SILHOUETTES: SilhouetteEntry[] = [
-  // Casual / Everyday
-  { id: 'casual-male',             label: 'Casual Male',           file: 'casual-male.png',             category: 'Casual' },
-  { id: 'casual-female',           label: 'Casual Female',         file: 'casual-female.png',           category: 'Casual' },
-  { id: 'casual-male-afro',        label: 'Casual Male (Afro)',    file: 'casual-male-afro.png',        category: 'Casual' },
-  { id: 'casual-female-afro',      label: 'Casual Female (Afro)',  file: 'casual-female-afro.png',      category: 'Casual' },
-  // Busts
-  { id: 'bust-male',               label: 'Bust — Male',           file: 'bust-male.png',               category: 'Busts' },
-  { id: 'bust-female-long',        label: 'Bust — Long Hair',      file: 'bust-female-long.png',        category: 'Busts' },
-  { id: 'bust-female-bob',         label: 'Bust — Bob',            file: 'bust-female-bob.png',         category: 'Busts' },
-  { id: 'bust-female-afro',        label: 'Bust — Afro',           file: 'bust-female-afro.png',        category: 'Busts' },
-  // Business
-  { id: 'business-male',           label: 'Business Male',         file: 'business-male.png',           category: 'Business' },
-  { id: 'business-female',         label: 'Business Female',       file: 'business-female.png',         category: 'Business' },
-  { id: 'safety-vest-male',        label: 'Safety Vest',           file: 'safety-vest-male.png',        category: 'Business' },
-  { id: 'safety-vest-hardhat',     label: 'Safety Vest + Hardhat', file: 'safety-vest-hardhat.png',     category: 'Business' },
-  // Medical
-  { id: 'doctor-male',             label: 'Doctor Male',           file: 'doctor-male.png',             category: 'Medical' },
-  { id: 'doctor-female',           label: 'Doctor Female',         file: 'doctor-female.png',           category: 'Medical' },
-  { id: 'doctor-male-coat',        label: 'Doctor (White Coat)',   file: 'doctor-male-coat.png',        category: 'Medical' },
-  { id: 'nurse-male',              label: 'Nurse',                 file: 'nurse-male.png',              category: 'Medical' },
-  // Emergency
-  { id: 'police-male',             label: 'Police Male',           file: 'police-male.png',             category: 'Emergency' },
-  { id: 'police-female',           label: 'Police Female',         file: 'police-female.png',           category: 'Emergency' },
-  { id: 'firefighter-male',        label: 'Firefighter Male',      file: 'firefighter-male.png',        category: 'Emergency' },
-  { id: 'firefighter-female',      label: 'Firefighter Female',    file: 'firefighter-female.png',      category: 'Emergency' },
-  { id: 'firefighter-male-emt',    label: 'Firefighter EMT',       file: 'firefighter-male-emt.png',    category: 'Emergency' },
-  { id: 'emt-female',              label: 'EMT Female',            file: 'emt-female.png',              category: 'Emergency' },
-  // Trades / Outdoor
-  { id: 'construction-male',       label: 'Construction',          file: 'construction-male.png',       category: 'Outdoor' },
-  { id: 'farmer-male',             label: 'Farmer Male',           file: 'farmer-male.png',             category: 'Outdoor' },
-  { id: 'farmer-female',           label: 'Farmer Female',         file: 'farmer-female.png',           category: 'Outdoor' },
-  { id: 'ranger-male',             label: 'Ranger',                file: 'ranger-male.png',             category: 'Outdoor' },
-  // Aviation
-  { id: 'pilot-male',              label: 'Pilot',                 file: 'pilot-male.png',              category: 'Aviation' },
-  { id: 'pilot-male-2',            label: 'Pilot (Arms Folded)',   file: 'pilot-male-2.png',            category: 'Aviation' },
-  { id: 'flight-attendant-female', label: 'Flight Attendant',      file: 'flight-attendant-female.png', category: 'Aviation' },
-];
+// Empty until silhouette PNGs are added to /public/silhouettes/
+const SILHOUETTES: SilhouetteEntry[] = [];
 
 const SIL_CATEGORIES = ['All', ...Array.from(new Set(SILHOUETTES.map(s => s.category)))];
 const BG_CATEGORIES  = ['All', ...Array.from(new Set(BACKGROUNDS.map(b => b.category)))];
@@ -256,7 +221,7 @@ export const AppImagePickerModal: React.FC<Props> = ({ isOpen, onClose, onInsert
             {/* Header */}
             <div className={cn('flex items-center justify-between px-5 py-4 border-b shrink-0', borderC)}>
               <div>
-                <h2 className="font-black text-sm tracking-tight">App Image Library</h2>
+                <h2 className="font-black text-sm tracking-tight text-white">App Image Library</h2>
                 <p className={cn('text-xs mt-0.5', subText)}>Select an image to insert on the current slide</p>
               </div>
               <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-700/30 transition-colors">

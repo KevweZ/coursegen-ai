@@ -36,6 +36,14 @@ export const DUMMY_COURSE: CourseOutline = {
       ],
     },
     {
+      terminalObjective: 'Given a course summary, the learner will consolidate the key concepts, interactions, and tools covered across all modules.',
+      enablingObjectives: [
+        'The learner will recall the core slide types and player components introduced in Module 1.',
+        'The learner will distinguish between exploratory and assessment interaction types.',
+        'The learner will identify the purpose of each interaction in the context of an eLearning course.',
+      ],
+    },
+    {
       terminalObjective: 'Given a multi-phase workplace scenario, the learner will navigate decision nodes and interpret consequence-based feedback.',
       enablingObjectives: [
         'The learner will select a decision option that reflects sound professional judgment.',
@@ -55,7 +63,6 @@ export const DUMMY_COURSE: CourseOutline = {
     {
       id: 'mod-1',
       title: 'Module 1 — Core Player & Knowledge Checks',
-      description: 'This module introduces the four foundational layers of the NexCourse player — the Slide Canvas, Player Bar, Edit Drawer, and Theme System — and reinforces your understanding through two in-line knowledge checks.',
       slides: [
         {
           id: 'slide-content-1',
@@ -131,7 +138,6 @@ export const DUMMY_COURSE: CourseOutline = {
     {
       id: 'mod-2',
       title: 'Module 2 — Exploratory Interactions',
-      description: 'Explore four interaction types designed to let learners uncover information at their own pace: Accordion for expandable content, Flashcards for self-testing, Timeline for sequenced events, and the Wheel Diagram for layered topic navigation.',
       slides: [
         {
           id: 'slide-accordion',
@@ -208,7 +214,6 @@ export const DUMMY_COURSE: CourseOutline = {
     {
       id: 'mod-3',
       title: 'Module 3 — Assessment Interactions',
-      description: 'This module demonstrates three drag-and-drop and spatial interaction types used to assess knowledge: Sorting for ordering tasks, Matching for connecting terms to definitions, and Hotspot for clicking labeled regions on a visual.',
       slides: [
         {
           id: 'slide-mod3-intro',
@@ -284,7 +289,6 @@ export const DUMMY_COURSE: CourseOutline = {
     {
       id: 'mod-4',
       title: 'Module 4 — Course Summary',
-      description: 'A recap of everything covered in this sandbox course, from core player architecture through exploratory and assessment interactions to the full Decision Simulation experience.',
       slides: [
         {
           id: 'slide-summary',
@@ -302,7 +306,6 @@ export const DUMMY_COURSE: CourseOutline = {
     {
       id: 'mod-5',
       title: 'Module 5 — Decision Simulation',
-      description: 'This module presents a professional-grade workplace decision simulation inspired by SHRM-SCP and ATD CPTD assessment formats. You will navigate multi-phase decision nodes as Jordan Reyes, an Operations Manager facing a high-stakes team and client crisis. Each choice produces a realistic consequence, and your accumulated decisions generate a personalized Decision Profile.',
       slides: [
         {
           id: 'slide-scenario-intro',
