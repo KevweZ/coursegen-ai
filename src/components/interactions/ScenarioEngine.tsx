@@ -121,7 +121,7 @@ function renderMd(text: string): React.ReactNode {
 
 const SituationBlock: React.FC<{ text: string; theme: string }> = ({ text, theme }) => (
   <div className={cn(
-    'rounded-xl border-l-4 border-indigo-500 px-5 py-4 text-sm leading-relaxed whitespace-pre-line',
+    'rounded-xl border-l-4 border-indigo-500 px-5 py-4 text-base leading-relaxed whitespace-pre-line',
     theme === 'light' ? 'bg-slate-50 text-slate-700' : 'bg-slate-800/50 text-slate-300',
   )}>
     {renderMd(text)}
@@ -150,7 +150,7 @@ const OptionCard: React.FC<{
             : 'bg-slate-800/60 border-slate-700 text-slate-200',
         )}
       >
-        <p className="text-sm font-medium leading-relaxed">{option.text}</p>
+        <p className="text-base font-medium leading-relaxed">{option.text}</p>
       </button>
 
       <AnimatePresence>
@@ -171,7 +171,7 @@ const OptionCard: React.FC<{
               <p className={cn('text-[10px] font-black uppercase tracking-widest', isLight ? 'text-amber-600' : 'text-amber-400')}>
                 What happened next
               </p>
-              <p className={cn('text-sm leading-relaxed', isLight ? 'text-amber-900' : 'text-amber-200')}>
+              <p className={cn('text-base leading-relaxed', isLight ? 'text-amber-900' : 'text-amber-200')}>
                 {option.consequence}
               </p>
             </div>
@@ -214,7 +214,7 @@ const MultiOptionCard: React.FC<{
         {checked
           ? <CheckSquare className="w-4 h-4 mt-0.5 shrink-0 text-indigo-400" />
           : <Square className="w-4 h-4 mt-0.5 shrink-0 text-slate-500" />}
-        <p className="text-sm font-medium leading-relaxed">{option.text}</p>
+        <p className="text-base font-medium leading-relaxed">{option.text}</p>
       </button>
 
       <AnimatePresence>
@@ -232,7 +232,7 @@ const MultiOptionCard: React.FC<{
               <p className={cn('text-[10px] font-black uppercase tracking-widest', isLight ? 'text-amber-600' : 'text-amber-400')}>
                 What happened next
               </p>
-              <p className={cn('text-sm leading-relaxed', isLight ? 'text-amber-900' : 'text-amber-200')}>
+              <p className={cn('text-base leading-relaxed', isLight ? 'text-amber-900' : 'text-amber-200')}>
                 {option.consequence}
               </p>
             </div>
@@ -291,12 +291,12 @@ const EndingScreen: React.FC<{
           <p className={cn('text-xs font-black uppercase tracking-wider',
             ending.type === 'success' ? 'text-emerald-500' : ending.type === 'partial' ? 'text-amber-500' : 'text-red-500'
           )}>{typeConfig.label}</p>
-          <h3 className={cn('font-black text-base', isLight ? 'text-slate-900' : 'text-white')}>{ending.title}</h3>
+          <h3 className={cn('font-black text-lg', isLight ? 'text-slate-900' : 'text-white')}>{ending.title}</h3>
         </div>
       </div>
 
       {/* Narrative */}
-      <p className={cn('text-sm leading-relaxed', isLight ? 'text-slate-700' : 'text-slate-300')}>
+      <p className={cn('text-base leading-relaxed', isLight ? 'text-slate-700' : 'text-slate-300')}>
         {ending.narrative}
       </p>
 
@@ -305,7 +305,7 @@ const EndingScreen: React.FC<{
         <p className={cn('text-xs font-black uppercase tracking-wider text-indigo-400')}>Outcomes</p>
         <ul className="space-y-1">
           {ending.outcomes.map((o, i) => (
-            <li key={i} className={cn('flex items-start gap-2 text-sm', isLight ? 'text-slate-700' : 'text-slate-300')}>
+            <li key={i} className={cn('flex items-start gap-2 text-base', isLight ? 'text-slate-700' : 'text-slate-300')}>
               <span className="text-indigo-400 mt-0.5">·</span>{o}
             </li>
           ))}
@@ -342,7 +342,7 @@ const EndingScreen: React.FC<{
       {/* Coaching feedback */}
       <div className={cn('rounded-xl border-l-4 border-indigo-500 px-5 py-4', isLight ? 'bg-indigo-50' : 'bg-indigo-900/20')}>
         <p className="text-xs font-black uppercase tracking-wider text-indigo-400 mb-2">Coaching Insight</p>
-        <p className={cn('text-sm leading-relaxed', isLight ? 'text-slate-700' : 'text-slate-300')}>{ending.competencyFeedback}</p>
+        <p className={cn('text-base leading-relaxed', isLight ? 'text-slate-700' : 'text-slate-300')}>{ending.competencyFeedback}</p>
       </div>
 
       {/* Restart */}
@@ -399,10 +399,10 @@ export const ScenarioEngine: React.FC<Props> = ({ data, theme, onComplete }) => 
         <div className={cn('rounded-xl border p-6 space-y-4', isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-800/40 border-slate-700')}>
           <div>
             <p className="text-xs font-black uppercase tracking-wider text-indigo-400 mb-1">Your Role</p>
-            <p className={cn('font-bold text-sm', isLight ? 'text-slate-900' : 'text-white')}>{data.role}</p>
+            <p className={cn('font-bold text-base', isLight ? 'text-slate-900' : 'text-white')}>{data.role}</p>
           </div>
           <div className={cn('border-t pt-4', isLight ? 'border-slate-200' : 'border-slate-700')}>
-            <p className={cn('text-sm leading-relaxed whitespace-pre-line', isLight ? 'text-slate-700' : 'text-slate-300')}>
+            <p className={cn('text-base leading-relaxed whitespace-pre-line', isLight ? 'text-slate-700' : 'text-slate-300')}>
               {renderMd(data.introduction)}
             </p>
           </div>
@@ -469,7 +469,7 @@ export const ScenarioEngine: React.FC<Props> = ({ data, theme, onComplete }) => 
       <SituationBlock text={node.situation} theme={theme} />
 
       {/* Question */}
-      <p className={cn('font-black text-base leading-snug', isLight ? 'text-slate-900' : 'text-white')}>
+      <p className={cn('font-black text-lg leading-snug', isLight ? 'text-slate-900' : 'text-white')}>
         {node.question}
         {node.type === 'multi' && (
           <span className="ml-2 text-xs font-normal text-indigo-400">(Select {node.multiSelectCount})</span>

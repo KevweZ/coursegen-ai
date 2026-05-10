@@ -111,7 +111,7 @@ export const ModuleOverviewSlide: React.FC<Props> = ({
           className="mb-3 shrink-0"
         >
           <p className="text-sm font-black uppercase tracking-widest mb-1" style={{ color: accent }}>Module {moduleNumber}</p>
-          <h2 className="font-extrabold text-5xl leading-tight" style={{ color: p.titleText }}>Overview</h2>
+          <h2 className="font-extrabold text-6xl leading-tight" style={{ color: p.titleText }}>Overview</h2>
         </motion.div>
 
         {/* Divider */}
@@ -129,7 +129,7 @@ export const ModuleOverviewSlide: React.FC<Props> = ({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.4, delay: 0.15 }}
-            className="text-base leading-relaxed mb-6 shrink-0"
+            className="text-lg leading-relaxed mb-6 shrink-0"
             style={{ color: p.descText }}
           >
             {description}
@@ -168,7 +168,7 @@ export const ModuleOverviewSlide: React.FC<Props> = ({
                       >
                         {i + 1}
                       </span>
-                      <span className="flex-1 font-semibold text-base leading-snug" style={{ color: p.bodyText }}>
+                      <span className="flex-1 font-semibold text-lg leading-snug" style={{ color: p.bodyText }}>
                         {obj.terminalObjective}
                       </span>
                       {hasEO && (
@@ -200,7 +200,7 @@ export const ModuleOverviewSlide: React.FC<Props> = ({
                             {obj.enablingObjectives.map((eo, j) => (
                               <div key={j} className="flex items-start gap-2.5">
                                 <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" style={{ color: accent }} />
-                                <p className="text-sm leading-relaxed" style={{ color: p.subText }}>{eo}</p>
+                                <p className="text-base leading-relaxed" style={{ color: p.subText }}>{eo}</p>
                               </div>
                             ))}
                           </div>
