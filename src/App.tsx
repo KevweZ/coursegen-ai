@@ -51,7 +51,8 @@ import {
   ChevronDown,
   Ear,
   CreditCard,
-  Save
+  Save,
+  Undo2
 } from 'lucide-react';
 import { 
   Accordion, 
@@ -446,6 +447,32 @@ export default function App() {
   const [originalCourse, setOriginalCourse] = useState<any>(null);
   // Per-slide floating images map: slideId -> FloatingImage[]
   const [floatingImagesMap, setFloatingImagesMap] = useState<Record<string, FloatingImage[]>>({});
+
+  // ── Undo history (max 20 snapshots) ─────────────────────────────────────────
+  const MAX_UNDO = 20;
+  type UndoSnapshot = { course: any; floatingImagesMap: Record<string, FloatingImage[]>; courseBg: string | null; };
+  const [undoHistory, setUndoHistory] = useState<UndoSnapshot[]>([]);
+  // Call before any user-triggered mutation to save current state
+  const pushUndo = () => {
+    setUndoHistory(prev => [
+      ...prev.slice(-(MAX_UNDO - 1)),
+      {
+        course: JSON.parse(JSON.stringify(course)),
+        floatingImagesMap: JSON.parse(JSON.stringify(floatingImagesMap)),
+        courseBg,
+      },
+    ]);
+  };
+  const handleUndo = () => {
+    setUndoHistory(prev => {
+      if (prev.length === 0) return prev;
+      const last = prev[prev.length - 1];
+      setCourse(last.course);
+      setFloatingImagesMap(last.floatingImagesMap);
+      setCourseBg(last.courseBg);
+      return prev.slice(0, -1);
+    });
+  };
 
   // Course Details State
   const [pathway] = useState<'corporate'>('corporate');
@@ -1485,7 +1512,7 @@ export default function App() {
                       ),
                     })),
                   };
-                  setCourse(updated);
+                  pushUndo(); setCourse(updated);
                 }}
                 onClose={() => setShowAIEditDrawer(false)}
               />
@@ -1549,7 +1576,7 @@ export default function App() {
               setQcModalOpen(false);
             }}
             onSimplify={(moduleIndex, slideIndex) => {
-              setCourse(simplifySlide(course, moduleIndex, slideIndex));
+              pushUndo(); setCourse(simplifySlide(course, moduleIndex, slideIndex));
               // Remove resolved issue from report
               setQcReport(prev => prev ? {
                 ...prev,
@@ -1567,7 +1594,7 @@ export default function App() {
                 const newData = await regenerateSlideData(slide, course.title ?? '');
                 const cloned = JSON.parse(JSON.stringify(course));
                 cloned.modules[moduleIndex].slides[slideIndex].data = newData;
-                setCourse(cloned);
+                pushUndo(); setCourse(cloned);
                 // Remove the resolved empty-interaction issue
                 setQcReport(prev => prev ? {
                   ...prev,
@@ -1598,7 +1625,7 @@ export default function App() {
             onApply={(confirmedIds) => {
               if (course && qcReport) {
                 const fixed = applyConfirmedFixes(course, confirmedIds, qcReport);
-                setCourse(fixed);
+                pushUndo(); setCourse(fixed);
               }
               // Clear resolved report after applying
               setQcReport(null);
@@ -2357,7 +2384,7 @@ export default function App() {
                          }),
                        })),
                      };
-                     setCourse(reorderedCourse);
+                     pushUndo(); setCourse(reorderedCourse);
                      setOriginalCourse(reorderedCourse);
                      setCurrentSlideIndex(0);
                      setCourseBg('/eLearning Template Backgrounds/Neutral/blue background coffee books_01.png');
@@ -2535,10 +2562,20 @@ export default function App() {
 
                 {/* ── Row 2: Editing tools strip ── */}
                 <div className="h-9 flex items-center justify-end gap-1 pb-1">
+                  {/* Undo */}
+                  <button
+                    title={undoHistory.length > 0 ? `Undo (${undoHistory.length} step${undoHistory.length !== 1 ? 's' : ''} available)` : 'Nothing to undo'}
+                    onClick={handleUndo}
+                    disabled={undoHistory.length === 0}
+                    className="flex items-center gap-1 px-2 py-1 rounded-md border border-slate-600/60 hover:bg-slate-700/30 text-slate-300 text-[11px] font-semibold disabled:opacity-30 disabled:cursor-not-allowed transition-opacity"
+                  >
+                    <Undo2 className="w-3 h-3" /><span>Undo</span>
+                  </button>
+
                   {/* Reset */}
                   <button
                     title="Reset — restore to original generated state"
-                    onClick={() => { if (originalCourse) { setCourse(originalCourse); setCurrentSlideIndex(0); setQuizState({}); setFloatingImagesMap({}); setCourseBg(null); } }}
+                    onClick={() => { if (originalCourse) { setCourse(originalCourse); setCurrentSlideIndex(0); setQuizState({}); setFloatingImagesMap({}); setCourseBg(null); setUndoHistory([]); } }}
                     className="flex items-center gap-1 px-2 py-1 rounded-md border border-amber-700/50 hover:bg-amber-800/20 text-amber-300 text-[11px] font-semibold"
                   >
                     <RotateCw className="w-3 h-3" /><span>Reset</span>
@@ -2599,7 +2636,7 @@ export default function App() {
                                   url: URL.createObjectURL(f),
                                   x: 40 + i * 20, y: 40 + i * 20, width: 320, height: 240,
                                 }));
-                                setFloatingImagesMap(prev => ({ ...prev, [currentSlide?.id]: [...(prev[currentSlide?.id] || []), ...newImgs] }));
+                                pushUndo(); setFloatingImagesMap(prev => ({ ...prev, [currentSlide?.id]: [...(prev[currentSlide?.id] || []), ...newImgs] }));
                                 e.target.value = '';
                               }
                             }}
@@ -3291,7 +3328,7 @@ export default function App() {
                                         url,
                                         x: 40, y: 40, width: 320, height: 240,
                                       };
-                                      setFloatingImagesMap(prev => ({
+                                      pushUndo(); setFloatingImagesMap(prev => ({
                                         ...prev,
                                         [currentSlide.id]: [...(prev[currentSlide.id] || []), newImg],
                                       }));
@@ -3318,10 +3355,10 @@ export default function App() {
                          images={floatingImagesMap[currentSlide?.id] || []}
                          isAuthoring={true}
                          onChange={(imgs) => setFloatingImagesMap(prev => ({ ...prev, [currentSlide?.id]: imgs }))}
-                         onRemove={(id) => setFloatingImagesMap(prev => ({
+                         onRemove={(id) => { pushUndo(); setFloatingImagesMap(prev => ({
                            ...prev,
                            [currentSlide?.id]: (prev[currentSlide?.id] || []).filter(i => i.id !== id)
-                         }))}
+                         })); }}
                        />
                         </motion.div>
                        </AnimatePresence>
@@ -3389,7 +3426,7 @@ export default function App() {
                           url: img.url,
                           x: 40, y: 40, width: 320, height: 240,
                         };
-                        setFloatingImagesMap(prev => ({
+                        pushUndo(); setFloatingImagesMap(prev => ({
                           ...prev,
                           [slideId]: [...(prev[slideId] || []), newImg],
                         }));
@@ -3600,6 +3637,7 @@ export default function App() {
                     onClick={() => {
                       if (editingSlideRef.current) {
                         const latest = editingSlideRef.current;
+                        pushUndo();
                         setCourse((prevCourse: any) => {
                           if (!prevCourse) return prevCourse;
                           return {
