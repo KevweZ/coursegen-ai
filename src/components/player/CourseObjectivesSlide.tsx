@@ -45,27 +45,37 @@ export const CourseObjectivesSlide: React.FC<Props> = ({ objectives, theme }) =>
 
       {/* ── Left decorative panel ──────────────────────────────────────────── */}
       <div
-        className="shrink-0 flex flex-col items-center justify-center gap-4 py-8"
+        className="shrink-0 relative flex flex-col items-center justify-between py-10"
         style={{ width: '22%', backgroundColor: p.leftBg, borderRight: `4px solid ${ACCENT_COLORS[0]}` }}
       >
-        <Target className="w-10 h-10 opacity-60" style={{ color: ACCENT_COLORS[0] }} />
+        {/* Giant watermark icon */}
+        <div className="absolute inset-0 flex items-center justify-center select-none pointer-events-none">
+          <Target style={{ width: '12rem', height: '12rem', opacity: 0.07, color: p.headerText }} />
+        </div>
+
+        {/* Top: Target icon */}
+        <div className="relative z-10">
+          <Target style={{ width: '3.5rem', height: '3.5rem', color: ACCENT_COLORS[0], opacity: 0.85 }} />
+        </div>
+
+        {/* Centre: "Course Objectives" vertical text — large */}
         <div
-          className="text-xs font-black uppercase tracking-[0.25em] opacity-70"
+          className="relative z-10 font-black uppercase opacity-55 text-center px-2"
           style={{
             writingMode: 'vertical-rl',
             transform: 'rotate(180deg)',
             color: p.headerText,
-            letterSpacing: '0.3em',
+            letterSpacing: '0.14em',
+            fontSize: '1.55rem',
+            maxHeight: '72%',
+            overflow: 'hidden',
           }}
         >
           Course Objectives
         </div>
-        <div
-          className="w-12 h-12 rounded-full flex items-center justify-center font-black text-lg"
-          style={{ border: `2px solid ${ACCENT_COLORS[0]}`, color: p.headerText }}
-        >
-          {normalized.length}
-        </div>
+
+        {/* Bottom spacer for visual balance */}
+        <div className="relative z-10 h-14" />
       </div>
 
       {/* ── Right: accordion objective list ───────────────────────────────── */}
