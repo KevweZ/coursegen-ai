@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, Target, CheckCircle2, BookOpen } from 'lucide-react';
+import { ChevronDown, Target, CheckCircle2 } from 'lucide-react';
 import type { TerminalObjectiveGroup } from '../../types/course';
 
 type Theme = 'light' | 'dark' | 'unified';
@@ -46,37 +46,32 @@ export const CourseObjectivesSlide: React.FC<Props> = ({ objectives, theme, modu
 
       {/* ── Left decorative panel ──────────────────────────────────────────── */}
       <div
-        className="shrink-0 relative flex flex-col items-center justify-between py-10"
+        className="shrink-0 relative flex flex-col items-center justify-center py-10"
         style={{ width: '22%', backgroundColor: p.leftBg, borderRight: `4px solid ${ACCENT_COLORS[0]}` }}
       >
-        {/* Giant watermark icon — behind vertical text */}
+        {/* Giant watermark — behind everything */}
         <div className="absolute inset-0 flex items-center justify-center select-none pointer-events-none">
           <Target style={{ width: '12rem', height: '12rem', opacity: 0.07, color: p.headerText }} />
         </div>
 
-        {/* Top: BookOpen icon */}
-        <div className="relative z-10 flex flex-col items-center gap-3">
-          <BookOpen className="opacity-60" style={{ width: '2.5rem', height: '2.5rem', color: ACCENT_COLORS[0] }} />
+        {/* Centre group: Target icon + "Objectives" vertical text */}
+        <div className="relative z-10 flex flex-col items-center gap-5">
+          <Target style={{ width: '3.5rem', height: '3.5rem', color: ACCENT_COLORS[0], opacity: 0.85 }} />
+          <div
+            className="font-black uppercase opacity-55 text-center px-2"
+            style={{
+              writingMode: 'vertical-rl',
+              transform: 'rotate(180deg)',
+              color: p.headerText,
+              letterSpacing: '0.18em',
+              fontSize: '2.4rem',
+              maxHeight: '52%',
+              overflow: 'hidden',
+            }}
+          >
+            Objectives
+          </div>
         </div>
-
-        {/* Centre: "Objectives" vertical text — large, matches Takeaways scale */}
-        <div
-          className="relative z-10 font-black uppercase opacity-55 text-center px-2"
-          style={{
-            writingMode: 'vertical-rl',
-            transform: 'rotate(180deg)',
-            color: p.headerText,
-            letterSpacing: '0.18em',
-            fontSize: '2.4rem',
-            maxHeight: '52%',
-            overflow: 'hidden',
-          }}
-        >
-          Objectives
-        </div>
-
-        {/* Bottom spacer */}
-        <div className="relative z-10 h-14" />
       </div>
 
       {/* ── Right: accordion objective list ───────────────────────────────── */}
