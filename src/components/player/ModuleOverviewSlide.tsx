@@ -69,17 +69,17 @@ export const ModuleOverviewSlide: React.FC<Props> = ({
         {/* Giant background module number */}
         <div
           className="absolute inset-0 flex items-center justify-center font-black select-none pointer-events-none"
-          style={{ fontSize: '10rem', color: p.numText, lineHeight: 1 }}
+          style={{ fontSize: '14rem', color: p.numText, lineHeight: 1 }}
         >
           {moduleNumber}
         </div>
 
         {/* Top: module label */}
-        <div className="relative z-10 flex flex-col items-center gap-2">
-          <BookOpen className="w-8 h-8 opacity-60" style={{ color: accent }} />
-          <p className="text-xs font-black uppercase tracking-[0.2em] opacity-60" style={{ color: p.bodyText }}>Module</p>
+        <div className="relative z-10 flex flex-col items-center gap-3">
+          <BookOpen className="w-10 h-10 opacity-60" style={{ color: accent }} />
+          <p className="text-sm font-black uppercase tracking-[0.2em] opacity-60" style={{ color: p.bodyText }}>Module</p>
           <div
-            className="w-12 h-12 rounded-full flex items-center justify-center font-black text-xl"
+            className="w-16 h-16 rounded-full flex items-center justify-center font-black text-2xl"
             style={{ border: `2px solid ${accent}`, color: accent }}
           >
             {moduleNumber}
@@ -88,7 +88,7 @@ export const ModuleOverviewSlide: React.FC<Props> = ({
 
         {/* Bottom: topic name vertical */}
         <div
-          className="relative z-10 text-xs font-bold uppercase tracking-[0.18em] opacity-50 text-center px-2"
+          className="relative z-10 text-sm font-bold uppercase tracking-[0.18em] opacity-50 text-center px-2"
           style={{
             writingMode: 'vertical-rl',
             transform: 'rotate(180deg)',
@@ -102,16 +102,16 @@ export const ModuleOverviewSlide: React.FC<Props> = ({
       </div>
 
       {/* ── Right content panel ────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col px-8 py-8 overflow-hidden">
+      <div className="flex-1 flex flex-col px-10 py-10 overflow-hidden">
         {/* Title */}
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="mb-2 shrink-0"
+          className="mb-3 shrink-0"
         >
-          <p className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: accent }}>Module {moduleNumber}</p>
-          <h2 className="font-extrabold text-3xl leading-tight" style={{ color: p.titleText }}>Overview</h2>
+          <p className="text-sm font-black uppercase tracking-widest mb-1" style={{ color: accent }}>Module {moduleNumber}</p>
+          <h2 className="font-extrabold text-5xl leading-tight" style={{ color: p.titleText }}>Overview</h2>
         </motion.div>
 
         {/* Divider */}
@@ -119,7 +119,7 @@ export const ModuleOverviewSlide: React.FC<Props> = ({
           initial={{ scaleX: 0 }}
           animate={{ scaleX: 1 }}
           transition={{ duration: 0.5, delay: 0.1 }}
-          className="h-0.5 mb-4 rounded shrink-0 origin-left"
+          className="h-0.5 mb-5 rounded shrink-0 origin-left"
           style={{ backgroundColor: `${accent}50` }}
         />
 
@@ -129,7 +129,7 @@ export const ModuleOverviewSlide: React.FC<Props> = ({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.4, delay: 0.15 }}
-            className="text-sm leading-relaxed mb-5 shrink-0"
+            className="text-base leading-relaxed mb-6 shrink-0"
             style={{ color: p.descText }}
           >
             {description}
@@ -139,10 +139,10 @@ export const ModuleOverviewSlide: React.FC<Props> = ({
         {/* Objectives section */}
         {normalized.length > 0 && (
           <>
-            <p className="text-xs font-black uppercase tracking-widest mb-3 shrink-0" style={{ color: accent }}>
+            <p className="text-sm font-black uppercase tracking-widest mb-4 shrink-0" style={{ color: accent }}>
               Module Objectives
             </p>
-            <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+            <div className="flex-1 overflow-y-auto space-y-3 pr-1">
               {normalized.map((obj, i) => {
                 const isOpen   = expanded === i;
                 const hasEO    = obj.enablingObjectives.length > 0;
@@ -155,7 +155,7 @@ export const ModuleOverviewSlide: React.FC<Props> = ({
                   >
                     <button
                       onClick={() => hasEO && setExpanded(isOpen ? null : i)}
-                      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all"
+                      className="w-full flex items-center gap-4 px-5 py-4 rounded-xl text-left transition-all"
                       style={{
                         border: `1.5px solid ${isOpen ? accent : p.rowBorder}`,
                         backgroundColor: isOpen ? `${accent}18` : 'transparent',
@@ -163,12 +163,12 @@ export const ModuleOverviewSlide: React.FC<Props> = ({
                       }}
                     >
                       <span
-                        className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center font-black text-sm"
+                        className="shrink-0 w-11 h-11 rounded-full flex items-center justify-center font-black text-base"
                         style={{ backgroundColor: `${accent}30`, color: accent }}
                       >
                         {i + 1}
                       </span>
-                      <span className="flex-1 font-semibold text-sm leading-snug" style={{ color: p.bodyText }}>
+                      <span className="flex-1 font-semibold text-base leading-snug" style={{ color: p.bodyText }}>
                         {obj.terminalObjective}
                       </span>
                       {hasEO && (
@@ -178,7 +178,7 @@ export const ModuleOverviewSlide: React.FC<Props> = ({
                           className="shrink-0"
                           style={{ color: p.subText }}
                         >
-                          <ChevronDown className="w-4 h-4" />
+                          <ChevronDown className="w-5 h-5" />
                         </motion.span>
                       )}
                     </button>
@@ -194,13 +194,13 @@ export const ModuleOverviewSlide: React.FC<Props> = ({
                           className="overflow-hidden"
                         >
                           <div
-                            className="ml-12 mr-2 mb-1 px-4 py-3 rounded-b-xl space-y-2"
+                            className="ml-14 mr-2 mb-2 px-5 py-4 rounded-b-xl space-y-2.5"
                             style={{ backgroundColor: p.expandBg, borderLeft: `2px solid ${accent}` }}
                           >
                             {obj.enablingObjectives.map((eo, j) => (
-                              <div key={j} className="flex items-start gap-2">
-                                <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" style={{ color: accent }} />
-                                <p className="text-xs leading-relaxed" style={{ color: p.subText }}>{eo}</p>
+                              <div key={j} className="flex items-start gap-2.5">
+                                <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" style={{ color: accent }} />
+                                <p className="text-sm leading-relaxed" style={{ color: p.subText }}>{eo}</p>
                               </div>
                             ))}
                           </div>
