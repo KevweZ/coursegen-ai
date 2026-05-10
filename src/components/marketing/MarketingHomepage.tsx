@@ -330,8 +330,14 @@ function JeopardyPreview() {
 function ShowcaseScroller({ children }: { children: React.ReactNode }) {
   const scrollRef     = useRef<HTMLDivElement>(null);
   const rafRef        = useRef<number | null>(null);
-  const dirRef        = useRef<0 | 1 | -1>(0);   // active scroll direction
-  const speedRef      = useRef<number>(3);        // px per frame
+  const dirRef        = useRef<0 | 1 | -1>(0);
+  const speedRef      = useRef<number>(3);
+
+  // Drag-to-scroll
+  const isDraggingRef = useRef(false);
+  const dragStartX    = useRef(0);
+  const scrollStart   = useRef(0);
+  const [isGrabbing, setIsGrabbing] = useState(false);
 
   const [canScrollLeft,  setCanScrollLeft]  = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
@@ -343,9 +349,8 @@ function ShowcaseScroller({ children }: { children: React.ReactNode }) {
     setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 8);
   };
 
-  // rAF scroll loop — only runs while dirRef.current !== 0
   const startLoop = () => {
-    if (rafRef.current !== null) return; // already running
+    if (rafRef.current !== null) return;
     const tick = () => {
       if (dirRef.current === 0) { rafRef.current = null; return; }
       if (scrollRef.current) {
@@ -359,37 +364,40 @@ function ShowcaseScroller({ children }: { children: React.ReactNode }) {
 
   const stopLoop = () => {
     if (rafRef.current !== null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
-    dirRef.current  = 0;
+    dirRef.current   = 0;
     speedRef.current = 3;
   };
 
-  // Clean up on unmount
   useEffect(() => () => stopLoop(), []);
 
   const makeHandlers = (dir: 1 | -1) => ({
-    // Hover start → normal speed scroll
-    onMouseEnter: () => {
-      dirRef.current   = dir;
-      speedRef.current = 3;
-      startLoop();
-    },
-    // Mouse off → stop immediately, stay at current position
+    onMouseEnter: () => { dirRef.current = dir; speedRef.current = 3; startLoop(); },
     onMouseLeave: () => stopLoop(),
-    // Hold start → fast scroll (overrides hover speed)
-    onMouseDown: (e: React.MouseEvent) => {
-      e.preventDefault();         // prevent button focus ring flash
-      speedRef.current = 12;      // fast lane
-    },
-    // Hold release → back to normal hover speed (still hovering)
-    onMouseUp: () => {
-      speedRef.current = 3;
-    },
+    onMouseDown:  (e: React.MouseEvent) => { e.preventDefault(); speedRef.current = 12; },
+    onMouseUp:    () => { speedRef.current = 3; },
   });
 
   const jumpBy = (dir: 1 | -1) => {
     if (!scrollRef.current) return;
     scrollRef.current.scrollBy({ left: dir * 360, behavior: 'smooth' });
   };
+
+  // Pointer drag handlers
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    isDraggingRef.current = true;
+    dragStartX.current    = e.clientX;
+    scrollStart.current   = el.scrollLeft;
+    el.setPointerCapture(e.pointerId);
+    setIsGrabbing(true);
+  };
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingRef.current || !scrollRef.current) return;
+    scrollRef.current.scrollLeft = scrollStart.current - (e.clientX - dragStartX.current);
+    updateArrows();
+  };
+  const onPointerUp = () => { isDraggingRef.current = false; setIsGrabbing(false); };
 
   const btnBase =
     'absolute top-1/2 -translate-y-1/2 z-20 ' +
@@ -405,9 +413,7 @@ function ShowcaseScroller({ children }: { children: React.ReactNode }) {
         {canScrollLeft && (
           <motion.button
             key="arr-left"
-            initial={{ opacity: 0, x: 10 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 10 }}
+            initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }}
             transition={{ duration: 0.2 }}
             onClick={() => jumpBy(-1)}
             {...makeHandlers(-1)}
@@ -424,9 +430,7 @@ function ShowcaseScroller({ children }: { children: React.ReactNode }) {
         {canScrollRight && (
           <motion.button
             key="arr-right"
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -10 }}
+            initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}
             transition={{ duration: 0.2 }}
             onClick={() => jumpBy(1)}
             {...makeHandlers(1)}
@@ -438,22 +442,19 @@ function ShowcaseScroller({ children }: { children: React.ReactNode }) {
         )}
       </AnimatePresence>
 
-      {/* Edge fade gradients */}
-      {canScrollLeft && (
-        <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-16 z-10
-          bg-gradient-to-r from-slate-900/80 to-transparent" />
-      )}
-      {canScrollRight && (
-        <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-16 z-10
-          bg-gradient-to-l from-slate-900/80 to-transparent" />
-      )}
+      {canScrollLeft  && <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-16 z-10 bg-gradient-to-r from-slate-900/80 to-transparent" />}
+      {canScrollRight && <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-16 z-10 bg-gradient-to-l from-slate-900/80 to-transparent" />}
 
-      {/* Scrollable strip — native scrollbar hidden */}
+      {/* Scrollable strip — arrows + click-and-drag */}
       <div
         ref={scrollRef}
         onScroll={updateArrows}
-        className="flex gap-5 overflow-x-auto pb-4 px-1"
-        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        className="flex gap-5 overflow-x-auto pb-4 px-1 select-none"
+        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', cursor: isGrabbing ? 'grabbing' : 'grab' }}
       >
         {children}
       </div>
@@ -1053,7 +1054,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology }: Pro
         {/* Background video — full height, no vertical clipping */}
         <div className="absolute inset-0 z-0 pointer-events-none">
           <video src="/landing_background_4.mp4" autoPlay loop muted playsInline
-            className="absolute top-0 left-0 w-full h-full object-cover opacity-20 mix-blend-screen" />
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-full w-auto max-w-none opacity-20 mix-blend-screen" />
           <div className="absolute inset-0 bg-slate-950/50" />
         </div>
 
@@ -1134,14 +1135,20 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology }: Pro
               initial={{ opacity:0, y:20 }} animate={{ opacity:1, y:0 }}
               transition={{ duration:0.6, delay:0.48 }}
             >
+              {/* Row 1 */}
               <ShowcaseScroller>
                 <ShowcaseCard label="Accordion" icon={Layers} accent="border-indigo-700/40" preview={<AccordionPreview />} />
-                <ShowcaseCard label="Flashcards" icon={BookOpen} accent="border-purple-700/40" preview={<FlashcardPreview />} />
                 <ShowcaseCard label="Jeopardy Game" icon={Gamepad2} accent="border-amber-700/40" wide preview={<JeopardyPreview />} />
-                <ShowcaseCard label="Image Background Template" icon={Image} accent="border-rose-700/40" wide preview={<ImageBackgroundTemplatePreview />} />
-                <ShowcaseCard label="Image Editor - Multi-Image Layout" icon={Crop} accent="border-violet-700/40" wide preview={<MultiImageEditorPreview />} />
                 <ShowcaseCard label="Branching Scenario" icon={Globe} accent="border-cyan-700/40" wide preview={<BranchingScenarioPreview />} />
               </ShowcaseScroller>
+              {/* Row 2 */}
+              <div className="mt-5">
+                <ShowcaseScroller>
+                  <ShowcaseCard label="Flashcards" icon={BookOpen} accent="border-purple-700/40" preview={<FlashcardPreview />} />
+                  <ShowcaseCard label="Image Background Template" icon={Image} accent="border-rose-700/40" wide preview={<ImageBackgroundTemplatePreview />} />
+                  <ShowcaseCard label="Image Editor - Multi-Image Layout" icon={Crop} accent="border-violet-700/40" wide preview={<MultiImageEditorPreview />} />
+                </ShowcaseScroller>
+              </div>
             </motion.div>
           </div>
 

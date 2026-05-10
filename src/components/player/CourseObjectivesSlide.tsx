@@ -54,20 +54,9 @@ export const CourseObjectivesSlide: React.FC<Props> = ({ objectives, theme, modu
           <Target style={{ width: '12rem', height: '12rem', opacity: 0.07, color: p.headerText }} />
         </div>
 
-        {/* Top: BookOpen + "Module" label + number circle (mirrors ModuleOverviewSlide) */}
+        {/* Top: BookOpen icon */}
         <div className="relative z-10 flex flex-col items-center gap-3">
           <BookOpen className="opacity-60" style={{ width: '2.5rem', height: '2.5rem', color: ACCENT_COLORS[0] }} />
-          <p className="text-sm font-black uppercase tracking-[0.2em] opacity-60" style={{ color: p.headerText }}>
-            Module
-          </p>
-          {moduleNumber != null && moduleNumber > 0 && (
-            <div
-              className="w-16 h-16 rounded-full flex items-center justify-center font-black text-2xl"
-              style={{ border: `2px solid ${ACCENT_COLORS[0]}`, color: ACCENT_COLORS[0] }}
-            >
-              {moduleNumber}
-            </div>
-          )}
         </div>
 
         {/* Centre: "Objectives" vertical text — large, matches Takeaways scale */}

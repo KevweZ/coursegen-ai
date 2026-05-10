@@ -88,12 +88,14 @@ export const ModuleOverviewSlide: React.FC<Props> = ({
 
         {/* Bottom: topic name vertical */}
         <div
-          className="relative z-10 text-sm font-bold uppercase tracking-[0.18em] opacity-50 text-center px-2"
+          className="relative z-10 font-bold uppercase opacity-50 text-center px-2"
           style={{
             writingMode: 'vertical-rl',
             transform: 'rotate(180deg)',
             color: p.bodyText,
-            maxHeight: '60%',
+            letterSpacing: '0.14em',
+            fontSize: '1.9rem',
+            maxHeight: '62%',
             overflow: 'hidden',
           }}
         >
