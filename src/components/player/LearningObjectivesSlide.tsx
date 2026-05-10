@@ -1,5 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import { Lightbulb } from 'lucide-react';
 
 type Theme = 'light' | 'dark' | 'unified';
 
@@ -18,60 +19,49 @@ interface LearningObjectivesSlideProps {
   theme: Theme;
 }
 
-const THEME_LEFT_BG: Record<Theme, string> = {
-  light:   '#1e3a8a',
-  dark:    '#1e1b4b',
-  unified: '#2e1065',
-};
-const THEME_PRIMARY_BAR: Record<Theme, string> = {
-  light:   '#1e3a8a',
-  dark:    '#3730a3',
-  unified: '#4c1d95',
-};
-const THEME_ACCENT_BAR: Record<Theme, string> = {
-  light:   '#f59e0b',
-  dark:    '#818cf8',
-  unified: '#a78bfa',
-};
-const THEME_CIRCLE: Record<Theme, string> = {
-  light:   '#1e3a8a',
-  dark:    '#818cf8',
-  unified: '#a78bfa',
-};
-const THEME_TITLE_COLOR: Record<Theme, string> = {
-  light:   '#1e3a8a',
-  dark:    '#818cf8',
-  unified: '#a78bfa',
-};
-const THEME_BODY_BG: Record<Theme, string> = {
-  light:   '#f8fafc',
-  dark:    '#0f172a',
-  unified: '#1e1b4b',
-};
-const THEME_BODY_TEXT: Record<Theme, string> = {
-  light:   '#374151',
-  dark:    '#cbd5e1',
-  unified: '#c4b5fd',
-};
-const THEME_HEADER_TEXT: Record<Theme, string> = {
-  light:   '#1e3a8a',
-  dark:    '#818cf8',
-  unified: '#a78bfa',
+// ── Theme tokens ───────────────────────────────────────────────────────────────
+const PANELS: Record<Theme, {
+  leftBg: string; rightBg: string;
+  numText: string; titleText: string;
+  bodyText: string; subText: string;
+  labelText: string; rowBorder: string;
+}> = {
+  dark: {
+    leftBg:   '#1e1b4b', rightBg:  '#0f172a',
+    numText:  'rgba(255,255,255,0.07)',
+    titleText: '#818cf8', bodyText: '#e2e8f0',
+    subText:  '#94a3b8',  labelText: '#cbd5e1',
+    rowBorder: 'rgba(255,255,255,0.09)',
+  },
+  light: {
+    leftBg:   '#1e3a8a', rightBg:  '#f8fafc',
+    numText:  'rgba(255,255,255,0.08)',
+    titleText: '#1e3a8a', bodyText: '#1e293b',
+    subText:  '#475569',  labelText: '#334155',
+    rowBorder: 'rgba(0,0,0,0.08)',
+  },
+  unified: {
+    leftBg:   '#2e1065', rightBg:  '#1e1b4b',
+    numText:  'rgba(255,255,255,0.07)',
+    titleText: '#a78bfa', bodyText: '#e0e7ff',
+    subText:  '#a5b4fc',  labelText: '#c4b5fd',
+    rowBorder: 'rgba(167,139,250,0.15)',
+  },
 };
 
+const ACCENT = '#818cf8'; // default indigo accent (overridden by accentColor prop)
+
 /**
- * Parse a raw markdown-formatted string into plain text.
- * Strips: ## headings, **bold markers**, leading emoji, ✅ ☑ etc.
+ * Strip markdown artefacts and split "Label — Body" into parts.
  */
 function parseObjectiveText(raw: string): { label: string; content: string } {
   let text = raw
-    .replace(/^#{1,6}\s+/, '')          // strip ## headers
-    .replace(/\*\*(.*?)\*\*/g, '$1')    // **bold** → plain
-    .replace(/__(.*?)__/g, '$1')        // __bold__ → plain
-    .replace(/^[✅☑✓•\-]\s*/u, '')     // strip leading emoji/bullets
+    .replace(/^#{1,6}\s+/, '')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/__(.*?)__/g, '$1')
+    .replace(/^[✅☑✓•\-]\s*/u, '')
     .trim();
 
-  // Split on " — " or " - " to get label vs body
   const parts = text.split(/\s[—\-]\s/);
   if (parts.length >= 2) {
     return { label: parts[0].trim(), content: parts.slice(1).join(' — ').trim() };
@@ -79,53 +69,115 @@ function parseObjectiveText(raw: string): { label: string; content: string } {
   return { label: text, content: '' };
 }
 
+// ── Component ──────────────────────────────────────────────────────────────────
 export const LearningObjectivesSlide: React.FC<LearningObjectivesSlideProps> = ({
   title,
   objectives,
   accentColor,
   theme,
 }) => {
-  const leftBg      = accentColor || THEME_LEFT_BG[theme];
-  const primaryBar  = THEME_PRIMARY_BAR[theme];
-  const accentBar   = accentColor ? `${accentColor}bb` : THEME_ACCENT_BAR[theme];
-  const circleColor = THEME_CIRCLE[theme];
-  const titleColor  = THEME_TITLE_COLOR[theme];
-  const bodyBg      = THEME_BODY_BG[theme];
-  const bodyText    = THEME_BODY_TEXT[theme];
-  const headerText  = THEME_HEADER_TEXT[theme];
+  const p       = PANELS[theme] || PANELS.dark;
+  const accent  = accentColor || ACCENT;
+
+  // Strip "Key Takeaways — " / "Key Takeaways - " prefix so the h2 shows only
+  // the meaningful slide title (e.g. "Player Architecture" not "Key Takeaways — Player Architecture")
+  const cleanTitle = title.replace(/^Key\s+Takeaways\s*[—\-]\s*/i, '').trim();
 
   return (
-    <div className="w-full h-full flex flex-row overflow-hidden">
-      {/* Left color panel */}
-      <div
-        className="shrink-0"
-        style={{ width: '26%', backgroundColor: leftBg }}
-      />
+    <div className="w-full h-full flex overflow-hidden" style={{ backgroundColor: p.rightBg }}>
 
-      {/* Split border */}
-      <div className="flex flex-row shrink-0">
-        <div style={{ width: '8px',  backgroundColor: primaryBar, height: '100%' }} />
-        <div style={{ width: '14px', backgroundColor: accentBar,  height: '100%' }} />
+      {/* ── Left decorative panel (mirrors ModuleOverviewSlide style) ────────── */}
+      <div
+        className="shrink-0 relative flex flex-col items-center justify-between py-10"
+        style={{ width: '22%', backgroundColor: p.leftBg, borderRight: `4px solid ${accent}` }}
+      >
+        {/* Giant watermark — lightbulb shape built with giant opacity text */}
+        <div
+          className="absolute inset-0 flex items-center justify-center select-none pointer-events-none"
+          style={{ color: p.numText }}
+        >
+          <Lightbulb
+            style={{ width: '11rem', height: '11rem', opacity: 0.13 }}
+            strokeWidth={1.2}
+          />
+        </div>
+
+        {/* Top: icon + "KEY" label */}
+        <div className="relative z-10 flex flex-col items-center gap-3">
+          <Lightbulb
+            className="opacity-70"
+            style={{ width: '2.5rem', height: '2.5rem', color: accent }}
+          />
+          <p
+            className="text-[11px] font-black uppercase tracking-[0.22em] opacity-60 text-center"
+            style={{ color: p.bodyText }}
+          >
+            Key
+          </p>
+        </div>
+
+        {/* Centre: "KEY TAKEAWAYS" vertical text */}
+        <div
+          className="relative z-10 font-black uppercase opacity-55 text-center px-2"
+          style={{
+            writingMode: 'vertical-rl',
+            transform: 'rotate(180deg)',
+            color: p.bodyText,
+            letterSpacing: '0.2em',
+            fontSize: '0.72rem',
+            maxHeight: '55%',
+            overflow: 'hidden',
+          }}
+        >
+          Takeaways
+        </div>
+
+        {/* Bottom: small accent pill showing item count */}
+        <div
+          className="relative z-10 w-12 h-12 rounded-full flex items-center justify-center font-black text-lg"
+          style={{ border: `2px solid ${accent}`, color: accent }}
+        >
+          {objectives.length}
+        </div>
       </div>
 
-      {/* Right content panel */}
-      <div
-        className="flex-1 flex flex-col justify-start px-8 py-8 overflow-hidden"
-        style={{ backgroundColor: bodyBg }}
-      >
-        {/* Slide title header */}
-        <h2
-          className="font-extrabold text-2xl mb-6 leading-tight"
-          style={{ color: headerText }}
-        >
-          {title}
-        </h2>
+      {/* ── Right content panel ────────────────────────────────────────────────── */}
+      <div className="flex-1 flex flex-col px-10 py-10 overflow-hidden">
 
-        {/* Objectives list */}
-        <div className="flex flex-col gap-5 overflow-y-auto">
+        {/* Super-label above title */}
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="mb-3 shrink-0"
+        >
+          <p
+            className="text-sm font-black uppercase tracking-widest mb-1"
+            style={{ color: accent }}
+          >
+            Key Takeaways
+          </p>
+          <h2
+            className="font-extrabold text-5xl leading-tight"
+            style={{ color: p.titleText }}
+          >
+            {cleanTitle || 'Key Takeaways'}
+          </h2>
+        </motion.div>
+
+        {/* Accent divider */}
+        <motion.div
+          initial={{ scaleX: 0 }}
+          animate={{ scaleX: 1 }}
+          transition={{ duration: 0.5, delay: 0.1 }}
+          className="h-0.5 mb-6 rounded shrink-0 origin-left"
+          style={{ backgroundColor: `${accent}50` }}
+        />
+
+        {/* Takeaway items */}
+        <div className="flex-1 overflow-y-auto space-y-3 pr-1">
           {objectives.map((obj, i) => {
-            // Parse raw content which may contain markdown
-            const rawLabel = obj.label || obj.title || '';
+            const rawLabel   = obj.label || obj.title || '';
             const rawContent = obj.content || obj.description || '';
             const parsed = rawLabel
               ? { label: parseObjectiveText(rawLabel).label, content: rawContent }
@@ -134,38 +186,37 @@ export const LearningObjectivesSlide: React.FC<LearningObjectivesSlideProps> = (
             return (
               <motion.div
                 key={obj.id || i}
-                className="flex items-start gap-4"
-                initial={{ opacity: 0, x: -12 }}
+                className="flex items-start gap-4 px-5 py-4 rounded-xl"
+                style={{
+                  border: `1.5px solid ${p.rowBorder}`,
+                  backgroundColor: 'transparent',
+                }}
+                initial={{ opacity: 0, x: -16 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.35, delay: i * 0.08 }}
+                transition={{ duration: 0.32, delay: i * 0.08 + 0.15 }}
               >
-                {/* Circle number */}
-                <div
-                  className="shrink-0 flex items-center justify-center rounded-full font-bold text-xl"
-                  style={{
-                    width: '50px',
-                    height: '50px',
-                    border: `2.5px solid ${circleColor}`,
-                    color: circleColor,
-                  }}
+                {/* Numbered circle */}
+                <span
+                  className="shrink-0 w-11 h-11 rounded-full flex items-center justify-center font-black text-base"
+                  style={{ backgroundColor: `${accent}28`, color: accent }}
                 >
                   {i + 1}
-                </div>
+                </span>
 
                 {/* Label + body */}
-                <div className="flex flex-col justify-center min-w-0">
+                <div className="flex flex-col justify-center min-w-0 gap-0.5">
                   {parsed.label && (
                     <p
-                      className="font-bold text-sm uppercase tracking-wide leading-snug"
-                      style={{ color: titleColor }}
+                      className="font-bold text-base uppercase tracking-wide leading-snug"
+                      style={{ color: p.titleText }}
                     >
                       {parsed.label}
                     </p>
                   )}
                   {parsed.content && (
                     <p
-                      className="text-sm mt-0.5 leading-relaxed"
-                      style={{ color: bodyText }}
+                      className="text-base leading-relaxed"
+                      style={{ color: p.labelText }}
                     >
                       {parsed.content}
                     </p>
