@@ -1052,7 +1052,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology }: Pro
       <section className="relative min-h-[92vh] flex flex-col items-center justify-center text-center px-6 pt-8 pb-24 overflow-hidden">
         {/* Background video — full height, no vertical clipping */}
         <div className="absolute inset-0 z-0 pointer-events-none">
-          <video src="/landing_background_3.mp4" autoPlay loop muted playsInline
+          <video src="/landing_background_4.mp4" autoPlay loop muted playsInline
             className="absolute top-0 left-0 w-full h-full object-cover opacity-20 mix-blend-screen" />
           <div className="absolute inset-0 bg-slate-950/50" />
         </div>
