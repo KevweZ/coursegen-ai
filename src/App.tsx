@@ -447,10 +447,12 @@ export default function App() {
   const [originalCourse, setOriginalCourse] = useState<any>(null);
   // Per-slide floating images map: slideId -> FloatingImage[]
   const [floatingImagesMap, setFloatingImagesMap] = useState<Record<string, FloatingImage[]>>({});
+  // Edits to synthetic slides (module-overview, etc.) that don't live in course.modules
+  const [syntheticSlideOverrides, setSyntheticSlideOverrides] = useState<Record<string, {content?: string; voiceOverText?: string}>>({});
 
   // ── Undo history (max 20 snapshots) ─────────────────────────────────────────
   const MAX_UNDO = 20;
-  type UndoSnapshot = { course: any; floatingImagesMap: Record<string, FloatingImage[]>; courseBg: string | null; };
+  type UndoSnapshot = { course: any; floatingImagesMap: Record<string, FloatingImage[]>; courseBg: string | null; syntheticSlideOverrides: Record<string, any>; };
   const [undoHistory, setUndoHistory] = useState<UndoSnapshot[]>([]);
   // Call before any user-triggered mutation to save current state
   const pushUndo = () => {
@@ -460,6 +462,7 @@ export default function App() {
         course: JSON.parse(JSON.stringify(course)),
         floatingImagesMap: JSON.parse(JSON.stringify(floatingImagesMap)),
         courseBg,
+        syntheticSlideOverrides: JSON.parse(JSON.stringify(syntheticSlideOverrides)),
       },
     ]);
   };
@@ -470,6 +473,7 @@ export default function App() {
       setCourse(last.course);
       setFloatingImagesMap(last.floatingImagesMap);
       setCourseBg(last.courseBg);
+      setSyntheticSlideOverrides(last.syntheticSlideOverrides || {});
       return prev.slice(0, -1);
     });
   };
@@ -589,7 +593,9 @@ export default function App() {
             id: `__module-overview-${modNum}__`,
             title: `Module ${modNum} — Overview`,
             type: 'module-overview' as any,
-            content: m.description || '',
+            // Merge any user edits stored in syntheticSlideOverrides
+            content: syntheticSlideOverrides[`__module-overview-${modNum}__`]?.content ?? (m.description || ''),
+            voiceOverText: syntheticSlideOverrides[`__module-overview-${modNum}__`]?.voiceOverText,
             _moduleNumber: modNum,
             _moduleTitle:  m.title || `Module ${modNum}`,
             _objectives: moduleObj ? [moduleObj] : [],
@@ -1340,7 +1346,7 @@ export default function App() {
                             setAdminDropdownOpen(false);
                             setCourse(DUMMY_COURSE); setOriginalCourse(DUMMY_COURSE);
                             setCurrentSlideIndex(0); setQuizState({}); setTheme('dark'); setViewMode('desktop');
-                            setFloatingImagesMap({}); setCourseBg('/eLearning Template Backgrounds/Neutral/blue background coffee books_01.png');
+                            setFloatingImagesMap({}); setSyntheticSlideOverrides({}); setCourseBg('/eLearning Template Backgrounds/Neutral/blue background coffee books_01.png');
                             setIsSandboxMode(true); setShowPlayerProperties(false);
                             setExamQuestions(DUMMY_EXAM_QUESTIONS); setExamConfig(DUMMY_COURSE.examConfig!);
                             setExamPhase('idle'); setHighestVisitedIndex(0);
@@ -1494,9 +1500,9 @@ export default function App() {
 
           {/* AI Edit Drawer — scenario and game-template slides */}
           <AnimatePresence>
-            {showAIEditDrawer && currentSlide && (currentSlide.type === 'scenario' || currentSlide.type === 'game-template') && (
+            {showAIEditDrawer && currentSlide && (['scenario', 'game-template', 'knowledge-check', 'mastery-exam'].includes(currentSlide.type)) && (
               <AIEditDrawer
-                slideType={currentSlide.type as 'scenario' | 'game-template'}
+                slideType={currentSlide.type as any}
                 slideTitle={currentSlide.title}
                 currentData={currentSlide.data ?? {}}
                 courseContext={course?.title ?? prompt}
@@ -2575,7 +2581,7 @@ export default function App() {
                   {/* Reset */}
                   <button
                     title="Reset — restore to original generated state"
-                    onClick={() => { if (originalCourse) { setCourse(originalCourse); setCurrentSlideIndex(0); setQuizState({}); setFloatingImagesMap({}); setCourseBg(null); setUndoHistory([]); } }}
+                    onClick={() => { if (originalCourse) { setCourse(originalCourse); setCurrentSlideIndex(0); setQuizState({}); setFloatingImagesMap({}); setCourseBg(null); setUndoHistory([]); setSyntheticSlideOverrides({}); } }}
                     className="flex items-center gap-1 px-2 py-1 rounded-md border border-amber-700/50 hover:bg-amber-800/20 text-amber-300 text-[11px] font-semibold"
                   >
                     <RotateCw className="w-3 h-3" /><span>Reset</span>
@@ -2594,6 +2600,17 @@ export default function App() {
 
                   {/* Edit via AI — scenario and game-template slides only */}
                   {(currentSlide?.type === 'scenario' || currentSlide?.type === 'game-template') && (
+                    <button
+                      title="Edit via AI — make targeted changes to this interaction using plain language"
+                      onClick={() => setShowAIEditDrawer(true)}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-cyan-700/50 hover:bg-cyan-800/20 text-cyan-300 text-[11px] font-semibold"
+                    >
+                      <Sparkles className="w-3 h-3" /><span>Edit via AI</span>
+                    </button>
+                  )}
+
+                  {/* Edit via AI — quiz, exam, knowledge-check slides */}
+                  {(['knowledge-check', 'mastery-exam'].includes(currentSlide?.type ?? '')) && (
                     <button
                       title="Edit via AI — make targeted changes to this interaction using plain language"
                       onClick={() => setShowAIEditDrawer(true)}
@@ -3638,16 +3655,25 @@ export default function App() {
                       if (editingSlideRef.current) {
                         const latest = editingSlideRef.current;
                         pushUndo();
-                        setCourse((prevCourse: any) => {
-                          if (!prevCourse) return prevCourse;
-                          return {
-                            ...prevCourse,
-                            modules: prevCourse.modules.map((m: any) => ({
-                              ...m,
-                              slides: m.slides.map((s: any) => s.id === latest.id ? latest : s)
-                            })),
-                          };
-                        });
+                        // Synthetic slides (module-overview etc.) don't exist in course.modules.
+                        // Route their edits to syntheticSlideOverrides instead.
+                        if (latest.id?.match(/^__module-overview-\d+__$/)) {
+                          setSyntheticSlideOverrides(prev => ({
+                            ...prev,
+                            [latest.id]: { content: latest.content, voiceOverText: latest.voiceOverText },
+                          }));
+                        } else {
+                          setCourse((prevCourse: any) => {
+                            if (!prevCourse) return prevCourse;
+                            return {
+                              ...prevCourse,
+                              modules: prevCourse.modules.map((m: any) => ({
+                                ...m,
+                                slides: m.slides.map((s: any) => s.id === latest.id ? latest : s)
+                              })),
+                            };
+                          });
+                        }
                       }
                       setEditingSlide(null);
                     }}

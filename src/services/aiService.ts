@@ -854,7 +854,7 @@ Return ONLY the JSON object.`;
 // ── AI-powered slide data editing ─────────────────────────────────────────────
 
 export async function editSlideDataViaAI(
-  slideType: 'scenario' | 'game-template',
+  slideType: 'scenario' | 'game-template' | 'knowledge-check' | 'mastery-exam',
   currentData: any,
   userRequest: string,
   courseContext: string,

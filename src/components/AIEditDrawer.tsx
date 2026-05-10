@@ -12,7 +12,7 @@ interface Message {
 }
 
 interface Props {
-  slideType: 'scenario' | 'game-template';
+  slideType: 'scenario' | 'game-template' | 'knowledge-check' | 'mastery-exam';
   slideTitle: string;
   currentData: any;
   courseContext: string;
@@ -27,7 +27,11 @@ export const AIEditDrawer: React.FC<Props> = ({
   const [messages, setMessages] = useState<Message[]>([{
     id: 'welcome',
     role: 'assistant',
-    text: `I can make targeted changes to this ${slideType === 'scenario' ? 'Decision Simulation' : 'Game'}. Describe what you'd like to change — a specific option, consequence, question, category, or structural element.`,
+    text: slideType === 'scenario'
+      ? `I can make targeted changes to this Decision Simulation. Describe what you'd like to change — a specific option, consequence, phase, or structural element.`
+      : slideType === 'game-template'
+      ? `I can make targeted changes to this Game slide. Describe what you'd like to change — a category, question, point value, or structural element.`
+      : `I can make targeted changes to this Quiz / Knowledge Check. Describe what you'd like to change — the question text, answer options, correct answer, or explanation.`,
     status: 'done',
   }]);
   const [input, setInput] = useState('');
@@ -124,7 +128,9 @@ export const AIEditDrawer: React.FC<Props> = ({
         <div className="flex flex-wrap gap-1.5">
           {(slideType === 'scenario'
             ? ['Make the Phase 2 situation more urgent', 'Add a consequence that mentions the client noticing', 'Make one option more empathetic']
-            : ['Change category 3 to OSHA compliance', 'Make question 2 harder', 'Update the Daily Double to question 4']
+            : slideType === 'game-template'
+            ? ['Change category 3 to OSHA compliance', 'Make question 2 harder', 'Update the Daily Double to question 4']
+            : ['Change the question to something more practical', 'Make option B a better distractor', 'Set the correct answer to option C', 'Add an explanation for the correct answer']
           ).map(ex => (
             <button
               key={ex}
