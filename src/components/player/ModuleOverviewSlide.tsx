@@ -86,20 +86,22 @@ export const ModuleOverviewSlide: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Bottom: topic name vertical */}
-        <div
-          className="relative z-10 font-bold uppercase opacity-50 text-center px-2"
-          style={{
-            writingMode: 'vertical-rl',
-            transform: 'rotate(180deg)',
-            color: p.bodyText,
-            letterSpacing: '0.14em',
-            fontSize: '1.9rem',
-            maxHeight: '62%',
-            overflow: 'hidden',
-          }}
-        >
-          {cleanTitle || 'Overview'}
+        {/* Bottom: topic name vertical — centred in remaining space */}
+        <div className="relative z-10 flex-1 flex items-center justify-center">
+          <div
+            className="font-bold uppercase opacity-50 text-center px-2"
+            style={{
+              writingMode: 'vertical-rl',
+              transform: 'rotate(180deg)',
+              color: p.bodyText,
+              letterSpacing: '0.14em',
+              fontSize: '1.9rem',
+              maxHeight: '100%',
+              overflow: 'hidden',
+            }}
+          >
+            {cleanTitle || 'Overview'}
+          </div>
         </div>
       </div>
 
