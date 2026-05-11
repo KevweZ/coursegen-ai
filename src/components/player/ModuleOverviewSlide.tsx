@@ -86,24 +86,38 @@ export const ModuleOverviewSlide: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Middle: one vertical column per word — no single long strip */}
+        {/* Middle: max 2 vertical columns, no single-character hangers */}
         <div className="relative z-10 flex-1 flex items-center justify-center overflow-hidden">
-          <div className="flex flex-row gap-1.5 items-center justify-center overflow-hidden">
-            {(cleanTitle || 'Overview').split(/\s+/).map((word, i) => (
-              <div
-                key={i}
-                className="font-bold uppercase opacity-50 shrink-0 overflow-hidden"
-                style={{
-                  writingMode: 'vertical-rl',
-                  transform: 'rotate(180deg)',
-                  color: p.bodyText,
-                  letterSpacing: '0.12em',
-                  fontSize: '1.75rem',
-                }}
-              >
-                {word}
-              </div>
-            ))}
+          <div className="flex flex-row gap-2 items-center justify-center overflow-hidden">
+            {(() => {
+              const words = (cleanTitle || 'Overview').split(/\s+/);
+              let chunks: string[];
+              if (words.length <= 2) {
+                chunks = words;
+              } else {
+                // Split roughly in half; absorb tiny connectors (&, of, the…) into previous chunk
+                const mid = Math.ceil(words.length / 2);
+                chunks = [
+                  words.slice(0, mid).join(' '),
+                  words.slice(mid).join(' '),
+                ];
+              }
+              return chunks.map((chunk, i) => (
+                <div
+                  key={i}
+                  className="font-bold uppercase opacity-50 shrink-0 overflow-hidden"
+                  style={{
+                    writingMode: 'vertical-rl',
+                    transform: 'rotate(180deg)',
+                    color: p.bodyText,
+                    letterSpacing: '0.11em',
+                    fontSize: '1.5rem',
+                  }}
+                >
+                  {chunk}
+                </div>
+              ));
+            })()}
           </div>
         </div>
       </div>
