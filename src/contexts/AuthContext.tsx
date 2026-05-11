@@ -13,6 +13,9 @@ interface AuthContextValue {
   session: Session | null;
   loading: boolean;
   isAdmin: boolean;
+  isTrial: boolean;
+  isTrialExpired: boolean;
+  trialExpiresAt: string | null;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signUp: (
     email: string,
@@ -38,6 +41,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Derived: true only when the signed-in email matches the hardcoded admin email
   const isAdmin = !!(user?.email && user.email.toLowerCase() === ADMIN_EMAIL);
+
+  // Derived: trial role flags (read from Supabase user_metadata set at invite time)
+  const isTrial        = user?.user_metadata?.role === 'trial';
+  const trialExpiresAt = (user?.user_metadata?.trial_expires_at as string) ?? null;
+  const isTrialExpired = isTrial && trialExpiresAt
+    ? new Date(trialExpiresAt) < new Date()
+    : false;
 
   useEffect(() => {
     // Restore any existing session on mount
@@ -110,7 +120,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, session, loading, isAdmin, signIn, signUp, signInWithGoogle, signOut, resetPassword }}
+      value={{ user, session, loading, isAdmin, isTrial, isTrialExpired, trialExpiresAt, signIn, signUp, signInWithGoogle, signOut, resetPassword }}
     >
       {children}
     </AuthContext.Provider>

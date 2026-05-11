@@ -174,6 +174,45 @@ app.post('/api/ai', aiRateLimit, async (req, res) => {
     return res.status(400).json({ error: 'Missing required fields: model, system, user' });
   }
 
+  // ── Trial-user AI generation cap ─────────────────────────────────────────
+  // Decode the JWT from the Authorization header to check user role & usage.
+  // Fails gracefully if the ai_usage table doesn't exist yet.
+  const authHeader = req.headers.authorization ?? '';
+  const jwt = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (jwt) {
+    try {
+      const { createClient } = await import('@supabase/supabase-js');
+      const supa = createClient(
+        process.env.VITE_SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_KEY,
+        { auth: { autoRefreshToken: false, persistSession: false } }
+      );
+      // Validate the JWT and get user info
+      const { data: { user: authUser } } = await supa.auth.getUser(jwt);
+      if (authUser?.user_metadata?.role === 'trial') {
+        const TRIAL_AI_LIMIT = 5;
+        const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        const { count } = await supa
+          .from('ai_usage')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', authUser.id)
+          .gte('created_at', weekAgo);
+
+        if (typeof count === 'number' && count >= TRIAL_AI_LIMIT) {
+          return res.status(429).json({
+            error: `Trial limit reached. You've used ${count}/${TRIAL_AI_LIMIT} AI generations this week. Contact us to upgrade your account.`,
+            code: 'TRIAL_LIMIT_EXCEEDED',
+          });
+        }
+        // Log this generation
+        await supa.from('ai_usage').insert({ user_id: authUser.id, type: 'course_generation' });
+      }
+    } catch (trialCheckErr) {
+      // Degrade gracefully — if ai_usage table doesn't exist yet, just proceed
+      console.warn('[AI Proxy] Trial check skipped:', trialCheckErr?.message ?? trialCheckErr);
+    }
+  }
+
   const modelStr =
     model === 'complex' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001';
 
@@ -208,6 +247,124 @@ app.post('/api/ai', aiRateLimit, async (req, res) => {
     return res.status(502).json({ error: 'AI proxy network error: ' + err.message });
   }
 });
+
+// ─── 6b. Admin — Send Trial Invite ──────────────────────────────────────────
+const ADMIN_SECRET = process.env.ADMIN_SECRET ?? '';
+
+app.post('/api/admin/invite', async (req, res) => {
+  const { email, trialDays = 7, adminSecret } = req.body;
+
+  if (!ADMIN_SECRET || adminSecret !== ADMIN_SECRET) {
+    return res.status(403).json({ error: 'Forbidden.' });
+  }
+  if (!email?.trim()) {
+    return res.status(400).json({ error: 'email is required.' });
+  }
+
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supa = createClient(
+      process.env.VITE_SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_KEY,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+
+    const expiresAt = new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000).toISOString();
+
+    const { data, error } = await supa.auth.admin.inviteUserByEmail(email.trim().toLowerCase(), {
+      data: {
+        role: 'trial',
+        trial_expires_at: expiresAt,
+        full_name: '',
+        track: 'corporate',
+        plan: 'trial',
+      },
+      redirectTo: `${isProd ? 'https://nexcourse.ai' : 'http://localhost:3000'}?invited=1`,
+    });
+
+    if (error) {
+      console.error('[Admin Invite] Supabase error:', error.message);
+      return res.status(400).json({ error: error.message });
+    }
+
+    // Optional: send a branded welcome email via Resend (in addition to Supabase's invite email)
+    if (resend) {
+      await resend.emails.send({
+        from: `NexCourse AI <${FROM_EMAIL}>`,
+        to: [email],
+        subject: "You've been invited to try NexCourse AI!",
+        html: `
+          <div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#1e293b;">
+            <div style="background:#4f46e5;padding:28px 32px;border-radius:12px 12px 0 0;">
+              <h2 style="color:white;margin:0;font-size:22px;">Welcome to NexCourse AI 🎉</h2>
+            </div>
+            <div style="background:#f8fafc;padding:28px 32px;border:1px solid #e2e8f0;border-top:none;">
+              <p style="line-height:1.7;margin:0 0 16px;">
+                You've been given <strong>${trialDays}-day trial access</strong> to NexCourse AI —
+                an AI-powered eLearning authoring platform where you can build interactive courses
+                in minutes.
+              </p>
+              <p style="line-height:1.7;margin:0 0 24px;color:#64748b;font-size:14px;">
+                Your trial expires on <strong>${new Date(expiresAt).toLocaleDateString('en-GB', { dateStyle: 'long' })}</strong>.
+              </p>
+              <a href="${isProd ? 'https://nexcourse.ai' : 'http://localhost:3000'}?invited=1"
+                 style="display:inline-block;background:#4f46e5;color:white;padding:14px 28px;border-radius:8px;font-weight:700;font-size:15px;text-decoration:none;">
+                Accept Invitation & Get Started
+              </a>
+            </div>
+            <div style="background:#f1f5f9;padding:12px 32px;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 12px 12px;font-size:12px;color:#94a3b8;">
+              Questions? Reply to this email or write to <a href="mailto:${SUPPORT_EMAIL}" style="color:#4f46e5;">${SUPPORT_EMAIL}</a>
+            </div>
+          </div>
+        `,
+      }).catch(e => console.warn('[Admin Invite] Resend email failed (non-fatal):', e.message));
+    }
+
+    console.log(`[Admin Invite] Invited ${email} — trial expires ${expiresAt}`);
+    return res.json({ success: true, userId: data.user?.id, expiresAt });
+
+  } catch (err) {
+    console.error('[Admin Invite] Error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── 6c. Admin — Revoke Trial Access ────────────────────────────────────────
+app.post('/api/admin/revoke', async (req, res) => {
+  const { userId, adminSecret } = req.body;
+
+  if (!ADMIN_SECRET || adminSecret !== ADMIN_SECRET) {
+    return res.status(403).json({ error: 'Forbidden.' });
+  }
+  if (!userId) {
+    return res.status(400).json({ error: 'userId is required.' });
+  }
+
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supa = createClient(
+      process.env.VITE_SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_KEY,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+
+    // Set trial_expires_at to yesterday — immediate expiry without deleting the account
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { error } = await supa.auth.admin.updateUserById(userId, {
+      user_metadata: { trial_expires_at: yesterday },
+    });
+
+    if (error) return res.status(400).json({ error: error.message });
+
+    console.log(`[Admin Revoke] Trial revoked for userId=${userId}`);
+    return res.json({ success: true, revokedAt: yesterday });
+
+  } catch (err) {
+    console.error('[Admin Revoke] Error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 
 // ─── 7. OpenAI TTS Proxy ────────────────────────────────────────────────────
 app.post('/api/tts', ttsRateLimit, async (req, res) => {

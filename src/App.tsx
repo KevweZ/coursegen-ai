@@ -52,7 +52,8 @@ import {
   Ear,
   CreditCard,
   Save,
-  Undo2
+  Undo2,
+  Send
 } from 'lucide-react';
 import { 
   Accordion, 
@@ -112,6 +113,8 @@ import { getRecommendedGames } from './lib/gameEngine';
 import { DUMMY_COURSE, DUMMY_EXAM_QUESTIONS } from './lib/dummyCourse';
 import { useScaleToFit } from './hooks/useScaleToFit';
 import { FloatingImageCanvas } from './components/FloatingImageCanvas';
+import { TrialInvitePanel } from './components/TrialInvitePanel';
+
 import { FloatingImage } from './types/course';
 import TabbedHorizontal from './components/interactions/TabbedContentHorizontal';
 import TabbedVertical from './components/interactions/TabbedContentVertical';
@@ -322,7 +325,7 @@ const SmartContent = ({ content, className, theme }: { content: string; classNam
 
 export default function App() {
   const isScormPlayer = typeof window !== 'undefined' && !!(window as any).__COURSE_DATA__;
-  const { user, loading: authLoading, signOut, isAdmin } = useAuth();
+  const { user, loading: authLoading, signOut, isAdmin, isTrial, isTrialExpired } = useAuth();
 
   // ── Draft Courses (Pro feature) ───────────────────────────────────────────
   const draftManager = useDraftCourses(user?.id ?? null);
@@ -395,6 +398,8 @@ export default function App() {
   const [qcConfirmed, setQcConfirmed] = useState<Set<string>>(new Set());
   const [qcDeclined, setQcDeclined] = useState<Set<string>>(new Set());
   const [showQcPublishWarning, setShowQcPublishWarning] = useState(false);
+  const [showTrialExportModal, setShowTrialExportModal] = useState(false);
+  const [showTrialInvitePanel, setShowTrialInvitePanel] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [course, setCourse] = useState<any>(isScormPlayer ? (window as any).__COURSE_DATA__ : null);
@@ -1373,8 +1378,17 @@ export default function App() {
                           <Gamepad2 className="w-3.5 h-3.5" /> Demo — Game Mode
                         </button>
                         <div className="border-t border-slate-800 my-1" />
+                        {/* Trial Invites — admin only */}
+                        <button
+                          onClick={() => { setAdminDropdownOpen(false); setShowTrialInvitePanel(true); }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-amber-300 hover:bg-amber-500/10 text-sm font-medium transition-all text-left"
+                        >
+                          <Send className="w-3.5 h-3.5" /> Trial Invites
+                        </button>
+                        <div className="border-t border-slate-800 my-1" />
                       </>
                     )}
+
                     <button
                       onClick={() => { setAdminDropdownOpen(false); setStep('account'); }}
                       className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800 text-sm font-medium transition-all text-left"
@@ -2409,8 +2423,8 @@ export default function App() {
 
           {step === 'preview' && course && (
             <motion.div key="preview" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="w-full h-screen bg-slate-900 absolute top-0 left-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] bg-opacity-20 z-50 overflow-hidden flex flex-col">
-              {/* ── Preview Top Bar — Row 1: Navigation + title + view controls + export ── */}
-              <div className="px-3 bg-slate-900 border-b border-slate-800 shrink-0">
+              {/* ── Preview Top Bar — hidden in SCORM/published view ── */}
+              {!isScormPlayer && <div className="px-3 bg-slate-900 border-b border-slate-800 shrink-0">
                 <div className="h-11 flex items-center justify-between gap-2">
                   {/* Left: back + title */}
                   <div className="flex items-center gap-2 min-w-0">
@@ -2437,36 +2451,7 @@ export default function App() {
                       <span className="hidden lg:inline">{viewMode === 'desktop' ? 'Desktop' : 'Mobile'}</span>
                     </button>
 
-                    {/* Theme dropdown */}
-                    <div className="relative">
-                      <button
-                        title="Change colour theme"
-                        onClick={() => setThemeDropdownOpen(o => !o)}
-                        className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-medium"
-                      >
-                        {theme === 'dark' ? '🌑' : theme === 'light' ? '☀️' : '💜'}
-                        <span className="hidden lg:inline capitalize">{theme}</span>
-                        <ChevronDown className="w-3 h-3 opacity-60" />
-                      </button>
-                      {themeDropdownOpen && (
-                        <>
-                          <div className="fixed inset-0 z-[200]" onClick={() => setThemeDropdownOpen(false)} />
-                          <div className="absolute right-0 top-full mt-1 z-[201] bg-slate-800 border border-slate-700 rounded-xl shadow-2xl overflow-hidden min-w-[130px]">
-                            {([['dark','🌑 Dark'],['light','☀️ Light'],['unified','💜 Unified']] as [string,string][]).map(([val, label]) => (
-                              <button
-                                key={val}
-                                onClick={() => { setTheme(val as any); setThemeDropdownOpen(false); }}
-                                className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-medium hover:bg-slate-700 transition-colors ${theme === val ? 'text-indigo-300' : 'text-slate-300'}`}
-                              >
-                                {theme === val && <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0"/>}
-                                {theme !== val && <span className="w-1.5 h-1.5 shrink-0"/>}
-                                {label}
-                              </button>
-                            ))}
-                          </div>
-                        </>
-                      )}
-                    </div>
+                    {/* Theme dropdown removed — Dark mode only */}
 
                     {/* QC Check — context-aware: reopen existing report if pending, or start new scan */}
                     {(() => {
@@ -2537,23 +2522,34 @@ export default function App() {
                     </button>
 
 
-                    {/* Export SCORM — warns if pending QC items exist */}
-                    <button
-                      title="Export SCORM — download a SCORM 1.2 zip package"
-                      onClick={() => {
-                        const pendingCount = qcReport
-                          ? qcReport.issues.filter(i => !qcConfirmed.has(i.id) && !qcDeclined.has(i.id)).length
-                          : 0;
-                        if (pendingCount > 0) {
-                          setShowQcPublishWarning(true);
-                        } else {
-                          exportScorm();
-                        }
-                      }}
-                      className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs transition-colors shadow-lg shadow-indigo-500/20"
-                    >
-                      <Download className="w-3.5 h-3.5" /> <span className="hidden lg:inline">Export SCORM</span>
-                    </button>
+                    {/* Export SCORM — blocked for trial users */}
+                    {isTrial ? (
+                      <button
+                        title="Export SCORM — not available in trial"
+                        onClick={() => setShowTrialExportModal(true)}
+                        className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-700 text-slate-400 rounded-lg font-bold text-xs cursor-pointer border border-slate-600"
+                      >
+                        <Download className="w-3.5 h-3.5" /> <span className="hidden lg:inline">Export SCORM</span>
+                      </button>
+                    ) : (
+                      <button
+                        title="Export SCORM — download a SCORM 1.2 zip package"
+                        onClick={() => {
+                          const pendingCount = qcReport
+                            ? qcReport.issues.filter(i => !qcConfirmed.has(i.id) && !qcDeclined.has(i.id)).length
+                            : 0;
+                          if (pendingCount > 0) {
+                            setShowQcPublishWarning(true);
+                          } else {
+                            exportScorm();
+                          }
+                        }}
+                        className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs transition-colors shadow-lg shadow-indigo-500/20"
+                      >
+                        <Download className="w-3.5 h-3.5" /> <span className="hidden lg:inline">Export SCORM</span>
+                      </button>
+                    )}
+
 
                     {/* Discard */}
                     <button
@@ -2681,7 +2677,7 @@ export default function App() {
                     <Settings2 className="w-3 h-3" /><span>Player Props</span>
                   </button>
                 </div>
-              </div>
+              </div>}
 
               {/* ── Body: Sidebar + Main Player Area ── */}
               <div className={cn("flex flex-row flex-1 overflow-hidden", playerConfig.playerResolution === 'full' ? 'overflow-x-hidden' : 'min-h-0')}>
@@ -3319,7 +3315,7 @@ export default function App() {
                              )}
                            </div>
 
-                            {(currentSlide?.imagePlaceholder || currentSlide?.mediaUrl) && (
+                            {!isScormPlayer && (currentSlide?.imagePlaceholder || currentSlide?.mediaUrl) && (
                               <div className="mt-6 flex justify-center">
                               {currentSlide?.mediaUrl ? (
                                 <div className="max-w-lg rounded-xl overflow-hidden shadow-xl border border-black/10">
@@ -3842,10 +3838,102 @@ export default function App() {
            )}
          </AnimatePresence>
 
+      {/* ── Trial Expiry Interstitial ── */}
+      <AnimatePresence>
+        {isTrialExpired && (
+          <motion.div
+            className="fixed inset-0 z-[500] flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+          >
+            <motion.div
+              className="bg-slate-900 border border-slate-700 rounded-2xl p-8 max-w-md w-full mx-4 text-center shadow-2xl"
+              initial={{ scale: 0.88, y: 24 }} animate={{ scale: 1, y: 0 }}
+            >
+              <div className="w-14 h-14 rounded-full bg-amber-500/15 flex items-center justify-center mx-auto mb-4">
+                <span className="text-2xl">⏳</span>
+              </div>
+              <h2 className="text-white font-bold text-xl mb-2">Your trial has ended</h2>
+              <p className="text-slate-400 text-sm leading-relaxed mb-6">
+                Your trial access to NexCourse AI has expired. Get in touch to continue building
+                world-class interactive courses.
+              </p>
+              <div className="flex flex-col gap-3">
+                <a
+                  href="mailto:support@nexcourse.ai?subject=Trial%20Upgrade%20Request"
+                  className="block w-full px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-colors text-sm"
+                >
+                  Contact Us to Upgrade
+                </a>
+                <button
+                  onClick={signOut}
+                  className="w-full px-6 py-2 text-slate-400 hover:text-white text-sm"
+                >
+                  Sign Out
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Trial Export Blocked Modal ── */}
+      <AnimatePresence>
+        {showTrialExportModal && (
+          <motion.div
+            className="fixed inset-0 z-[400] flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)' }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={() => setShowTrialExportModal(false)}
+          >
+            <motion.div
+              className="bg-slate-900 border border-slate-700 rounded-2xl p-7 max-w-sm w-full mx-4 text-center shadow-2xl"
+              initial={{ scale: 0.9, y: 16 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9 }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="w-12 h-12 rounded-full bg-indigo-500/15 flex items-center justify-center mx-auto mb-4">
+                <Download className="w-6 h-6 text-indigo-400" />
+              </div>
+              <h3 className="text-white font-bold text-lg mb-2">Export Available in Full Version</h3>
+              <p className="text-slate-400 text-sm leading-relaxed mb-6">
+                SCORM export is available in the full NexCourse AI platform. Your courses are saved
+                and will be ready to export once you upgrade.
+              </p>
+              <div className="flex flex-col gap-2">
+                <a
+                  href="mailto:support@nexcourse.ai?subject=NexCourse%20AI%20Upgrade"
+                  className="block w-full px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-colors text-sm"
+                >
+                  Contact Us to Upgrade
+                </a>
+                <button
+                  onClick={() => setShowTrialExportModal(false)}
+                  className="w-full px-5 py-2 text-slate-500 hover:text-slate-300 text-sm"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Admin Invite Panel ── */}
+      <AnimatePresence>
+        {showTrialInvitePanel && isAdmin && (
+          <TrialInvitePanel
+            onClose={() => setShowTrialInvitePanel(false)}
+            adminSecret={import.meta.env.VITE_ADMIN_SECRET ?? ''}
+            apiBase={import.meta.env.VITE_API_BASE ?? ''}
+          />
+        )}
+      </AnimatePresence>
+
       </main>
     </div>
   );
 }
+
 
 // Extracted to avoid React Hook Rules Violation for conditional rendering in preview modal
 function MultipleAnswersPreviewDemo() {
