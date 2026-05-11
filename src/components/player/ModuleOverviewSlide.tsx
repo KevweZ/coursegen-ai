@@ -86,21 +86,24 @@ export const ModuleOverviewSlide: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Bottom: topic name vertical — centred in remaining space */}
-        <div className="relative z-10 flex-1 flex items-center justify-center">
-          <div
-            className="font-bold uppercase opacity-50 text-center px-2"
-            style={{
-              writingMode: 'vertical-rl',
-              transform: 'rotate(180deg)',
-              color: p.bodyText,
-              letterSpacing: '0.14em',
-              fontSize: '1.9rem',
-              maxHeight: '100%',
-              overflow: 'hidden',
-            }}
-          >
-            {cleanTitle || 'Overview'}
+        {/* Middle: one vertical column per word — no single long strip */}
+        <div className="relative z-10 flex-1 flex items-center justify-center overflow-hidden">
+          <div className="flex flex-row gap-1.5 items-center justify-center overflow-hidden">
+            {(cleanTitle || 'Overview').split(/\s+/).map((word, i) => (
+              <div
+                key={i}
+                className="font-bold uppercase opacity-50 shrink-0 overflow-hidden"
+                style={{
+                  writingMode: 'vertical-rl',
+                  transform: 'rotate(180deg)',
+                  color: p.bodyText,
+                  letterSpacing: '0.12em',
+                  fontSize: '1.75rem',
+                }}
+              >
+                {word}
+              </div>
+            ))}
           </div>
         </div>
       </div>
