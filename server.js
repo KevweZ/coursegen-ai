@@ -512,6 +512,18 @@ app.post(
             }, { onConflict: 'user_id' });
           }
           console.log(`[Stripe Webhook] checkout.session.completed — userId=${userId} plan=${planId}`);
+
+          // ── If this was a trial user, graduate them to full customer ─────────
+          // Clear the 'trial' role flag so all trial restrictions lift immediately.
+          try {
+            await supabase.auth.admin.updateUserById(userId, {
+              user_metadata: { role: 'customer', trial_expires_at: null },
+            });
+            console.log(`[Stripe Webhook] Trial graduated to customer — userId=${userId}`);
+          } catch (graduateErr) {
+            // Non-fatal — entitlements are already updated, restrictions lift on next login
+            console.warn('[Stripe Webhook] Could not clear trial metadata:', graduateErr?.message);
+          }
         }
       }
 
