@@ -46,7 +46,7 @@ export const CourseObjectivesSlide: React.FC<Props> = ({ objectives, theme, modu
 
       {/* ── Left decorative panel ──────────────────────────────────────────── */}
       <div
-        className="shrink-0 relative flex flex-col items-center justify-center py-10"
+        className="shrink-0 relative flex flex-col items-center justify-between py-10"
         style={{ width: '22%', backgroundColor: p.leftBg, borderRight: `4px solid ${ACCENT_COLORS[0]}` }}
       >
         {/* Giant watermark — behind everything */}
@@ -54,24 +54,29 @@ export const CourseObjectivesSlide: React.FC<Props> = ({ objectives, theme, modu
           <Target style={{ width: '12rem', height: '12rem', opacity: 0.07, color: p.headerText }} />
         </div>
 
-        {/* Centre group: Target icon + "Objectives" vertical text */}
-        <div className="relative z-10 flex flex-col items-center gap-5">
-          <Target style={{ width: '3.5rem', height: '3.5rem', color: ACCENT_COLORS[0], opacity: 0.85 }} />
-          <div
-            className="font-black uppercase opacity-55 text-center px-2"
-            style={{
-              writingMode: 'vertical-rl',
-              transform: 'rotate(180deg)',
-              color: p.headerText,
-              letterSpacing: '0.18em',
-              fontSize: '2.4rem',
-              maxHeight: '52%',
-              overflow: 'hidden',
-            }}
-          >
-            Objectives
-          </div>
+        {/* Top: Target icon — same position as BookOpen in overview slides */}
+        <div className="relative z-10">
+          <Target style={{ width: '3.2rem', height: '3.2rem', color: ACCENT_COLORS[0], opacity: 0.85 }} />
         </div>
+
+        {/* Middle: "Objectives" vertical text — enough maxHeight to show all 10 chars */}
+        <div
+          className="relative z-10 font-black uppercase opacity-55 text-center px-2"
+          style={{
+            writingMode: 'vertical-rl',
+            transform: 'rotate(180deg)',
+            color: p.headerText,
+            letterSpacing: '0.16em',
+            fontSize: '2rem',
+            maxHeight: '78%',
+            overflow: 'hidden',
+          }}
+        >
+          Objectives
+        </div>
+
+        {/* Bottom spacer */}
+        <div className="relative z-10 h-10" />
       </div>
 
       {/* ── Right: accordion objective list ───────────────────────────────── */}
