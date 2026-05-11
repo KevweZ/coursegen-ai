@@ -1,152 +1,183 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ArrowLeft, ArrowRight, Volume2, PanelLeft, Palette,
-  BookOpen, Gamepad2, Play, ChevronLeft, ChevronRight, BarChart2,
+  ArrowRight, Volume2, PanelLeft, Palette,
+  BookOpen, Gamepad2, Play, ChevronLeft, ChevronRight,
+  BarChart2, ChevronDown,
 } from 'lucide-react';
 
 type Theme = 'light' | 'dark' | 'unified';
 interface Props { theme: Theme; onSkip: () => void; }
 
-const CARDS = [
-  { id: 'prev-next', icon: ArrowRight,  title: 'Prev / Next',         color: '#4f46e5' },
-  { id: 'sidebar',   icon: PanelLeft,   title: 'Table of Contents',   color: '#0891b2' },
-  { id: 'volume',    icon: Volume2,      title: 'Narration & Volume',  color: '#16a34a' },
-  { id: 'toolbar',   icon: Palette,      title: 'Theme & Tools',       color: '#d97706' },
-  { id: 'seekbar',   icon: BarChart2,    title: 'Progress Bar',        color: '#9333ea' },
-  { id: 'canvas',    icon: Gamepad2,     title: 'Interactive Slides',  color: '#e11d48' },
+/* ── Feature zones ─────────────────────────────────────────────────────────── */
+const ZONES = [
+  { id:'toolbar',   label:'Theme & Tools',       icon:Palette,    color:'#f59e0b', desc:'Switch themes, edit text & audio, export SCORM.' },
+  { id:'sidebar',   label:'Table of Contents',   icon:PanelLeft,  color:'#06b6d4', desc:'Jump to any module or slide instantly.' },
+  { id:'canvas',    label:'Interactive Slides',  icon:Gamepad2,   color:'#f43f5e', desc:'Click, drag, and engage with interactive content.' },
+  { id:'seekbar',   label:'Progress Bar',        icon:BarChart2,  color:'#a855f7', desc:'Track course progress; click to jump.' },
+  { id:'volume',    label:'Narration & Volume',  icon:Volume2,    color:'#22c55e', desc:'Play narration and control audio volume.' },
+  { id:'prevnext',  label:'Prev / Next',         icon:ArrowRight, color:'#6366f1', desc:'Navigate between slides at your own pace.' },
 ];
 
-const BG:      Record<Theme,string> = { dark:'#0f172a', light:'#f1f5f9', unified:'#1e1b4b' };
-const CARD_BG: Record<Theme,string> = { dark:'#1e293b', light:'#ffffff', unified:'#2e1065' };
-const TEXT:    Record<Theme,string> = { dark:'#e2e8f0', light:'#1e293b', unified:'#e0e7ff' };
-const SUB:     Record<Theme,string> = { dark:'#94a3b8', light:'#475569', unified:'#a5b4fc' };
-
-function glowStyle(active: boolean, color: string): React.CSSProperties {
+/* ── Glow helper ───────────────────────────────────────────────────────────── */
+function glow(on: boolean, color: string, radius = 18): React.CSSProperties {
+  if (!on) return { transition: 'box-shadow 0.2s, border-color 0.2s' };
   return {
-    boxShadow: active ? `0 0 0 2px ${color}, 0 0 14px ${color}55` : 'none',
-    transition: 'box-shadow 0.18s ease',
-    outline: active ? `2px solid ${color}` : '2px solid transparent',
-    outlineOffset: '1px',
+    boxShadow: `0 0 0 2px ${color}, 0 0 ${radius}px ${color}88`,
+    transition: 'box-shadow 0.2s, border-color 0.2s',
   };
 }
 
-// ── Mini Player — full faithful replica ──────────────────────────────────────
-const MiniPlayer: React.FC<{ hovered: string | null; theme: Theme }> = ({ hovered, theme }) => {
-  const isDark  = theme !== 'light';
-  const mockBg  = isDark ? '#0d1526' : '#e8edf5';
-  const mockBar = isDark ? '#111827' : '#d1d9e6';
-  const mockSide= isDark ? '#0f172a' : '#dce3ed';
-  const accent  = '#4f46e5';
-  const faint   = isDark ? '#1e2d47' : '#b0bed0';
-  const mid     = isDark ? '#3d5580' : '#7a96b3';
-  const light   = isDark ? '#64748b' : '#94a3b8';
-  const body    = isDark ? '#e2e8f0' : '#1e293b';
+/* ── Accordion data ────────────────────────────────────────────────────────── */
+const ACC = [
+  { title: 'What is Active Listening?', open: true,
+    body: 'Fully concentrating, understanding, and responding to what is being said — not just passively hearing.' },
+  { title: 'Common Barriers in Remote Teams', open: false, body: '' },
+  { title: 'Practical Techniques', open: false, body: '' },
+];
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   PLAYER REPLICA  — designed to look like a real screenshot, not a thumbnail
+══════════════════════════════════════════════════════════════════════════════ */
+function PlayerReplica({ hovered }: { hovered: string | null }) {
+  const acc  = '#6366f1';
+  const bg   = '#0f172a';
+  const bar  = '#111827';
+  const side = '#0d1117';
+  const card = '#1e293b';
+  const lt   = '#94a3b8';
+  const md   = '#64748b';
+  const dim  = '#1e293b';
+
+  const zoneColor = (id: string) => ZONES.find(z => z.id === id)?.color ?? acc;
+  const isHov = (id: string) => hovered === id;
 
   const TOC = [
-    { label:'Course Introduction',    indent:0, module:true,  active:false },
-    { label:'Player Tour',            indent:1, module:false, active:true,  sub:'Skip' },
-    { label:'Course Objectives',      indent:1, module:false, active:false },
-    { label:'MODULE 1 — CORE PLAYER', indent:0, module:true,  active:false },
-    { label:'1.1  Module 1 — Overview', indent:1, module:false, active:false },
-    { label:'1.2  Player Layout',     indent:1, module:false, active:false },
-    { label:'1.3  Key Takeaways',     indent:1, module:false, active:false },
-    { label:'MODULE 2 — EXPLORATORY', indent:0, module:true,  active:false },
-    { label:'2.1  Module 2 — Overview',indent:1, module:false, active:false },
-  ];
-
-  // Accordion items for canvas
-  const ACCORDION = [
-    { title:'What is Active Listening?', open:true,
-      body:'Fully concentrating on what is being said and responding thoughtfully.' },
-    { title:'Common Barriers in Remote Teams', open:false, body:'' },
-    { title:'Practical Techniques', open:false, body:'' },
+    { label: 'Course Introduction', module: true, active: false },
+    { label: 'Player Tour',         module: false, active: true,  skip: true },
+    { label: 'Course Objectives',   module: false, active: false },
+    { label: 'MODULE 1 — CORE PLAYER', module: true, active: false },
+    { label: '1.1  Module 1 — Overview', module: false, active: false },
+    { label: '1.2  Player Layout',    module: false, active: false },
+    { label: '1.3  Key Takeaways',    module: false, active: false },
+    { label: '1.4  Components',       module: false, active: false },
+    { label: 'MODULE 2 — EXPLORATORY', module: true, active: false },
+    { label: '2.1  Module 2 — Overview',module: false, active: false },
+    { label: '2.2  Deep Dive',         module: false, active: false },
   ];
 
   return (
-    <div className="w-full h-full flex flex-col overflow-hidden"
-      style={{ backgroundColor:mockBg, borderRadius:'10px',
-        border:`1.5px solid ${isDark?'rgba(255,255,255,0.09)':'rgba(0,0,0,0.13)'}` }}>
+    <div className="w-full h-full flex flex-col overflow-hidden rounded-xl"
+      style={{ background: bg, border: '1.5px solid rgba(255,255,255,0.09)',
+        boxShadow: '0 32px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04)' }}>
 
-      {/* Top toolbar */}
-      <div className="shrink-0 flex items-center justify-between px-2"
-        style={{ ...glowStyle(hovered==='toolbar','#d97706'), height:'22px',
-          backgroundColor:mockBar,
-          borderBottom:`1px solid ${isDark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.09)'}` }}>
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-sm" style={{ backgroundColor:accent, opacity:0.9 }} />
-          <span style={{ color:body, fontSize:'5.5px', fontWeight:800, letterSpacing:'0.04em' }}>Demo Course</span>
-          <div className="rounded px-1" style={{ backgroundColor:isDark?'#1e293b':'#cbd5e1',
-            border:`1px solid ${isDark?'#334155':'#94a3b8'}` }}>
-            <span style={{ color:light, fontSize:'4.5px', fontWeight:700, letterSpacing:'0.08em' }}>PREVIEW</span>
+      {/* ── TOP TOOLBAR ─────────────────────────────────────────────────────── */}
+      <div className="shrink-0 flex items-center justify-between px-4"
+        style={{ ...glow(isHov('toolbar'), zoneColor('toolbar'), 24),
+          height: '44px', background: bar,
+          borderBottom: '1px solid rgba(255,255,255,0.07)',
+          borderRadius: isHov('toolbar') ? '10px 10px 0 0' : undefined }}>
+        {/* Left: logo + breadcrumb */}
+        <div className="flex items-center gap-2.5">
+          <div className="w-6 h-6 rounded-md flex items-center justify-center"
+            style={{ background: `linear-gradient(135deg, ${acc}, #818cf8)` }}>
+            <span style={{ color:'#fff', fontSize:'10px', fontWeight:900 }}>N</span>
+          </div>
+          <span style={{ color:'#e2e8f0', fontSize:'13px', fontWeight:700 }}>Demo Course</span>
+          <div className="px-2 py-0.5 rounded-md" style={{ background:'#1e293b', border:'1px solid #334155' }}>
+            <span style={{ color:'#64748b', fontSize:'10px', fontWeight:700, letterSpacing:'0.06em' }}>PREVIEW</span>
           </div>
         </div>
-        <div className="flex gap-1">
-          {[{label:'QC Check',bg:'#16a34a'},{label:'Save',bg:isDark?'#1e293b':'#c5cedb'},{label:'↑ Export',bg:accent}]
-            .map((btn,i)=>(
-            <div key={i} className="rounded px-1 flex items-center"
-              style={{ backgroundColor:btn.bg, border:'1px solid rgba(255,255,255,0.1)', height:'11px' }}>
-              <span style={{ color:i===1?light:'#fff', fontSize:'4.5px', fontWeight:700 }}>{btn.label}</span>
+        {/* Right: action buttons */}
+        <div className="flex items-center gap-1.5">
+          {[
+            { l:'QC Check', bg:'#15803d', t:'#fff' },
+            { l:'Save',     bg:'#1e293b', t:'#94a3b8' },
+            { l:'↑ Export SCORM', bg: acc, t:'#fff' },
+          ].map((b,i) => (
+            <div key={i} className="px-2.5 py-1 rounded-md"
+              style={{ background:b.bg, border:'1px solid rgba(255,255,255,0.1)' }}>
+              <span style={{ color:b.t, fontSize:'10px', fontWeight:700 }}>{b.l}</span>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Body */}
+      {/* ── BODY ─────────────────────────────────────────────────────────────── */}
       <div className="flex-1 flex min-h-0">
 
-        {/* Sidebar */}
-        <div className="shrink-0 flex flex-col"
-          style={{ ...glowStyle(hovered==='sidebar','#0891b2'), width:'30%',
-            backgroundColor:mockSide,
-            borderRight:`1px solid ${isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.08)'}` }}>
-          <div className="flex items-center justify-between px-1.5 py-1"
-            style={{ borderBottom:`1px solid ${isDark?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.07)'}` }}>
-            <span style={{ color:body, fontSize:'4.5px', fontWeight:800, letterSpacing:'0.1em' }}>TABLE OF CONTENTS</span>
-            <div className="rounded px-1" style={{ backgroundColor:isDark?'#1e293b':'#c0cbd9' }}>
-              <span style={{ color:light, fontSize:'4px' }}>28</span>
+        {/* SIDEBAR */}
+        <div className="shrink-0 flex flex-col overflow-hidden"
+          style={{ ...glow(isHov('sidebar'), zoneColor('sidebar'), 20),
+            width: '210px', background: side,
+            borderRight: `1px solid ${isHov('sidebar') ? zoneColor('sidebar')+'66' : 'rgba(255,255,255,0.06)'}`,
+            transition: 'border-color 0.2s' }}>
+          {/* TOC header */}
+          <div className="flex items-center justify-between px-3 py-2.5"
+            style={{ borderBottom:'1px solid rgba(255,255,255,0.06)' }}>
+            <span style={{ color:'#e2e8f0', fontSize:'10px', fontWeight:800, letterSpacing:'0.12em' }}>
+              TABLE OF CONTENTS
+            </span>
+            <div className="px-1.5 py-0.5 rounded" style={{ background:card }}>
+              <span style={{ color:lt, fontSize:'9px', fontWeight:600 }}>28</span>
             </div>
           </div>
-          <div className="flex flex-col gap-px px-1 py-1 overflow-hidden">
-            {TOC.map((row,i)=>(
-              <div key={i} className="rounded flex items-center justify-between"
-                style={{ paddingLeft:row.indent?'7px':'2px', paddingTop:'1.5px', paddingBottom:'1.5px', paddingRight:'2px',
-                  backgroundColor:row.active?`${accent}22`:'transparent',
-                  border:row.active?`1px solid ${accent}44`:'1px solid transparent',
-                  marginTop:row.module&&i>0?'2px':0 }}>
-                <span style={{ color:row.active?'#818cf8':row.module?body:light,
-                  fontSize:row.module?'4px':'3.8px', fontWeight:row.module||row.active?800:500,
-                  letterSpacing:row.module?'0.07em':0, whiteSpace:'nowrap',
-                  overflow:'hidden', textOverflow:'ellipsis', maxWidth:'88%' }}>
+          {/* TOC entries */}
+          <div className="flex-1 overflow-y-auto py-1">
+            {TOC.map((row, i) => (
+              <div key={i}
+                className="flex items-center justify-between mx-1.5 my-px px-2 py-1.5 rounded-md"
+                style={{ marginLeft: row.module ? '6px' : '18px',
+                  background: row.active ? `${acc}22` : 'transparent',
+                  border: row.active ? `1px solid ${acc}44` : '1px solid transparent',
+                  marginTop: row.module && i > 0 ? '4px' : undefined }}>
+                <span style={{ color: row.active ? '#a5b4fc' : row.module ? '#e2e8f0' : md,
+                  fontSize: row.module ? '10px' : '9.5px',
+                  fontWeight: row.module ? 700 : row.active ? 600 : 400,
+                  letterSpacing: row.module ? '0.06em' : 0,
+                  whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:'140px' }}>
                   {row.label}
                 </span>
-                {row.sub&&<span style={{ color:accent, fontSize:'3.5px', fontWeight:700 }}>{row.sub}</span>}
+                {row.skip && (
+                  <span style={{ color:acc, fontSize:'8.5px', fontWeight:700, shrink:0 }}>Skip</span>
+                )}
               </div>
             ))}
           </div>
         </div>
 
-        {/* Canvas — accordion interaction */}
-        <div className="flex-1 flex flex-col p-2 gap-1.5 overflow-hidden"
-          style={{ ...glowStyle(hovered==='canvas','#e11d48'), backgroundColor:mockBg }}>
-          {/* Slide label */}
+        {/* CANVAS */}
+        <div className="flex-1 flex flex-col min-w-0 p-5 gap-3 overflow-hidden"
+          style={{ ...glow(isHov('canvas'), zoneColor('canvas'), 22),
+            background: isHov('canvas') ? 'rgba(244,63,94,0.04)' : bg,
+            transition:'background 0.2s' }}>
+          {/* Slide title */}
           <div>
-            <span style={{ color:'#818cf8', fontSize:'4.5px', fontWeight:800, letterSpacing:'0.1em' }}>ACTIVE LISTENING</span>
-            <div className="h-px mt-0.5 rounded" style={{ background:`linear-gradient(to right, ${accent}60, transparent)` }} />
+            <p style={{ color:'#f1f5f9', fontSize:'20px', fontWeight:800, letterSpacing:'-0.02em', marginBottom:'4px' }}>
+              Active Listening
+            </p>
+            <div style={{ height:'2px', width:'100%', borderRadius:'2px',
+              background:`linear-gradient(to right, ${acc}cc, transparent)` }} />
           </div>
-          {/* Accordion items */}
-          {ACCORDION.map((item,i)=>(
-            <div key={i}>
-              <div className="flex items-center justify-between px-1.5 py-1 rounded"
-                style={{ backgroundColor:item.open?`${accent}18`:isDark?'rgba(255,255,255,0.04)':'rgba(0,0,0,0.04)',
-                  border:`1px solid ${item.open?`${accent}55`:isDark?'rgba(255,255,255,0.08)':'rgba(0,0,0,0.09)'}` }}>
-                <span style={{ color:item.open?'#c7d2fe':light, fontSize:'4px', fontWeight:item.open?700:500 }}>{item.title}</span>
-                <ChevronRight className={item.open?'rotate-90':''} style={{ width:'5px', height:'5px', color:item.open?'#818cf8':light, transition:'transform 0.2s' }} />
+          <p style={{ color:lt, fontSize:'11px', marginTop:'-4px' }}>
+            Explore each section below — click to expand
+          </p>
+          {/* Accordion */}
+          {ACC.map((item, i) => (
+            <div key={i} className="rounded-lg overflow-hidden"
+              style={{ border:`1px solid ${item.open ? acc+'55' : 'rgba(255,255,255,0.08)'}`,
+                background: item.open ? `${acc}12` : card }}>
+              <div className="flex items-center justify-between px-4 py-3">
+                <span style={{ color: item.open ? '#c7d2fe' : '#e2e8f0',
+                  fontSize:'12px', fontWeight: item.open ? 700 : 500 }}>
+                  {item.title}
+                </span>
+                <ChevronDown style={{ width:'14px', height:'14px', color:item.open?'#818cf8':md,
+                  transform: item.open ? 'rotate(180deg)' : 'none', transition:'transform 0.2s' }} />
               </div>
-              {item.open&&(
-                <div className="px-1.5 py-1 rounded-b" style={{ backgroundColor:isDark?'rgba(79,70,229,0.06)':'rgba(79,70,229,0.04)',
-                  borderLeft:`1px solid ${accent}33`, borderRight:`1px solid ${accent}33`, borderBottom:`1px solid ${accent}33` }}>
-                  <span style={{ color:light, fontSize:'3.8px', lineHeight:1.4 }}>{item.body}</span>
+              {item.open && (
+                <div className="px-4 pb-3">
+                  <p style={{ color:lt, fontSize:'11px', lineHeight:1.6 }}>{item.body}</p>
                 </div>
               )}
             </div>
@@ -154,138 +185,164 @@ const MiniPlayer: React.FC<{ hovered: string | null; theme: Theme }> = ({ hovere
         </div>
       </div>
 
-      {/* Bottom bar */}
+      {/* ── BOTTOM BAR ──────────────────────────────────────────────────────── */}
       <div className="shrink-0 flex flex-col"
-        style={{ backgroundColor:mockBar, borderTop:`1px solid ${isDark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.1)'}` }}>
+        style={{ background: bar, borderTop:'1px solid rgba(255,255,255,0.07)' }}>
         {/* Seekbar */}
-        <div className="mx-2 mt-1 rounded-full overflow-hidden"
-          style={{ ...glowStyle(hovered==='seekbar','#9333ea'), height:'3px',
-            backgroundColor:isDark?'rgba(255,255,255,0.09)':'rgba(0,0,0,0.13)' }}>
-          <div className="h-full rounded-full" style={{ width:'16%', backgroundColor:accent }} />
+        <div className="px-4 pt-2.5 pb-1">
+          <div className="relative h-1.5 rounded-full overflow-hidden"
+            style={{ ...glow(isHov('seekbar'), zoneColor('seekbar'), 12),
+              background:'rgba(255,255,255,0.1)' }}>
+            <div className="absolute inset-y-0 left-0 rounded-full"
+              style={{ width:'12%', background: isHov('seekbar') ? zoneColor('seekbar') : acc,
+                transition:'background 0.2s' }} />
+            <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2"
+              style={{ left:'12%', background:'#fff',
+                borderColor: isHov('seekbar') ? zoneColor('seekbar') : acc,
+                transform:'translateX(-50%) translateY(-50%)', transition:'border-color 0.2s' }} />
+          </div>
         </div>
         {/* Controls */}
-        <div className="flex items-center justify-between px-2 py-1">
-          <div className="flex items-center gap-1" style={glowStyle(hovered==='volume','#16a34a')}>
-            <div className="w-4 h-4 rounded-full flex items-center justify-center" style={{ backgroundColor:accent }}>
-              <Play className="w-1.5 h-1.5 text-white" />
+        <div className="flex items-center justify-between px-4 pb-2.5">
+          {/* Left: play + volume + slider */}
+          <div className="flex items-center gap-2"
+            style={glow(isHov('volume'), zoneColor('volume'), 14)}>
+            <div className="w-8 h-8 rounded-full flex items-center justify-center"
+              style={{ background: acc }}>
+              <Play style={{ width:'12px', height:'12px', fill:'#fff', color:'#fff' }} />
             </div>
-            <div className="w-3.5 h-3.5 rounded-full flex items-center justify-center"
-              style={{ backgroundColor:'rgba(22,163,74,0.18)', border:'1px solid rgba(22,163,74,0.45)' }}>
-              <Volume2 className="w-1.5 h-1.5" style={{ color:'#16a34a' }} />
+            <div className="w-7 h-7 rounded-full flex items-center justify-center"
+              style={{ background:'rgba(34,197,94,0.15)', border:'1px solid rgba(34,197,94,0.4)' }}>
+              <Volume2 style={{ width:'12px', height:'12px', color:'#22c55e' }} />
             </div>
-            <div className="rounded-full overflow-hidden" style={{ width:'18px', height:'2.5px', backgroundColor:'rgba(255,255,255,0.12)' }}>
-              <div className="h-full rounded-full" style={{ width:'50%', backgroundColor:'#16a34a' }} />
+            <div className="relative rounded-full overflow-hidden"
+              style={{ width:'52px', height:'4px', background:'rgba(255,255,255,0.12)' }}>
+              <div className="h-full rounded-full" style={{ width:'55%', background:'#22c55e' }} />
             </div>
+            <span style={{ color:md, fontSize:'10px' }}>No narration</span>
           </div>
-          <span style={{ color:light, fontSize:'4.5px', whiteSpace:'nowrap' }}>2 / 28 · Player Tour</span>
-          <div className="flex items-center gap-1" style={glowStyle(hovered==='prev-next',accent)}>
-            <div className="flex items-center gap-px rounded px-1 py-0.5"
-              style={{ backgroundColor:isDark?'rgba(255,255,255,0.08)':'rgba(0,0,0,0.08)' }}>
-              <ChevronLeft className="w-2 h-2" style={{ color:mid }} />
-              <span style={{ color:mid, fontSize:'4.5px', fontWeight:700 }}>Prev</span>
+          {/* Centre: slide info */}
+          <span style={{ color:lt, fontSize:'10px', fontWeight:500 }}>2 / 28 · Player Tour</span>
+          {/* Right: Prev + Next */}
+          <div className="flex items-center gap-1.5"
+            style={glow(isHov('prevnext'), zoneColor('prevnext'), 14)}>
+            <div className="flex items-center gap-1 px-3 py-1.5 rounded-lg"
+              style={{ background:'rgba(255,255,255,0.07)' }}>
+              <ChevronLeft style={{ width:'12px', height:'12px', color:lt }} />
+              <span style={{ color:lt, fontSize:'11px', fontWeight:600 }}>Prev</span>
             </div>
-            <div className="flex items-center gap-px rounded px-1.5 py-0.5" style={{ backgroundColor:accent }}>
-              <span style={{ color:'#fff', fontSize:'4.5px', fontWeight:700 }}>Next</span>
-              <ChevronRight className="w-2 h-2 text-white" />
+            <div className="flex items-center gap-1 px-3 py-1.5 rounded-lg"
+              style={{ background: acc }}>
+              <span style={{ color:'#fff', fontSize:'11px', fontWeight:700 }}>Next</span>
+              <ChevronRight style={{ width:'12px', height:'12px', color:'#fff' }} />
             </div>
           </div>
         </div>
       </div>
     </div>
   );
-};
+}
 
-// ── Main slide ───────────────────────────────────────────────────────────────
+/* ══════════════════════════════════════════════════════════════════════════════
+   MAIN SLIDE
+══════════════════════════════════════════════════════════════════════════════ */
+const BG:      Record<Theme,string> = { dark:'#060d1a', light:'#f1f5f9', unified:'#13102b' };
+const CARD_BG: Record<Theme,string> = { dark:'#1e293b', light:'#ffffff', unified:'#2e1065' };
+const TEXT:    Record<Theme,string> = { dark:'#e2e8f0', light:'#1e293b', unified:'#e0e7ff' };
+const SUB:     Record<Theme,string> = { dark:'#94a3b8', light:'#475569', unified:'#a5b4fc' };
+
 export const PlayerTourSlide: React.FC<Props> = ({ theme, onSkip }) => {
   const [showModal, setShowModal] = useState(true);
   const [hovered,   setHovered]   = useState<string | null>(null);
 
-  const bg     = BG[theme]     || BG.dark;
-  const cardBg = CARD_BG[theme]|| CARD_BG.dark;
-  const textClr= TEXT[theme]   || TEXT.dark;
-  const subClr = SUB[theme]    || SUB.dark;
+  const bg     = BG[theme]     ?? BG.dark;
+  const cardBg = CARD_BG[theme]?? CARD_BG.dark;
+  const textClr= TEXT[theme]   ?? TEXT.dark;
+  const subClr = SUB[theme]    ?? SUB.dark;
+
+  const activeZone = ZONES.find(z => z.id === hovered);
 
   return (
-    <div className="w-full h-full flex flex-col overflow-hidden" style={{ backgroundColor:bg }}>
+    <div className="w-full h-full flex flex-col overflow-hidden relative"
+      style={{ backgroundColor: bg }}>
 
-      {/* ── Header ── */}
-      <div className="shrink-0 px-6 pt-5 pb-2 flex items-start justify-between">
+      {/* ── Header ───────────────────────────────────────────────────────────── */}
+      <div className="shrink-0 flex items-center justify-between px-6 pt-4 pb-2">
         <div>
-          <p className="text-xs font-black uppercase tracking-widest mb-0.5" style={{ color:'#818cf8' }}>
+          <p style={{ color:'#818cf8', fontSize:'11px', fontWeight:800,
+            letterSpacing:'0.12em', textTransform:'uppercase', marginBottom:'2px' }}>
             Player Navigation Guide
           </p>
-          <p className="text-[11px]" style={{ color:subClr }}>
-            Hover any feature button below to see it highlighted in the player
+          <p style={{ color: subClr, fontSize:'12px' }}>
+            {activeZone
+              ? <><span style={{ color: activeZone.color, fontWeight:600 }}>{activeZone.label}:</span> {activeZone.desc}</>
+              : 'Hover a feature button to see it highlighted in the player'}
           </p>
         </div>
-        <button
-          onClick={onSkip}
-          className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all hover:opacity-80"
-          style={{ color:subClr, border:`1px solid rgba(255,255,255,0.12)` }}
-        >
-          Skip <ArrowRight className="w-3.5 h-3.5" />
+        <button onClick={onSkip}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all hover:opacity-80"
+          style={{ color: subClr, border:'1px solid rgba(255,255,255,0.12)' }}>
+          Skip <ArrowRight className="w-4 h-4" />
         </button>
       </div>
 
-      {/* ── Player mockup — fills most of the slide ── */}
-      <div className="flex-1 min-h-0 px-6 pb-3">
-        <MiniPlayer hovered={hovered} theme={theme} />
+      {/* ── Player — centred, bounded width so it doesn't stretch ──────────── */}
+      <div className="flex-1 min-h-0 flex items-center justify-center px-6 pb-2">
+        <div className="w-full h-full" style={{ maxWidth:'780px', maxHeight:'380px' }}>
+          <PlayerReplica hovered={hovered} />
+        </div>
       </div>
 
-      {/* ── Feature buttons — compact horizontal row at bottom ── */}
-      <div className="shrink-0 px-6 pb-5">
+      {/* ── Feature buttons ──────────────────────────────────────────────────── */}
+      <div className="shrink-0 px-6 pb-4">
         <div className="flex flex-wrap gap-2 justify-center">
-          {CARDS.map((card) => {
-            const Icon = card.icon;
-            const isActive = hovered === card.id;
+          {ZONES.map(z => {
+            const Icon = z.icon;
+            const on = hovered === z.id;
             return (
-              <motion.button
-                key={card.id}
-                onMouseEnter={() => setHovered(card.id)}
+              <motion.button key={z.id}
+                onMouseEnter={() => setHovered(z.id)}
                 onMouseLeave={() => setHovered(null)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150"
+                whileHover={{ scale:1.06 }} whileTap={{ scale:0.96 }}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold"
                 style={{
-                  backgroundColor: isActive ? `${card.color}22` : cardBg,
-                  border: `1.5px solid ${isActive ? card.color : `${card.color}30`}`,
-                  color: isActive ? card.color : subClr,
-                  boxShadow: isActive ? `0 0 10px ${card.color}33` : 'none',
-                }}
-                whileHover={{ scale: 1.04 }}
-                whileTap={{ scale: 0.97 }}
-              >
-                <Icon className="w-3.5 h-3.5" style={{ color: card.color }} />
-                {card.title}
+                  background: on ? `${z.color}22` : cardBg,
+                  border: `1.5px solid ${on ? z.color : `${z.color}30`}`,
+                  color: on ? z.color : subClr,
+                  boxShadow: on ? `0 0 14px ${z.color}44` : 'none',
+                  transition:'all 0.15s ease',
+                }}>
+                <Icon className="w-3.5 h-3.5" style={{ color:z.color }} />
+                {z.label}
               </motion.button>
             );
           })}
-          {/* Continue button */}
-          <motion.button
-            onClick={onSkip}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-150"
-            style={{ backgroundColor:'rgba(79,70,229,0.15)', border:'1.5px solid #4f46e5', color:'#818cf8' }}
-            whileHover={{ backgroundColor:'rgba(79,70,229,0.28)', scale:1.04 }}
-            whileTap={{ scale:0.97 }}
-          >
+          <motion.button onClick={onSkip}
+            whileHover={{ scale:1.06 }} whileTap={{ scale:0.96 }}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold"
+            style={{ background:'rgba(99,102,241,0.15)', border:'1.5px solid #6366f1', color:'#a5b4fc',
+              transition:'all 0.15s ease' }}>
             Continue to Course <ArrowRight className="w-3.5 h-3.5" />
           </motion.button>
         </div>
       </div>
 
-      {/* ── Blocking intro modal ── */}
+      {/* ── Intro modal ──────────────────────────────────────────────────────── */}
       <AnimatePresence>
         {showModal && (
           <motion.div className="absolute inset-0 flex items-center justify-center z-50"
-            style={{ backgroundColor:'rgba(0,0,0,0.72)', backdropFilter:'blur(4px)' }}
+            style={{ backgroundColor:'rgba(0,0,0,0.75)', backdropFilter:'blur(6px)' }}
             initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }} transition={{ duration:0.22 }}>
             <motion.div className="rounded-2xl p-8 mx-6 max-w-sm w-full text-center shadow-2xl"
               style={{ backgroundColor:cardBg, border:'1.5px solid rgba(255,255,255,0.1)' }}
-              initial={{ scale:0.9, y:16 }} animate={{ scale:1, y:0 }} exit={{ scale:0.9, y:16 }} transition={{ duration:0.22 }}>
+              initial={{ scale:0.88, y:20 }} animate={{ scale:1, y:0 }} exit={{ scale:0.88, y:20 }}
+              transition={{ duration:0.22 }}>
               <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4"
-                style={{ backgroundColor:'#4f46e522' }}>
+                style={{ background:'rgba(99,102,241,0.15)' }}>
                 <BookOpen className="w-7 h-7 text-indigo-400" />
               </div>
-              <h3 className="font-extrabold text-lg mb-2" style={{ color:textClr }}>Player Tutorial</h3>
-              <p className="text-sm mb-6 leading-relaxed" style={{ color:subClr }}>
+              <h3 style={{ color:textClr, fontSize:'18px', fontWeight:800, marginBottom:'8px' }}>Player Tutorial</h3>
+              <p style={{ color:subClr, fontSize:'13px', lineHeight:1.6, marginBottom:'24px' }}>
                 Would you like a quick overview of the player controls before we begin?
               </p>
               <div className="flex gap-3">
@@ -295,7 +352,10 @@ export const PlayerTourSlide: React.FC<Props> = ({ theme, onSkip }) => {
                   Skip
                 </button>
                 <button onClick={() => setShowModal(false)}
-                  className="flex-1 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition-colors">
+                  className="flex-1 px-4 py-2.5 rounded-xl font-bold text-sm text-white transition-colors"
+                  style={{ background:'#6366f1' }}
+                  onMouseEnter={e => (e.currentTarget.style.background='#4f46e5')}
+                  onMouseLeave={e => (e.currentTarget.style.background='#6366f1')}>
                   Show Me
                 </button>
               </div>
