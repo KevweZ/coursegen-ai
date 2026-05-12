@@ -9,22 +9,21 @@ import {
 type Theme = 'light' | 'dark' | 'unified';
 interface Props { theme: Theme; onSkip: () => void; }
 
-/* ── Feature zones (learner-visible only — no Theme/Tools) ─────────────────── */
+/* ── Feature zones ─────────────────────────────────────────────────────────── */
 const ZONES = [
   { id:'sidebar',  label:'Table of Contents',  icon:PanelLeft,  color:'#06b6d4',
-    desc:'The left sidebar lists every module and slide. Click any entry to jump directly to it.' },
+    desc:'The left sidebar lists every module and slide in the course. Click any entry to jump directly to that slide at your own pace.' },
   { id:'canvas',   label:'Interactive Slides', icon:Gamepad2,   color:'#f43f5e',
-    desc:'Some slides require you to click, drag, or engage with a challenge — read each slide\'s instructions.' },
+    desc:'Interactive slides ask you to click, drag, or engage with a challenge. Read each slide\'s instructions before starting.' },
   { id:'seekbar',  label:'Progress Bar',       icon:BarChart2,  color:'#a855f7',
-    desc:'The seekbar tracks your slide progress. Click anywhere on it to jump to that point in the course.' },
+    desc:'The seekbar tracks your position through the course. Click anywhere on it to jump to that point, or watch it fill as you advance.' },
   { id:'volume',   label:'Narration & Volume', icon:Volume2,    color:'#22c55e',
-    desc:'Use the Play button to start narration and the Volume button to mute or adjust audio at any time.' },
+    desc:'Press Play to start audio narration for each slide. Use the Volume button to mute or adjust audio at any time.' },
   { id:'prevnext', label:'Prev / Next',        icon:ArrowRight, color:'#f97316',
-    desc:'The Prev and Next buttons sit at the bottom-right. Move between slides at your own pace.' },
+    desc:'The Prev and Next buttons sit at the bottom-right of the player. Use them to move between slides at your own pace.' },
 ];
 
 /* ── Highlight helpers ─────────────────────────────────────────────────────── */
-// Full-section highlight: vivid border + interior tint
 function sectionHL(on: boolean, color: string): React.CSSProperties {
   return {
     border: `2px solid ${on ? color : 'transparent'}`,
@@ -32,7 +31,6 @@ function sectionHL(on: boolean, color: string): React.CSSProperties {
     transition: 'border-color 0.18s, box-shadow 0.18s',
   };
 }
-// Control-group highlight: outline glow around small elements
 function controlHL(on: boolean, color: string): React.CSSProperties {
   return {
     outline: on ? `2px solid ${color}` : '2px solid transparent',
@@ -52,7 +50,7 @@ const ACC = [
 ];
 
 /* ══════════════════════════════════════════════════════════════════════════════
-   PLAYER REPLICA — learner view only (no edit/dev buttons)
+   PLAYER REPLICA — learner view only
 ══════════════════════════════════════════════════════════════════════════════ */
 function PlayerReplica({ hovered }: { hovered: string | null }) {
   const acc  = '#6366f1';
@@ -85,7 +83,7 @@ function PlayerReplica({ hovered }: { hovered: string | null }) {
       style={{ background:bg, border:'1.5px solid rgba(255,255,255,0.09)',
         boxShadow:'0 32px 80px rgba(0,0,0,0.7)' }}>
 
-      {/* TOP BAR — learner view: logo + course name + PREVIEW badge only */}
+      {/* TOP BAR */}
       <div className="shrink-0 flex items-center justify-between px-4"
         style={{ height:'42px', background:bar,
           borderBottom:'1px solid rgba(255,255,255,0.07)' }}>
@@ -99,7 +97,6 @@ function PlayerReplica({ hovered }: { hovered: string | null }) {
             <span style={{ color:'#64748b', fontSize:'10px', fontWeight:700, letterSpacing:'0.06em' }}>PREVIEW</span>
           </div>
         </div>
-        {/* Learner-visible: only a desktop/device indicator */}
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md"
           style={{ background:'#1e293b', border:'1px solid #334155' }}>
           <Monitor style={{ width:'12px', height:'12px', color:lt }} />
@@ -110,16 +107,16 @@ function PlayerReplica({ hovered }: { hovered: string | null }) {
       {/* BODY */}
       <div className="flex-1 flex min-h-0">
 
-        {/* SIDEBAR — full-section highlight */}
+        {/* SIDEBAR */}
         <div className="shrink-0 flex flex-col overflow-hidden"
           style={{ ...sectionHL(h('sidebar'), hColor('sidebar')),
-            width:'210px', background:h('sidebar')?`${side}`:`${side}`,
+            width:'190px',
             backgroundColor: h('sidebar') ? `color-mix(in srgb, ${hColor('sidebar')} 6%, ${side})` : side,
             borderRight: h('sidebar') ? `2px solid ${hColor('sidebar')}` : '2px solid rgba(255,255,255,0.06)',
             transition:'all 0.18s' }}>
           <div className="flex items-center justify-between px-3 py-2.5"
             style={{ borderBottom:'1px solid rgba(255,255,255,0.06)' }}>
-            <span style={{ color:'#e2e8f0', fontSize:'10px', fontWeight:800, letterSpacing:'0.12em' }}>
+            <span style={{ color:'#e2e8f0', fontSize:'9.5px', fontWeight:800, letterSpacing:'0.12em' }}>
               TABLE OF CONTENTS
             </span>
             <div className="px-1.5 py-0.5 rounded" style={{ background:card }}>
@@ -134,25 +131,25 @@ function PlayerReplica({ hovered }: { hovered: string | null }) {
                   border:row.active?`1px solid ${acc}44`:'1px solid transparent',
                   marginTop:row.module&&i>0?'4px':undefined }}>
                 <span style={{ color:row.active?'#a5b4fc':row.module?'#e2e8f0':md,
-                  fontSize:row.module?'10px':'9.5px',
+                  fontSize:row.module?'9.5px':'9px',
                   fontWeight:row.module?700:row.active?600:400,
                   letterSpacing:row.module?'0.06em':0,
-                  whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:'145px' }}>
+                  whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:'130px' }}>
                   {row.label}
                 </span>
-                {row.skip&&<span style={{ color:acc, fontSize:'8.5px', fontWeight:700 }}>Skip</span>}
+                {row.skip&&<span style={{ color:acc, fontSize:'8px', fontWeight:700 }}>Skip</span>}
               </div>
             ))}
           </div>
         </div>
 
-        {/* CANVAS — full-section highlight */}
-        <div className="flex-1 flex flex-col min-w-0 p-5 gap-3 overflow-hidden"
+        {/* CANVAS */}
+        <div className="flex-1 flex flex-col min-w-0 p-4 gap-3 overflow-hidden"
           style={{ ...sectionHL(h('canvas'), hColor('canvas')),
             backgroundColor: h('canvas') ? `color-mix(in srgb, ${hColor('canvas')} 5%, ${bg})` : bg,
             transition:'all 0.18s' }}>
           <div>
-            <p style={{ color:'#f1f5f9', fontSize:'20px', fontWeight:800,
+            <p style={{ color:'#f1f5f9', fontSize:'18px', fontWeight:800,
               letterSpacing:'-0.02em', marginBottom:'4px' }}>Active Listening</p>
             <div style={{ height:'2px', width:'100%', borderRadius:'2px',
               background:`linear-gradient(to right, ${acc}cc, transparent)` }} />
@@ -164,15 +161,15 @@ function PlayerReplica({ hovered }: { hovered: string | null }) {
             <div key={i} className="rounded-lg overflow-hidden"
               style={{ border:`1px solid ${item.open?`${acc}55`:'rgba(255,255,255,0.08)'}`,
                 background:item.open?`${acc}12`:card }}>
-              <div className="flex items-center justify-between px-4 py-3">
+              <div className="flex items-center justify-between px-4 py-2.5">
                 <span style={{ color:item.open?'#c7d2fe':'#e2e8f0',
-                  fontSize:'12px', fontWeight:item.open?700:500 }}>{item.title}</span>
-                <ChevronDown style={{ width:'14px', height:'14px', color:item.open?'#818cf8':md,
+                  fontSize:'11.5px', fontWeight:item.open?700:500 }}>{item.title}</span>
+                <ChevronDown style={{ width:'13px', height:'13px', color:item.open?'#818cf8':md,
                   transform:item.open?'rotate(180deg)':'none', transition:'transform 0.2s' }} />
               </div>
               {item.open&&(
                 <div className="px-4 pb-3">
-                  <p style={{ color:lt, fontSize:'11px', lineHeight:1.6 }}>{item.body}</p>
+                  <p style={{ color:lt, fontSize:'10.5px', lineHeight:1.6 }}>{item.body}</p>
                 </div>
               )}
             </div>
@@ -203,38 +200,108 @@ function PlayerReplica({ hovered }: { hovered: string | null }) {
           {/* Play + Volume */}
           <div className="flex items-center gap-2"
             style={controlHL(h('volume'), hColor('volume'))}>
-            <div className="w-8 h-8 rounded-full flex items-center justify-center"
-              style={{ background:acc }}>
-              <Play style={{ width:'12px', height:'12px', fill:'#fff', color:'#fff' }} />
-            </div>
             <div className="w-7 h-7 rounded-full flex items-center justify-center"
+              style={{ background:acc }}>
+              <Play style={{ width:'11px', height:'11px', fill:'#fff', color:'#fff' }} />
+            </div>
+            <div className="w-6 h-6 rounded-full flex items-center justify-center"
               style={{ background:'rgba(34,197,94,0.15)', border:'1px solid rgba(34,197,94,0.4)' }}>
-              <Volume2 style={{ width:'12px', height:'12px', color:'#22c55e' }} />
+              <Volume2 style={{ width:'11px', height:'11px', color:'#22c55e' }} />
             </div>
             <div className="rounded-full overflow-hidden"
-              style={{ width:'52px', height:'4px', background:'rgba(255,255,255,0.12)' }}>
+              style={{ width:'44px', height:'4px', background:'rgba(255,255,255,0.12)' }}>
               <div style={{ width:'55%', height:'100%', background:'#22c55e', borderRadius:'999px' }} />
             </div>
-            <span style={{ color:md, fontSize:'10px' }}>No narration</span>
+            <span style={{ color:md, fontSize:'9.5px' }}>No narration</span>
           </div>
           {/* Slide info */}
-          <span style={{ color:lt, fontSize:'10px', fontWeight:500 }}>2 / 28 · Player Tour</span>
-          {/* Prev + Next — orange highlight to distinguish from accent indigo */}
+          <span style={{ color:lt, fontSize:'9.5px', fontWeight:500 }}>2 / 28 · Player Tour</span>
+          {/* Prev + Next */}
           <div className="flex items-center gap-1.5"
             style={controlHL(h('prevnext'), hColor('prevnext'))}>
-            <div className="flex items-center gap-1 px-3 py-1.5 rounded-lg"
+            <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg"
               style={{ background:'rgba(255,255,255,0.07)' }}>
-              <ChevronLeft style={{ width:'12px', height:'12px', color:lt }} />
-              <span style={{ color:lt, fontSize:'11px', fontWeight:600 }}>Prev</span>
+              <ChevronLeft style={{ width:'11px', height:'11px', color:lt }} />
+              <span style={{ color:lt, fontSize:'10px', fontWeight:600 }}>Prev</span>
             </div>
-            <div className="flex items-center gap-1 px-3 py-1.5 rounded-lg"
+            <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg"
               style={{ background:acc }}>
-              <span style={{ color:'#fff', fontSize:'11px', fontWeight:700 }}>Next</span>
-              <ChevronRight style={{ width:'12px', height:'12px', color:'#fff' }} />
+              <span style={{ color:'#fff', fontSize:'10px', fontWeight:700 }}>Next</span>
+              <ChevronRight style={{ width:'11px', height:'11px', color:'#fff' }} />
             </div>
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   SIDE TOOLTIP PANEL — appears beside the player when a zone is active
+══════════════════════════════════════════════════════════════════════════════ */
+function SideTooltip({ zone, subClr }: { zone: typeof ZONES[0] | null; subClr: string }) {
+  return (
+    <div className="relative flex items-center" style={{ width:'220px', minWidth:'220px' }}>
+      {/* Arrow pointing left toward the player */}
+      <AnimatePresence>
+        {zone && (
+          <motion.div
+            key={zone.id}
+            initial={{ opacity:0, x:18, scale:0.94 }}
+            animate={{ opacity:1, x:0,  scale:1   }}
+            exit={{    opacity:0, x:12, scale:0.94 }}
+            transition={{ type:'spring', stiffness:340, damping:28 }}
+            className="w-full relative"
+          >
+            {/* Caret */}
+            <div style={{
+              position:'absolute', left:'-8px', top:'50%',
+              transform:'translateY(-50%)',
+              width:0, height:0,
+              borderTop:'8px solid transparent',
+              borderBottom:'8px solid transparent',
+              borderRight:`8px solid ${zone.color}40`,
+            }} />
+            <div style={{
+              background:'#0f172a',
+              border:`1.5px solid ${zone.color}50`,
+              borderRadius:'14px',
+              padding:'16px 18px',
+              boxShadow:`0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px ${zone.color}20, inset 0 0 24px ${zone.color}08`,
+            }}>
+              {/* Zone color accent bar */}
+              <div style={{
+                width:'32px', height:'3px', borderRadius:'2px',
+                background:zone.color, marginBottom:'10px',
+                boxShadow:`0 0 8px ${zone.color}`,
+              }} />
+              <div className="flex items-center gap-2 mb-2">
+                <zone.icon style={{ width:'14px', height:'14px', color:zone.color, flexShrink:0 }} />
+                <span style={{ color:zone.color, fontSize:'12px', fontWeight:800, letterSpacing:'0.02em' }}>
+                  {zone.label}
+                </span>
+              </div>
+              <p style={{ color:'#cbd5e1', fontSize:'12px', lineHeight:1.65, margin:0 }}>
+                {zone.desc}
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Placeholder when nothing is hovered */}
+      <AnimatePresence>
+        {!zone && (
+          <motion.div
+            initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
+            className="w-full text-center px-4"
+          >
+            <p style={{ color:subClr, fontSize:'11.5px', lineHeight:1.6 }}>
+              Hover or click a button below to learn about each part of the player
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -257,23 +324,23 @@ export const PlayerTourSlide: React.FC<Props> = ({ theme, onSkip }) => {
   const textClr= TEXT[theme]   ?? TEXT.dark;
   const subClr = SUB[theme]    ?? SUB.dark;
 
-  const hovZone     = ZONES.find(z => z.id === hovered);
-  const clickedZone = ZONES.find(z => z.id === clicked);
+  // Active zone: clicked takes priority over hovered
+  const activeId   = clicked ?? hovered;
+  const activeZone = ZONES.find(z => z.id === activeId) ?? null;
 
   return (
     <div className="w-full h-full flex flex-col overflow-hidden relative"
       style={{ backgroundColor:bg }}>
 
       {/* Header */}
-      <div className="shrink-0 flex items-center justify-between px-6 pt-4 pb-1">
+      <div className="shrink-0 flex items-center justify-between px-6 pt-4 pb-2">
         <div>
           <p style={{ color:'#818cf8', fontSize:'11px', fontWeight:800,
             letterSpacing:'0.12em', textTransform:'uppercase', marginBottom:'2px' }}>
             Player Navigation Guide
           </p>
-          <p style={{ color:hovZone ? hovZone.color : subClr, fontSize:'12px',
-            fontWeight: hovZone ? 500 : 400, transition:'color 0.15s' }}>
-            {hovZone ? hovZone.desc : 'Hover a button to highlight that part of the player'}
+          <p style={{ color:subClr, fontSize:'12px' }}>
+            Hover a button below to highlight that part of the player
           </p>
         </div>
         <button onClick={onSkip}
@@ -283,33 +350,21 @@ export const PlayerTourSlide: React.FC<Props> = ({ theme, onSkip }) => {
         </button>
       </div>
 
-      {/* Player — larger, less constrained */}
-      <div className="flex-1 min-h-0 flex items-center justify-center px-5 py-2">
-        <div style={{ width:'100%', height:'100%', maxWidth:'900px' }}>
+      {/* Main body: Player + Side Tooltip */}
+      <div className="flex-1 min-h-0 flex items-stretch gap-3 px-5 py-1">
+        {/* Player — takes remaining space */}
+        <div className="flex-1 min-w-0">
           <PlayerReplica hovered={hovered} />
+        </div>
+
+        {/* Side Tooltip Panel */}
+        <div className="flex items-center justify-start shrink-0">
+          <SideTooltip zone={activeZone} subClr={subClr} />
         </div>
       </div>
 
-      {/* Feature buttons + clicked description */}
-      <div className="shrink-0 px-6 pb-4 flex flex-col gap-2">
-        {/* Clicked description bar */}
-        <AnimatePresence>
-          {clickedZone && (
-            <motion.div
-              key={clickedZone.id}
-              initial={{ opacity:0, y:6 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0, y:6 }}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg"
-              style={{ background:`${clickedZone.color}14`, border:`1px solid ${clickedZone.color}40` }}>
-              <clickedZone.icon className="w-4 h-4 shrink-0" style={{ color:clickedZone.color }} />
-              <span style={{ color:clickedZone.color, fontSize:'12px', fontWeight:600 }}>
-                {clickedZone.label}:
-              </span>
-              <span style={{ color:subClr, fontSize:'12px' }}>{clickedZone.desc}</span>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Button row */}
+      {/* Feature buttons row */}
+      <div className="shrink-0 px-6 pb-4 pt-2">
         <div className="flex flex-wrap gap-2 justify-center">
           {ZONES.map(z => {
             const Icon = z.icon;

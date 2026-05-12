@@ -12,8 +12,8 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 
 // Base design dimensions for each aspect ratio mode
 export const DESIGN_SIZES: Record<string, { w: number; h: number }> = {
-  '16:9': { w: 960, h: 540 },  // 16:9 widescreen
-  '4:3':  { w: 960, h: 720 },  // 4:3 classic
+  '16:9': { w: 1280, h: 720 },  // 16:9 widescreen — matches 720p/1080p screens
+  '4:3':  { w: 1024, h: 768 },  // 4:3 classic
   'full': { w: 1280, h: 720 }, // handled separately (flex-fill, not scaled)
 };
 

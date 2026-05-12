@@ -116,7 +116,20 @@ async function executeAnthropicAI(modelTier: 'complex' | 'bulk', systemPrompt: s
   const executeCall = async () => {
     const response = await fetch(AI_PROXY_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        // Send the Supabase JWT so the server can enforce trial rate limits.
+        // Reads from localStorage where Supabase stores the session client-side.
+        ...(() => {
+          try {
+            const raw = localStorage.getItem(
+              Object.keys(localStorage).find(k => k.includes('supabase') && k.includes('auth')) ?? ''
+            );
+            const token = raw ? JSON.parse(raw)?.access_token : null;
+            return token ? { 'Authorization': `Bearer ${token}` } : {};
+          } catch { return {}; }
+        })(),
+      },
       body: JSON.stringify({
         model:     modelTier,
         system:    systemPrompt,

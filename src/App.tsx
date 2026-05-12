@@ -2704,7 +2704,7 @@ export default function App() {
                 <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
                   {/* Background canvas — scaler measures this div to compute transform scale */}
                   <div
-                    ref={viewMode === 'desktop' && playerConfig.playerResolution !== 'full' ? scaler.containerRef : undefined}
+                    ref={viewMode === 'desktop' ? scaler.containerRef : undefined}
                     className={cn(
                       "bg-cover bg-center relative flex flex-col flex-1 overflow-hidden"
                     )}
