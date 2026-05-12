@@ -52,7 +52,7 @@ const ACC = [
 /* ══════════════════════════════════════════════════════════════════════════════
    PLAYER REPLICA — learner view only
 ══════════════════════════════════════════════════════════════════════════════ */
-function PlayerReplica({ hovered }: { hovered: string | null }) {
+function PlayerReplica({ hovered, activeZone }: { hovered: string | null; activeZone: typeof ZONES[0] | null }) {
   const acc  = '#6366f1';
   const bg   = '#0f172a';
   const bar  = '#111827';
@@ -174,6 +174,44 @@ function PlayerReplica({ hovered }: { hovered: string | null }) {
               )}
             </div>
           ))}
+
+          {/* ── In-player zone description — bottom of canvas ── */}
+          <div className="mt-auto pt-2">
+            <AnimatePresence mode="wait">
+              {activeZone ? (
+                <motion.div
+                  key={activeZone.id}
+                  initial={{ opacity:0, y:8 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0, y:4 }}
+                  transition={{ duration:0.18 }}
+                  style={{
+                    background: `color-mix(in srgb, ${activeZone.color} 10%, #0f172a)`,
+                    border: `1px solid ${activeZone.color}45`,
+                    borderRadius: '10px',
+                    padding: '10px 14px',
+                    boxShadow: `0 0 20px ${activeZone.color}22`,
+                  }}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <activeZone.icon style={{ width:'12px', height:'12px', color:activeZone.color, flexShrink:0 }} />
+                    <span style={{ color:activeZone.color, fontSize:'10.5px', fontWeight:800, letterSpacing:'0.03em' }}>
+                      {activeZone.label}
+                    </span>
+                  </div>
+                  <p style={{ color:'#cbd5e1', fontSize:'10.5px', lineHeight:1.6, margin:0 }}>
+                    {activeZone.desc}
+                  </p>
+                </motion.div>
+              ) : (
+                <motion.p
+                  key="placeholder"
+                  initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
+                  style={{ color:md, fontSize:'10px', textAlign:'center', padding:'8px 0' }}
+                >
+                  Hover a button below to learn about each part of the player
+                </motion.p>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
 
@@ -350,17 +388,9 @@ export const PlayerTourSlide: React.FC<Props> = ({ theme, onSkip }) => {
         </button>
       </div>
 
-      {/* Main body: Player + Side Tooltip */}
-      <div className="flex-1 min-h-0 flex items-stretch gap-3 px-5 py-1">
-        {/* Player — takes remaining space */}
-        <div className="flex-1 min-w-0">
-          <PlayerReplica hovered={hovered} />
-        </div>
-
-        {/* Side Tooltip Panel */}
-        <div className="flex items-center justify-start shrink-0">
-          <SideTooltip zone={activeZone} subClr={subClr} />
-        </div>
+      {/* Main body: Player — full width, no side panel */}
+      <div className="flex-1 min-h-0 px-5 py-1">
+        <PlayerReplica hovered={hovered} activeZone={activeZone} />
       </div>
 
       {/* Feature buttons row */}
@@ -389,12 +419,6 @@ export const PlayerTourSlide: React.FC<Props> = ({ theme, onSkip }) => {
               </motion.button>
             );
           })}
-          <motion.button onClick={onSkip}
-            whileHover={{ scale:1.06 }} whileTap={{ scale:0.96 }}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold"
-            style={{ background:'rgba(99,102,241,0.15)', border:'1.5px solid #6366f1', color:'#a5b4fc' }}>
-            Continue to Course <ArrowRight className="w-3.5 h-3.5" />
-          </motion.button>
         </div>
       </div>
 
