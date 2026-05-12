@@ -252,8 +252,11 @@ app.post('/api/ai', aiRateLimit, async (req, res) => {
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL ?? '').toLowerCase();
 
 async function verifyAdminJwt(authHeader) {
+  console.log('[AdminAuth] Authorization header present:', !!authHeader);
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  console.log('[AdminAuth] Token extracted:', token ? `${token.slice(0,20)}...` : 'NONE');
   if (!token) return false;
+
   const { createClient } = await import('@supabase/supabase-js');
   const supa = createClient(
     process.env.VITE_SUPABASE_URL,
@@ -261,22 +264,32 @@ async function verifyAdminJwt(authHeader) {
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
   const { data: { user }, error } = await supa.auth.getUser(token);
+  console.log('[AdminAuth] getUser error:', error?.message ?? 'none');
+  console.log('[AdminAuth] getUser email:', user?.email ?? 'null');
+  console.log('[AdminAuth] ADMIN_EMAIL env:', ADMIN_EMAIL || '(not set)');
+  console.log('[AdminAuth] Email match:', user?.email?.toLowerCase() === ADMIN_EMAIL);
+
   if (error || !user) return false;
-  // Accept if email matches ADMIN_EMAIL env var, OR if user has admin role metadata
   return (ADMIN_EMAIL && user.email?.toLowerCase() === ADMIN_EMAIL)
       || user.user_metadata?.role === 'admin';
 }
 
 app.post('/api/admin/invite', async (req, res) => {
   const { email, trialDays = 7 } = req.body;
+  console.log('[Admin Invite] Request received, email:', email);
 
-  const isAdmin = await verifyAdminJwt(req.headers.authorization).catch(() => false);
+  const isAdmin = await verifyAdminJwt(req.headers.authorization).catch((e) => {
+    console.error('[AdminAuth] verifyAdminJwt threw:', e.message);
+    return false;
+  });
+  console.log('[Admin Invite] isAdmin result:', isAdmin);
   if (!isAdmin) {
     return res.status(403).json({ error: 'Forbidden.' });
   }
   if (!email?.trim()) {
     return res.status(400).json({ error: 'email is required.' });
   }
+
 
   try {
     const { createClient } = await import('@supabase/supabase-js');
