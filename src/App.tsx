@@ -502,7 +502,7 @@ export default function App() {
   // Articulate-style scale-to-fit: always called at hook level regardless of step
   const scaler = useScaleToFit(
     playerConfig?.playerResolution ?? '16:9',
-    step === 'preview' && viewMode === 'desktop' && playerConfig?.playerResolution !== 'full'
+    step === 'preview' && viewMode === 'desktop' // active for ALL resolution modes
   );
   const [ttsVoice, setTtsVoice] = useState<string>('alloy');
   // Per-slide TTS regeneration state
@@ -2764,6 +2764,10 @@ export default function App() {
                                 theme === 'light' ? 'bg-white text-slate-900' : theme === 'unified' ? 'bg-indigo-950 text-slate-100' : 'bg-slate-900 text-white'
                               )
                         )}
+                        style={viewMode === 'desktop' && scaler.scale > 1.05
+                          ? { zoom: Math.min(scaler.scale, 1.8) }
+                          : undefined
+                        }
                       >
                         {!isFullBleed && (
                           <div className="w-[120%] h-[120%] absolute -top-[10%] -left-[10%] pointer-events-none opacity-[0.03] bg-[url('https://grainy-gradients.vercel.app/noise.svg')] mix-blend-overlay"></div>
