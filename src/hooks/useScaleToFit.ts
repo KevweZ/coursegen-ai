@@ -59,11 +59,23 @@ export function useScaleToFit(resolution: Resolution | string, active: boolean =
     // Measure immediately in rAF after mount/update
     scheduleRecalculate();
 
+    // Staggered fallback remeasurements:
+    // On a fresh page load (especially on an external monitor), the browser may
+    // not have finished laying out when the initial rAF fires — container reports
+    // 0×0 and the w < 10 guard bails out early. These timers ensure we re-measure
+    // after the layout is fully settled, fixing the HDMI refresh bug.
+    const t1 = setTimeout(scheduleRecalculate, 100);
+    const t2 = setTimeout(scheduleRecalculate, 400);
+    const t3 = setTimeout(scheduleRecalculate, 1000);
+
     const ro = new ResizeObserver(scheduleRecalculate);
     if (containerRef.current) ro.observe(containerRef.current);
     window.addEventListener('resize', scheduleRecalculate);
 
     return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       ro.disconnect();
       window.removeEventListener('resize', scheduleRecalculate);
