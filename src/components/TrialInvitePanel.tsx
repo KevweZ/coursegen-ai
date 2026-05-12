@@ -12,6 +12,7 @@ interface InvitedUser {
 interface Props {
   onClose: () => void;
   apiBase: string;
+  accessToken: string;
 }
 
 const TRIAL_OPTIONS = [
@@ -20,32 +21,7 @@ const TRIAL_OPTIONS = [
   { label: '30 days', value: 30 },
 ];
 
-// Read the Supabase session JWT from localStorage.
-// Supabase stores the session under 'sb-<project-ref>-auth-token' (not 'supabase-...').
-function getSessionJwt(): string {
-  try {
-    // Match the real Supabase key format: sb-<ref>-auth-token
-    const key = Object.keys(localStorage).find(k =>
-      (k.startsWith('sb-') && k.includes('auth-token')) ||
-      (k.includes('supabase') && k.includes('auth'))
-    );
-    if (key) {
-      const raw = localStorage.getItem(key);
-      const token = raw ? JSON.parse(raw)?.access_token : null;
-      if (token) return token;
-    }
-    // Fallback: scan all keys for any value that has an access_token field
-    for (const k of Object.keys(localStorage)) {
-      try {
-        const val = JSON.parse(localStorage.getItem(k) ?? '');
-        if (val?.access_token) return val.access_token;
-      } catch { /* skip non-JSON keys */ }
-    }
-    return '';
-  } catch { return ''; }
-}
-
-export function TrialInvitePanel({ onClose, apiBase }: Props) {
+export function TrialInvitePanel({ onClose, apiBase, accessToken }: Props) {
   const [email, setEmail]         = useState('');
   const [trialDays, setTrialDays] = useState(7);
   const [sending, setSending]     = useState(false);
@@ -69,7 +45,7 @@ export function TrialInvitePanel({ onClose, apiBase }: Props) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getSessionJwt()}`,
+          'Authorization': `Bearer ${accessToken}`,
         },
         body: JSON.stringify({ email: email.trim(), trialDays }),
       });
@@ -98,7 +74,7 @@ export function TrialInvitePanel({ onClose, apiBase }: Props) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getSessionJwt()}`,
+          'Authorization': `Bearer ${accessToken}`,
         },
         body: JSON.stringify({ userId: user.userId }),
       });

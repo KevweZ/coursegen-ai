@@ -400,6 +400,7 @@ export default function App() {
   const [showQcPublishWarning, setShowQcPublishWarning] = useState(false);
   const [showTrialExportModal, setShowTrialExportModal] = useState(false);
   const [showTrialInvitePanel, setShowTrialInvitePanel] = useState(false);
+  const [adminToken, setAdminToken] = useState('');
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [course, setCourse] = useState<any>(isScormPlayer ? (window as any).__COURSE_DATA__ : null);
@@ -1380,7 +1381,12 @@ export default function App() {
                         <div className="border-t border-slate-800 my-1" />
                         {/* Trial Invites — admin only */}
                         <button
-                          onClick={() => { setAdminDropdownOpen(false); setShowTrialInvitePanel(true); }}
+                          onClick={async () => {
+                              setAdminDropdownOpen(false);
+                              const { data } = await supabase.auth.getSession();
+                              setAdminToken(data.session?.access_token ?? '');
+                              setShowTrialInvitePanel(true);
+                            }}
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-amber-300 hover:bg-amber-500/10 text-sm font-medium transition-all text-left"
                         >
                           <Send className="w-3.5 h-3.5" /> Trial Invites
@@ -3928,6 +3934,7 @@ export default function App() {
           <TrialInvitePanel
             onClose={() => setShowTrialInvitePanel(false)}
             apiBase={import.meta.env.VITE_API_BASE ?? ''}
+            accessToken={adminToken}
           />
         )}
       </AnimatePresence>
