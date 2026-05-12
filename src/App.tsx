@@ -325,7 +325,7 @@ const SmartContent = ({ content, className, theme }: { content: string; classNam
 
 export default function App() {
   const isScormPlayer = typeof window !== 'undefined' && !!(window as any).__COURSE_DATA__;
-  const { user, loading: authLoading, signOut, isAdmin, isTrial, isTrialExpired } = useAuth();
+  const { user, session, loading: authLoading, signOut, isAdmin, isTrial, isTrialExpired } = useAuth();
 
   // ── Draft Courses (Pro feature) ───────────────────────────────────────────
   const draftManager = useDraftCourses(user?.id ?? null);
@@ -1381,10 +1381,9 @@ export default function App() {
                         <div className="border-t border-slate-800 my-1" />
                         {/* Trial Invites — admin only */}
                         <button
-                          onClick={async () => {
+                          onClick={() => {
                               setAdminDropdownOpen(false);
-                              const { data } = await supabase.auth.getSession();
-                              setAdminToken(data.session?.access_token ?? '');
+                              setAdminToken(session?.access_token ?? '');
                               setShowTrialInvitePanel(true);
                             }}
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-amber-300 hover:bg-amber-500/10 text-sm font-medium transition-all text-left"
