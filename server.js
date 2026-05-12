@@ -248,13 +248,30 @@ app.post('/api/ai', aiRateLimit, async (req, res) => {
   }
 });
 
-// ─── 6b. Admin — Send Trial Invite ──────────────────────────────────────────
-const ADMIN_SECRET = process.env.ADMIN_SECRET ?? '';
+// ─── Helper: verify caller is the admin via their Supabase JWT ───────────────
+const ADMIN_EMAIL = (process.env.ADMIN_EMAIL ?? '').toLowerCase();
+
+async function verifyAdminJwt(authHeader) {
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token) return false;
+  const { createClient } = await import('@supabase/supabase-js');
+  const supa = createClient(
+    process.env.VITE_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_KEY,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  );
+  const { data: { user }, error } = await supa.auth.getUser(token);
+  if (error || !user) return false;
+  // Accept if email matches ADMIN_EMAIL env var, OR if user has admin role metadata
+  return (ADMIN_EMAIL && user.email?.toLowerCase() === ADMIN_EMAIL)
+      || user.user_metadata?.role === 'admin';
+}
 
 app.post('/api/admin/invite', async (req, res) => {
-  const { email, trialDays = 7, adminSecret } = req.body;
+  const { email, trialDays = 7 } = req.body;
 
-  if (!ADMIN_SECRET || adminSecret !== ADMIN_SECRET) {
+  const isAdmin = await verifyAdminJwt(req.headers.authorization).catch(() => false);
+  if (!isAdmin) {
     return res.status(403).json({ error: 'Forbidden.' });
   }
   if (!email?.trim()) {
@@ -331,9 +348,10 @@ app.post('/api/admin/invite', async (req, res) => {
 
 // ─── 6c. Admin — Revoke Trial Access ────────────────────────────────────────
 app.post('/api/admin/revoke', async (req, res) => {
-  const { userId, adminSecret } = req.body;
+  const { userId } = req.body;
 
-  if (!ADMIN_SECRET || adminSecret !== ADMIN_SECRET) {
+  const isAdmin = await verifyAdminJwt(req.headers.authorization).catch(() => false);
+  if (!isAdmin) {
     return res.status(403).json({ error: 'Forbidden.' });
   }
   if (!userId) {

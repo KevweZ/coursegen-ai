@@ -3927,7 +3927,6 @@ export default function App() {
         {showTrialInvitePanel && isAdmin && (
           <TrialInvitePanel
             onClose={() => setShowTrialInvitePanel(false)}
-            adminSecret={import.meta.env.VITE_ADMIN_SECRET ?? ''}
             apiBase={import.meta.env.VITE_API_BASE ?? ''}
           />
         )}

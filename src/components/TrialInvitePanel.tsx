@@ -11,7 +11,6 @@ interface InvitedUser {
 
 interface Props {
   onClose: () => void;
-  adminSecret: string;
   apiBase: string;
 }
 
@@ -21,7 +20,17 @@ const TRIAL_OPTIONS = [
   { label: '30 days', value: 30 },
 ];
 
-export function TrialInvitePanel({ onClose, adminSecret, apiBase }: Props) {
+// Read the Supabase session JWT from localStorage (where Supabase stores it client-side)
+function getSessionJwt(): string {
+  try {
+    const key = Object.keys(localStorage).find(k => k.includes('supabase') && k.includes('auth'));
+    if (!key) return '';
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw)?.access_token ?? '') : '';
+  } catch { return ''; }
+}
+
+export function TrialInvitePanel({ onClose, apiBase }: Props) {
   const [email, setEmail]         = useState('');
   const [trialDays, setTrialDays] = useState(7);
   const [sending, setSending]     = useState(false);
@@ -43,8 +52,11 @@ export function TrialInvitePanel({ onClose, adminSecret, apiBase }: Props) {
     try {
       const res = await fetch(`${apiBase}/api/admin/invite`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), trialDays, adminSecret }),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${getSessionJwt()}`,
+        },
+        body: JSON.stringify({ email: email.trim(), trialDays }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Invite failed');
@@ -69,8 +81,11 @@ export function TrialInvitePanel({ onClose, adminSecret, apiBase }: Props) {
     try {
       const res = await fetch(`${apiBase}/api/admin/revoke`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.userId, adminSecret }),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${getSessionJwt()}`,
+        },
+        body: JSON.stringify({ userId: user.userId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Revoke failed');
