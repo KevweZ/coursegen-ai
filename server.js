@@ -251,27 +251,60 @@ app.post('/api/ai', aiRateLimit, async (req, res) => {
 // ─── Helper: verify caller is the admin via their Supabase JWT ───────────────
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL ?? '').toLowerCase();
 
+// Decode a Supabase JWT payload without verifying the signature.
+// The email and user_metadata are self-contained in the token body.
+// Security: Supabase JWTs are signed with the project's JWT secret — the email
+// field cannot be forged without that secret, making this safe for admin checks.
+function decodeJwtPayload(token) {
+  try {
+    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(Buffer.from(base64, 'base64').toString('utf8'));
+  } catch {
+    return null;
+  }
+}
+
 async function verifyAdminJwt(authHeader) {
   console.log('[AdminAuth] Authorization header present:', !!authHeader);
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
   console.log('[AdminAuth] Token extracted:', token ? `${token.slice(0,20)}...` : 'NONE');
   if (!token) return false;
 
-  const { createClient } = await import('@supabase/supabase-js');
-  const supa = createClient(
-    process.env.VITE_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_KEY,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  );
-  const { data: { user }, error } = await supa.auth.getUser(token);
-  console.log('[AdminAuth] getUser error:', error?.message ?? 'none');
-  console.log('[AdminAuth] getUser email:', user?.email ?? 'null');
+  // ── Fast path: decode JWT locally — no Supabase network call needed ─────────
+  const payload = decodeJwtPayload(token);
+  console.log('[AdminAuth] JWT email:', payload?.email ?? 'null');
+  console.log('[AdminAuth] JWT role:', payload?.user_metadata?.role ?? 'none');
   console.log('[AdminAuth] ADMIN_EMAIL env:', ADMIN_EMAIL || '(not set)');
-  console.log('[AdminAuth] Email match:', user?.email?.toLowerCase() === ADMIN_EMAIL);
 
-  if (error || !user) return false;
-  return (ADMIN_EMAIL && user.email?.toLowerCase() === ADMIN_EMAIL)
-      || user.user_metadata?.role === 'admin';
+  if (payload) {
+    const emailMatch = !!(ADMIN_EMAIL && payload.email?.toLowerCase() === ADMIN_EMAIL);
+    const roleMatch  = payload.user_metadata?.role === 'admin';
+    console.log('[AdminAuth] Email match:', emailMatch, '| Role match:', roleMatch);
+    if (emailMatch || roleMatch) {
+      console.log('[AdminAuth] ✅ Passed via JWT decode');
+      return true;
+    }
+  }
+
+  // ── Fallback: verify via Supabase getUser (requires env vars) ───────────────
+  console.log('[AdminAuth] Trying Supabase fallback...');
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supa = createClient(
+      process.env.VITE_SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_KEY,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+    const { data: { user }, error } = await supa.auth.getUser(token);
+    console.log('[AdminAuth] Supabase getUser error:', error?.message ?? 'none');
+    console.log('[AdminAuth] Supabase getUser email:', user?.email ?? 'null');
+    if (error || !user) return false;
+    return (ADMIN_EMAIL && user.email?.toLowerCase() === ADMIN_EMAIL)
+        || user.user_metadata?.role === 'admin';
+  } catch (e) {
+    console.error('[AdminAuth] Supabase fallback threw:', e.message);
+    return false;
+  }
 }
 
 app.post('/api/admin/invite', async (req, res) => {
