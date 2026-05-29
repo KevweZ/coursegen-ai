@@ -813,8 +813,33 @@ app.get('/api/health', (_req, res) => {
     mode: isProd ? 'production' : 'development',
     resend_configured: !!resend,
     support_email: SUPPORT_EMAIL,
-    version: 'ca0c182',
+    version: '437a0ab-v2',
   });
+});
+
+// ─── Temporary: Supabase connection diagnostic (admin-only, remove after fix) ─
+app.get('/api/admin/test-supabase', async (req, res) => {
+  const supabaseUrl = process.env.VITE_SUPABASE_URL ?? '';
+  const serviceKey  = process.env.SUPABASE_SERVICE_KEY ?? '';
+  const result = {
+    url_set:    !!supabaseUrl,
+    url_value:  supabaseUrl ? `${supabaseUrl.slice(0, 40)}...` : '(not set)',
+    key_set:    !!serviceKey,
+    key_prefix: serviceKey ? serviceKey.slice(0, 20) + '...' : '(not set)',
+    supabase_test: 'not run',
+  };
+  if (supabaseUrl && serviceKey) {
+    try {
+      const { createClient } = await import('@supabase/supabase-js');
+      const supa = createClient(supabaseUrl, serviceKey,
+        { auth: { autoRefreshToken: false, persistSession: false } });
+      const { data, error } = await supa.auth.admin.listUsers({ page: 1, perPage: 1 });
+      result.supabase_test = error ? `ERROR: ${error.message}` : `OK — ${data?.users?.length ?? 0} user returned`;
+    } catch (e) {
+      result.supabase_test = `THREW: ${e.message}`;
+    }
+  }
+  res.json(result);
 });
 
 // ─── 9. Serve Static Build (production only) ────────────────────────────────
