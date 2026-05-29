@@ -29,7 +29,7 @@ const PORT      = process.env.PORT ?? 3001;
 const isProd    = process.env.NODE_ENV === 'production';
 
 // ─── 1. Startup Environment Validation ──────────────────────────────────────
-const REQUIRED_VARS = ['ANTHROPIC_API_KEY', 'SUPABASE_SERVICE_KEY'];
+const REQUIRED_VARS = ['ANTHROPIC_API_KEY'];
 const missingVars   = REQUIRED_VARS.filter(v => !process.env[v]);
 
 if (missingVars.length > 0) {
@@ -184,7 +184,7 @@ app.post('/api/ai', aiRateLimit, async (req, res) => {
       const { createClient } = await import('@supabase/supabase-js');
       const supa = createClient(
         process.env.VITE_SUPABASE_URL,
-        process.env.SUPABASE_SERVICE_KEY,
+        getSupabaseKey(),
         { auth: { autoRefreshToken: false, persistSession: false } }
       );
       // Validate the JWT and get user info
@@ -251,6 +251,14 @@ app.post('/api/ai', aiRateLimit, async (req, res) => {
 // ─── Helper: verify caller is the admin via their Supabase JWT ───────────────
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL ?? '').toLowerCase();
 
+// Try multiple env var names for the service key — SUPA_ADMIN_KEY takes priority
+// so we can set a fresh variable in Railway if SUPABASE_SERVICE_KEY is corrupted.
+function getSupabaseKey() {
+  return process.env.SUPA_ADMIN_KEY
+      || process.env.SUPABASE_SERVICE_KEY
+      || '';
+}
+
 // Decode a Supabase JWT payload without verifying the signature.
 // The email and user_metadata are self-contained in the token body.
 // Security: Supabase JWTs are signed with the project's JWT secret — the email
@@ -292,7 +300,7 @@ async function verifyAdminJwt(authHeader) {
     const { createClient } = await import('@supabase/supabase-js');
     const supa = createClient(
       process.env.VITE_SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_KEY,
+      getSupabaseKey(),
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
     const { data: { user }, error } = await supa.auth.getUser(token);
@@ -328,7 +336,7 @@ app.post('/api/admin/invite', async (req, res) => {
     const { createClient } = await import('@supabase/supabase-js');
     const supa = createClient(
       process.env.VITE_SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_KEY,
+      getSupabaseKey(),
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
@@ -408,7 +416,7 @@ app.post('/api/admin/revoke', async (req, res) => {
     const { createClient } = await import('@supabase/supabase-js');
     const supa = createClient(
       process.env.VITE_SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_KEY,
+      getSupabaseKey(),
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
@@ -543,7 +551,7 @@ app.post(
           const { createClient } = await import('@supabase/supabase-js');
           const supabase = createClient(
             process.env.VITE_SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_KEY,
+            getSupabaseKey(),
             { auth: { autoRefreshToken: false, persistSession: false } }
           );
 
@@ -598,7 +606,7 @@ app.post(
         const { createClient } = await import('@supabase/supabase-js');
         const supabase = createClient(
           process.env.VITE_SUPABASE_URL,
-          process.env.SUPABASE_SERVICE_KEY,
+          getSupabaseKey(),
           { auth: { autoRefreshToken: false, persistSession: false } }
         );
         await supabase
@@ -625,7 +633,7 @@ app.get('/api/payments/status', async (req, res) => {
     const { createClient } = await import('@supabase/supabase-js');
     const supabase = createClient(
       process.env.VITE_SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_KEY,
+      getSupabaseKey(),
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
     const { data, error } = await supabase
@@ -820,12 +828,15 @@ app.get('/api/health', (_req, res) => {
 // ─── Temporary: Supabase connection diagnostic (admin-only, remove after fix) ─
 app.get('/api/admin/test-supabase', async (req, res) => {
   const supabaseUrl = process.env.VITE_SUPABASE_URL ?? '';
-  const serviceKey  = process.env.SUPABASE_SERVICE_KEY ?? '';
+  const serviceKey  = getSupabaseKey();
   const result = {
-    url_set:    !!supabaseUrl,
-    url_value:  supabaseUrl ? `${supabaseUrl.slice(0, 40)}...` : '(not set)',
-    key_set:    !!serviceKey,
-    key_prefix: serviceKey ? serviceKey.slice(0, 20) + '...' : '(not set)',
+    url_set:       !!supabaseUrl,
+    url_value:     supabaseUrl ? `${supabaseUrl.slice(0, 40)}...` : '(not set)',
+    supa_admin_key_set: !!process.env.SUPA_ADMIN_KEY,
+    supa_admin_key_prefix: process.env.SUPA_ADMIN_KEY ? process.env.SUPA_ADMIN_KEY.slice(0, 20) + '...' : '(not set)',
+    legacy_key_set: !!process.env.SUPABASE_SERVICE_KEY,
+    legacy_key_prefix: process.env.SUPABASE_SERVICE_KEY ? process.env.SUPABASE_SERVICE_KEY.slice(0, 20) + '...' : '(not set)',
+    key_in_use_prefix: serviceKey ? serviceKey.slice(0, 20) + '...' : '(none)',
     supabase_test: 'not run',
   };
   if (supabaseUrl && serviceKey) {
