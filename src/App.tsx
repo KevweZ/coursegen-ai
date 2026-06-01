@@ -141,6 +141,7 @@ import { useAuth } from './contexts/AuthContext';
 import { AuthPage } from './components/auth/AuthPage';
 import { MarketingHomepage } from './components/marketing/MarketingHomepage';
 import { MethodologyPage } from './components/marketing/MethodologyPage';
+import { ExamplesPage } from './components/marketing/ExamplesPage';
 import { HelpWidget } from './components/HelpWidget';
 
 const renderInstructionalText = (children: React.ReactNode, theme: string, isList: boolean = false) => {
@@ -323,6 +324,22 @@ const SmartContent = ({ content, className, theme }: { content: string; classNam
   );
 };
 
+// ─── Grid interaction IDs (must match the interactive-elements grid in the UI) ──
+const GRID_INTERACTION_IDS = [
+  'multiple-choice', 'multiple-answers', 'hotspot', 'accordion', 'flashcards',
+  'timeline', 'sorting', 'matching', 'drop-targets', 'scenario',
+  'tabbed-horizontal', 'tabbed-vertical', 'folder-explorer', 'carousel-panel',
+];
+// Map legacy / AI-prompt IDs → visual grid IDs so the UI checkboxes stay in sync
+const PRESET_TO_GRID: Record<string, string> = {
+  quiz: 'multiple-choice',
+  choice: 'multiple-choice',
+  'drag-drop': 'drop-targets',
+  'drag-drop-activity': 'drop-targets',
+};
+const mapToGridIds = (ids: string[]): string[] =>
+  [...new Set(ids.map(id => PRESET_TO_GRID[id] ?? id).filter(id => GRID_INTERACTION_IDS.includes(id)))];
+
 export default function App() {
   const isScormPlayer = typeof window !== 'undefined' && !!(window as any).__COURSE_DATA__;
   const { user, session, loading: authLoading, signOut, isAdmin, isTrial, isTrialExpired } = useAuth();
@@ -362,7 +379,7 @@ export default function App() {
   };
 
   // Controls which pre-auth view to show: public marketing homepage OR login/signup
-  const [publicView, setPublicView] = useState<'homepage' | 'auth' | 'methodology'>('homepage');
+  const [publicView, setPublicView] = useState<'homepage' | 'auth' | 'methodology' | 'pricing' | 'examples'>('homepage');
   const [authInitialMode, setAuthInitialMode] = useState<'login' | 'signup'>('login');
   
   const [step, setStep] = useState<AppStep>(isScormPlayer ? 'preview' : 'home');
@@ -379,7 +396,35 @@ export default function App() {
     } else if (path === '/methodology') {
       setPublicView('methodology');
       window.history.replaceState({}, '', '/methodology');
+    } else if (path === '/pricing') {
+      setPublicView('pricing');
+      window.history.replaceState({}, '', '/pricing');
+    } else if (path === '/examples') {
+      setPublicView('examples');
+      window.history.replaceState({}, '', '/examples');
+    } else if (path === '/login') {
+      setPublicView('auth');
+      setAuthInitialMode('login');
+    } else if (path === '/signup') {
+      setPublicView('auth');
+      setAuthInitialMode('signup');
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Handle browser back / forward buttons ─────────────────────────────────
+  useEffect(() => {
+    const handlePopState = () => {
+      const path = window.location.pathname;
+      if (path === '/pricing') { setPublicView('pricing'); window.scrollTo(0, 0); }
+      else if (path === '/examples') setPublicView('examples');
+      else if (path === '/methodology') setPublicView('methodology');
+      else if (path === '/login')  { setPublicView('auth'); setAuthInitialMode('login'); }
+      else if (path === '/signup') { setPublicView('auth'); setAuthInitialMode('signup'); }
+      else setPublicView('homepage');
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [activeTab, setActiveTab] = useState<'topic' | 'file' | 'url'>('topic');
@@ -795,7 +840,7 @@ export default function App() {
            setPreset(rp);
            const config = getPresetConfig('corporate', rp);
            setSlideCount(config.slideCountTarget);
-           setInteractionTypes(config.interactions);
+           setInteractionTypes(mapToGridIds(config.interactions));
            if (config.objectiveFormat) setObjectiveFormat(config.objectiveFormat);
         }
         await new Promise(r => setTimeout(r, 300));
@@ -967,6 +1012,44 @@ export default function App() {
     }
   };
 
+  /**
+   * Switch the complexity preset and update all dependent state:
+   * slide count, objective format, interaction defaults, and re-suggest objectives via AI.
+   */
+  const handlePresetChange = async (newPreset: 'quick' | 'standard' | 'comprehensive') => {
+    if (preset === newPreset) return;
+    const config = getPresetConfig('corporate', newPreset);
+    setPreset(newPreset);
+    setSlideCount(config.slideCountTarget);
+    setInteractionTypes(mapToGridIds(config.interactions));
+    const newFmt = config.objectiveFormat;
+    setObjectiveFormat(newFmt);
+    // Immediate client-side reformat so the user sees results instantly
+    if (learningObjectives.length > 0) {
+      const instant = reformatObjectivesClientSide(learningObjectives, newFmt);
+      setLearningObjectives(instant);
+    }
+    // AI refinement in the background (re-scopes objectives to the new complexity)
+    if (learningObjectives.length > 0 && (courseTitle || prompt)) {
+      setIsSuggesting(true);
+      try {
+        const suggestions = await suggestLearningObjectives(
+          courseTitle || prompt,
+          courseDescription || prompt,
+          pathway,
+          newPreset,
+          newFmt as 'AB' | 'ABC' | 'ABCD',
+          learningObjectives
+        );
+        setLearningObjectives(suggestions);
+      } catch (e) {
+        console.warn('[handlePresetChange] AI objective re-scope failed:', e);
+      } finally {
+        setIsSuggesting(false);
+      }
+    }
+  };
+
 
   const handleStartDetails = () => {
     setStep('details');
@@ -988,14 +1071,6 @@ export default function App() {
       setIsGenerating(false);
       setProgress(100);
     }
-  };
-
-  const handlePresetChange = (newPreset: 'quick' | 'standard' | 'comprehensive') => {
-    setPreset(newPreset);
-    const config = getPresetConfig('corporate', newPreset);
-    setSlideCount(config.slideCountTarget);
-    setInteractionTypes(config.interactions);
-    if (config.objectiveFormat) setObjectiveFormat(config.objectiveFormat);
   };
 
   const generateOutline = async () => {
@@ -1240,22 +1315,60 @@ export default function App() {
   if (!user && !isScormPlayer) {
     if (publicView === 'auth') {
       return (
-        <AuthPage onBackToHome={() => setPublicView('homepage')} initialMode={authInitialMode} />
+        <AuthPage
+          onBackToHome={() => { setPublicView('homepage'); window.history.pushState({}, '', '/'); }}
+          initialMode={authInitialMode}
+        />
       );
     }
     if (publicView === 'methodology') {
       return (
         <MethodologyPage
-          onGetStarted={() => { setAuthInitialMode('signup'); setPublicView('auth'); }}
-          onBack={() => { setPublicView('homepage'); window.history.replaceState({}, '', '/'); }}
+          onGetStarted={() => { setAuthInitialMode('signup'); setPublicView('auth'); window.history.pushState({}, '', '/signup'); }}
+          onBack={() => { setPublicView('homepage'); window.history.pushState({}, '', '/'); }}
+        />
+      );
+    }
+    if (publicView === 'pricing') {
+      return (
+        <div className="min-h-screen bg-slate-950">
+          <nav className="sticky top-0 z-50 border-b border-slate-800/60 bg-slate-950/80 backdrop-blur-xl">
+            <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+              <button onClick={() => { setPublicView('homepage'); window.history.pushState({}, '', '/'); }}
+                className="flex items-center gap-2 text-slate-400 hover:text-white text-sm font-bold transition-colors">
+                <ArrowRight className="w-4 h-4 rotate-180" /> Back to Home
+              </button>
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 bg-indigo-500/15 rounded-lg flex items-center justify-center border border-indigo-500/20">
+                  <Zap className="w-4 h-4 text-indigo-400" />
+                </div>
+                <span className="font-extrabold text-lg text-white">NexCourse <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">AI</span></span>
+              </div>
+              <button onClick={() => { setAuthInitialMode('signup'); setPublicView('auth'); window.history.pushState({}, '', '/signup'); }}
+                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition-all shadow-lg shadow-indigo-500/20">
+                Get Started <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </nav>
+          <PricingPage />
+        </div>
+      );
+    }
+    if (publicView === 'examples') {
+      return (
+        <ExamplesPage
+          onBack={() => { setPublicView('homepage'); window.history.pushState({}, '', '/'); }}
+          onGetStarted={() => { setAuthInitialMode('signup'); setPublicView('auth'); window.history.pushState({}, '', '/signup'); }}
         />
       );
     }
     return (
       <MarketingHomepage
-        onGetStarted={() => { setAuthInitialMode('signup'); setPublicView('auth'); }}
-        onSignIn={() => { setAuthInitialMode('login'); setPublicView('auth'); }}
-        onMethodology={() => { setPublicView('methodology'); window.history.replaceState({}, '', '/methodology'); }}
+        onGetStarted={() => { setAuthInitialMode('signup'); setPublicView('auth'); window.history.pushState({}, '', '/signup'); }}
+        onSignIn={() => { setAuthInitialMode('login'); setPublicView('auth'); window.history.pushState({}, '', '/login'); }}
+        onMethodology={() => { setPublicView('methodology'); window.history.pushState({}, '', '/methodology'); }}
+        onViewPricing={() => { setPublicView('pricing'); window.history.pushState({}, '', '/pricing'); window.scrollTo(0, 0); }}
+        onExamples={() => { setPublicView('examples'); window.history.pushState({}, '', '/examples'); }}
       />
     );
   }
@@ -1689,6 +1802,25 @@ export default function App() {
                       <h3 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">Analyzing Document</h3>
                       <p className="text-slate-400 mt-2">Extracting structure, topics, and generating learning objectives...</p>
                     </div>
+                    {/* Progress bar — driven by the analysisTimer in handleFileUpload */}
+                    <div className="w-full max-w-sm mx-auto space-y-2">
+                      <div className="flex justify-between text-xs font-bold text-slate-500 uppercase tracking-widest">
+                        <span>Progress</span>
+                        <span>{Math.round(progress)}%</span>
+                      </div>
+                      <div className="h-2.5 bg-slate-800 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all duration-500"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-slate-600 text-center">
+                        {progress < 30 ? 'Reading document structure...' :
+                         progress < 55 ? 'Extracting topics and key concepts...' :
+                         progress < 80 ? 'Generating learning objectives...' :
+                         'Finalizing course blueprint...'}
+                      </p>
+                    </div>
                  </div>
               ) : (
                 <div className="relative z-10 max-w-4xl mx-auto text-center w-full px-6 py-12 bg-slate-950/40 backdrop-blur-md rounded-[3rem] border border-indigo-500/20 shadow-2xl space-y-8 my-8">
@@ -1870,7 +2002,7 @@ export default function App() {
                         </div>
                         <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
                            {getPresetOptions('corporate').map(p => (
-                             <div key={p.id} onClick={() => { if (preset !== p.id) setPendingPreset(p.id as any); }} className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${preset === p.id ? 'border-indigo-500 bg-indigo-500/10' : 'border-slate-800 bg-slate-950 hover:border-slate-700'}`}>
+                             <div key={p.id} onClick={() => handlePresetChange(p.id as any)} className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${preset === p.id ? 'border-indigo-500 bg-indigo-500/10' : 'border-slate-800 bg-slate-950 hover:border-slate-700'} ${isSuggesting && preset !== p.id ? 'opacity-50 pointer-events-none' : ''}`}>
                                 <h4 className="text-white font-bold text-lg mb-1">{p.label}</h4>
                                 <p className="text-slate-400 text-xs mb-3">{p.description}</p>
                                 <div className="text-xs font-mono text-indigo-400">{p.slideCountTarget} slides • {p.interactions.length} types</div>
@@ -1904,7 +2036,7 @@ export default function App() {
                            <div className="space-y-2">
                              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Description / Prompt</label>
                              <textarea 
-                               rows={3}
+                               rows={5}
                                value={courseDescription || prompt}
                                onChange={e => {
                                  setCourseDescription(e.target.value);
@@ -1996,7 +2128,7 @@ export default function App() {
                                      <div className="flex-1 space-y-1">
                                        <p className="text-xs font-bold text-indigo-400 uppercase tracking-wider">Terminal Objective</p>
                                        <textarea 
-                                          rows={2}
+                                          rows={4}
                                           value={tObj.terminalObjective} 
                                           onChange={(e) => {
                                             const newObjs = [...learningObjectives];
@@ -2017,7 +2149,7 @@ export default function App() {
                                       <div key={eIdx} className="flex gap-2 items-start group/enabling">
                                         <div className="mt-2 text-slate-600 shrink-0">↳</div>
                                         <textarea 
-                                          rows={2}
+                                          rows={3}
                                           value={enablingObj} 
                                           onChange={(e) => {
                                             const newObjs = [...learningObjectives];

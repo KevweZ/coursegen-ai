@@ -190,7 +190,7 @@ app.post('/api/ai', aiRateLimit, async (req, res) => {
       // Validate the JWT and get user info
       const { data: { user: authUser } } = await supa.auth.getUser(jwt);
       if (authUser?.user_metadata?.role === 'trial') {
-        const TRIAL_AI_LIMIT = 5;
+        const TRIAL_AI_LIMIT = 50;
         const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
         const { count } = await supa
           .from('ai_usage')
