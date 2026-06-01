@@ -802,61 +802,80 @@ export default function App() {
   }, [currentSlide?.id, player.hasAudio, voiceOverEnabled]);
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+
+  /**
+   * Runs the full AI document analysis. Can be called directly for retries.
+   * Stays on the analyzing screen on failure — shows error + Retry button in-place.
+   */
+  const runAnalysis = async (file: File) => {
+    setIsAnalyzing(true);
+    setAnalyzeError(null);
+    setProgress(15);
+    const analysisTimer = setInterval(() => {
+      setProgress(prev => prev < 80 ? Math.min(80, prev + 5) : prev);
+    }, 500);
+    try {
+      const text = await extractTextFromFile(file);
+      setExtractedFileText(text);
+
+      if (buildMode === 'game') {
+        // Game Mode: extract text only, derive topic from filename, stay on home screen
+        const baseName = file.name.replace(/\.(pdf|docx|pptx|txt)$/i, '').replace(/[-_]/g, ' ');
+        setPrompt(baseName);
+        clearInterval(analysisTimer);
+        setProgress(100);
+        setIsAnalyzing(false);
+        return;
+      }
+
+      // Course Builder: full AI analysis
+      const result = await analyzeUploadedFile(text, file.name);
+      clearInterval(analysisTimer);
+      setProgress(100);
+      setPrompt(result.title || file.name);
+      setCourseTitle(result.title || file.name);
+      if (result.summary) setCourseDescription(result.summary);
+      if (result.objectives) setLearningObjectives(result.objectives);
+      if (result.recommendedObjectiveFormat) setObjectiveFormat(result.recommendedObjectiveFormat as any);
+      if (result.recommendedPreset) {
+         const rp = result.recommendedPreset as 'quick' | 'standard' | 'comprehensive';
+         setPreset(rp);
+         const config = getPresetConfig('corporate', rp);
+         setSlideCount(config.slideCountTarget);
+         setInteractionTypes(mapToGridIds(config.interactions));
+         if (config.objectiveFormat) setObjectiveFormat(config.objectiveFormat);
+      }
+      await new Promise(r => setTimeout(r, 300));
+      setProgress(0);
+      setIsAnalyzing(false);
+      setStep('details');
+    } catch (err: any) {
+      clearInterval(analysisTimer);
+      console.error('File analysis error:', err);
+      const isColdStart = err?.message?.includes('COLD_START') || err?.message?.includes('warming up') || err?.message?.includes('503');
+      const isTrial = err?.message?.includes('TRIAL_LIMIT_EXCEEDED') || err?.message?.includes('trial limit');
+      setAnalyzeError(
+        isColdStart
+          ? 'The server is warming up. Please wait 20–30 seconds and click “Try Again”.'
+          : isTrial
+          ? 'Trial generation limit reached. Please upgrade your plan to continue.'
+          : `Analysis failed: ${err?.message ?? 'Unknown error'}. Please try again.`
+      );
+      // Keep progress at 80% and stay on the analyzing screen so the user can retry
+      setProgress(80);
+      // Do NOT call setIsAnalyzing(false) — stay on the overlay to show the error
+    }
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setUploadedFile(file);
-      setIsAnalyzing(true);
-      // Item 4: Animate progress during upload analysis
-      setProgress(15);
-      const analysisTimer = setInterval(() => {
-        setProgress(prev => prev < 80 ? Math.min(80, prev + 5) : prev);
-      }, 500);
-      try {
-        const text = await extractTextFromFile(file);
-        setExtractedFileText(text);
-
-        if (buildMode === 'game') {
-          // Game Mode: extract text only, derive topic from filename, stay on home screen
-          const baseName = file.name.replace(/\.(pdf|docx|pptx|txt)$/i, '').replace(/[-_]/g, ' ');
-          setPrompt(baseName);
-          clearInterval(analysisTimer);
-          setProgress(100);
-          return;
-        }
-
-        // Course Builder: full AI analysis
-        const result = await analyzeUploadedFile(text, file.name);
-        clearInterval(analysisTimer);
-        setProgress(100);
-        setPrompt(result.title || file.name);
-        setCourseTitle(result.title || file.name);
-        if (result.summary) setCourseDescription(result.summary);
-        if (result.objectives) setLearningObjectives(result.objectives);
-        if (result.recommendedObjectiveFormat) setObjectiveFormat(result.recommendedObjectiveFormat as any);
-        if (result.recommendedPreset) {
-           const rp = result.recommendedPreset as 'quick' | 'standard' | 'comprehensive';
-           setPreset(rp);
-           const config = getPresetConfig('corporate', rp);
-           setSlideCount(config.slideCountTarget);
-           setInteractionTypes(mapToGridIds(config.interactions));
-           if (config.objectiveFormat) setObjectiveFormat(config.objectiveFormat);
-        }
-        await new Promise(r => setTimeout(r, 300));
-        setProgress(0);
-        setStep('details');
-      } catch (err: any) {
-        clearInterval(analysisTimer);
-        console.error("File analysis error:", err);
-        setError(`Could not process file: ${err?.message ?? 'Unknown error'}. Please try a PDF or Word document.`);
-        setUploadedFile(null);
-        setProgress(0);
-      } finally {
-        setIsAnalyzing(false);
-      }
+      await runAnalysis(file);
     }
   };
+
 /**
    * Client-side objective reformatter.
    * Extracts the core "verb + outcome" from any AB/ABC/ABCD formatted string,
@@ -1792,35 +1811,65 @@ export default function App() {
 
               {isAnalyzing ? (
                  <div className="relative z-10 max-w-2xl mx-auto text-center space-y-8 w-full px-6 py-16 bg-slate-950/80 backdrop-blur-xl rounded-[3rem] border border-indigo-500/30 shadow-2xl">
-                    <div className="relative w-32 h-32 mx-auto mb-4">
-                      <div className="absolute inset-0 bg-indigo-500/20 rounded-full blur-xl animate-pulse" />
-                      <div className="absolute inset-0 border-t-4 border-indigo-500 rounded-full animate-spin" />
-                      <div className="absolute inset-2 border-r-4 border-purple-500 rounded-full animate-[spin_1.5s_linear_infinite]" />
-                      <FileText className="w-10 h-10 text-indigo-400 absolute inset-0 m-auto animate-pulse" />
-                    </div>
-                    <div>
-                      <h3 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">Analyzing Document</h3>
-                      <p className="text-slate-400 mt-2">Extracting structure, topics, and generating learning objectives...</p>
-                    </div>
-                    {/* Progress bar — driven by the analysisTimer in handleFileUpload */}
-                    <div className="w-full max-w-sm mx-auto space-y-2">
-                      <div className="flex justify-between text-xs font-bold text-slate-500 uppercase tracking-widest">
-                        <span>Progress</span>
-                        <span>{Math.round(progress)}%</span>
-                      </div>
-                      <div className="h-2.5 bg-slate-800 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all duration-500"
-                          style={{ width: `${progress}%` }}
-                        />
-                      </div>
-                      <p className="text-xs text-slate-600 text-center">
-                        {progress < 30 ? 'Reading document structure...' :
-                         progress < 55 ? 'Extracting topics and key concepts...' :
-                         progress < 80 ? 'Generating learning objectives...' :
-                         'Finalizing course blueprint...'}
-                      </p>
-                    </div>
+                   {analyzeError ? (
+                     /* ——— Error state: stay on overlay, show message + actions ——— */
+                     <>
+                       <div className="w-20 h-20 mx-auto bg-red-500/20 rounded-full flex items-center justify-center">
+                         <AlertCircle className="w-10 h-10 text-red-400" />
+                       </div>
+                       <div>
+                         <h3 className="text-2xl font-bold text-red-400">Analysis Failed</h3>
+                         <p className="text-slate-400 mt-3 text-sm leading-relaxed max-w-md mx-auto">{analyzeError}</p>
+                       </div>
+                       <div className="flex gap-3 justify-center">
+                         <button
+                           onClick={() => { if (uploadedFile) runAnalysis(uploadedFile); }}
+                           className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-all"
+                         >
+                           Try Again
+                         </button>
+                         <button
+                           onClick={() => { setIsAnalyzing(false); setAnalyzeError(null); setUploadedFile(null); setProgress(0); }}
+                           className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl transition-all"
+                         >
+                           Cancel
+                         </button>
+                       </div>
+                     </>
+                   ) : (
+                     /* ——— Normal loading state ——— */
+                     <>
+                       <div className="relative w-32 h-32 mx-auto mb-4">
+                         <div className="absolute inset-0 bg-indigo-500/20 rounded-full blur-xl animate-pulse" />
+                         <div className="absolute inset-0 border-t-4 border-indigo-500 rounded-full animate-spin" />
+                         <div className="absolute inset-2 border-r-4 border-purple-500 rounded-full animate-[spin_1.5s_linear_infinite]" />
+                         <FileText className="w-10 h-10 text-indigo-400 absolute inset-0 m-auto animate-pulse" />
+                       </div>
+                       <div>
+                         <h3 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">Analyzing Document</h3>
+                         <p className="text-slate-400 mt-2">Extracting structure, topics, and generating learning objectives...</p>
+                       </div>
+                       {/* Progress bar — driven by the analysisTimer in runAnalysis */}
+                       <div className="w-full max-w-sm mx-auto space-y-2">
+                         <div className="flex justify-between text-xs font-bold text-slate-500 uppercase tracking-widest">
+                           <span>Progress</span>
+                           <span>{Math.round(progress)}%</span>
+                         </div>
+                         <div className="h-2.5 bg-slate-800 rounded-full overflow-hidden">
+                           <div
+                             className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all duration-500"
+                             style={{ width: `${progress}%` }}
+                           />
+                         </div>
+                         <p className="text-xs text-slate-600 text-center">
+                           {progress < 30 ? 'Reading document structure...' :
+                            progress < 55 ? 'Extracting topics and key concepts...' :
+                            progress < 80 ? 'Generating learning objectives...' :
+                            'Finalizing course blueprint...'}
+                         </p>
+                       </div>
+                     </>
+                   )}
                  </div>
               ) : (
                 <div className="relative z-10 max-w-4xl mx-auto text-center w-full px-6 py-12 bg-slate-950/40 backdrop-blur-md rounded-[3rem] border border-indigo-500/20 shadow-2xl space-y-8 my-8">
