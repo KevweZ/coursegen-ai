@@ -331,7 +331,6 @@ app.post('/api/admin/invite', async (req, res) => {
     return res.status(400).json({ error: 'email is required.' });
   }
 
-
   try {
     const { createClient } = await import('@supabase/supabase-js');
     const supa = createClient(
@@ -340,29 +339,39 @@ app.post('/api/admin/invite', async (req, res) => {
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
-    const expiresAt = new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000).toISOString();
+    const expiresAt  = new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000).toISOString();
+    const baseUrl    = isProd ? 'https://nexcourse.ai' : 'http://localhost:3000';
 
-    const { data, error } = await supa.auth.admin.inviteUserByEmail(email.trim().toLowerCase(), {
-      data: {
-        role: 'trial',
-        trial_expires_at: expiresAt,
-        full_name: '',
-        track: 'corporate',
-        plan: 'trial',
+    // generateLink creates the magic-link token WITHOUT Supabase sending its own email,
+    // so we can send exactly one branded email via Resend with the real working link.
+    const { data, error } = await supa.auth.admin.generateLink({
+      type: 'invite',
+      email: email.trim().toLowerCase(),
+      options: {
+        data: {
+          role:             'trial',
+          trial_expires_at: expiresAt,
+          full_name:        '',
+          track:            'corporate',
+          plan:             'trial',
+        },
+        redirectTo: `${baseUrl}/signup`,
       },
-      redirectTo: `${isProd ? 'https://nexcourse.ai' : 'http://localhost:3000'}?invited=1`,
     });
 
     if (error) {
-      console.error('[Admin Invite] Supabase error:', error.message);
+      console.error('[Admin Invite] Supabase generateLink error:', error.message);
       return res.status(400).json({ error: error.message });
     }
 
-    // Optional: send a branded welcome email via Resend (in addition to Supabase's invite email)
+    const inviteLink = data?.properties?.action_link ?? `${baseUrl}/signup`;
+    console.log('[Admin Invite] Magic link generated for:', email);
+
+    // Send exactly one branded email via Resend with the real invite link
     if (resend) {
       await resend.emails.send({
         from: `NexCourse AI <${FROM_EMAIL}>`,
-        to: [email],
+        to:   [email],
         subject: "You've been invited to try NexCourse AI!",
         html: `
           <div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#1e293b;">
@@ -378,9 +387,9 @@ app.post('/api/admin/invite', async (req, res) => {
               <p style="line-height:1.7;margin:0 0 24px;color:#64748b;font-size:14px;">
                 Your trial expires on <strong>${new Date(expiresAt).toLocaleDateString('en-GB', { dateStyle: 'long' })}</strong>.
               </p>
-              <a href="${isProd ? 'https://nexcourse.ai' : 'http://localhost:3000'}?invited=1"
+              <a href="${inviteLink}"
                  style="display:inline-block;background:#4f46e5;color:white;padding:14px 28px;border-radius:8px;font-weight:700;font-size:15px;text-decoration:none;">
-                Accept Invitation & Get Started
+                Accept Invitation &amp; Get Started
               </a>
             </div>
             <div style="background:#f1f5f9;padding:12px 32px;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 12px 12px;font-size:12px;color:#94a3b8;">
@@ -388,7 +397,9 @@ app.post('/api/admin/invite', async (req, res) => {
             </div>
           </div>
         `,
-      }).catch(e => console.warn('[Admin Invite] Resend email failed (non-fatal):', e.message));
+      }).catch(e => console.warn('[Admin Invite] Resend email failed:', e.message));
+    } else {
+      console.warn('[Admin Invite] Resend not configured — no email sent.');
     }
 
     console.log(`[Admin Invite] Invited ${email} — trial expires ${expiresAt}`);
