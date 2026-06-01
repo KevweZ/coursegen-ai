@@ -175,24 +175,30 @@ app.post('/api/ai', aiRateLimit, async (req, res) => {
   }
 
   // ── Trial-user AI generation cap ─────────────────────────────────────────
-  // Decode the JWT from the Authorization header to check user role & usage.
-  // Fails gracefully if the ai_usage table doesn't exist yet.
+  // • Only 'complex' calls are counted (analysis, outline, mastery exam).
+  //   'bulk' hydration calls are cheap internal calls that should not count.
+  // • Usage is logged AFTER a successful AI response — failed/retried requests
+  //   never consume trial credits.
   const authHeader = req.headers.authorization ?? '';
   const jwt = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  if (jwt) {
+  let trialSupaClient = null;
+  let trialUserId = null;
+  const isComplexCall = (model === 'complex');   // only count expensive calls
+
+  if (jwt && isComplexCall) {
     try {
       const { createClient } = await import('@supabase/supabase-js');
-      const supa = createClient(
+      trialSupaClient = createClient(
         process.env.VITE_SUPABASE_URL,
         getSupabaseKey(),
         { auth: { autoRefreshToken: false, persistSession: false } }
       );
-      // Validate the JWT and get user info
-      const { data: { user: authUser } } = await supa.auth.getUser(jwt);
+      const { data: { user: authUser } } = await trialSupaClient.auth.getUser(jwt);
       if (authUser?.user_metadata?.role === 'trial') {
-        const TRIAL_AI_LIMIT = 50;
+        trialUserId = authUser.id;
+        const TRIAL_AI_LIMIT = 100;   // ~30+ complete course generations for a trial
         const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-        const { count } = await supa
+        const { count } = await trialSupaClient
           .from('ai_usage')
           .select('*', { count: 'exact', head: true })
           .eq('user_id', authUser.id)
@@ -204,12 +210,13 @@ app.post('/api/ai', aiRateLimit, async (req, res) => {
             code: 'TRIAL_LIMIT_EXCEEDED',
           });
         }
-        // Log this generation
-        await supa.from('ai_usage').insert({ user_id: authUser.id, type: 'course_generation' });
+        // NOTE: usage is logged AFTER the AI call succeeds (see below).
       }
     } catch (trialCheckErr) {
       // Degrade gracefully — if ai_usage table doesn't exist yet, just proceed
       console.warn('[AI Proxy] Trial check skipped:', trialCheckErr?.message ?? trialCheckErr);
+      trialSupaClient = null;
+      trialUserId = null;
     }
   }
 
@@ -240,6 +247,16 @@ app.post('/api/ai', aiRateLimit, async (req, res) => {
 
     const data = await response.json();
     const text = data?.content?.[0]?.text ?? '{}';
+
+    // ── Log usage ONLY after a confirmed successful AI response ───────────────
+    // This ensures failed/retried requests never burn trial credits.
+    if (trialSupaClient && trialUserId) {
+      trialSupaClient.from('ai_usage')
+        .insert({ user_id: trialUserId, type: 'course_generation' })
+        .then(() => {})
+        .catch(e => console.warn('[AI Proxy] Usage log failed (non-fatal):', e?.message));
+    }
+
     return res.json({ text });
 
   } catch (err) {
@@ -247,6 +264,7 @@ app.post('/api/ai', aiRateLimit, async (req, res) => {
     return res.status(502).json({ error: 'AI proxy network error: ' + err.message });
   }
 });
+
 
 // ─── Helper: verify caller is the admin via their Supabase JWT ───────────────
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL ?? '').toLowerCase();
