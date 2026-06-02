@@ -80,6 +80,7 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
   const handleReset = () => { setUserMatches({}); setChecked(false); };
 
   const allMatched      = targets.length > 0 && Object.keys(userMatches).length === targets.length;
+  const anyMatched      = Object.keys(userMatches).length > 0;
   const hasCorrectAns   = Object.keys(correctAnswers).length > 0;
   const isCorrect       = (targetId: string) => {
     if (!hasCorrectAns) return null;
@@ -236,14 +237,14 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
 
       {/* ── Action buttons ─────────────────────────────────────────────────── */}
       <div className="flex gap-3 items-center">
-        {allMatched && !checked && (
+        {anyMatched && !checked && (
           <motion.button
             onClick={handleCheck}
             className="px-6 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-500 transition-colors shadow-md shadow-indigo-900/40"
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.97 }}
           >
-            Submit Answers
+            Check Answers
           </motion.button>
         )}
         {checked && (

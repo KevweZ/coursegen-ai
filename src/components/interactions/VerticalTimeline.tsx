@@ -272,9 +272,11 @@ export const VerticalTimeline: React.FC<Props> = ({
                           boxShadow: `0 4px 24px ${color}18`,
                         }}
                       >
-                        <p className="text-sm leading-relaxed" style={{ color: textSub }}>
-                          {ev.content}
-                        </p>
+                        <p
+                          className="text-sm leading-relaxed"
+                          style={{ color: textSub }}
+                          dangerouslySetInnerHTML={{ __html: ev.content }}
+                        />
                       </motion.div>
                     </motion.div>
                   )}

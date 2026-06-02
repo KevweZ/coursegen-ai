@@ -5,7 +5,7 @@ import {
   FileOutput, GraduationCap, Building2, CheckCircle2,
   ChevronRight, ChevronLeft, ChevronDown, Shield, Layers, BarChart3, BookOpen,
   Award, X, Menu, Volume2, Play, Pause,
-  Globe, Target, Eye, EyeOff, Move, Crop, Image,
+  Eye, EyeOff, Image,
   AlertCircle, Lock, MessageSquare, Send, Loader2, Mail
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -15,6 +15,8 @@ interface Props {
   onGetStarted: () => void;
   onSignIn: () => void;
   onMethodology?: () => void;
+  onViewPricing?: () => void;
+  onExamples?: () => void;
 }
 
 // ── Animated Counter ──────────────────────────────────────────────────────────
@@ -58,612 +60,9 @@ function FeatureCard({ icon: Icon, title, description, color, delay }: {
   );
 }
 
-// ── Showcase Card ─────────────────────────────────────────────────────────────
-function ShowcaseCard({ label, icon: Icon, preview, accent }: {
-  label: string; icon: React.ElementType; preview: React.ReactNode; accent: string;
-}) {
-  return (
-    <div className={`w-full rounded-2xl border ${accent} bg-slate-900/80 overflow-hidden`}>
-      <div className={`px-4 py-3 border-b ${accent} flex items-center gap-2 bg-slate-800/40`}>
-        <Icon className="w-4 h-4 text-indigo-400" />
-        <span className="text-sm font-bold text-slate-300">{label}</span>
-      </div>
-      <div className="p-4">{preview}</div>
-    </div>
-  );
-}
+// (Interaction previews moved to ExamplesPage.tsx)
 
-// ── Animated Accordion Preview ────────────────────────────────────────────────
-function AccordionPreview() {
-  const [open, setOpen] = useState(true);
-  useEffect(() => {
-    const id = setInterval(() => setOpen(o => !o), 3000);
-    return () => clearInterval(id);
-  }, []);
-  const items = [
-    { title: 'What is Active Listening?', body: 'Active listening is the practice of fully concentrating on what is being said, understanding the message, and responding thoughtfully rather than passively hearing.' },
-    { title: 'Barriers in Remote Teams', body: '' },
-    { title: 'Practical Techniques', body: '' },
-    { title: 'Common Mistakes', body: '' },
-  ];
-  return (
-    <div className="space-y-2">
-      {items.map((item, i) => (
-        <div key={i}>
-          <div className={`px-3 py-2 rounded-lg text-xs border flex items-center justify-between cursor-pointer transition-all duration-300 ${
-            i === 0
-              ? open ? 'border-indigo-500/60 bg-indigo-500/15 text-indigo-200' : 'border-slate-700 text-slate-400'
-              : 'border-slate-700 text-slate-500'
-          }`}>
-            {item.title}
-            <ChevronRight className={`w-3 h-3 shrink-0 transition-transform duration-300 ${
-              i === 0 ? (open ? 'rotate-90 text-indigo-400' : 'text-slate-500') : 'text-slate-600'
-            }`} />
-          </div>
-          {i === 0 && (
-            <AnimatePresence initial={false}>
-              {open && (
-                <motion.div
-                  key="accordion-body"
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.45, ease: 'easeInOut' }}
-                  className="overflow-hidden"
-                >
-                  <div className="px-3 py-2.5 text-[10px] leading-relaxed text-slate-300 bg-slate-800/40 border border-t-0 border-indigo-500/30 rounded-b-lg">
-                    {item.body}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
 
-// ── Animated Flashcard Preview ────────────────────────────────────────────────
-function FlashcardPreview() {
-  const [flipped, setFlipped] = useState(false);
-  useEffect(() => {
-    const id = setInterval(() => setFlipped(f => !f), 3200);
-    return () => clearInterval(id);
-  }, []);
-  return (
-    <div className="relative" style={{ perspective: '600px', minHeight: '120px' }}>
-      <motion.div
-        animate={{ rotateY: flipped ? 180 : 0 }}
-        transition={{ duration: 0.6, ease: 'easeInOut' }}
-        style={{ transformStyle: 'preserve-3d', position: 'relative', width: '100%', height: '120px' }}
-      >
-        {/* Front */}
-        <div className="absolute inset-0 bg-gradient-to-br from-purple-600/20 to-indigo-600/20 rounded-xl p-4 border border-purple-500/20 flex flex-col items-center justify-center gap-2" style={{ backfaceVisibility: 'hidden' }}>
-          <div className="text-xs text-purple-400 font-bold uppercase tracking-widest">Term</div>
-          <div className="font-bold text-white text-sm text-center">Bloom's Taxonomy</div>
-          <div className="text-[10px] text-slate-400 border-t border-slate-700 pt-2 mt-1 w-full text-center">Tap to reveal definition →</div>
-        </div>
-        {/* Back */}
-        <div className="absolute inset-0 bg-gradient-to-br from-indigo-600/20 to-cyan-600/20 rounded-xl p-4 border border-indigo-500/30 flex flex-col items-center justify-center gap-2" style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}>
-          <div className="text-xs text-indigo-400 font-bold uppercase tracking-widest">Definition</div>
-          <div className="text-[10px] text-slate-200 text-center leading-relaxed">A hierarchical model classifying learning objectives into six levels — from <span className="text-indigo-300 font-bold">Remember</span> to <span className="text-cyan-300 font-bold">Create</span>.</div>
-        </div>
-      </motion.div>
-    </div>
-  );
-}
-
-// ── Animated Jeopardy Preview ────────────────────────────────────────────────
-// Phase 0: board at rest, score $0
-// Phase 1: Safety $100 cell highlighted / "selected"
-// Phase 2: Question modal with correct answer shown
-// Phase 3: Board updated — $100 cell answered, score $100, progress updated
-// then loops back to 0
-function JeopardyPreview() {
-  const [phase, setPhase] = useState(0);
-  // Phase durations in ms
-  const durations = [2200, 900, 2200, 2200];
-  useEffect(() => {
-    const id = setTimeout(() => setPhase(p => (p + 1) % 4), durations[phase]);
-    return () => clearTimeout(id);
-  }, [phase]);
-
-  const score   = phase >= 3 ? 100 : 0;
-  const maxScore = 2500;
-  const target  = 2000;
-  const pct     = Math.round((score / target) * 100);
-  const barPct  = Math.round((score / maxScore) * 100);
-
-  const cells = [
-    { v: 100, stars: 1, col: 0 }, // Safety $100 — the one that gets answered
-    { v: 100, stars: 1, col: 1 },
-    { v: 100, stars: 1, col: 2 },
-    { v: 200, stars: 2, col: 0, daily: true },
-    { v: 200, stars: 2, col: 1 },
-    { v: 200, stars: 2, col: 2 },
-    { v: 300, stars: 3, col: 0 },
-    { v: 300, stars: 3, col: 1 },
-    { v: 300, stars: 3, col: 2 },
-  ];
-
-  return (
-    <div className="space-y-2.5">
-      {/* Score + Target row */}
-      <div className="flex gap-2">
-        <div className="flex-1 bg-indigo-900/60 border border-indigo-500/40 rounded-xl px-3 py-2 text-center">
-          <div className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-0.5">Your Score</div>
-          <motion.div
-            key={score}
-            initial={{ scale: 1.3, color: '#facc15' }}
-            animate={{ scale: 1,   color: '#ffffff' }}
-            transition={{ duration: 0.4 }}
-            className="text-xl font-black"
-          >
-            ${score.toLocaleString()}
-          </motion.div>
-        </div>
-        <div className="flex-1 bg-amber-900/40 border border-amber-500/40 rounded-xl px-3 py-2 text-center">
-          <div className="flex items-center justify-center gap-1 mb-0.5">
-            <Target className="w-2.5 h-2.5 text-amber-400" />
-            <div className="text-[9px] font-black text-amber-400 uppercase tracking-widest">Target</div>
-          </div>
-          <div className="text-xl font-black text-amber-300">${target.toLocaleString()}</div>
-        </div>
-        <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl px-3 py-2 text-center min-w-[56px]">
-          <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-0.5">Max</div>
-          <div className="text-base font-black text-slate-400">${maxScore.toLocaleString()}</div>
-        </div>
-      </div>
-
-      {/* Progress bar */}
-      <div>
-        <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden border border-slate-700 mb-1">
-          <motion.div
-            className="h-full bg-indigo-500 rounded-full"
-            animate={{ width: `${barPct}%` }}
-            transition={{ duration: 0.6, ease: 'easeOut' }}
-          />
-        </div>
-        <div className="flex justify-between text-[9px] font-bold text-slate-500">
-          <span>$0</span>
-          <span className="text-amber-400">Target: ${target.toLocaleString()} ({pct}%)</span>
-          <span>${maxScore.toLocaleString()}</span>
-        </div>
-      </div>
-
-      {/* Difficulty legend */}
-      <div className="flex items-center gap-2 flex-wrap text-[8px] font-bold bg-slate-800/50 border border-slate-700/40 rounded-lg px-2 py-1.5">
-        <span className="text-slate-600 uppercase tracking-wider shrink-0">⭐ Difficulty:</span>
-        <span className="text-emerald-400">★☆☆☆ Beginner</span>
-        <span className="text-yellow-400">★★☆☆ Inter.</span>
-        <span className="text-orange-400">★★★☆ Adv.</span>
-        <span className="text-red-400">★★★★ Expert</span>
-      </div>
-
-      {/* Game grid — animated */}
-      <div className="relative">
-        <div className="grid grid-cols-3 gap-1.5">
-          {['Safety', 'Compliance', 'Procedures'].map(c => (
-            <div key={c} className="bg-indigo-900/80 border-2 border-indigo-500/60 text-indigo-100 text-[9px] font-black uppercase text-center py-2 px-1 rounded-t-lg">{c}</div>
-          ))}
-          {cells.map((cell, i) => {
-            const isTarget  = i === 0; // Safety $100
-            const answered  = isTarget && phase >= 3;
-            const selected  = isTarget && phase === 1;
-            return (
-              <motion.div
-                key={i}
-                animate={selected ? { scale: [1, 1.08, 1.08], boxShadow: ['0 0 0px transparent', '0 0 18px rgba(250,204,21,0.6)', '0 0 18px rgba(250,204,21,0.6)'] } : { scale: 1, boxShadow: '0 0 0px transparent' }}
-                transition={{ duration: 0.4 }}
-                className={`flex flex-col items-center justify-center py-2.5 rounded-lg text-center border-2 cursor-pointer transition-all ${
-                  answered
-                    ? 'bg-slate-800 border-slate-700 opacity-25 cursor-not-allowed'
-                    : selected
-                    ? 'bg-yellow-500/30 border-yellow-400'
-                    : 'bg-indigo-600 border-indigo-400 hover:scale-105'
-                }`}
-              >
-                {!answered && (
-                  <>
-                    <span className="text-yellow-400 text-base font-black">${cell.v}</span>
-                    {cell.daily && <span className="text-[7px] font-black text-yellow-300 uppercase tracking-widest">Daily Double</span>}
-                    <span className={`text-[8px] font-black ${['','text-emerald-400','text-yellow-400','text-orange-400'][cell.stars]}`}>
-                      {'★'.repeat(cell.stars)}{'☆'.repeat(3-cell.stars)}
-                    </span>
-                  </>
-                )}
-              </motion.div>
-            );
-          })}
-        </div>
-
-        {/* Question overlay — phase 2 */}
-        <AnimatePresence>
-          {phase === 2 && (
-            <motion.div
-              key="question"
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              transition={{ duration: 0.25 }}
-              className="absolute inset-0 bg-slate-950/95 rounded-xl border-2 border-yellow-500/60 p-3 flex flex-col gap-2 z-10"
-            >
-              <div className="text-[9px] font-black text-yellow-400 uppercase tracking-widest">Safety — $100</div>
-              <p className="text-white text-[10px] font-bold leading-snug">
-                What is the first step when you notice a safety hazard in the workplace?
-              </p>
-              <div className="space-y-1.5 mt-1">
-                {[
-                  { text: 'Report it to your supervisor immediately', correct: true },
-                  { text: 'Try to fix it yourself first',             correct: false },
-                  { text: 'Wait until end of shift to report',       correct: false },
-                ].map((opt, oi) => (
-                  <div key={oi} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border text-[9px] font-medium ${
-                    opt.correct
-                      ? 'border-emerald-500/60 bg-emerald-500/15 text-emerald-200'
-                      : 'border-slate-700 text-slate-500'
-                  }`}>
-                    <div className={`w-3 h-3 rounded-full border-2 shrink-0 flex items-center justify-center ${
-                      opt.correct ? 'border-emerald-400 bg-emerald-400' : 'border-slate-600'
-                    }`}>
-                      {opt.correct && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                    </div>
-                    {opt.text}
-                    {opt.correct && <CheckCircle2 className="w-3 h-3 text-emerald-400 ml-auto shrink-0" />}
-                  </div>
-                ))}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </div>
-  );
-}
-
-// ── Showcase Scroller (with large left/right nav arrows) ─────────────────────
-// Hover         → scroll at normal speed (3 px/frame via rAF)
-// Click + hold  → scroll faster (12 px/frame)
-// Mouse off     → scroll stops exactly where it is (no reset)
-// Plain click   → smooth jump of 360 px
-function ShowcaseScroller({ children }: { children: React.ReactNode }) {
-  const scrollRef     = useRef<HTMLDivElement>(null);
-  const isDraggingRef = useRef(false);
-  const dragStartX    = useRef(0);
-  const scrollStart   = useRef(0);
-  const [isGrabbing, setIsGrabbing] = useState(false);
-
-  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    const el = scrollRef.current;
-    if (!el) return;
-    isDraggingRef.current = true;
-    dragStartX.current    = e.clientX;
-    scrollStart.current   = el.scrollLeft;
-    el.setPointerCapture(e.pointerId);
-    setIsGrabbing(true);
-  };
-  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isDraggingRef.current || !scrollRef.current) return;
-    scrollRef.current.scrollLeft = scrollStart.current - (e.clientX - dragStartX.current);
-  };
-  const onPointerUp = () => { isDraggingRef.current = false; setIsGrabbing(false); };
-
-  useEffect(() => () => { isDraggingRef.current = false; }, []);
-
-  return (
-    <div
-      ref={scrollRef}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
-      className="flex gap-4 overflow-x-auto pb-2 select-none"
-      style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', cursor: isGrabbing ? 'grabbing' : 'grab' }}
-    >
-      {children}
-    </div>
-  );
-}
-
-// ── Decision Simulation Preview (auto-looping) ───────────────────────────────
-function BranchingScenarioPreview() {
-  // Phase 0: role card appears, situation loads
-  // Phase 1: options fade in
-  // Phase 2: option B highlighted (selected)
-  // Phase 3: consequence revealed
-  // Phase 4: "Phase 2" transition + question
-  // Phase 5: option A selected + consequence
-  // Phase 6: Decision Profile bars animate
-  // then loops back to 0
-  const [phase, setPhase] = useState(0);
-  const durations = [1200, 1800, 1200, 2000, 1800, 1500, 2800];
-  useEffect(() => {
-    const id = setTimeout(() => setPhase(p => (p + 1) % 7), durations[phase]);
-    return () => clearTimeout(id);
-  }, [phase]);
-
-  const phaseActive = (phase >= 1);
-  const selB = (phase >= 2);
-  const showConsequence = (phase >= 3);
-  const inPhase2 = (phase >= 4);
-  const selA2 = (phase >= 5);
-  const showProfile = (phase >= 6);
-
-  return (
-    <div className="select-none space-y-2">
-      {/* Role badge */}
-      <div className="flex items-center gap-2 mb-2 p-2 bg-slate-800/60 rounded-xl border border-slate-700">
-        <div className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center text-white font-black text-[9px] shrink-0">JR</div>
-        <div>
-          <p className="text-white font-bold text-[9px]">Jordan Reyes — Operations Manager</p>
-          <p className="text-slate-400 text-[8px]">Decision Simulation · AI-Generated</p>
-        </div>
-        <div className="ml-auto flex gap-1">
-          {[0,1,2,3].map(i => (
-            <div key={i} className={`w-3 h-1 rounded-full transition-all duration-500 ${i===0?'bg-indigo-500':i===1&&inPhase2?'bg-indigo-500':'bg-slate-700'}`} />
-          ))}
-        </div>
-      </div>
-
-      <AnimatePresence mode="wait">
-        {!inPhase2 ? (
-          <motion.div key="phase1" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.3 }}>
-            {/* Situation block */}
-            <div className="bg-slate-800 rounded-xl border-l-[3px] border-indigo-500 p-2.5 mb-2">
-              <p className="text-[8px] text-indigo-400 font-black uppercase tracking-widest mb-0.5">Phase 1 — First Response</p>
-              <p className="text-white text-[9px] font-semibold leading-snug">
-                It's Monday morning. Priya flagged that Ethan missed two deliverables — and an urgent client email demands a response.
-              </p>
-              <p className="text-slate-300 text-[8px] mt-1">What is your first move?</p>
-            </div>
-            {/* Options */}
-            <div className="space-y-1.5">
-              {[
-                { text: 'Reply to the client immediately to buy time', sel: false },
-                { text: 'Speak privately with Ethan before responding', sel: selB },
-                { text: 'CC your director and ask for guidance', sel: false },
-              ].map((o, i) => (
-                <div key={i} className={`p-2 rounded-lg border transition-all duration-500 text-[8px] font-medium ${
-                  o.sel ? 'border-indigo-500 bg-indigo-900/30 text-white' : 'border-slate-700 bg-slate-800/50 text-slate-400'
-                }`}>
-                  {o.text}
-                  {o.sel && <span className="ml-1 text-indigo-400 font-black">✓</span>}
-                </div>
-              ))}
-            </div>
-            {/* Consequence */}
-            {showConsequence && (
-              <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="mt-2 p-2 rounded-lg border border-emerald-500/60 bg-emerald-900/20">
-                <p className="text-[8px] text-emerald-400 font-black uppercase tracking-widest mb-0.5">✦ Strong choice</p>
-                <p className="text-[8px] text-white leading-snug">Ethan reveals a family emergency. You now have full context before making any commitments.</p>
-              </motion.div>
-            )}
-          </motion.div>
-        ) : (
-          <motion.div key="phase2" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }}>
-            {/* Phase 2 */}
-            <div className="bg-slate-800 rounded-xl border-l-[3px] border-violet-500 p-2.5 mb-2">
-              <p className="text-[8px] text-violet-400 font-black uppercase tracking-widest mb-0.5">Phase 2 — Director Meeting</p>
-              <p className="text-white text-[9px] font-semibold leading-snug">
-                Your director's check-in is in 3 hours. How do you approach the meeting?
-              </p>
-            </div>
-            <div className="space-y-1.5">
-              {[
-                { text: 'Bring a recovery plan with revised timelines', sel: selA2 },
-                { text: 'Tell the director everything is under control', sel: false },
-                { text: 'Escalate to HR before the meeting', sel: false },
-              ].map((o, i) => (
-                <div key={i} className={`p-2 rounded-lg border transition-all duration-500 text-[8px] font-medium ${
-                  o.sel ? 'border-indigo-500 bg-indigo-900/30 text-white' : 'border-slate-700 bg-slate-800/50 text-slate-400'
-                }`}>
-                  {o.text}
-                  {o.sel && <span className="ml-1 text-indigo-400 font-black">✓</span>}
-                </div>
-              ))}
-            </div>
-            {/* Decision Profile */}
-            {showProfile && (
-              <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="mt-2 p-2.5 bg-slate-800 rounded-xl border border-slate-700">
-                <p className="text-[7px] text-slate-400 font-black uppercase tracking-widest mb-2">Your Decision Profile</p>
-                {[{label:'Trust',val:82},{label:'Accountability',val:90},{label:'Morale',val:75}].map(b => (
-                  <div key={b.label} className="mb-1.5">
-                    <div className="flex justify-between text-[7px] mb-0.5"><span className="text-slate-300">{b.label}</span><span className="text-white font-bold">{b.val}%</span></div>
-                    <div className="h-1 bg-slate-700 rounded-full overflow-hidden">
-                      <motion.div initial={{ width: 0 }} animate={{ width: `${b.val}%` }} transition={{ duration: 0.8, delay: 0.1 }}
-                        className="h-full bg-indigo-500 rounded-full" />
-                    </div>
-                  </div>
-                ))}
-              </motion.div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-// ── Image Background Template Preview (animated loop) ────────────────────────
-// Cycles through 4 thumbnail options, updating the main slide bg image
-const BG_TEMPLATES = [
-  '/Reference/Images/40570635_l_normal_none.jpg',
-  '/Reference/Images/72769332_l_normal_none.jpg',
-  '/Reference/Images/124953787_l_normal_none.jpg',
-  '/Reference/Images/129314759_l_normal_none.jpg',
-];
-function ImageBackgroundTemplatePreview() {
-  const [selected, setSelected] = useState(0);
-  // Cycle: 0 → 1 → 2 → 3 → 0 ...
-  useEffect(() => {
-    const id = setTimeout(() => setSelected(s => (s + 1) % BG_TEMPLATES.length), 2400);
-    return () => clearTimeout(id);
-  }, [selected]);
-  return (
-    <div className="space-y-2">
-      <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-2">Slide Canvas — Background Template</p>
-      {/* Slide canvas — all images stacked; CSS opacity crossfade eliminates the blink */}
-      <div className="relative w-full rounded-xl overflow-hidden border border-slate-700/50" style={{ paddingBottom: '56.25%' }}>
-        {BG_TEMPLATES.map((src, i) => (
-          <img
-            key={i}
-            src={src}
-            alt="bg template"
-            className="absolute inset-0 w-full h-full object-cover transition-opacity duration-700"
-            style={{ opacity: i === selected ? 0.6 : 0 }}
-          />
-        ))}
-        <div className="absolute inset-0 bg-gradient-to-r from-slate-900/80 to-transparent" />
-        <div className="absolute left-3 top-3 right-1/3">
-          <div className="text-[8px] font-black text-indigo-300 uppercase tracking-widest mb-1">Module 2 — Leadership</div>
-          <div className="text-xs font-black text-white leading-snug">Leading with Confidence</div>
-          <div className="text-[9px] text-slate-300 mt-1 leading-relaxed">Effective leaders inspire trust through clear communication and decisive action.</div>
-        </div>
-        <div className="absolute bottom-2 right-2 flex items-center gap-1 bg-slate-900/70 border border-slate-600/50 rounded px-1.5 py-0.5 text-[8px] text-slate-400 font-bold">
-          <Move className="w-2.5 h-2.5" /> Background
-        </div>
-      </div>
-      {/* Thumbnail picker */}
-      <div className="mt-2">
-        <div className="text-[8px] text-slate-600 font-bold mb-1.5 uppercase tracking-widest">Choose Template</div>
-        <div className="flex gap-1.5">
-          {BG_TEMPLATES.map((src, i) => (
-            <div key={i} className={`relative w-12 h-8 rounded overflow-hidden border-2 transition-all duration-300 ${
-              i === selected ? 'border-indigo-500 scale-105' : 'border-slate-700 opacity-60'
-            }`}>
-              <img src={src} alt="" loading="lazy" className="w-full h-full object-cover preview-img" />
-              {i === selected && <div className="absolute inset-0 bg-indigo-500/20" />}
-            </div>
-          ))}
-          <div className="w-12 h-8 rounded border-2 border-dashed border-slate-700 flex items-center justify-center text-slate-600">
-            <span className="text-[10px]">+</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Multi-Image Editor Preview (animated loop) ────────────────────────────────
-// Phase 0: Image 1 resizing (scale + handle animation)
-// Phase 1: Image 2 moving (translate animation)
-// Phase 2: Image 3 crop mask shrinking
-// then loops
-function MultiImageEditorPreview() {
-  const [phase, setPhase] = useState(0);
-  const durations = [2400, 2400, 2400];
-  useEffect(() => {
-    const id = setTimeout(() => setPhase(p => (p + 1) % 3), durations[phase]);
-    return () => clearTimeout(id);
-  }, [phase]);
-
-  return (
-    <div className="space-y-2">
-      <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-2">Multiple Images — Drag, Crop &amp; Resize</p>
-      <div className="relative w-full bg-slate-800/60 border border-slate-700/50 rounded-xl overflow-hidden" style={{ height: '160px' }}>
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-900 to-slate-800" />
-
-        {/* Label / action badge */}
-        <div className="absolute top-2 left-2 z-20">
-          <AnimatePresence mode="wait">
-            {phase === 0 && (
-              <motion.div key="resize-badge" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.2 }}
-                className="flex items-center gap-1 bg-indigo-900/90 border border-indigo-500/60 rounded-lg px-2 py-0.5 text-[8px] font-black text-indigo-300">
-                ↔ Resizing Image 1
-              </motion.div>
-            )}
-            {phase === 1 && (
-              <motion.div key="move-badge" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.2 }}
-                className="flex items-center gap-1 bg-violet-900/90 border border-violet-500/60 rounded-lg px-2 py-0.5 text-[8px] font-black text-violet-300">
-                <Move className="w-2.5 h-2.5" /> Moving Image 2
-              </motion.div>
-            )}
-            {phase === 2 && (
-              <motion.div key="crop-badge" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.2 }}
-                className="flex items-center gap-1 bg-amber-900/90 border border-amber-500/60 rounded-lg px-2 py-0.5 text-[8px] font-black text-amber-300">
-                <Crop className="w-2.5 h-2.5" /> Cropping Image 3
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* Image 1 — top-left: resizes in phase 0 */}
-        <motion.div
-          animate={phase === 0
-            ? { width: '9rem', height: '6rem', left: '0.75rem', top: '0.75rem' }
-            : { width: '8rem', height: '5rem', left: '0.75rem', top: '0.75rem' }}
-          transition={{ duration: 1.2, ease: 'easeInOut', repeat: phase === 0 ? Infinity : 0, repeatType: 'reverse' }}
-          className={`absolute rounded-lg overflow-visible border-2 shadow-lg ${
-            phase === 0 ? 'border-indigo-400 shadow-indigo-500/20' : 'border-slate-600'
-          }`}
-          style={{ width: '8rem', height: '5rem', left: '0.75rem', top: '0.75rem' }}
-        >
-          <img src="/Reference/Images/72769332_l_normal_none.jpg" alt="img1" loading="lazy" className="w-full h-full object-cover rounded-lg preview-img" />
-          {phase === 0 && ['-top-1 -left-1','-top-1 -right-1','-bottom-1 -left-1','-bottom-1 -right-1'].map(pos => (
-            <motion.div key={pos} animate={{ scale: [1, 1.3, 1] }} transition={{ duration: 0.8, repeat: Infinity }}
-              className={`absolute ${pos} w-2.5 h-2.5 bg-white border-2 border-indigo-500 rounded-sm z-10`} />
-          ))}
-        </motion.div>
-
-        {/* Image 2 — right side: moves horizontally in phase 1 (whole element translates) */}
-        <motion.div
-          animate={phase === 1
-            ? { x: [-8, 8, -8], right: '0.75rem', top: '0.75rem' }
-            : { x: 0, right: '0.75rem', top: '0.75rem' }}
-          transition={phase === 1
-            ? { x: { duration: 1.4, ease: 'easeInOut', repeat: Infinity }, right: { duration: 0 }, top: { duration: 0 } }
-            : { duration: 0.4, ease: 'easeOut' }}
-          style={{ position: 'absolute', right: '0.75rem', top: '0.75rem', width: '6rem', height: '4rem' }}
-          className={`rounded-lg overflow-hidden border-2 ${phase === 1 ? 'border-violet-400 shadow-lg shadow-violet-500/20' : 'border-slate-600 opacity-80'}`}
-        >
-          <img src="/Reference/Images/124953787_l_normal_none.jpg" alt="img2" loading="lazy" className="w-full h-full object-cover preview-img" />
-        </motion.div>
-
-        {/* Image 3 — bottom center: crop mask in phase 2 */}
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-lg overflow-hidden border-2 border-slate-600 opacity-90"
-          style={{ width: '5rem', height: '3.5rem' }}>
-          <img src="/Reference/Images/40570635_l_normal_none.jpg" alt="img3" loading="lazy" className="w-full h-full object-cover preview-img" />
-          {phase === 2 && (
-            <>
-              {/* Crop overlay */}
-              <motion.div
-                className="absolute inset-0 border-2 border-amber-400 z-10"
-                initial={{ top: '0%', left: '0%', right: '0%', bottom: '0%' }}
-                animate={{ top: '15%', left: '10%', right: '10%', bottom: '15%' }}
-                transition={{ duration: 1.2, ease: 'easeInOut', repeat: Infinity, repeatType: 'reverse' }}
-                style={{ position: 'absolute' }}
-              />
-              <div className="absolute inset-0 bg-black/40 z-5" />
-            </>
-          )}
-        </div>
-
-        {/* Size badge */}
-        <div className={`absolute bottom-2 left-3 rounded px-2 py-0.5 text-[8px] font-black transition-all ${
-          phase === 0 ? 'bg-indigo-900/80 border border-indigo-500/40 text-indigo-300' :
-          phase === 1 ? 'bg-violet-900/80 border border-violet-500/40 text-violet-300' :
-                        'bg-amber-900/80 border border-amber-500/40 text-amber-300'
-        }`}>
-          {phase === 0 ? '320 × 200 px' : phase === 1 ? 'X: 148  Y: 32' : 'Crop: 80%'}
-        </div>
-      </div>
-
-      {/* Controls strip */}
-      <div className="flex gap-2 mt-1">
-        <button className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[9px] font-bold border rounded-lg transition-all ${
-          phase === 2 ? 'border-amber-500/50 bg-amber-500/10 text-amber-300' : 'border-slate-700 text-slate-400'
-        }`}><Crop className="w-3 h-3" /> Crop</button>
-        <button className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[9px] font-bold border rounded-lg transition-all ${
-          phase === 1 ? 'border-violet-500/50 bg-violet-500/10 text-violet-300' : 'border-slate-700 text-slate-400'
-        }`}><Move className="w-3 h-3" /> Reposition</button>
-        <button className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[9px] font-bold border border-indigo-600/50 bg-indigo-500/10 rounded-lg text-indigo-300">
-          <Image className="w-3 h-3" /> Add Image
-        </button>
-      </div>
-    </div>
-  );
-}
 
 // ── Sign In Dropdown ──────────────────────────────────────────────────────────
 function SignInDropdown({ onClose, onGetStarted }: { onClose: () => void; onGetStarted: () => void }) {
@@ -801,7 +200,7 @@ function smoothScrollTo(id: string) {
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
-export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology }: Props) {
+export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onViewPricing, onExamples }: Props) {
   const [menuOpen, setMenuOpen]           = useState(false);
   const [showSignIn, setShowSignIn]       = useState(false);
 
@@ -829,7 +228,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology }: Pro
   const MARKETING_FAQS = [
     { q: 'How does NexCourse AI work?', a: 'You paste a topic, upload a PDF/PowerPoint/Word document, or describe your course in plain text. Our AI drafts a full course outline with modules and slides, then generates all the content — narration scripts, quiz questions, interactions, and voice-over audio. The whole process typically takes 30–90 seconds.' },
     { q: 'What file types does it support?', a: 'NexCourse AI accepts PDF files, Microsoft PowerPoint (.pptx), and Microsoft Word (.docx) documents. You can also type a topic directly without uploading a file.' },
-    { q: 'Is there a free trial or free plan?', a: 'Yes! The Teacher Free plan lets you build up to 3 courses with no credit card required. Paid plans unlock unlimited generation, all game templates, AI voice options, and advanced SCORM export.' },
+    { q: 'Is there a free trial?', a: 'We offer trial access by invitation — contact us to request early access. Paid plans are credit-based: Pro Creator includes 500 credits/month and Business Team includes 1,500 pooled credits/month. Credits cover course generation, AI narration, and interactive content.' },
     { q: 'What is SCORM and which LMS platforms does it work with?', a: 'SCORM is the universal standard format for eLearning content. NexCourse AI exports SCORM 1.2 and SCORM 2004 packages that work with virtually any LMS — Moodle, Canvas, Blackboard, Cornerstone, TalentLMS, Docebo, and more.' },
     { q: 'Can I edit the AI-generated course?', a: 'Absolutely. Every slide is fully editable after generation. You can change text, add or remove slides, swap images, adjust quiz questions, edit narration scripts, and tweak interactions — all from within the Course Preview.' },
     { q: 'How long does course generation take?', a: 'A standard 15–20 slide course generates in approximately 30–90 seconds. Comprehensive courses with 30+ slides may take up to 2–3 minutes. A progress bar keeps you informed throughout.' },
@@ -905,9 +304,9 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology }: Pro
 
           <div className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-400">
             <button onClick={() => smoothScrollTo('features')}  className="hover:text-white transition-colors cursor-pointer">Features</button>
-            <button onClick={() => smoothScrollTo('showcase')}  className="hover:text-white transition-colors cursor-pointer">Interactions</button>
+            <button onClick={() => onExamples?.()}              className="hover:text-white transition-colors cursor-pointer">Examples</button>
             <button onClick={() => smoothScrollTo('tracks')}    className="hover:text-white transition-colors cursor-pointer">Who It's For</button>
-            <button onClick={() => smoothScrollTo('pricing')}   className="hover:text-white transition-colors cursor-pointer">Pricing</button>
+            <button onClick={() => onViewPricing?.()}           className="hover:text-white transition-colors cursor-pointer">Pricing</button>
           </div>
 
           <div className="flex items-center gap-3 relative">
@@ -1017,59 +416,44 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology }: Pro
             </div>
           </motion.div>
 
-          {/* ── Interactions Showcase ————————————————————————————— */}
-          <div id="showcase" className="w-full mt-2 pb-8">
+          {/* ── Everything You Need — feature cards ─────────────── */}
+          <div id="features" className="w-full mt-2 pb-4">
             <motion.p
               initial={{ opacity:0, y:8 }} animate={{ opacity:1, y:0 }}
               transition={{ duration:0.5, delay:0.38 }}
-              className="text-center text-purple-400 text-sm font-black uppercase tracking-widest mb-3"
+              className="text-center text-indigo-400 text-sm font-black uppercase tracking-widest mb-3"
             >
-              See It In Action
+              Everything You Need
             </motion.p>
-            {/* Descriptive headline — Change 2 */}
             <motion.h2
               initial={{ opacity:0, y:12 }} animate={{ opacity:1, y:0 }}
               transition={{ duration:0.5, delay:0.43 }}
               className="text-center text-2xl md:text-3xl font-black text-white mb-8 leading-tight"
             >
-              Create engaging interactions —{' '}
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-cyan-400">without writing a single line of code.</span>
+              One Platform.{' '}
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">Every eLearning Need.</span>
             </motion.h2>
             <motion.div
               initial={{ opacity:0, y:20 }} animate={{ opacity:1, y:0 }}
               transition={{ duration:0.6, delay:0.48 }}
               className="max-w-6xl mx-auto px-4"
             >
-              {/* All 6 cards in a 3-column grid — both rows fully visible, no scrolling */}
-              <div className="grid grid-cols-3 gap-4">
-                <ShowcaseCard label="Accordion" icon={Layers} accent="border-indigo-700/40" preview={<AccordionPreview />} />
-                <ShowcaseCard label="Jeopardy Game" icon={Gamepad2} accent="border-amber-700/40" preview={<JeopardyPreview />} />
-                <ShowcaseCard label="Branching Scenario" icon={Globe} accent="border-cyan-700/40" preview={<BranchingScenarioPreview />} />
-                <ShowcaseCard label="Flashcards" icon={BookOpen} accent="border-purple-700/40" preview={<FlashcardPreview />} />
-                <ShowcaseCard label="Image Background Template" icon={Image} accent="border-rose-700/40" preview={<ImageBackgroundTemplatePreview />} />
-                <ShowcaseCard label="Image Editor - Multi-Image Layout" icon={Crop} accent="border-violet-700/40" preview={<MultiImageEditorPreview />} />
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {features.map(f => <FeatureCard key={f.title} {...f} />)}
+              </div>
+              {/* See examples link */}
+              <div className="text-center mt-10">
+                <button
+                  onClick={() => onExamples?.()}
+                  className="inline-flex items-center gap-1.5 text-purple-400 hover:text-purple-300 text-sm font-semibold transition-colors group"
+                >
+                  See interactive examples
+                  <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                </button>
               </div>
             </motion.div>
           </div>
 
-        </div>
-      </section>
-
-
-      {/* ── Features ─────────────────────────────────────────────────────────── */}
-      <section id="features" className="py-24 px-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <motion.p initial={{ opacity:0 }} whileInView={{ opacity:1 }} viewport={{ once:true }}
-              className="text-indigo-400 text-sm font-black uppercase tracking-widest mb-3">Everything You Need</motion.p>
-            <motion.h2 initial={{ opacity:0, y:16 }} whileInView={{ opacity:1, y:0 }} viewport={{ once:true }}
-              transition={{ duration:0.5 }} className="text-4xl md:text-5xl font-black text-white leading-tight">
-              One Platform.<br />Every eLearning Need.
-            </motion.h2>
-          </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {features.map(f => <FeatureCard key={f.title} {...f} />)}
-          </div>
         </div>
       </section>
 
@@ -1160,33 +544,52 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology }: Pro
       <section id="pricing" className="py-24 px-6 bg-slate-900/30 border-y border-slate-800/60">
         <div className="max-w-4xl mx-auto text-center">
           <motion.p initial={{ opacity:0 }} whileInView={{ opacity:1 }} viewport={{ once:true }}
-            className="text-amber-400 text-sm font-black uppercase tracking-widest mb-3">Flexible Plans</motion.p>
+            className="text-amber-400 text-sm font-black uppercase tracking-widest mb-3">Simple, Transparent Pricing</motion.p>
           <motion.h2 initial={{ opacity:0, y:16 }} whileInView={{ opacity:1, y:0 }} viewport={{ once:true }}
-            transition={{ duration:0.5 }} className="text-4xl md:text-5xl font-black text-white mb-4">Start Free. Scale When Ready.</motion.h2>
-          <p className="text-slate-400 text-lg mb-10">Teacher Free plan available. No credit card required.</p>
+            transition={{ duration:0.5 }} className="text-4xl md:text-5xl font-black text-white mb-4">Credit-Based Plans for Every Team.</motion.h2>
+          <p className="text-slate-400 text-lg mb-10">Purpose-built for corporate L&amp;D — from independent designers to enterprise organizations.</p>
           <div className="grid sm:grid-cols-3 gap-5 mb-10">
             {[
               {
-                name:'Free', price:'$0', color:'border-slate-700', textColor:'text-slate-300', badge:null,
-                features: ['Up to 3 courses', 'SCORM 1.2 export', '2 AI voice options', 'Basic game templates'],
+                name: 'Pro Creator',
+                price: '$79',
+                priceNote: 'per user / month · billed annually',
+                color: 'border-slate-700',
+                textColor: 'text-slate-300',
+                badge: null,
+                highlighted: false,
+                features: ['Full AI course generation', 'All interactive templates', 'SCORM 1.2 & 2004 exports', 'Standard & HD TTS Audio', 'Premium support'],
                 featureColor: 'text-slate-300',
               },
               {
-                name:'Pro', price:'$49', color:'border-indigo-500/50 bg-indigo-500/5', textColor:'text-indigo-300', badge:'Most Popular',
-                features: ['Unlimited AI course generation', 'SCORM 1.2 & 2004 export', 'All 5 AI voice options', 'All 6+ game templates', 'Mastery quiz & score reporting'],
+                name: 'Business Team',
+                price: '$149',
+                priceNote: 'per user / month · billed annually',
+                color: 'border-indigo-500/50 bg-indigo-500/5',
+                textColor: 'text-indigo-300',
+                badge: 'Best Value',
+                highlighted: true,
+                features: ['Everything in Pro Creator', 'HD TTS Audio (all 6 voices)', 'Up to 5 user seats', 'SCORM completion & score reporting', 'Priority email support'],
                 featureColor: 'text-indigo-200',
               },
               {
-                name:'Enterprise', price:'Custom', color:'border-slate-700', textColor:'text-slate-300', badge:null,
-                features: ['Everything in Pro', 'Enterprise DPA agreement', 'Dedicated onboarding support', 'Custom LMS integrations'],
+                name: 'Enterprise',
+                price: 'Custom',
+                priceNote: '',
+                color: 'border-slate-700',
+                textColor: 'text-slate-300',
+                badge: null,
+                highlighted: false,
+                features: ['Custom AI configuration', 'Dedicated account manager', 'SLA guarantees', 'Custom contract & billing', 'API access'],
                 featureColor: 'text-slate-300',
               },
-            ].map(({ name, price, color, textColor, badge, features: planFeatures, featureColor }) => (
-              <div key={name} className={`relative p-6 rounded-2xl border ${color} text-center`}>
-                {badge && <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-[10px] font-black uppercase tracking-widest bg-indigo-500 text-white px-3 py-1 rounded-full whitespace-nowrap">{badge}</div>}
+            ].map(({ name, price, priceNote, color, textColor, badge, highlighted, features: planFeatures, featureColor }) => (
+              <div key={name} className={`relative p-6 rounded-2xl border ${color} text-center ${highlighted ? 'scale-[1.03]' : ''}`}>
+                {badge && <div className={`absolute -top-3 left-1/2 -translate-x-1/2 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full whitespace-nowrap ${highlighted ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white' : 'bg-slate-700 text-slate-300'}`}>{badge}</div>}
                 <p className={`font-black text-base mb-1 ${textColor}`}>{name}</p>
-                <p className="text-3xl font-black text-white mb-5">{price}<span className="text-sm text-slate-500 font-medium">{price !== 'Custom' ? '/mo' : ''}</span></p>
-                <ul className="space-y-2 text-left">
+                <p className="text-3xl font-black text-white mb-1">{price}{price !== 'Custom' && <span className="text-sm text-slate-500 font-medium"> /user</span>}</p>
+                {priceNote && <p className="text-[11px] text-slate-600 mb-4">{priceNote}</p>}
+                <ul className="space-y-2 text-left mt-4">
                   {planFeatures.map(feat => (
                     <li key={feat} className={`flex items-start gap-2 text-xs ${featureColor}`}>
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
@@ -1197,7 +600,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology }: Pro
               </div>
             ))}
           </div>
-          <button onClick={onGetStarted}
+          <button onClick={() => onViewPricing?.()}
             className="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black text-base px-10 py-4 rounded-2xl shadow-xl shadow-indigo-500/25 transition-all">
             View Full Pricing <ArrowRight className="w-4 h-4" />
           </button>

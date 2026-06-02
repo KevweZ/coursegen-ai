@@ -627,7 +627,7 @@ export default function App() {
   // Inject module-cover slides: one before the first slide of each module
   const contentSlides: Slide[] = course
     ? course.modules.flatMap((m: any, moduleIdx: number) => {
-        const moduleObj = (course as any).learningObjectives?.[moduleIdx];
+        const moduleObj = (learningObjectives as any)?.[moduleIdx] ?? null;
         const modNum = moduleIdx + 1;
         return [
           // Full-bleed animated module cover (stays as-is)
@@ -678,7 +678,7 @@ export default function App() {
   ] : [closingVirtualSlide];
   // Cover slide + 2 synthetic pre-content slides (Player Tour + Course Objectives)
   const playerTourSlide: Slide = course ? { id: '__player-tour__', title: 'Player Navigation Guide', type: 'player-tour' as any, content: '', narration: 'Before we begin, take a moment to explore the player controls. Hover over each card on the right to see the corresponding element highlighted in the player preview on the left.', voiceOverText: 'Before we begin, take a moment to explore the player controls. Hover over each card to see the corresponding element highlighted.' } as Slide : null as any;
-  const courseObjectivesSlide: Slide = course ? { id: '__course-objectives__', title: 'Course Objectives', type: 'course-objectives' as any, content: '', _objectives: (course as any).learningObjectives || [] } as Slide : null as any;
+  const courseObjectivesSlide: Slide = course ? { id: '__course-objectives__', title: 'Course Objectives', type: 'course-objectives' as any, content: '', _objectives: learningObjectives || [] } as Slide : null as any;
   const PRE_CONTENT = 3; // cover + player-tour + course-objectives
   const allSlides: Slide[] = course ? [coverSlide, playerTourSlide, courseObjectivesSlide, ...contentSlides, ...examVirtualSlides] : [];
   // Compute which module the current slide belongs to (for accent color)
@@ -3253,11 +3253,11 @@ export default function App() {
                                    <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                    <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                      <VerticalTimeline
-                                       events={((currentSlide.data || currentSlide.interactions?.[0] || {}).items || []).map((item, idx) => ({
+                                       events={((currentSlide.data || currentSlide.interactions?.[0] || {}).items || []).map((item: any, idx: number) => ({
                                          id: 'acc-' + idx,
                                          year: item.subtitle || item.category || undefined,
                                          title: item.title || item.label || '',
-                                         content: item.content || item.description || '',
+                                         content: markdownToHtml(item.content || item.description || ''),
                                        }))}
                                        theme={theme}
                                        accentColor={slideAccentColor}
@@ -3279,7 +3279,10 @@ export default function App() {
                                        <SlideContent content={sanitizeContent(currentSlide.content)} theme={theme} />
                                      )}
                                      <HorizontalTimeline
-                                       events={(currentSlide.data || currentSlide.interactions?.[0] || {}).events || []}
+                                       events={((currentSlide.data || currentSlide.interactions?.[0] || {}).events || []).map((ev: any) => ({
+                                        ...ev,
+                                        content: markdownToHtml(ev.content || ''),
+                                      }))}
                                        theme={theme}
                                        accentColor={slideAccentColor}
                                      />
@@ -3630,7 +3633,7 @@ export default function App() {
                         // Add to FloatingImageCanvas so it's draggable, resizable, croppable
                         const newImg: FloatingImage = {
                           id: `fi-src-${Date.now()}`,
-                          url: img.url,
+                          url: img.dataUrl || img.url,
                           x: 40, y: 40, width: 320, height: 240,
                         };
                         pushUndo(); setFloatingImagesMap(prev => ({
@@ -3643,7 +3646,7 @@ export default function App() {
                       }}
                       className="aspect-video bg-slate-800 rounded-xl overflow-hidden cursor-pointer hover:ring-4 hover:ring-indigo-500 transition-all border border-slate-700 group relative"
                     >
-                      <img src={img.url} alt="Source Document Extracted" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                      <img src={img.dataUrl || img.url} alt="Source Document Extracted" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
                     </div>
                   ))}
                 </div>

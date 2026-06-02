@@ -253,9 +253,11 @@ export const HorizontalTimeline: React.FC<Props> = ({
               </div>
 
               {/* Content */}
-              <p className="text-sm leading-relaxed" style={{ color: textSub }}>
-                {activeEvent.content}
-              </p>
+              <p
+                className="text-sm leading-relaxed"
+                style={{ color: textSub }}
+                dangerouslySetInnerHTML={{ __html: activeEvent.content }}
+              />
 
               {/* Step counter */}
               <p className="text-[10px] font-bold mt-3 tabular-nums" style={{ color: stepColors[activeIdx] }}>

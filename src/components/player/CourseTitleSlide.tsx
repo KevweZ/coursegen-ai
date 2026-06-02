@@ -107,15 +107,16 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
             {line1}
           </div>
 
-          {/* Line 2: remaining words — accent color, same size */}
+          {/* Line 2: remaining words — accent color, wraps within the 52% panel */}
           {line2 && (
             <div
               className="font-extrabold leading-tight tracking-tight"
               style={{
                 fontSize: 'clamp(2.2rem, 5vw, 4rem)',
                 color: accent,
-                wordBreak: 'keep-all',
-                whiteSpace: 'nowrap',
+                wordBreak: 'break-word',
+                overflowWrap: 'break-word',
+                maxWidth: '100%',
               }}
             >
               {line2}

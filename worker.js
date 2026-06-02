@@ -13,11 +13,11 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // ── Proxy all /api/* requests to Railway ─────────────────────────────────
+    // ── Proxy all /api/* requests to Render backend ────────────────────────
     if (url.pathname.startsWith('/api/')) {
-      const railwayUrl = RENDER_API + url.pathname + url.search;
+      const renderUrl = RENDER_API + url.pathname + url.search;
 
-      const proxyRequest = new Request(railwayUrl, {
+      const proxyRequest = new Request(renderUrl, {
         method:  request.method,
         headers: request.headers,
         body:    ['GET', 'HEAD'].includes(request.method) ? undefined : request.body,
@@ -25,7 +25,22 @@ export default {
       });
 
       try {
-        return await fetch(proxyRequest);
+        const renderRes = await fetch(proxyRequest);
+
+        // If Render returns HTML (cold-start splash / error page), surface a
+        // clean JSON error rather than forwarding raw HTML that breaks JSON.parse
+        const contentType = renderRes.headers.get('content-type') ?? '';
+        if (contentType.includes('text/html')) {
+          return new Response(
+            JSON.stringify({
+              error: 'Server is warming up — please wait 20–30 seconds and try again.',
+              code:  'COLD_START',
+            }),
+            { status: 503, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+
+        return renderRes;
       } catch (err) {
         return new Response(
           JSON.stringify({ error: 'API proxy error', message: err.message }),

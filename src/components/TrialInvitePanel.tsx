@@ -50,6 +50,23 @@ export function TrialInvitePanel({ onClose, apiBase, accessToken }: Props) {
         body: JSON.stringify({ email: email.trim(), trialDays }),
       });
       const data = await res.json();
+      if (res.status === 503 && data.code === 'COLD_START') {
+        // Render is waking up — show countdown and auto-retry once
+        setMessage({ type: 'error', text: '⏳ Server is warming up — retrying in 30 seconds...' });
+        setSending(false);
+        let secs = 30;
+        const tick = setInterval(() => {
+          secs--;
+          if (secs > 0) {
+            setMessage({ type: 'error', text: `⏳ Server warming up — retrying in ${secs}s...` });
+          } else {
+            clearInterval(tick);
+            setMessage(null);
+            sendInvite();
+          }
+        }, 1000);
+        return;
+      }
       if (!res.ok) throw new Error(data.error || 'Invite failed');
       const newUser: InvitedUser = {
         email: email.trim(),
@@ -66,6 +83,7 @@ export function TrialInvitePanel({ onClose, apiBase, accessToken }: Props) {
       setSending(false);
     }
   };
+
 
   const revokeUser = async (user: InvitedUser) => {
     setRevoking(user.userId);
