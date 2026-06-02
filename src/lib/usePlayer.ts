@@ -144,9 +144,8 @@ export function usePlayer(): Player {
         if (!prev.audioSrc && prev.ttsText) {
            if (!startTimestamp) startTimestamp = now - (prev.currentTime * 1000);
            const nextTime = (now - startTimestamp) / 1000;
-           // We no longer manually truncate audio based on a mocked duration!
-           // The utterance.onend handler (in play) will natively conclude the playback.
-           return { ...prev, currentTime: nextTime };
+           // Cap at slightly over duration to avoid flickering past end
+           return { ...prev, currentTime: Math.min(nextTime, prev.duration) };
         }
         
         return prev;
@@ -180,6 +179,19 @@ export function usePlayer(): Player {
          if (remainingText.length > 0) {
            const utterance = new SpeechSynthesisUtterance(remainingText);
            utterance.rate = 0.95;
+           // Prefer a natural female English voice (Aria/Jenny/Zira/Samantha on macOS/Windows/Edge)
+           const _voices = window.speechSynthesis.getVoices();
+           const _female = _voices.find(v =>
+             v.lang.startsWith('en') && (
+               v.name.includes('Aria') || v.name.includes('Jenny') ||
+               v.name.includes('Zira') || v.name.includes('Samantha') ||
+               v.name.includes('Karen') || v.name.includes('Moira')
+             )
+           ) || _voices.find(v =>
+             v.lang.startsWith('en') && !v.name.toLowerCase().includes('david') &&
+             !v.name.toLowerCase().includes('mark') && !v.name.toLowerCase().includes('alex')
+           );
+           if (_female) utterance.voice = _female;
            
            utterance.onend = () => {
              console.log(`[usePlayer] TTS playback completed successfully for slide: ${state.activeSlideId}`);
@@ -323,7 +335,7 @@ export function usePlayer(): Player {
       activeSlideId: slideId,
       audioSrc: audioSrc ?? null,
       ttsText: ttsText ?? null,
-      duration: ttsText && !audioSrc ? Math.max(2, (ttsText.split(' ').length / 2.5)) : 0,
+      duration: ttsText && !audioSrc ? Math.max(2, (ttsText.split(' ').length / 1.8)) : 0,
       currentTime: 0,
       isPlaying: false,
       isSeeking: false,
