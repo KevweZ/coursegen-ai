@@ -1796,18 +1796,7 @@ export default function App() {
           {step === 'home' && (
 
             <motion.div key="home" className="flex flex-col items-center justify-center w-full min-h-[calc(100vh-5rem)] relative z-10 overflow-hidden">
-              {/* Background Video */}
-              <div className="absolute inset-0 z-0 overflow-hidden">
-                <video 
-                  src="/landing_background_4.mp4" 
-                  autoPlay 
-                  loop 
-                  muted 
-                  playsInline
-                  className="absolute top-0 left-0 w-full h-auto scale-90 origin-top opacity-30 mix-blend-screen pointer-events-none"
-                />
-                <div className="absolute inset-0 bg-slate-900/60 pointer-events-none" />
-              </div>
+
 
               {isAnalyzing ? (
                  <div className="relative z-10 max-w-2xl mx-auto text-center space-y-8 w-full px-6 py-16 bg-slate-950/80 backdrop-blur-xl rounded-[3rem] border border-indigo-500/30 shadow-2xl">

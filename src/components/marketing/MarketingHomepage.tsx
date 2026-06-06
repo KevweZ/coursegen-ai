@@ -366,12 +366,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
 
       {/* ── Hero ─────────────────────────────────────────────────────────────── */}
       <section className="relative min-h-[92vh] flex flex-col items-center justify-center text-center px-6 pt-8 pb-24 overflow-hidden">
-        {/* Background video — full height, no vertical clipping */}
-        <div className="absolute inset-0 z-0 pointer-events-none">
-          <video src="/landing_background_4.mp4" autoPlay loop muted playsInline
-            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-full w-auto max-w-none opacity-[0.32] mix-blend-screen" />
-          <div className="absolute inset-0 bg-slate-950/40" />
-        </div>
+
 
         <div className="relative z-10 flex flex-col items-center w-full">
           {/* Brand label — smaller, above the value prop */}
