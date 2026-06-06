@@ -1364,7 +1364,7 @@ export default function App() {
                 <span className="font-extrabold text-lg text-white">NexCourse <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">AI</span></span>
               </div>
               <button onClick={() => { setAuthInitialMode('signup'); setPublicView('auth'); window.history.pushState({}, '', '/signup'); }}
-                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition-all shadow-lg shadow-indigo-500/20">
+                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold px-4 py-2 rounded-xl transition-all shadow-lg shadow-indigo-500/20 whitespace-nowrap shrink-0">
                 Get Started <ArrowRight className="w-4 h-4" />
               </button>
             </div>

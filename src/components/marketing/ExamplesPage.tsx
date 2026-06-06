@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Zap, ArrowLeft, ArrowRight, ChevronLeft, ChevronRight,
@@ -603,6 +603,22 @@ export function ExamplesPage({ onBack, onGetStarted }: Props) {
 
   const goTo = (i: number) => setActiveIndex(Math.max(0, Math.min(SLIDES.length - 1, i)));
 
+  // Touch swipe state
+  const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  };
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    const dy = e.changedTouches[0].clientY - touchStartY.current;
+    // Only count as horizontal swipe if dx is dominant
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      goTo(dx < 0 ? activeIndex + 1 : activeIndex - 1);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 font-sans overflow-x-hidden">
 
@@ -679,8 +695,11 @@ export function ExamplesPage({ onBack, onGetStarted }: Props) {
             </div>
           </div>
 
-          {/* Player body: sidebar + content */}
-          <div className="flex bg-slate-950" style={{ minHeight: '520px' }}>
+          {/* Player body: sidebar + content — swipeable on mobile */}
+          <div className="flex bg-slate-950 select-none" style={{ minHeight: '520px' }}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+          >
 
             {/* Slide navigator sidebar */}
             <div className="w-52 shrink-0 border-r border-slate-800/60 bg-slate-900/40 py-3 overflow-y-auto hidden md:block">
@@ -776,8 +795,13 @@ export function ExamplesPage({ onBack, onGetStarted }: Props) {
           </div>
         </motion.div>
 
+        {/* ── Mobile swipe hint ──────────────────────────────────── */}
+        <p className="mt-3 text-center text-[11px] text-slate-600 md:hidden select-none">
+          ← Swipe to explore →
+        </p>
+
         {/* ── Mobile slide selector ─────────────────────────────────── */}
-        <div className="mt-4 flex gap-2 overflow-x-auto pb-1 md:hidden">
+        <div className="mt-2 flex gap-2 overflow-x-auto pb-1 md:hidden">
           {SLIDES.map((slide, i) => {
             const Icon = slide.icon;
             return (

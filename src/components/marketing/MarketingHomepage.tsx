@@ -336,17 +336,29 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
         <AnimatePresence>
           {menuOpen && (
             <motion.div initial={{ height:0, opacity:0 }} animate={{ height:'auto', opacity:1 }} exit={{ height:0, opacity:0 }}
-              className="md:hidden border-t border-slate-800 bg-slate-950 px-6 py-4 flex flex-col gap-3 text-sm font-medium text-slate-300">
-              {[
-                { label: 'Features',      id: 'features'  },
-                { label: 'Interactions',  id: 'showcase'  },
-                { label: "Who It's For",  id: 'tracks'    },
-                { label: 'Pricing',       id: 'pricing'   },
-              ].map(({ label, id }) => (
-                <button key={id} onClick={() => { setMenuOpen(false); smoothScrollTo(id); }}
-                  className="text-left hover:text-white transition-colors py-1">{label}</button>
+              className="md:hidden border-t border-slate-800 bg-slate-950 px-6 py-4 flex flex-col gap-1 text-sm font-medium text-slate-300 overflow-hidden">
+              {([
+                { label: 'Features',     scrollId: 'features'  },
+                { label: 'Interactions', scrollId: null        },
+                { label: "Who It's For", scrollId: 'tracks'   },
+                { label: 'Pricing',      scrollId: null        },
+              ] as { label: string; scrollId: string | null }[]).map(({ label, scrollId }) => (
+                <button key={label}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    if (label === 'Interactions') {
+                      setTimeout(() => onExamples?.(), 50);
+                    } else if (label === 'Pricing') {
+                      setTimeout(() => onViewPricing?.(), 50);
+                    } else if (scrollId) {
+                      // Delay scroll until the close animation finishes (~260 ms)
+                      setTimeout(() => smoothScrollTo(scrollId), 280);
+                    }
+                  }}
+                  className="text-left hover:text-white transition-colors py-3 min-h-[44px] flex items-center border-b border-slate-800/40 last:border-0"
+                >{label}</button>
               ))}
-              <button onClick={() => { setMenuOpen(false); setShowSignIn(true); }} className="text-left pt-2 border-t border-slate-800 text-indigo-400">Sign In →</button>
+              <button onClick={() => { setMenuOpen(false); setShowSignIn(true); }} className="text-left pt-3 border-t border-slate-800 text-indigo-400 min-h-[44px] flex items-center">Sign In →</button>
             </motion.div>
           )}
         </AnimatePresence>
