@@ -23,6 +23,7 @@ interface Props {
   examPhase?: 'idle' | 'active' | 'complete';
   examIntroIndex?: number;
   highestVisitedIndex?: number;
+  defaultCollapsed?: boolean;
 }
 
 const SLIDE_TYPE_ICON: Record<string, string> = {
@@ -41,8 +42,9 @@ export function CourseNavSidebar({
   examPhase = 'idle',
   examIntroIndex,
   highestVisitedIndex = 0,
+  defaultCollapsed = false,
 }: Props) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [expandedModules, setExpandedModules] = useState<Set<string>>(() => new Set(modules.map(m => m.id)));
 
   const toggleModule = (id: string) => {

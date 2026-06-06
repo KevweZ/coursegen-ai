@@ -30,6 +30,7 @@ import {
   Volume2,
   Image as ImageIcon,
   RotateCw,
+  RotateCcw,
   Edit3,
   Gamepad2,
   Trophy,
@@ -458,7 +459,12 @@ export default function App() {
   const [viewMode, setViewMode] = useState<'desktop' | 'mobile'>('desktop');
   const [theme, setTheme] = useState<'light' | 'dark' | 'unified'>('dark');
   const [courseBg, setCourseBg] = useState<string | null>(null);
-  
+
+  // Mobile portrait orientation detection
+  const [isPortrait, setIsPortrait] = useState(() =>
+    typeof window !== 'undefined' && window.innerWidth < 768 && window.innerHeight > window.innerWidth
+  );
+
   const [showSettings, setShowSettings] = useState(false);
   const [editingSlide, setEditingSlide] = useState<any>(null);
   const [showImageGalleryForSlide, setShowImageGalleryForSlide] = useState<string | null>(null);
@@ -732,6 +738,34 @@ export default function App() {
 
   const handlePrev = () => {
     setCurrentSlideIndex(prev => Math.max(0, prev - 1));
+  };
+
+  // Orientation change listener
+  useEffect(() => {
+    const checkOrientation = () =>
+      setIsPortrait(window.innerWidth < 768 && window.innerHeight > window.innerWidth);
+    window.addEventListener('resize', checkOrientation);
+    window.addEventListener('orientationchange', checkOrientation);
+    return () => {
+      window.removeEventListener('resize', checkOrientation);
+      window.removeEventListener('orientationchange', checkOrientation);
+    };
+  }, []);
+
+  // Touch-swipe refs for the course player (swipe left = next, swipe right = prev)
+  const playerTouchStartX = useRef(0);
+  const playerTouchStartY = useRef(0);
+  const handlePlayerTouchStart = (e: React.TouchEvent) => {
+    playerTouchStartX.current = e.touches[0].clientX;
+    playerTouchStartY.current = e.touches[0].clientY;
+  };
+  const handlePlayerTouchEnd = (e: React.TouchEvent) => {
+    const dx = e.changedTouches[0].clientX - playerTouchStartX.current;
+    const dy = e.changedTouches[0].clientY - playerTouchStartY.current;
+    // Only treat as horizontal swipe if dx is the dominant direction
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      if (dx < 0) handleNext(); else handlePrev();
+    }
   };
 
   useEffect(() => {
@@ -2738,7 +2772,7 @@ export default function App() {
                 </div>
 
                 {/* ── Row 2: Editing tools strip ── */}
-                <div className="h-9 flex items-center justify-end gap-1 pb-1">
+                <div className="h-9 hidden md:flex items-center justify-end gap-1 pb-1">
                   {/* Undo */}
                   <button
                     title={undoHistory.length > 0 ? `Undo (${undoHistory.length} step${undoHistory.length !== 1 ? 's' : ''} available)` : 'Nothing to undo'}
@@ -2854,6 +2888,16 @@ export default function App() {
                 </div>
               </div>}
 
+              {/* ── Portrait orientation nudge (mobile only) ── */}
+              {isPortrait && !isScormPlayer && (
+                <div className="md:hidden shrink-0 flex items-center gap-3 px-4 py-2 bg-amber-950/90 border-b border-amber-700/40 z-10">
+                  <RotateCcw className="w-4 h-4 shrink-0 text-amber-400" />
+                  <span className="text-amber-200 text-[11px] font-semibold leading-tight">
+                    Rotate to landscape for the best experience
+                  </span>
+                </div>
+              )}
+
               {/* ── Body: Sidebar + Main Player Area ── */}
               <div className={cn("flex flex-row flex-1 overflow-hidden", playerConfig.playerResolution === 'full' ? 'overflow-x-hidden' : 'min-h-0')}>
                 {/* Course Navigation Sidebar */}
@@ -2873,10 +2917,15 @@ export default function App() {
                   examPhase={examPhase}
                   examIntroIndex={examIntroIndex}
                   highestVisitedIndex={highestVisitedIndex}
+                  defaultCollapsed={typeof window !== 'undefined' && window.innerWidth < 768}
                 />
 
-                {/* Main slide area */}
-                <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
+                {/* Main slide area — swipe left/right on mobile to navigate slides */}
+                <div
+                  className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden"
+                  onTouchStart={handlePlayerTouchStart}
+                  onTouchEnd={handlePlayerTouchEnd}
+                >
                   {/* Background canvas — scaler measures this div to compute transform scale */}
                   <div
                     ref={viewMode === 'desktop' ? scaler.containerRef : undefined}

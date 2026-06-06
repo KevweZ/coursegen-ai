@@ -217,9 +217,9 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           </div>
         )}
 
-        {/* Volume slider — only shown when audio exists & callback is provided */}
+        {/* Volume slider — only shown when audio exists & callback is provided, hidden on mobile */}
         {onVolumeChange && (
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="hidden sm:flex items-center gap-1 shrink-0">
             <button
               onClick={() => onVolumeChange(volume > 0 ? 0 : 1)}
               title={volume === 0 ? 'Unmute' : 'Mute'}
@@ -253,13 +253,13 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
 
         <div className={cn('h-4 w-px shrink-0', divider)} />
 
-        {/* Slide info */}
+        {/* Slide info — number always visible, title hidden on very small screens */}
         <div className="flex-1 flex items-center gap-2 min-w-0">
           <span className={cn('text-[11px] font-bold tabular-nums shrink-0', textStrong)}>
             {currentSlideIndex + 1} / {totalSlides}
           </span>
-          <div className={cn('h-3 w-px shrink-0', divider)} />
-          <span className={cn('text-[11px] font-medium truncate', textMuted)}>
+          <div className={cn('h-3 w-px shrink-0 hidden sm:block', divider)} />
+          <span className={cn('text-[11px] font-medium truncate hidden sm:block', textMuted)}>
             {currentSlideTitle}
           </span>
         </div>
