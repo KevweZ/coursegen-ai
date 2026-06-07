@@ -64,11 +64,10 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
   const [packError, setPackError]     = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user) return;
-    getPaymentStatus(user.id).then(s => {
-      setStatus(s);
-      setLoading(false);
-    });
+    if (!user) { setLoading(false); return; }
+    getPaymentStatus(user.id)
+      .then(s => { setStatus(s); setLoading(false); })
+      .catch(() => setLoading(false)); // show page even if Stripe API fails
   }, [user]);
 
   const plan = status?.subscription ?? 'free';

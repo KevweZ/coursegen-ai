@@ -47,7 +47,7 @@ export const CourseObjectivesSlide: React.FC<Props> = ({ objectives, theme, modu
       {/* ── Left decorative panel ──────────────────────────────────────────── */}
       <div
         className="shrink-0 relative flex flex-col items-center justify-between py-10"
-        style={{ width: '22%', backgroundColor: p.leftBg, borderRight: `4px solid ${ACCENT_COLORS[0]}` }}
+        style={{ width: '18%', backgroundColor: p.leftBg, borderRight: `4px solid ${ACCENT_COLORS[0]}` }}
       >
         {/* Giant watermark — behind everything */}
         <div className="absolute inset-0 flex items-center justify-center select-none pointer-events-none">
@@ -67,7 +67,7 @@ export const CourseObjectivesSlide: React.FC<Props> = ({ objectives, theme, modu
             transform: 'rotate(180deg)',
             color: p.headerText,
             letterSpacing: '0.16em',
-            fontSize: '2rem',
+            fontSize: '1.1rem',
             maxHeight: '78%',
             overflow: 'hidden',
           }}
@@ -80,12 +80,12 @@ export const CourseObjectivesSlide: React.FC<Props> = ({ objectives, theme, modu
       </div>
 
       {/* ── Right: accordion objective list ───────────────────────────────── */}
-      <div className="flex-1 flex flex-col px-8 py-8 overflow-hidden">
+      <div className="flex-1 flex flex-col px-5 py-6 overflow-hidden">
         <motion.h2
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="font-extrabold text-5xl mb-6"
+          className="font-extrabold text-3xl mb-5"
           style={{ color: p.headerText }}
         >
           Course Objectives

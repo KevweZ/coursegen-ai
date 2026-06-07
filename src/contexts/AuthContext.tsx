@@ -97,11 +97,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signInWithGoogle = async () => {
+    // Use the canonical production URL in production, fall back to origin in local dev
+    const redirectTo = window.location.hostname === 'localhost'
+      ? window.location.origin
+      : 'https://nexcourse.ai';
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin,
-        queryParams: { access_type: 'offline', prompt: 'consent' },
+        redirectTo,
+        queryParams: { access_type: 'offline', prompt: 'select_account' },
       },
     });
     return { error: error?.message ?? null };

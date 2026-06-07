@@ -1511,7 +1511,7 @@ export default function App() {
                           }}
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-purple-300 hover:bg-purple-500/10 text-sm font-medium transition-all text-left"
                         >
-                          <FileText className="w-3.5 h-3.5" /> Demo — Course Details
+                          <FileText className="w-3.5 h-3.5" /> Demo — Course Design
                         </button>
                         <button
                           onClick={() => {
@@ -1527,7 +1527,7 @@ export default function App() {
                           }}
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-purple-300 hover:bg-purple-500/10 text-sm font-medium transition-all text-left"
                         >
-                          <Eye className="w-3.5 h-3.5" /> Demo — Course Preview
+                          <Eye className="w-3.5 h-3.5" /> Demo — Course Development
                         </button>
                         <button
                           onClick={() => {
@@ -2043,7 +2043,7 @@ export default function App() {
                       <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center group-hover:bg-indigo-500/20 transition-colors shrink-0">
                         <ArrowRight className="w-5 h-5 text-slate-400 rotate-180 group-hover:text-indigo-400" />
                       </div>
-                      <h2 className="text-3xl font-extrabold text-white flex-1">Course Details</h2>
+                      <h2 className="text-3xl font-extrabold text-white flex-1">Course Design</h2>
                     </div>
                     {/* Replace Document button — separate from nav click area */}
                     <label className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white font-bold text-sm rounded-xl cursor-pointer transition-all shrink-0">
@@ -2644,7 +2644,7 @@ export default function App() {
                       <h1 className="text-white font-bold text-sm truncate max-w-[220px]">
                         {isSandboxMode ? 'Demo Course' : course.title}
                       </h1>
-                      <span className="hidden sm:inline px-1.5 py-0.5 rounded-md bg-slate-700 text-slate-400 text-[10px] font-bold uppercase tracking-wider shrink-0">Preview</span>
+                      <span className="hidden sm:inline px-1.5 py-0.5 rounded-md bg-slate-700 text-slate-400 text-[10px] font-bold uppercase tracking-wider shrink-0">Dev</span>
                     </div>
                   </div>
 
@@ -2888,13 +2888,24 @@ export default function App() {
                 </div>
               </div>}
 
-              {/* ── Portrait orientation nudge (mobile only) ── */}
+              {/* ── Mandatory landscape gate — full-screen block on mobile portrait ── */}
               {isPortrait && !isScormPlayer && (
-                <div className="md:hidden shrink-0 flex items-center gap-3 px-4 py-2 bg-amber-950/90 border-b border-amber-700/40 z-10">
-                  <RotateCcw className="w-4 h-4 shrink-0 text-amber-400" />
-                  <span className="text-amber-200 text-[11px] font-semibold leading-tight">
-                    Rotate to landscape for the best experience
-                  </span>
+                <div className="md:hidden fixed inset-0 z-[9999] bg-slate-950 flex flex-col items-center justify-center text-center px-10 gap-6">
+                  <div className="w-24 h-24 rounded-3xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
+                    <RotateCcw className="w-12 h-12 text-indigo-400" />
+                  </div>
+                  <div>
+                    <h2 className="text-white text-2xl font-black mb-3">Rotate Your Device</h2>
+                    <p className="text-slate-400 text-base leading-relaxed">
+                      The course player requires landscape mode.
+                      Please rotate your device horizontally to continue.
+                    </p>
+                  </div>
+                  <div className="flex gap-1 mt-2">
+                    {[0,1,2].map(i => (
+                      <span key={i} className="w-2 h-2 rounded-full bg-indigo-500/40" style={{ animationDelay: `${i * 0.2}s` }} />
+                    ))}
+                  </div>
                 </div>
               )}
 

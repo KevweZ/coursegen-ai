@@ -64,12 +64,12 @@ export const ModuleOverviewSlide: React.FC<Props> = ({
       {/* ── Left decorative panel ──────────────────────────────────────────── */}
       <div
         className="shrink-0 relative flex flex-col items-center justify-between py-10"
-        style={{ width: '22%', backgroundColor: p.leftBg, borderRight: `4px solid ${accent}` }}
+        style={{ width: '18%', backgroundColor: p.leftBg, borderRight: `4px solid ${accent}` }}
       >
         {/* Giant background module number */}
         <div
           className="absolute inset-0 flex items-center justify-center font-black select-none pointer-events-none"
-          style={{ fontSize: '14rem', color: p.numText, lineHeight: 1 }}
+          style={{ fontSize: '10rem', color: p.numText, lineHeight: 1 }}
         >
           {moduleNumber}
         </div>
@@ -111,7 +111,7 @@ export const ModuleOverviewSlide: React.FC<Props> = ({
                     transform: 'rotate(180deg)',
                     color: p.bodyText,
                     letterSpacing: '0.11em',
-                    fontSize: '1.5rem',
+                    fontSize: '1rem',
                   }}
                 >
                   {chunk}
@@ -123,7 +123,7 @@ export const ModuleOverviewSlide: React.FC<Props> = ({
       </div>
 
       {/* ── Right content panel ────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col px-10 py-10 overflow-hidden">
+      <div className="flex-1 flex flex-col px-7 py-7 overflow-hidden">
         {/* Title */}
         <motion.div
           initial={{ opacity: 0, y: -10 }}
@@ -132,7 +132,7 @@ export const ModuleOverviewSlide: React.FC<Props> = ({
           className="mb-3 shrink-0"
         >
           <p className="text-sm font-black uppercase tracking-widest mb-1" style={{ color: accent }}>Module {moduleNumber}</p>
-          <h2 className="font-extrabold text-6xl leading-tight" style={{ color: p.titleText }}>Overview</h2>
+          <h2 className="font-extrabold text-4xl leading-tight" style={{ color: p.titleText }}>Overview</h2>
         </motion.div>
 
         {/* Divider */}

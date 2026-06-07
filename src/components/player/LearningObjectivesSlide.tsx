@@ -117,7 +117,7 @@ export const LearningObjectivesSlide: React.FC<LearningObjectivesSlideProps> = (
       {/* ── Left decorative panel ─────────────────────────────────────────────── */}
       <div
         className="shrink-0 relative flex flex-col items-center justify-between py-10"
-        style={{ width: '22%', backgroundColor: p.leftBg, borderRight: `4px solid ${accent}` }}
+        style={{ width: '18%', backgroundColor: p.leftBg, borderRight: `4px solid ${accent}` }}
       >
         {/* Watermark key icon behind vertical text */}
         <div className="absolute inset-0 flex items-center justify-center select-none pointer-events-none">
@@ -148,7 +148,7 @@ export const LearningObjectivesSlide: React.FC<LearningObjectivesSlideProps> = (
             transform: 'rotate(180deg)',
             color: p.bodyText,
             letterSpacing: '0.18em',
-            fontSize: '2.4rem',
+            fontSize: '1.1rem',
             maxHeight: '52%',
             overflow: 'hidden',
           }}
@@ -161,7 +161,7 @@ export const LearningObjectivesSlide: React.FC<LearningObjectivesSlideProps> = (
       </div>
 
       {/* ── Right content panel ───────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col px-10 py-10 overflow-hidden">
+      <div className="flex-1 flex flex-col px-5 py-6 overflow-hidden">
 
         {/* Super-label + title */}
         <motion.div
@@ -173,7 +173,7 @@ export const LearningObjectivesSlide: React.FC<LearningObjectivesSlideProps> = (
           <p className="text-sm font-black uppercase tracking-widest mb-1" style={{ color: accent }}>
             Key Takeaways
           </p>
-          <h2 className="font-extrabold text-5xl leading-tight" style={{ color: p.titleText }}>
+          <h2 className="font-extrabold text-3xl leading-tight" style={{ color: p.titleText }}>
             {cleanTitle || 'Key Takeaways'}
           </h2>
         </motion.div>
