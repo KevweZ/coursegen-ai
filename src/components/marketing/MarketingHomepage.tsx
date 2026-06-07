@@ -358,7 +358,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
                   className="text-left hover:text-white transition-colors py-3 min-h-[44px] flex items-center border-b border-slate-800/40 last:border-0"
                 >{label}</button>
               ))}
-              <button onClick={() => { setMenuOpen(false); setShowSignIn(true); }} className="text-left pt-3 border-t border-slate-800 text-indigo-400 min-h-[44px] flex items-center">Sign In →</button>
+              <button onClick={() => { setMenuOpen(false); onSignIn(); }} className="text-left pt-3 border-t border-slate-800 text-indigo-400 min-h-[44px] flex items-center">Sign In →</button>
             </motion.div>
           )}
         </AnimatePresence>
