@@ -30,7 +30,6 @@ import {
   Volume2,
   Image as ImageIcon,
   RotateCw,
-  RotateCcw,
   Edit3,
   Gamepad2,
   Trophy,
@@ -762,9 +761,18 @@ export default function App() {
   const handlePlayerTouchEnd = (e: React.TouchEvent) => {
     const dx = e.changedTouches[0].clientX - playerTouchStartX.current;
     const dy = e.changedTouches[0].clientY - playerTouchStartY.current;
-    // Only treat as horizontal swipe if dx is the dominant direction
-    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-      if (dx < 0) handleNext(); else handlePrev();
+    if (isPortrait && !isScormPlayer) {
+      // CSS-rotated 90° CW: device vertical axis = visual horizontal axis
+      // Swipe down on device (dy > 0) = visual left swipe = next slide
+      // Swipe up on device  (dy < 0) = visual right swipe = prev slide
+      if (Math.abs(dy) > 60 && Math.abs(dy) > Math.abs(dx) * 1.5) {
+        if (dy > 0) handleNext(); else handlePrev();
+      }
+    } else {
+      // Normal orientation: horizontal swipe navigates slides
+      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        if (dx < 0) handleNext(); else handlePrev();
+      }
     }
   };
 
@@ -2631,7 +2639,22 @@ export default function App() {
           )}
 
           {step === 'preview' && course && (
-            <motion.div key="preview" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="w-full h-screen bg-slate-900 absolute top-0 left-0 bg-opacity-20 z-50 overflow-hidden flex flex-col">
+            <motion.div key="preview" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-50">
+              {/* Auto-landscape wrapper: CSS-rotates 90° on mobile portrait so the player
+                  appears landscape immediately — no user action required. On desktop or
+                  physical landscape the wrapper is a transparent full-size container. */}
+              <div
+                className="bg-slate-900 overflow-hidden flex flex-col"
+                style={(isPortrait && !isScormPlayer) ? {
+                  position: 'fixed',
+                  top: '100vh',
+                  left: 0,
+                  width: '100vh',
+                  height: '100vw',
+                  transformOrigin: 'left top',
+                  transform: 'rotate(90deg)',
+                } : { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+              >
               {/* ── Preview Top Bar — hidden in SCORM/published view ── */}
               {!isScormPlayer && <div className="px-3 bg-slate-900 border-b border-slate-800 shrink-0">
                 <div className="h-11 flex items-center justify-between gap-2">
@@ -2888,26 +2911,7 @@ export default function App() {
                 </div>
               </div>}
 
-              {/* ── Mandatory landscape gate — full-screen block on mobile portrait ── */}
-              {isPortrait && !isScormPlayer && (
-                <div className="md:hidden fixed inset-0 z-[9999] bg-slate-950 flex flex-col items-center justify-center text-center px-10 gap-6">
-                  <div className="w-24 h-24 rounded-3xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
-                    <RotateCcw className="w-12 h-12 text-indigo-400" />
-                  </div>
-                  <div>
-                    <h2 className="text-white text-2xl font-black mb-3">Rotate Your Device</h2>
-                    <p className="text-slate-400 text-base leading-relaxed">
-                      The course player requires landscape mode.
-                      Please rotate your device horizontally to continue.
-                    </p>
-                  </div>
-                  <div className="flex gap-1 mt-2">
-                    {[0,1,2].map(i => (
-                      <span key={i} className="w-2 h-2 rounded-full bg-indigo-500/40" style={{ animationDelay: `${i * 0.2}s` }} />
-                    ))}
-                  </div>
-                </div>
-              )}
+
 
               {/* ── Body: Sidebar + Main Player Area ── */}
               <div className={cn("flex flex-row flex-1 overflow-hidden", playerConfig.playerResolution === 'full' ? 'overflow-x-hidden' : 'min-h-0')}>
@@ -3649,6 +3653,7 @@ export default function App() {
 
                 </div>{/* end main slide column */}
               </div>{/* end sidebar+main row */}
+              </div>{/* end auto-landscape wrapper */}
            </motion.div>
          )}
          </AnimatePresence>
