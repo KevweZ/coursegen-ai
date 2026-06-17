@@ -1174,17 +1174,26 @@ export default function App() {
   const hydrateCourse = async () => {
     setIsHydrating(true);
     setProgress(10);
-    // Item 10: use real onProgress callback from AI service — no artificial 90% cap
     try {
       const finalCourse = await hydrateCourseContent(
         outlineDraft!, prompt, { courseType, scenarioConfig: interactionTypes.includes('scenario') ? scenarioConfig : undefined },
         (pct) => setProgress(pct)
       );
-      setProgress(99);
+      setProgress(100);
       await new Promise(r => setTimeout(r, 200));
       setCourse(finalCourse);
       setOriginalCourse(finalCourse);
-      // ── Auto QC: run immediately before showing preview ──
+
+      // ── Show preview immediately — don't make the user wait for QC or TTS ──
+      setStep('preview');
+
+      // ── Kick off TTS in the background (will update course as each slide is ready) ──
+      if (voiceOverEnabled) {
+        // We start TTS with finalCourse; after QC may apply fixes via setCourse below
+        generateTTS(finalCourse, setCourse, ttsVoice);
+      }
+
+      // ── Auto QC runs silently in background — preview is already visible ──
       try {
         setIsRunningQC(true);
         setQcPhase('structural');
@@ -1192,24 +1201,15 @@ export default function App() {
         setQcReport(report);
         // Apply auto-fixable issues silently
         if (report.issues.some(i => i.autoFixable)) {
-          const { course: fixedCourse, fixedCount } = autoFixCourse(finalCourse, report);
+          const { course: fixedCourse } = autoFixCourse(finalCourse, report);
           setCourse(fixedCourse);
           setOriginalCourse(fixedCourse);
-        } else {
-          setCourse(finalCourse);
-          setOriginalCourse(finalCourse);
         }
       } catch {
         // QC failure is non-fatal — proceed with original course
       } finally {
         setIsRunningQC(false);
         setQcPhase(null);
-      }
-      setProgress(100);
-      setStep('preview');
-      // ── Kick off TTS generation in the background ──
-      if (voiceOverEnabled) {
-        generateTTS(finalCourse, setCourse, ttsVoice);
       }
     } catch (e: any) {
       setError(e.message);
@@ -2639,7 +2639,7 @@ export default function App() {
           )}
 
           {step === 'preview' && course && (
-            <motion.div key="preview" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-50">
+            <motion.div key="preview" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute top-0 left-0 w-full h-screen z-50">
               {/* Auto-landscape wrapper: CSS-rotates 90° on mobile portrait so the player
                   appears landscape immediately — no user action required. On desktop or
                   physical landscape the wrapper is a transparent full-size container. */}
