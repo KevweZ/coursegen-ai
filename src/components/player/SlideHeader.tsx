@@ -34,7 +34,7 @@ export const SlideHeader: React.FC<SlideHeaderProps> = ({ title, theme, classNam
     <div className={cn('mb-6', className)}>
       <h2
         className={cn(
-          'font-extrabold text-3xl leading-tight tracking-tight mb-1.5',
+          'font-extrabold text-3xl leading-tight tracking-tight mb-1.5 slide-title-balanced',
           colorClass
         )}
       >

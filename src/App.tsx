@@ -193,6 +193,9 @@ const sanitizeContent = (content: string) => {
     .replace(/\|\s*$/gm, '') 
     .replace(/\|\s*\|/g, '') 
     .replace(/^(#.*)$/gm, '') 
+    // Ensure a blank line between the last list item and the first non-list paragraph
+    // so ReactMarkdown renders them as separate block elements with proper spacing
+    .replace(/(^[-*+][ \t]+.+)\n(?!\n)(?![ \t]*[-*+][ \t])/gm, '$1\n\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 };
@@ -289,7 +292,7 @@ const SlideContent = ({ content, theme }: { content: string, theme: string }) =>
           return <li {...props} className={cn("marker:text-indigo-400", theme === 'light' ? "text-gray-800" : "text-gray-200")}>{children}</li>;
         },
         ul: ({ node, children, ...props }) => (
-          <ul {...props} className="pl-6 space-y-2 lg:list-disc border-l-0 border-indigo-500/20">{children}</ul>
+          <ul {...props} className="pl-6 space-y-2 lg:list-disc border-l-0 border-indigo-500/20 mb-4">{children}</ul>
         ),
         ol: ({ node, children, ...props }) => (
           <ol {...props} className="pl-6 space-y-2 list-decimal pb-4">{children}</ol>

@@ -200,7 +200,14 @@ button, [role="button"], a { cursor: pointer; }
 
 /* ── Matching/Sorting: DnD items and target zones ──
    These are li elements managed by @dnd-kit — don't override their transforms. */
+/* Plain list items (accordion bullet content, prose lists) — text only, no background */
 .interaction-dark-override li {
+  color: #e2e8f0 !important;
+}
+/* DnD sorting/matching items that render as styled list cards */
+.interaction-dark-override li[draggable],
+.interaction-dark-override li[data-rbd-draggable-context-id],
+.interaction-dark-override li[data-dnd-kit-id] {
   background-color: #1e3a5f;
   border-color: rgba(99, 102, 241, 0.3);
   color: #bfdbfe !important;
@@ -354,6 +361,32 @@ button, [role="button"], a { cursor: pointer; }
 .rich-slide-content hr {
   border-color: rgba(148, 163, 184, 0.25);
   margin: 1rem 0;
+}
+
+/* ── Slide title: prevent single-word orphans on the last line ────────── */
+.slide-title-balanced {
+  text-wrap: pretty;    /* Chrome 117+, prevents dangling single word on last line */
+  overflow-wrap: break-word;
+}
+
+/* ── Slide prose: ensure proper spacing after bullet/numbered lists ────── */
+/* When a non-list paragraph follows a list, add visible separation */
+.prose > ul,
+.prose > ol {
+  margin-bottom: 1.25rem !important;
+}
+.prose > ul + p,
+.prose > ol + p {
+  margin-top: 1rem !important;
+}
+/* Rich slide content (HTML-rendered): same separation */
+.rich-slide-content ul,
+.rich-slide-content ol {
+  margin-bottom: 1.25rem;
+}
+.rich-slide-content ul + p,
+.rich-slide-content ol + p {
+  margin-top: 1rem;
 }
 
 /* -- Marketing page: lazy-load image fade-in ------------------------------- */
