@@ -2639,7 +2639,7 @@ export default function App() {
           )}
 
           {step === 'preview' && course && (
-            <motion.div key="preview" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute top-0 left-0 w-full h-screen z-50">
+            <motion.div key="preview" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed top-20 left-0 right-0 bottom-0 z-50">
               {/* Auto-landscape wrapper: CSS-rotates 90° on mobile portrait so the player
                   appears landscape immediately — no user action required. On desktop or
                   physical landscape the wrapper is a transparent full-size container. */}
