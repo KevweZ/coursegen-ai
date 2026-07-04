@@ -106,6 +106,7 @@ import { CourseObjectivesSlide }   from './components/player/CourseObjectivesSli
 import { ModuleOverviewSlide, MODULE_COLORS } from './components/player/ModuleOverviewSlide';
 import { PlayerTourSlide }       from './components/player/PlayerTourSlide';
 import { WheelDiagram } from './components/interactions/WheelDiagram';
+import { MermaidDiagram } from './components/MermaidDiagram';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { CustomMatchingActivity } from './components/interactions/CustomMatchingActivity';
 import { CustomSortingActivity } from './components/interactions/CustomSortingActivity';
@@ -304,6 +305,20 @@ const SlideContent = ({ content, theme }: { content: string, theme: string }) =>
         strong: ({ node, children, ...props }) => (
           <strong {...props} className={cn("font-extrabold", theme === 'light' ? "text-indigo-900" : "text-white")}>{children}</strong>
         ),
+        // Render ```mermaid code blocks as actual Mermaid diagrams
+        code({ node, className, children, ...props }: any) {
+          const lang = /language-(\w+)/.exec(className ?? '')?.[1];
+          if (lang === 'mermaid') {
+            return (
+              <MermaidDiagram
+                code={String(children).replace(/\n$/, '')}
+                theme={theme as any}
+                className="my-4"
+              />
+            );
+          }
+          return <code className={className} {...props}>{children}</code>;
+        },
       }}
     >
       {autoFormatAsBullets(content)}
@@ -3061,6 +3076,7 @@ export default function App() {
                                    'folder-explorer': 'Explorer', 'carousel-panel': 'Carousel',
                                    'click-reveal': 'Click & Reveal',
                                    'game-template': 'Game',
+                                   'diagram': 'Process Diagram',
                                  };
                                  const label = TYPE_LABELS[currentSlide?.type as string];
                                  if (!label) return null;
@@ -3398,7 +3414,38 @@ export default function App() {
                                   );
                                })()}
 
-                               {/* CUSTOM TAB/FOLDER INTERACTIONS */}
+                               {/* MERMAID PROCESS DIAGRAM */}
+                               {currentSlide?.type === 'diagram' && (() => {
+                                  const mermaidCode: string = currentSlide.data?.mermaidCode || currentSlide.data?.code || '';
+                                  const caption: string = currentSlide.data?.caption || currentSlide.content || '';
+                                  return (
+                                    <div className="space-y-5 w-full">
+                                      <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
+                                      {caption && (
+                                        <SmartContent
+                                          content={sanitizeContent(caption)}
+                                          theme={theme}
+                                          className={cn('prose max-w-none text-sm', theme !== 'light' ? 'prose-invert text-slate-400' : 'text-slate-600')}
+                                        />
+                                      )}
+                                      {mermaidCode ? (
+                                        <div className="w-full overflow-auto rounded-xl bg-slate-800/40 border border-slate-700/40 p-4">
+                                          <MermaidDiagram
+                                            code={mermaidCode}
+                                            theme={theme as any}
+                                            className="mx-auto"
+                                          />
+                                        </div>
+                                      ) : (
+                                        <div className="rounded-xl bg-slate-800/50 border border-amber-700/30 p-6 text-amber-400 text-sm text-center">
+                                          No diagram code found. Edit this slide to add Mermaid markup.
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                               })()}
+
+
                                {currentSlide?.type === 'tabbed-horizontal' && (
                                  <div className="space-y-6 w-full">
                                    <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />

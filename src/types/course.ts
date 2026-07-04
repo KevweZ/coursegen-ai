@@ -53,7 +53,8 @@ export type SlideType =
   | 'exam-intro'
   | 'mastery-exam'
   | 'exam-results'
-  | 'scenario';
+  | 'scenario'
+  | 'diagram';
 
 export interface FloatingImage {
   id: string;

@@ -356,6 +356,7 @@ export async function generateCourseOutline(
      - accordion, flashcards, timeline, sorting, matching -> use the exact string as the slide 'type'
      - tabbed-horizontal, tabbed-vertical, folder-explorer, carousel-panel, click-reveal -> use the exact string as the slide 'type'
      - choice -> use type: "quiz" with interactions array
+     - For PROCESS FLOWS, DECISION TREES, WORKFLOWS, or MULTI-STEP PROCEDURES: use type: "diagram" (generates a Mermaid.js flowchart)
   4. ${configParams.includeKnowledgeChecks !== false ? 'Knowledge Check Slides (type: quiz)' : 'NO knowledge check slides'}
   5. ${configParams.includeSummarySlides !== false ? "Summary Slide (type: content)" : "NO summary slide"}
   
@@ -382,7 +383,7 @@ Each game slide must have a unique title like "[Game Name] Knowledge Challenge".
         "id": "uuid",
         "title": "Module Title",
         "slides": [
-          { "id": "uuid", "type": "content|quiz|accordion|flashcards|timeline|sorting|matching|game-template", "title": "Slide Title", "gameType": "optional_string" }
+          { "id": "uuid", "type": "content|quiz|accordion|flashcards|timeline|sorting|matching|diagram|game-template", "title": "Slide Title", "gameType": "optional_string" }
         ]
       }
     ]
@@ -556,6 +557,24 @@ export async function hydrateCourseContent(
   - definition: the revealed content (1-3 sentences explaining the term, with context and examples)
   - FAIL CONDITION: fewer than 3 items, or any item missing definition -> regenerate
 
+  DIAGRAM (type: "diagram"):
+  - USE FOR: process flows, decision trees, multi-step workflows, system hierarchies, onboarding journeys, approval chains, troubleshooting trees
+  - data.mermaidCode: valid Mermaid.js markup — ONLY the raw code, NO markdown fences (no backticks)
+  - Supported diagram types (choose the most appropriate):
+    * flowchart TD  → top-down process or decision tree (most common)
+    * flowchart LR  → left-right sequential workflow
+    * sequenceDiagram → interaction between roles/systems
+    * stateDiagram-v2 → status changes or lifecycle stages
+    * mindmap → concept hierarchy or brainstorm map
+  - Node labels: max 4 words. Use [Step Label] for process steps, {Decision?} for yes/no branches, (Start/End) for terminals, ((Circle)) for events
+  - Decision branches: always label arrows with -->|Yes| and -->|No| or -->|Approve| and -->|Reject|
+  - Max 10 nodes for clarity on a slide
+  - Style key nodes with classDef: classDef highlight fill:#6366f1,stroke:#4f46e5,color:#fff
+  - Example mermaidCode: "flowchart TD\n  A(Start) --> B[Identify Risk]\n  B --> C{Severity?}\n  C -->|High| D[Escalate to Manager]\n  C -->|Low| E[Log & Monitor]\n  D --> F(End)\n  E --> F"
+  - content: 1-2 sentence description of what the diagram illustrates (shown as a caption)
+  - data.caption: optional short caption string (alternative to content for the label below diagram)
+  - FAIL CONDITION: empty or syntactically invalid mermaidCode → change type to "content" instead
+
   CONTENT / KEY-TAKEAWAYS / SUMMARY:
   - Do NOT embed full-slide images. Use mediaPrompt to describe what image should appear.
   - content must use ### headers, bullet lists, or callout blocks -- NOT bare paragraphs.
@@ -594,6 +613,7 @@ export async function hydrateCourseContent(
   - quiz interactions: [{ type: 'multiple-choice', questionText: string, options: [{ id, text, isCorrect: boolean }], feedback: string }]
   - jeopardy: { templateType: 'jeopardy', instructions: string, categories: [{ id, name, questions: [{ id, value: number, prompt: string, correctAnswer: string, isDailyDouble: boolean }] }] }
   - millionaire: { templateType: 'millionaire', instructions: string, questions: [{ id, difficulty: number, prompt: string, options: string[], correctAnswer: string, isSafeHaven: boolean }] }
+  - diagram: { mermaidCode: string, caption?: string }  — mermaidCode must be raw Mermaid syntax, no markdown fences
 
   ========================================
   OUTPUT FORMAT
@@ -647,6 +667,11 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     else if (slide.type === 'game-template' && !slide.data?.templateType) {
       slide.type = 'content';
       slide.content = slide.content || 'Game template encountered a structural error.';
+    }
+    else if (slide.type === 'diagram' && !slide.data?.mermaidCode?.trim()) {
+      // Diagram slide with no mermaid code — degrade gracefully to content
+      slide.type = 'content';
+      slide.content = slide.content || `Process diagram for: ${slide.title}`;
     }
     // Scenario slides — data will be populated async; skip sync validation here
 
