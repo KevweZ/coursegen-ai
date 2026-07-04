@@ -204,7 +204,11 @@ export async function analyzeUploadedFile(
   2. Generate a clean, professional course Title (concise, no raw artifact file names).
   3. Write a 2-4 sentence Description (what learners will learn, context, why it matters).
   4. Classify the complexity (simple vs moderate vs complex).
-  5. Suggest a recommended Preset: "quick" (<10 slides), "standard" (10-25), or "comprehensive" (25+).
+  5. Suggest a recommended Preset based on CONTENT DEPTH AND COMPLEXITY, not raw slide count:
+     - "quick": Surface-level awareness only. Single concept, minimal depth, 1-2 modules, simple/introductory content. Equivalent to a 5-10 minute primer. Use SPARINGLY.
+     - "standard": Multi-concept content with application. 2-5 modules, moderate depth, most real corporate training falls here. DEFAULT when in doubt.
+     - "comprehensive": Deep technical or procedural content, 5+ modules, advanced or nuanced subject matter requiring extensive coverage.
+     IMPORTANT: If the content covers multiple distinct topics, has procedures, real-world applications, or requires behavioral change, choose "standard" or "comprehensive". Do NOT downgrade to "quick" just because the source document is short.
   6. Recommend an objectiveFormat: "AB" (quick courses), "ABC" (standard), or "ABCD" (comprehensive).
   7. Classify Content Types and Map Interactions. E.g. Concepts -> "flashcards", Processes -> "timeline", Comparisons -> "accordion", Matching -> "drag-drop-activity". Return an array of these recommended interaction strings.
   8. GENERATE OBJECTIVES using Bloom's Taxonomy:

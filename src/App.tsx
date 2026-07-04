@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Sparkles, 
@@ -803,7 +803,7 @@ export default function App() {
     const dx = e.changedTouches[0].clientX - playerTouchStartX.current;
     const dy = e.changedTouches[0].clientY - playerTouchStartY.current;
     if (isPortrait && !isScormPlayer) {
-      // CSS-rotated 90Â° CW: device vertical axis = visual horizontal axis
+      // CSS-rotated 90° CW: device vertical axis = visual horizontal axis
       // Swipe down on device (dy > 0) = visual left swipe = next slide
       // Swipe up on device  (dy < 0) = visual right swipe = prev slide
       if (Math.abs(dy) > 60 && Math.abs(dy) > Math.abs(dx) * 1.5) {
@@ -817,20 +817,24 @@ export default function App() {
     }
   };
 
+  // Derive only the current slide's synthetic URL — do NOT put the whole syntheticAudioMap
+  // object in the effect deps, because every setSyntheticAudioMap() call (each module's
+  // background audio generation) creates a new reference, which would fire loadSlide for
+  // the current slide over and over, resetting playback mid-sentence.
+  const currentSyntheticUrl = syntheticAudioMap[currentSlide?.id ?? ''] ?? null;
+
   useEffect(() => {
     if (currentSlide) {
       player.loadSlide(
         currentSlide.id,
-        // Prefer real TTS-generated URL, fall back to synthetic map, then legacy audioUrl
-        currentSlide.voiceOverUrl || currentSlide.audioUrl || syntheticAudioMap[currentSlide.id] || null,
-        // Only use browser TTS fallback when no pre-generated audio is available
-        voiceOverEnabled && !currentSlide.voiceOverUrl && !syntheticAudioMap[currentSlide.id]
+        currentSlide.voiceOverUrl || currentSlide.audioUrl || currentSyntheticUrl || null,
+        voiceOverEnabled && !currentSlide.voiceOverUrl && !currentSyntheticUrl
           ? (currentSlide.voiceOverText || currentSlide.narration || null)
           : null
       );
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentSlide?.id, currentSlide?.voiceOverUrl, voiceOverEnabled, syntheticAudioMap]);
+  }, [currentSlide?.id, currentSlide?.voiceOverUrl, voiceOverEnabled, currentSyntheticUrl]);
 
 
   // Extract images
@@ -3910,7 +3914,8 @@ export default function App() {
                         volume={player.volume}
                         onVolumeChange={player.setVolume}
                         showCC={showCC}
-                        onToggleCC={player.hasAudio ? () => setShowCC(v => !v) : undefined}
+                        onToggleCC={voiceOverEnabled ? () => setShowCC(v => !v) : undefined}
+
                       />
 
                      </div>{/* end PlayerBar */}

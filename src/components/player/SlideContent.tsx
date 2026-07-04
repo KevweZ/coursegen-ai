@@ -63,10 +63,52 @@ function autoFormatAsBullets(raw: string): string {
     .join('\n\n');
 }
 
+/**
+ * addBulletGroupDividers — visually separates "concept bullets" from "action bullets".
+ *
+ * Concept bullet: starts with `- **word**` (bold-led key term)
+ * Action bullet:  starts with `- plain text`
+ *
+ * When the list transitions from one type to the other, a `---` HR divider is inserted
+ * so the two groups have clear visual separation in the rendered slide.
+ */
+function addBulletGroupDividers(raw: string): string {
+  const lines = raw.split('\n');
+  const result: string[] = [];
+  let prevBulletType: 'bold' | 'plain' | null = null;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const isBullet = /^[-*+]\s/.test(trimmed);
+
+    if (isBullet) {
+      // Detect if this bullet starts with bold text: "- **word** ..."
+      const isBoldBullet = /^[-*+]\s+\*\*/.test(trimmed);
+      const bulletType = isBoldBullet ? 'bold' : 'plain';
+
+      if (prevBulletType !== null && prevBulletType !== bulletType) {
+        // Transition between concept and action groups — insert divider
+        result.push('');
+        result.push('---');
+        result.push('');
+      }
+      prevBulletType = bulletType;
+    } else if (trimmed !== '') {
+      // Non-bullet, non-empty line resets group tracking
+      prevBulletType = null;
+    }
+
+    result.push(line);
+  }
+
+  return result.join('\n');
+}
+
 export function SlideContent({ content, theme, compact = false }: SlideContentProps) {
   const isLight = theme === 'light';
-  // Apply global bullet-formatting rule before rendering
-  const processedContent = autoFormatAsBullets(content);
+  // Apply global bullet-formatting rule then add group dividers
+  const processedContent = addBulletGroupDividers(autoFormatAsBullets(content));
+
 
 
   const mdComponents: React.ComponentProps<typeof ReactMarkdown>['components'] = {
