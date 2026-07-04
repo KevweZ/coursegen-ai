@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CornerDownLeft, FileText } from 'lucide-react';
+import { markdownToHtml } from '../../lib/markdownInline';
 
 export interface FolderItem {
   id: string;
@@ -120,9 +121,7 @@ export default function FolderExplorer({ folderLabel, items = [] }: Props) {
               >
                 <div className="absolute top-0 left-0 right-0 h-8 rounded-t-xl opacity-20 pointer-events-none" style={{ background: 'linear-gradient(180deg,rgba(255,255,255,0.7),transparent)' }} />
                 <FileText className="w-5 h-5 text-white/40 mb-1" />
-                <span className="text-white/75 text-xs font-bold text-center px-2 leading-snug line-clamp-2">
-                  {item.title}
-                </span>
+                <span className="text-white/75 text-xs font-bold text-center px-2 leading-snug line-clamp-2" dangerouslySetInnerHTML={{ __html: markdownToHtml(item.title) }} />
                 {isOpen && (
                   <div className="absolute inset-0 rounded-b-xl rounded-tr-xl pointer-events-none" style={{ outline: `2px solid ${colors.tab}`, outlineOffset: '-2px' }} />
                 )}
@@ -146,7 +145,7 @@ export default function FolderExplorer({ folderLabel, items = [] }: Props) {
               <div className="px-5 py-3 flex items-center justify-between" style={{ background: openColors.tab }}>
                 <div className="flex items-center gap-2">
                   <FileText className="w-4 h-4 text-white/90 shrink-0" />
-                  <h3 className="text-white font-extrabold text-sm leading-snug">{openItem.title}</h3>
+                  <h3 className="text-white font-extrabold text-sm leading-snug" dangerouslySetInnerHTML={{ __html: markdownToHtml(openItem.title) }} />
                 </div>
                 <button
                   onClick={() => setOpenItemId(null)}
@@ -162,9 +161,7 @@ export default function FolderExplorer({ folderLabel, items = [] }: Props) {
                     {openItem.previewText}
                   </p>
                 )}
-                <p className="text-slate-800 text-sm leading-relaxed whitespace-pre-wrap ml-12">
-                  {openItem.content}
-                </p>
+                <p className="text-slate-800 text-sm leading-relaxed ml-12" dangerouslySetInnerHTML={{ __html: markdownToHtml(openItem.content) }} />
               </div>
             </motion.div>
           </div>

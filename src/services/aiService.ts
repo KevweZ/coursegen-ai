@@ -339,7 +339,7 @@ export async function generateCourseOutline(
   2. ${configParams.includeObjectiveSlides !== false ? "Objectives Slide (type: content)" : "NO objectives slide"}
   3. Content & Interaction Slides -- use the SPECIFIC allowed interaction type as the slide type. Allowed interaction types: ${configParams.interactionTypes.join(", ")}. Map them to slide types like this:
      - accordion, flashcards, timeline, sorting, matching -> use the exact string as the slide 'type'
-     - tabbed-horizontal, tabbed-vertical, folder-explorer, carousel-panel -> use the exact string as the slide 'type'
+     - tabbed-horizontal, tabbed-vertical, folder-explorer, carousel-panel, click-reveal -> use the exact string as the slide 'type'
      - choice -> use type: "quiz" with interactions array
   4. ${configParams.includeKnowledgeChecks !== false ? 'Knowledge Check Slides (type: quiz)' : 'NO knowledge check slides'}
   5. ${configParams.includeSummarySlides !== false ? "Summary Slide (type: content)" : "NO summary slide"}
@@ -503,6 +503,14 @@ export async function hydrateCourseContent(
   - Use distinct colors per card. description <= 30 words. expandedContent must exist.
   - FAIL CONDITION: fewer than 2 cards, or missing expandedContent -> regenerate
 
+  CLICK-REVEAL (type: "click-reveal"):
+  - Use this for key term/definition slides, glossary slides, learning objectives with explanations, or key takeaway lists.
+  - data.items: array of 4-8 reveal items
+  - Each item: { "id": "r1", "term": "Key Term or Concept", "definition": "Full explanation, 1-3 sentences." }
+  - term: the bold clickable label (2-6 words, bold key concept — NO markdown asterisks in the term field itself)
+  - definition: the revealed content (1-3 sentences explaining the term, with context and examples)
+  - FAIL CONDITION: fewer than 3 items, or any item missing definition -> regenerate
+
   CONTENT / KEY-TAKEAWAYS / SUMMARY:
   - Do NOT embed full-slide images. Use mediaPrompt to describe what image should appear.
   - content must use ### headers, bullet lists, or callout blocks -- NOT bare paragraphs.
@@ -526,6 +534,8 @@ export async function hydrateCourseContent(
   ========================================
   - accordion: { items: [{ id: string, title: string, content: string }] }
   - flashcards: { cards: [{ front: string, back: string }] }
+  - carousel-panel: { cards: [{ id: string, label: string, color: string, description: string, expandedContent: string }] }
+  - click-reveal: { items: [{ id: string, term: string, definition: string }] }
   - timeline: { events: [{ id: string, year: string, title: string, content: string }] }
   - sorting: { items: [{ id: string, content: string }], correctOrder: string[] }
   - matching: { items: [{ id: string, content: string }], targets: [{ id: string, content: string }] } — NEVER use 'pairs', NEVER use 'term'/'definition'. Always use 'items' and 'targets' arrays. Each item must have a matching target with a unique id.
@@ -580,6 +590,7 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     if (slide.type === 'hotspot' && !slide.data?.hotspots?.length) slide.type = 'content';
     else if (isMissingData('accordion', 'items')) slide.type = 'content';
     else if (isMissingData('flashcards', 'cards')) slide.type = 'content';
+    else if (isMissingData('click-reveal', 'items')) slide.type = 'content';
     else if (slide.type === 'quiz' && !slide.interactions?.length) slide.type = 'content';
     else if (slide.type === 'game-template' && !slide.data?.templateType) {
       slide.type = 'content';

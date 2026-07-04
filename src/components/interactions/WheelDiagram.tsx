@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
+import { markdownToHtml } from '../../lib/markdownInline';
 
 type Theme = 'light' | 'dark' | 'unified';
 
@@ -238,7 +239,7 @@ export const WheelDiagram: React.FC<WheelDiagramProps> = ({
             >
               <div className="flex items-center gap-2">
                 {selectedSeg.icon && <span className="text-lg">{selectedSeg.icon}</span>}
-                <h3 className="text-white font-bold text-sm">{selectedSeg.label}</h3>
+                <h3 className="text-white font-bold text-sm" dangerouslySetInnerHTML={{ __html: markdownToHtml(selectedSeg.label) }} />
               </div>
               <button
                 onClick={() => setSelected(null)}
@@ -250,9 +251,7 @@ export const WheelDiagram: React.FC<WheelDiagramProps> = ({
 
             {/* Body */}
             <div className="flex-1 p-5 overflow-y-auto">
-              <p className="text-sm leading-relaxed" style={{ color: panelText }}>
-                {selectedSeg.content}
-              </p>
+              <p className="text-sm leading-relaxed" style={{ color: panelText }} dangerouslySetInnerHTML={{ __html: markdownToHtml(selectedSeg.content) }} />
             </div>
           </motion.div>
         )}

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { markdownToHtml } from '../../lib/markdownInline';
 
 export interface HorizontalTab {
   id: string;
@@ -49,13 +50,11 @@ export default function TabbedContentHorizontal({ tabs = [], title }: Props) {
             >
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-1 h-8 rounded-full shrink-0" style={{ background: color }} />
-                <h3 className="font-extrabold text-lg" style={{ color }}>{tab.label}</h3>
+                <h3 className="font-extrabold text-lg" style={{ color }} dangerouslySetInnerHTML={{ __html: markdownToHtml(tab.label) }} />
               </div>
-              <div className="text-slate-200 text-sm leading-relaxed whitespace-pre-wrap">{tab.content}</div>
+              <div className="text-slate-200 text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: markdownToHtml(tab.content) }} />
               {tab.expandedContent && (
-                <div className="mt-4 pt-4 border-t border-slate-700 text-slate-300 text-sm leading-relaxed whitespace-pre-wrap">
-                  {tab.expandedContent}
-                </div>
+                <div className="mt-4 pt-4 border-t border-slate-700 text-slate-300 text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: markdownToHtml(tab.expandedContent) }} />
               )}
             </div>
           );
@@ -81,7 +80,7 @@ export default function TabbedContentHorizontal({ tabs = [], title }: Props) {
                 className="absolute top-0 left-0 right-0 h-0.5"
                 style={{ background: color, opacity: isActive ? 1 : 0, transition: 'opacity 0.2s' }}
               />
-              <span className="relative z-10">{tab.label}</span>
+              <span className="relative z-10" dangerouslySetInnerHTML={{ __html: markdownToHtml(tab.label) }} />
             </button>
           );
         })}

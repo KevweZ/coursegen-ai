@@ -9,6 +9,7 @@
  */
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { markdownToHtml } from '../../lib/markdownInline';
 import {
   Flag, CheckCircle2, Star, Zap, Clock, Target,
   ArrowRight, ChevronDown, ChevronUp,
@@ -154,9 +155,8 @@ export const ChevronTimeline: React.FC<Props> = ({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: i * 0.08 + 0.2, duration: 0.3 }}
-              >
-                {step.title}
-              </motion.p>
+                dangerouslySetInnerHTML={{ __html: markdownToHtml(step.title) }}
+              />
 
               {/* Description — always visible but capped */}
               <motion.p
@@ -164,9 +164,8 @@ export const ChevronTimeline: React.FC<Props> = ({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: i * 0.08 + 0.3, duration: 0.3 }}
-              >
-                {step.content}
-              </motion.p>
+                dangerouslySetInnerHTML={{ __html: markdownToHtml(step.content) }}
+              />
             </div>
 
             {/* ── Vertical connector line ─────────────────────────────────── */}

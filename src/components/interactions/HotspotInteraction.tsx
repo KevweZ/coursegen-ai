@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, Move, ChevronDown } from 'lucide-react';
+import { markdownToHtml } from '../../lib/markdownInline';
 
 interface HotspotPoint {
   id: string;
@@ -227,7 +228,7 @@ export const HotspotInteraction: React.FC<HotspotInteractionProps> = ({
                   >
                     {i + 1}
                   </span>
-                  <span className="font-semibold flex-1 truncate">{pt.label}</span>
+                  <span className="font-semibold flex-1 truncate" dangerouslySetInnerHTML={{ __html: markdownToHtml(pt.label) }} />
                   <motion.span
                     animate={{ rotate: isActive ? 180 : 0 }}
                     transition={{ duration: 0.2 }}
@@ -256,9 +257,8 @@ export const HotspotInteraction: React.FC<HotspotInteractionProps> = ({
                           color:           panelText,
                           borderRadius:    '0 0 8px 8px',
                         }}
-                      >
-                        {pt.content}
-                      </div>
+                        dangerouslySetInnerHTML={{ __html: markdownToHtml(pt.content) }}
+                      />
                     </motion.div>
                   )}
                 </AnimatePresence>

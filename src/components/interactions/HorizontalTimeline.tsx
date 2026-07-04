@@ -13,6 +13,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, CheckCircle2 } from 'lucide-react';
+import { markdownToHtml } from '../../lib/markdownInline';
 
 export interface HorizontalTimelineEvent {
   id: string;
@@ -188,9 +189,8 @@ export const HorizontalTimeline: React.FC<Props> = ({
                 <p
                   className="text-[11px] font-semibold leading-tight mt-1 text-center px-1 line-clamp-2"
                   style={{ color: isActive ? color : textMain, maxWidth: '100px' }}
-                >
-                  {ev.title}
-                </p>
+                  dangerouslySetInnerHTML={{ __html: markdownToHtml(ev.title) }}
+                />
 
                 {/* Active indicator dot at bottom */}
                 <AnimatePresence>
@@ -247,9 +247,7 @@ export const HorizontalTimeline: React.FC<Props> = ({
                     {activeEvent.year}
                   </p>
                 )}
-                <h3 className="text-base font-extrabold leading-snug" style={{ color: textMain }}>
-                  {activeEvent.title}
-                </h3>
+                <h3 className="text-base font-extrabold leading-snug" style={{ color: textMain }} dangerouslySetInnerHTML={{ __html: markdownToHtml(activeEvent.title) }} />
               </div>
 
               {/* Content */}

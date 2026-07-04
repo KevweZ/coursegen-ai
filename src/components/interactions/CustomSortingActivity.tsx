@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ChevronUp, ChevronDown, GripVertical, CheckCircle2 } from 'lucide-react';
+import { markdownToHtml } from '../../lib/markdownInline';
 
 interface SortItem { id: string; content: string; }
 
@@ -98,7 +99,7 @@ export const CustomSortingActivity: React.FC<CustomSortingActivityProps> = ({
               <GripVertical className="w-5 h-5 text-slate-400 shrink-0" />
 
               {/* Item text */}
-              <span className="flex-1 text-base font-bold text-white leading-snug">{item.content}</span>
+              <span className="flex-1 text-base font-bold text-white leading-snug" dangerouslySetInnerHTML={{ __html: markdownToHtml(item.content) }} />
 
               {/* Status icon */}
               {status === true  && <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />}

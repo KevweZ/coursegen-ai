@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle, XCircle, RotateCcw } from 'lucide-react';
+import { markdownToHtml } from '../../lib/markdownInline';
 
 interface MatchItem   { id: string; content: string; }
 interface MatchTarget { id: string; content: string; }
@@ -124,10 +125,10 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
                 {placed ? (
                   <span className="italic text-sm flex items-center gap-2">
                     <span style={{ color: `${color}aa` }}>✓</span>
-                    <span style={{ color: `${color}80` }}>{item.content}</span>
+                    <span style={{ color: `${color}80` }} dangerouslySetInnerHTML={{ __html: markdownToHtml(item.content) }} />
                   </span>
                 ) : (
-                  item.content
+                  <span dangerouslySetInnerHTML={{ __html: markdownToHtml(item.content) }} />
                 )}
               </motion.div>
             );
@@ -180,7 +181,7 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
               >
                 <div className="flex items-center gap-3 px-4 py-3 h-full min-h-[72px]">
                   {/* Target description */}
-                  <div className="flex-1 text-sm text-slate-200 leading-snug">{target.content}</div>
+                  <div className="flex-1 text-sm text-slate-200 leading-snug" dangerouslySetInnerHTML={{ __html: markdownToHtml(target.content) }} />
 
                   {/* Matched item pill */}
                   {matchedItemId ? (
@@ -188,9 +189,8 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
                       <span
                         className="text-sm font-bold text-white px-3 py-1.5 rounded-md"
                         style={{ backgroundColor: matchColor ?? '#4f46e5' }}
-                      >
-                        {getItemContent(matchedItemId)}
-                      </span>
+                        dangerouslySetInnerHTML={{ __html: markdownToHtml(getItemContent(matchedItemId)) }}
+                      />
                       {!checked && (
                         <button
                           onClick={() => handleUnmatch(target.id)}

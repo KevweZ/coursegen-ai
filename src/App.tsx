@@ -109,6 +109,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { CustomMatchingActivity } from './components/interactions/CustomMatchingActivity';
 import { CustomSortingActivity } from './components/interactions/CustomSortingActivity';
 import { HotspotInteraction } from './components/interactions/HotspotInteraction';
+import ClickRevealInteraction from './components/interactions/ClickRevealInteraction';
 import { getRecommendedGames } from './lib/gameEngine';
 import { DUMMY_COURSE, DUMMY_EXAM_QUESTIONS } from './lib/dummyCourse';
 import { useScaleToFit } from './hooks/useScaleToFit';
@@ -219,6 +220,8 @@ function markdownToHtml(text: string): string {
     // Bullet lists: lines starting with - or *
     .replace(/^[\-\*]\s+(.+)$/gm, '<li>$1</li>')
     .replace(/(<li>[\s\S]*?<\/li>)/, '<ul>$1</ul>')
+    // Prevent em-dash from wrapping to start of new line (use non-breaking space)
+    .replace(/ \u2014 /g, '\u00a0\u2014 ')
     // Line breaks
     .replace(/\n/g, '<br/>');
 }
@@ -332,6 +335,7 @@ const GRID_INTERACTION_IDS = [
   'multiple-choice', 'multiple-answers', 'hotspot', 'accordion', 'flashcards',
   'timeline', 'sorting', 'matching', 'drop-targets', 'scenario',
   'tabbed-horizontal', 'tabbed-vertical', 'folder-explorer', 'carousel-panel',
+  'click-reveal',
 ];
 // Map legacy / AI-prompt IDs → visual grid IDs so the UI checkboxes stay in sync
 const PRESET_TO_GRID: Record<string, string> = {
@@ -2409,6 +2413,7 @@ export default function App() {
                                { id: 'tabbed-vertical', label: 'Tabs (Vertical)' },
                                { id: 'folder-explorer', label: 'Folder Explorer' },
                                { id: 'carousel-panel', label: 'Carousel Panel' },
+                               { id: 'click-reveal', label: 'Click & Reveal' },
                              ].map(({ id, label }) => {
                                  const isSelected = interactionTypes.includes(id);
                                  return (
@@ -3034,6 +3039,7 @@ export default function App() {
                                    'timeline': 'Timeline', 'hotspot': 'Hotspot', 'wheel-diagram': 'Diagram',
                                    'tabbed-horizontal': 'Tabbed Content', 'tabbed-vertical': 'Tabbed Content',
                                    'folder-explorer': 'Explorer', 'carousel-panel': 'Carousel',
+                                   'click-reveal': 'Click & Reveal',
                                    'game-template': 'Game',
                                  };
                                  const label = TYPE_LABELS[currentSlide?.type as string];
@@ -3410,7 +3416,20 @@ export default function App() {
                                  </div>
                                )}
 
-                               </SlideErrorBoundary>
+                               {/* CLICK & REVEAL INTERACTION */}
+                               {currentSlide?.type === 'click-reveal' && (() => {
+                                 const crItems = currentSlide.data?.items || currentSlide.interactions?.[0]?.items || [];
+                                 return (
+                                   <div className="space-y-6 w-full">
+                                     <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
+                                     {currentSlide.content && <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />}
+                                     <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
+                                       <ClickRevealInteraction items={crItems} />
+                                     </div>
+                                   </div>
+                                 );
+                               })()}
+
                                {/* EXAM INTRO */}
                                {currentSlide?.type === 'exam-intro' && (
                                  <ExamIntroSlide
@@ -3535,6 +3554,7 @@ export default function App() {
                                    </div>
                                  );
                                })()}
+                               </SlideErrorBoundary>
                              </div>
 
                              {currentSlide?.floatingMedia && currentSlide.floatingMedia.length > 0 && viewMode === 'desktop' && (

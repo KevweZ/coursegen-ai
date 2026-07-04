@@ -162,13 +162,15 @@ button, [role="button"], a { cursor: pointer; }
 
 /* ── Buttons: ONLY target component trigger buttons (accordion, timeline steps)
    NOT DnD draggable items — those are li/div elements with role attributes.
-   Exclude [role="option"] and [draggable] from button override. ── */
+   Exclude [role="option"] and [draggable] from button override.
+   NOTE: background-color has NO !important here — this allows components that
+   set inline style={{ background: ... }} to override with their own value. ── */
 .interaction-dark-override button:not([draggable]):not([role="option"]):not([data-dnd-draggable]) {
-  background-color: rgba(30, 41, 59, 0.85) !important;
+  background-color: rgba(30, 41, 59, 0.85); /* no !important — inline styles win */
   border-color: rgba(100, 116, 139, 0.3) !important;
   color: #e2e8f0 !important;
 }
-.interaction-dark-override button:not([draggable]):not([role="option"]):hover {
+.interaction-dark-override button:not([draggable]):not([role="option"]):not([style]):hover {
   background-color: rgba(51, 65, 85, 0.95) !important;
   border-color: rgba(99, 102, 241, 0.5) !important;
 }
@@ -364,9 +366,13 @@ button, [role="button"], a { cursor: pointer; }
 }
 
 /* ── Slide title: prevent single-word orphans on the last line ────────── */
+/* text-wrap: balance distributes text evenly (Chrome 114+, Firefox 121+, Safari 17.4+) */
+/* text-wrap: pretty prevents single trailing word (Chrome 117+) */
 .slide-title-balanced {
-  text-wrap: pretty;    /* Chrome 117+, prevents dangling single word on last line */
+  text-wrap: balance;       /* broad support — even line distribution */
   overflow-wrap: break-word;
+  word-break: normal;       /* don't break mid-word with hyphen */
+  hyphens: none;            /* explicitly disable auto-hyphenation on titles */
 }
 
 /* ── Slide prose: ensure proper spacing after bullet/numbered lists ────── */

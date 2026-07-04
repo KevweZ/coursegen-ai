@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { markdownToHtml } from '../../lib/markdownInline';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight } from 'lucide-react';
 
@@ -54,7 +55,7 @@ export default function TabbedContentVertical({ tabs = [], title }: Props) {
                 }`}
               >
                 {tab.icon && <span className="text-base shrink-0">{tab.icon}</span>}
-                <span className="flex-1 leading-snug">{tab.label}</span>
+                <span className="flex-1 leading-snug" dangerouslySetInnerHTML={{ __html: markdownToHtml(tab.label) }} />
                 {isActive && <ChevronRight className="w-4 h-4 shrink-0" />}
               </button>
             );
@@ -75,13 +76,11 @@ export default function TabbedContentVertical({ tabs = [], title }: Props) {
               {/* Tab heading */}
               <div className={`flex items-center gap-2 mb-4`}>
                 <div className={`w-1 h-8 rounded-full ${accent.bg}`} />
-                <h3 className={`font-extrabold text-lg ${accent.text}`}>{activeTab.label}</h3>
+                <h3 className={`font-extrabold text-lg ${accent.text}`} dangerouslySetInnerHTML={{ __html: markdownToHtml(activeTab.label) }} />
               </div>
 
               {/* Tab body */}
-              <div className="text-slate-200 text-sm leading-relaxed whitespace-pre-wrap">
-                {activeTab.content}
-              </div>
+              <div className="text-slate-200 text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: markdownToHtml(activeTab.content) }} />
             </motion.div>
           </AnimatePresence>
         </div>
