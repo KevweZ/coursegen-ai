@@ -65,7 +65,12 @@ interface PlayerBarProps {
   volume?: number;
   /** Callback when user adjusts the volume slider */
   onVolumeChange?: (v: number) => void;
+  /** Whether closed captions are currently visible */
+  showCC?: boolean;
+  /** Toggle closed captions on/off */
+  onToggleCC?: () => void;
 }
+
 
 export const PlayerBar: React.FC<PlayerBarProps> = ({
   player,
@@ -80,7 +85,10 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   disableNext = false,
   volume = 1,
   onVolumeChange,
+  showCC = false,
+  onToggleCC,
 }) => {
+
   const barRef = useRef<HTMLDivElement>(null);
 
   const isDark = theme !== 'light';
@@ -181,8 +189,29 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               formatTime(player.duration)
             )}
           </span>
+
+          {/* CC toggle button — only when audio + narration exist */}
+          {onToggleCC && (
+            <button
+              onClick={onToggleCC}
+              title={showCC ? 'Hide closed captions' : 'Show closed captions'}
+              aria-label={showCC ? 'Hide closed captions' : 'Show closed captions'}
+              aria-pressed={showCC}
+              className={cn(
+                'ml-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border transition-all shrink-0 focus:outline-none focus:ring-2 focus:ring-indigo-500/50',
+                showCC
+                  ? 'bg-indigo-600 border-indigo-500 text-white'
+                  : isLight
+                  ? 'border-gray-300 text-gray-500 hover:border-gray-500 hover:text-gray-700'
+                  : 'border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300'
+              )}
+            >
+              CC
+            </button>
+          )}
         </div>
       )}
+
 
       {/* ── Main controls row ── */}
       <div className="px-4 py-2 flex items-center gap-3">

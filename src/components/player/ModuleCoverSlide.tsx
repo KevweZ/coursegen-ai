@@ -27,6 +27,18 @@ function getTitleLines(title: string): string {
   return title.replace(/^Module\s+\d+\s*[—\-]\s*/i, '').trim() || title;
 }
 
+/**
+ * Prevents a single "widow" word hanging alone on the last line.
+ * Replaces the last space with a non-breaking space so the last two words
+ * always stay together on the same line.
+ */
+function preventWidow(text: string): string {
+  const words = text.trim().split(/\s+/);
+  if (words.length < 3) return text; // Nothing to prevent with 1-2 words
+  // Replace the space before the last word with \u00A0
+  return words.slice(0, -1).join(' ') + '\u00A0' + words[words.length - 1];
+}
+
 export const ModuleCoverSlide: React.FC<ModuleCoverSlideProps> = ({
   moduleNumber,
   moduleTitle,
@@ -35,7 +47,7 @@ export const ModuleCoverSlide: React.FC<ModuleCoverSlideProps> = ({
 }) => {
   const accent    = getModuleColor(moduleNumber);
   const darkPanel = theme === 'dark' ? '#0a0f1e' : '#1a1a2e';
-  const cleanTitle = getTitleLines(moduleTitle);
+  const cleanTitle = preventWidow(getTitleLines(moduleTitle));
 
   return (
     <div className="w-full h-full flex flex-row overflow-hidden">

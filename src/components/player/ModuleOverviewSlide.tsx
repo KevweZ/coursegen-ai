@@ -66,13 +66,7 @@ export const ModuleOverviewSlide: React.FC<Props> = ({
         className="shrink-0 relative flex flex-col items-center justify-between py-10"
         style={{ width: '18%', backgroundColor: p.leftBg, borderRight: `4px solid ${accent}` }}
       >
-        {/* Giant background module number */}
-        <div
-          className="absolute inset-0 flex items-center justify-center font-black select-none pointer-events-none"
-          style={{ fontSize: '10rem', color: p.numText, lineHeight: 1 }}
-        >
-          {moduleNumber}
-        </div>
+        {/* Giant background number removed — cleaner look */}
 
         {/* Top: module label */}
         <div className="relative z-10 flex flex-col items-center gap-3">
@@ -86,39 +80,22 @@ export const ModuleOverviewSlide: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Middle: max 2 vertical columns, no single-character hangers */}
-        <div className="relative z-10 flex-1 flex items-center justify-center overflow-hidden">
-          <div className="flex flex-row gap-2 items-center justify-center overflow-hidden">
-            {(() => {
-              const words = (cleanTitle || 'Overview').split(/\s+/);
-              let chunks: string[];
-              if (words.length <= 2) {
-                chunks = words;
-              } else {
-                // Split roughly in half; absorb tiny connectors (&, of, the…) into previous chunk
-                const mid = Math.ceil(words.length / 2);
-                chunks = [
-                  words.slice(0, mid).join(' '),
-                  words.slice(mid).join(' '),
-                ];
-              }
-              return chunks.map((chunk, i) => (
-                <div
-                  key={i}
-                  className="font-bold uppercase opacity-50 shrink-0 overflow-hidden"
-                  style={{
-                    writingMode: 'vertical-rl',
-                    transform: 'rotate(180deg)',
-                    color: p.bodyText,
-                    letterSpacing: '0.11em',
-                    fontSize: '1rem',
-                  }}
-                >
-                  {chunk}
-                </div>
-              ));
-            })()}
-          </div>
+        {/* Middle: module title — horizontal, readable, centered */}
+        <div className="relative z-10 flex-1 flex items-center justify-center px-3 overflow-hidden">
+          <p
+            className="text-center font-bold leading-snug"
+            style={{
+              color: p.bodyText,
+              opacity: 0.60,
+              fontSize: 'clamp(0.55rem, 1vw, 0.75rem)',
+              wordBreak: 'break-word',
+              overflowWrap: 'break-word',
+              hyphens: 'auto',
+              letterSpacing: '0.03em',
+            }}
+          >
+            {cleanTitle || 'Overview'}
+          </p>
         </div>
       </div>
 

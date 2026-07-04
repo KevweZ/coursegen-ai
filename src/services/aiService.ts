@@ -680,9 +680,24 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
       const paragraphs = slide.content.split('\n\n');
       if (paragraphs.length > 1) {
         const mid = Math.ceil(paragraphs.length / 2);
+
+        // Split the voiceOverText at sentence boundaries so each part gets
+        // its own narration instead of both repeating the full original.
+        const origVO = (slide.voiceOverText || slide.narration || '').trim();
+        const sentences = origVO
+          ? origVO.split(/(?<=[.!?])\s+/).filter(Boolean)
+          : [];
+        const midSentence = Math.ceil(sentences.length / 2);
+        const pt1VO = sentences.length > 1
+          ? sentences.slice(0, midSentence).join(' ')
+          : origVO;
+        const pt2VO = sentences.length > 1
+          ? `Continuing from the previous section. ${sentences.slice(midSentence).join(' ')}`.trim()
+          : `Continuing from the previous section. ${origVO}`.trim();
+
         return [
-          { ...slide, content: paragraphs.slice(0, mid).join('\n\n'), title: slide.title + ' (Part 1)' },
-          { ...slide, id: slide.id + '-pt2', content: paragraphs.slice(mid).join('\n\n'), title: slide.title + ' (Part 2)' }
+          { ...slide, content: paragraphs.slice(0, mid).join('\n\n'), title: slide.title + ' (Part 1)', voiceOverText: pt1VO },
+          { ...slide, id: slide.id + '-pt2', content: paragraphs.slice(mid).join('\n\n'), title: slide.title + ' (Part 2)', voiceOverText: pt2VO },
         ];
       }
     }

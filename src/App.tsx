@@ -94,6 +94,8 @@ import { GameTemplateType } from './types/game';
 import { generateModuleImages, applyCoverImageToCourse } from './services/imageService';
 import { usePlayer } from './lib/usePlayer';
 import { PlayerBar } from './components/player/PlayerBar';
+import { ClosedCaptionOverlay } from './components/player/ClosedCaptionOverlay';
+
 import { SlideHeader } from './components/player/SlideHeader';
 import { SlideErrorBoundary } from './components/player/SlideErrorBoundary';
 import { useDraftCourses } from './lib/useDraftCourses';
@@ -190,7 +192,7 @@ const isHTML = (str: string) => /<[a-z][\s\S]*>/i.test(str?.trim() ?? '');
 
 const sanitizeContent = (content: string) => {
   // HTML content from the rich-text editor must never be run through markdown
-  // cleanup regexes — return it untouched so SmartContent can render it correctly.
+  // cleanup regexes â€” return it untouched so SmartContent can render it correctly.
   if (isHTML(content)) return content;
   return content
     .replace(/^[-*] \*\*.*\*\*:\s*$/gm, '') 
@@ -206,7 +208,7 @@ const sanitizeContent = (content: string) => {
 };
 
 /**
- * Group B fix: lightweight Markdown → HTML converter for accordion / interaction item content.
+ * Group B fix: lightweight Markdown â†’ HTML converter for accordion / interaction item content.
  * The external @zomako Accordion component renders its item.content as plain text,
  * so we convert markdown to HTML before passing data in.
  */
@@ -243,7 +245,7 @@ function preprocessAccordionData(data: any): any {
 }
 
 /**
- * autoFormatAsBullets — converts multi-paragraph plain text to bullet points.
+ * autoFormatAsBullets â€” converts multi-paragraph plain text to bullet points.
  * Skips blockquotes (>), headers (#), existing lists, HRs, and code fences.
  * Only fires when there are 2+ plain-text paragraphs.
  */
@@ -329,7 +331,7 @@ const SlideContent = ({ content, theme }: { content: string, theme: string }) =>
 };
 
 /**
- * SmartContent — handles the numerous inline `<ReactMarkdown>` usages in the slide renderer.
+ * SmartContent â€” handles the numerous inline `<ReactMarkdown>` usages in the slide renderer.
  * Automatically switches between HTML rendering and Markdown based on content type.
  */
 const SmartContent = ({ content, className, theme }: { content: string; className?: string; theme?: string }) => {
@@ -348,14 +350,14 @@ const SmartContent = ({ content, className, theme }: { content: string; classNam
   );
 };
 
-// ─── Grid interaction IDs (must match the interactive-elements grid in the UI) ──
+// â”€â”€â”€ Grid interaction IDs (must match the interactive-elements grid in the UI) â”€â”€
 const GRID_INTERACTION_IDS = [
   'multiple-choice', 'multiple-answers', 'hotspot', 'accordion', 'flashcards',
   'timeline', 'sorting', 'matching', 'drop-targets', 'scenario',
   'tabbed-horizontal', 'tabbed-vertical', 'folder-explorer', 'carousel-panel',
   'click-reveal',
 ];
-// Map legacy / AI-prompt IDs → visual grid IDs so the UI checkboxes stay in sync
+// Map legacy / AI-prompt IDs â†’ visual grid IDs so the UI checkboxes stay in sync
 const PRESET_TO_GRID: Record<string, string> = {
   quiz: 'multiple-choice',
   choice: 'multiple-choice',
@@ -369,7 +371,7 @@ export default function App() {
   const isScormPlayer = typeof window !== 'undefined' && !!(window as any).__COURSE_DATA__;
   const { user, session, loading: authLoading, signOut, isAdmin, isTrial, isTrialExpired } = useAuth();
 
-  // ── Draft Courses (Pro feature) ───────────────────────────────────────────
+  // â”€â”€ Draft Courses (Pro feature) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const draftManager = useDraftCourses(user?.id ?? null);
   const [showDraftsPanel, setShowDraftsPanel] = React.useState(false);
   const [showAppImagePicker, setShowAppImagePicker] = React.useState(false);
@@ -394,13 +396,13 @@ export default function App() {
     setPlayerConfig(snapshot.playerConfig || playerConfig);
     setCurrentSlideIndex(0);
     setShowDraftsPanel(false);
-    showDraftMessage('Draft loaded ✓');
+    showDraftMessage('Draft loaded âœ“');
   };
 
   const handleReplaceDraft = (id: string) => {
     if (!course) return;
     draftManager.replaceDraft(id, course, playerConfig, theme);
-    showDraftMessage('Draft updated ✓');
+    showDraftMessage('Draft updated âœ“');
   };
 
   // Controls which pre-auth view to show: public marketing homepage OR login/signup
@@ -409,7 +411,7 @@ export default function App() {
   
   const [step, setStep] = useState<AppStep>(isScormPlayer ? 'preview' : 'home');
 
-  // ── Handle Stripe redirect-back URLs (/payment-success, /payment-cancel)
+  // â”€â”€ Handle Stripe redirect-back URLs (/payment-success, /payment-cancel)
   useEffect(() => {
     const path = window.location.pathname;
     if (path === '/payment-success') {
@@ -437,7 +439,7 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Handle browser back / forward buttons ─────────────────────────────────
+  // â”€â”€ Handle browser back / forward buttons â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     const handlePopState = () => {
       const path = window.location.pathname;
@@ -534,8 +536,13 @@ export default function App() {
   const [floatingImagesMap, setFloatingImagesMap] = useState<Record<string, FloatingImage[]>>({});
   // Edits to synthetic slides (module-overview, etc.) that don't live in course.modules
   const [syntheticSlideOverrides, setSyntheticSlideOverrides] = useState<Record<string, {content?: string; voiceOverText?: string}>>({});
+  // Audio URLs for synthetic slides (cover, player-tour, module-overviews) keyed by slide id
+  const [syntheticAudioMap, setSyntheticAudioMap] = useState<Record<string, string>>({});
+  // Closed captions toggle
+  const [showCC, setShowCC] = useState(false);
 
-  // ── Undo history (max 20 snapshots) ─────────────────────────────────────────
+
+  // â”€â”€ Undo history (max 20 snapshots) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const MAX_UNDO = 20;
   type UndoSnapshot = { course: any; floatingImagesMap: Record<string, FloatingImage[]>; courseBg: string | null; syntheticSlideOverrides: Record<string, any>; };
   const [undoHistory, setUndoHistory] = useState<UndoSnapshot[]>([]);
@@ -676,11 +683,16 @@ export default function App() {
           // Synthetic Module Overview slide: objectives accordion, full-bleed
           {
             id: `__module-overview-${modNum}__`,
-            title: `Module ${modNum} — Overview`,
+            title: `Module ${modNum} â€” Overview`,
             type: 'module-overview' as any,
             // Merge any user edits stored in syntheticSlideOverrides
             content: syntheticSlideOverrides[`__module-overview-${modNum}__`]?.content ?? (m.description || ''),
-            voiceOverText: syntheticSlideOverrides[`__module-overview-${modNum}__`]?.voiceOverText,
+            voiceOverText: syntheticSlideOverrides[`__module-overview-${modNum}__`]?.voiceOverText
+              ?? (() => {
+                  const ct = (m.title || `Module ${modNum}`).replace(/^Module\s+\d+\s*[â€”\-]\s*/i, '').trim();
+                  return `Hello, welcome to Module ${modNum}: ${ct}. ${m.description ? `In this module, you'll cover ${m.description}` : "Let's look at the learning objectives for this module."}`;
+                })(),
+
             _moduleNumber: modNum,
             _moduleTitle:  m.title || `Module ${modNum}`,
             _objectives: moduleObj ? [moduleObj] : [],
@@ -791,7 +803,7 @@ export default function App() {
     const dx = e.changedTouches[0].clientX - playerTouchStartX.current;
     const dy = e.changedTouches[0].clientY - playerTouchStartY.current;
     if (isPortrait && !isScormPlayer) {
-      // CSS-rotated 90° CW: device vertical axis = visual horizontal axis
+      // CSS-rotated 90Â° CW: device vertical axis = visual horizontal axis
       // Swipe down on device (dy > 0) = visual left swipe = next slide
       // Swipe up on device  (dy < 0) = visual right swipe = prev slide
       if (Math.abs(dy) > 60 && Math.abs(dy) > Math.abs(dx) * 1.5) {
@@ -809,16 +821,17 @@ export default function App() {
     if (currentSlide) {
       player.loadSlide(
         currentSlide.id,
-        // Prefer real TTS-generated URL, fall back to legacy audioUrl
-        currentSlide.voiceOverUrl || currentSlide.audioUrl || null,
-        // Only use browser TTS fallback when voiceOverUrl isn't available yet
-        voiceOverEnabled && !currentSlide.voiceOverUrl
+        // Prefer real TTS-generated URL, fall back to synthetic map, then legacy audioUrl
+        currentSlide.voiceOverUrl || currentSlide.audioUrl || syntheticAudioMap[currentSlide.id] || null,
+        // Only use browser TTS fallback when no pre-generated audio is available
+        voiceOverEnabled && !currentSlide.voiceOverUrl && !syntheticAudioMap[currentSlide.id]
           ? (currentSlide.voiceOverText || currentSlide.narration || null)
           : null
       );
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentSlide?.id, currentSlide?.voiceOverUrl, voiceOverEnabled]);
+  }, [currentSlide?.id, currentSlide?.voiceOverUrl, voiceOverEnabled, syntheticAudioMap]);
+
 
   // Extract images
   useEffect(() => {
@@ -827,7 +840,7 @@ export default function App() {
     }
   }, [uploadedFile]);
 
-  // SCORM lifecycle — safe no-op when not inside an LMS
+  // SCORM lifecycle â€” safe no-op when not inside an LMS
   useEffect(() => {
     scormInit();
     const onUnload = () => scormQuit();
@@ -848,7 +861,7 @@ export default function App() {
     }
   }, [currentSlideIndex, examPhase, examSession.score, examSession.passed]);
 
-  // Set courseBg stably — Item 11: skip background for light theme (stays white)
+  // Set courseBg stably â€” Item 11: skip background for light theme (stays white)
   useEffect(() => {
     if (course && !courseBg) {
       // Light theme stays white by default; dark/unified get the themed background
@@ -859,13 +872,13 @@ export default function App() {
   }, [course]);
 
   // Item 13: Auto-play voice-over when slide changes
-  // Uses a ref so the setTimeout closure always calls the LATEST play() — avoids stale isPlaying=true skip
+  // Uses a ref so the setTimeout closure always calls the LATEST play() â€” avoids stale isPlaying=true skip
   const playerPlayRef = useRef<() => void>(() => {});
   useEffect(() => { playerPlayRef.current = player.play; }, [player.play]);
   useEffect(() => {
     if (!voiceOverEnabled) return;
     const timer = setTimeout(() => {
-      // Call via ref — guaranteed to use state from the most recent render
+      // Call via ref â€” guaranteed to use state from the most recent render
       playerPlayRef.current();
     }, 400);
     return () => clearTimeout(timer);
@@ -877,7 +890,7 @@ export default function App() {
 
   /**
    * Runs the full AI document analysis. Can be called directly for retries.
-   * Stays on the analyzing screen on failure — shows error + Retry button in-place.
+   * Stays on the analyzing screen on failure â€” shows error + Retry button in-place.
    */
   const runAnalysis = async (file: File) => {
     setIsAnalyzing(true);
@@ -928,14 +941,14 @@ export default function App() {
       const isTrial = err?.message?.includes('TRIAL_LIMIT_EXCEEDED') || err?.message?.includes('trial limit');
       setAnalyzeError(
         isColdStart
-          ? 'The server is warming up. Please wait 20–30 seconds and click “Try Again”.'
+          ? 'The server is warming up. Please wait 20â€“30 seconds and click â€œTry Againâ€.'
           : isTrial
           ? 'Trial generation limit reached. Please upgrade your plan to continue.'
           : `Analysis failed: ${err?.message ?? 'Unknown error'}. Please try again.`
       );
       // Keep progress at 80% and stay on the analyzing screen so the user can retry
       setProgress(80);
-      // Do NOT call setIsAnalyzing(false) — stay on the overlay to show the error
+      // Do NOT call setIsAnalyzing(false) â€” stay on the overlay to show the error
     }
   };
 
@@ -952,7 +965,7 @@ export default function App() {
    * Extracts the core "verb + outcome" from any AB/ABC/ABCD formatted string,
    * then re-wraps it cleanly in the target format.
    *
-   * Strip order:  Given[condition],  →  The learner will  →  trailing .  →  trailing degree clause  →  trailing .
+   * Strip order:  Given[condition],  â†’  The learner will  â†’  trailing .  â†’  trailing degree clause  â†’  trailing .
    * Reapply:       AB / ABC / ABCD wrappers
    */
   const reformatObjectivesClientSide = (
@@ -963,8 +976,8 @@ export default function App() {
     const applyFormat = (raw: string): string => {
       let s = raw.trim();
 
-      // ── 1. Capture + strip "Given [condition], " ──────────────────────────
-      // Preserve the original condition so ABC→ABCD doesn't lose specificity
+      // â”€â”€ 1. Capture + strip "Given [condition], " â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // Preserve the original condition so ABCâ†’ABCD doesn't lose specificity
       let condition = ''; // will be derived from verb if no existing Given
       const givenMatch = s.match(/^Given\s+([^,]+),\s+/i);
       if (givenMatch) {
@@ -972,19 +985,19 @@ export default function App() {
         s = s.slice(givenMatch[0].length).trim();
       }
 
-      // ── 2. Strip "The learner will " / "the learner will " ────────────────
+      // â”€â”€ 2. Strip "The learner will " / "the learner will " â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       s = s.replace(/^[Tt]he learner will\s+/i, '').trim();
 
-      // ── 3. Strip trailing period ──────────────────────────────────────────
+      // â”€â”€ 3. Strip trailing period â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       s = s.replace(/\.+$/, '').trim();
 
-      // ── 4. Strip trailing degree / standard clause ────────────────────────
+      // â”€â”€ 4. Strip trailing degree / standard clause â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       s = s.replace(/\s+(?:to\s+\S|with\s+\S).+$/i, '').trim();
 
-      // ── 5. Strip any trailing period that snuck through ───────────────────
+      // â”€â”€ 5. Strip any trailing period that snuck through â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       s = s.replace(/\.+$/, '').trim();
 
-      // ── 6. Derive condition from verb when none was present ───────────────
+      // â”€â”€ 6. Derive condition from verb when none was present â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (!condition) {
         // Extract the first word (the Bloom's verb) from the core action
         const verb = s.split(/\s+/)[0]?.toLowerCase() ?? '';
@@ -1018,7 +1031,7 @@ export default function App() {
         condition = verbConditionMap[verb] ?? 'relevant examples';
       }
 
-      // ── 6. Re-apply the selected format ──────────────────────────────────
+      // â”€â”€ 6. Re-apply the selected format â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       switch (fmt) {
         case 'AB':
           return `The learner will ${s}.`;
@@ -1094,7 +1107,7 @@ export default function App() {
         );
         setLearningObjectives(suggestions);
       } catch (e) {
-        // API failed — client-side reformatted objectives remain visible
+        // API failed â€” client-side reformatted objectives remain visible
         console.warn('AI refinement failed, keeping client-side reformatted objectives:', e);
       } finally {
         setIsSuggesting(false);
@@ -1218,21 +1231,60 @@ export default function App() {
       setCourse(finalCourse);
       setOriginalCourse(finalCourse);
 
-      // ── Show preview immediately — don't make the user wait for QC or TTS ──
+      // â”€â”€ Show preview immediately â€” don't make the user wait for QC or TTS â”€â”€
       setStep('preview');
 
-      // ── Kick off module image generation in background (non-blocking) ──
+      // â”€â”€ Kick off module image generation in background (non-blocking) â”€â”€
       setIsGeneratingImages(true);
       generateModuleImages(finalCourse, (slideId, imageDataUrl) => {
         setCourse((prev: any) => prev ? applyCoverImageToCourse(prev, slideId, imageDataUrl) : prev);
       }).finally(() => setIsGeneratingImages(false));
-      // ── Kick off TTS in the background (will update course as each slide is ready) ──
+      // â”€â”€ Kick off TTS in the background (will update course as each slide is ready) â”€â”€
       if (voiceOverEnabled) {
         // We start TTS with finalCourse; after QC may apply fixes via setCourse below
         generateTTS(finalCourse, setCourse, ttsVoice);
-      }
 
-      // ── Auto QC runs silently in background — preview is already visible ──
+        // Also generate TTS for synthetic slides using the same selected voice
+        // (cover, player-tour, and all module-overview slides)
+        // These are not in course.modules so the main generateTTS loop misses them.
+        ;(async () => {
+          try {
+            const { generateSlideTTS: genSlideTTS } = await import('./services/ttsService');
+            const syntheticToGenerate: Array<{ id: string; text: string }> = [
+              // Cover slide
+              { id: '__cover__', text: `Welcome to ${finalCourse.title}. ${finalCourse.description || ''}`.trim() },
+              // Player tour
+              { id: '__player-tour__', text: 'Before we begin, take a moment to explore the player controls. Hover over each card to see the corresponding element highlighted in the player preview.' },
+              // Module overviews â€” iterate through modules
+              ...(finalCourse.modules || []).flatMap((m: any, idx: number) => {
+                const modNum = idx + 1;
+                const ct = (m.title || `Module ${modNum}`).replace(/^Module\s+\d+\s*[â€”\-]\s*/i, '').trim();
+                return [
+                  { id: `__module-cover-${modNum}__`, text: `Module ${modNum}: ${ct}.${m.description ? ' ' + m.description : ''}`.trim() },
+                  { id: `__module-overview-${modNum}__`, text: `Hello, welcome to Module ${modNum}: ${ct}. ${m.description ? `In this module, you'll cover ${m.description}` : "Let's look at the learning objectives for this module."}` },
+                ];
+              }),
+            ];
+            const updates: Record<string, string> = {};
+            for (const { id, text } of syntheticToGenerate) {
+              if (!text.trim()) continue;
+              try {
+                const url = await genSlideTTS(text, { voice: ttsVoice as any });
+                updates[id] = url;
+                setSyntheticAudioMap(prev => ({ ...prev, [id]: url }));
+              } catch {
+                // Non-fatal; slide will fall back to browser TTS
+              }
+              await new Promise(r => setTimeout(r, 300));
+            }
+          } catch {
+            // Silently ignore if ttsService is unavailable
+          }
+        })();
+
+      } // end if (voiceOverEnabled)
+
+      // â”€â”€ Auto QC runs silently in background â€” preview is already visible â”€â”€
       try {
         setIsRunningQC(true);
         setQcPhase('structural');
@@ -1245,7 +1297,7 @@ export default function App() {
           setOriginalCourse(fixedCourse);
         }
       } catch {
-        // QC failure is non-fatal — proceed with original course
+        // QC failure is non-fatal â€” proceed with original course
       } finally {
         setIsRunningQC(false);
         setQcPhase(null);
@@ -1330,14 +1382,14 @@ export default function App() {
             <div className="space-y-3">
               <h3 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">
                 {isRunningQC
-                  ? (qcPhase === 'structural' ? 'Checking Structure & Format…'
-                     : qcPhase === 'ai'       ? 'Running AI Quality Scan…'
-                     : 'Finalising…')
+                  ? (qcPhase === 'structural' ? 'Checking Structure & Formatâ€¦'
+                     : qcPhase === 'ai'       ? 'Running AI Quality Scanâ€¦'
+                     : 'Finalisingâ€¦')
                   : isGenerating ? 'Structuring Module Flow...' : 'Synthesizing Course Content...'}
               </h3>
               <p className="text-slate-400 text-lg">
                 {isRunningQC
-                  ? (qcPhase === 'ai' ? 'AI is reviewing spelling, grammar, and clarity. Almost there…' : 'Running instant checks on your course content…')
+                  ? (qcPhase === 'ai' ? 'AI is reviewing spelling, grammar, and clarity. Almost thereâ€¦' : 'Running instant checks on your course contentâ€¦')
                   : isGenerating ? 'Analyzing topics and creating progressive learning paths. This usually takes 10-15 seconds.' : 'Generating detailed slide content, interactions, and knowledge checks. This can take up to a minute.'}
               </p>
             </div>
@@ -1366,14 +1418,14 @@ export default function App() {
     );
   };
 
-  // ── Interactive Timeline Preview Component ──
+  // â”€â”€ Interactive Timeline Preview Component â”€â”€
   const TimelinePreviewDemo = () => {
     const [openStep, setOpenStep] = React.useState<number | null>(null);
     const steps = [
       { n: 1, title: 'Preparation', content: 'Establish IR policies, train your teams, and set up communication channels before an incident occurs.', color: 'bg-blue-500', border: 'border-blue-500/50' },
       { n: 2, title: 'Identification', content: 'Detect and determine whether a security incident has actually occurred using monitoring tools and alerts.', color: 'bg-yellow-500', border: 'border-yellow-500/50' },
       { n: 3, title: 'Containment', content: 'Limit the damage and prevent further spread. Short-term containment isolates affected systems.', color: 'bg-orange-500', border: 'border-orange-500/50' },
-      { n: 4, title: 'Eradication', content: 'Remove the root cause — eliminate malware, close vulnerabilities, and patch systems.', color: 'bg-red-500', border: 'border-red-500/50' },
+      { n: 4, title: 'Eradication', content: 'Remove the root cause â€” eliminate malware, close vulnerabilities, and patch systems.', color: 'bg-red-500', border: 'border-red-500/50' },
       { n: 5, title: 'Recovery', content: 'Restore systems to normal operations and verify they are clean before reconnecting.', color: 'bg-green-500', border: 'border-green-500/50' },
     ];
     return (
@@ -1393,7 +1445,7 @@ export default function App() {
                 >
                   <div className={`absolute left-3 w-8 h-8 rounded-full ${step.color} flex items-center justify-center text-white font-bold text-sm shadow-lg shrink-0`}>{step.n}</div>
                   <span className="font-bold text-sm flex-1">{step.title}</span>
-                  <span className="text-slate-500 text-xs group-hover:text-slate-300 transition-colors">{openStep === i ? '▲ Close' : '▼ Details'}</span>
+                  <span className="text-slate-500 text-xs group-hover:text-slate-300 transition-colors">{openStep === i ? 'â–² Close' : 'â–¼ Details'}</span>
                 </button>
                 {openStep === i && (
                   <div className={`mt-1 ml-14 p-4 rounded-xl bg-slate-900 border ${step.border} text-slate-300 text-sm leading-relaxed`}>{step.content}</div>
@@ -1406,7 +1458,7 @@ export default function App() {
     );
   };
 
-  // ── Auth Gate ────────────────────────────────────────────────────────────
+  // â”€â”€ Auth Gate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Loading spinner while Supabase session is restoring
   if (authLoading) {
     return (
@@ -1419,7 +1471,7 @@ export default function App() {
     );
   }
 
-  // Not authenticated — show Public Marketing Homepage OR Sign In/Up page
+  // Not authenticated â€” show Public Marketing Homepage OR Sign In/Up page
   if (!user && !isScormPlayer) {
     if (publicView === 'auth') {
       return (
@@ -1483,7 +1535,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-900 font-sans selection:bg-indigo-500/30 selection:text-indigo-200 overflow-x-hidden">
-      {/* Help & Support floating widget — hidden during course preview to avoid covering Next button */}
+      {/* Help & Support floating widget â€” hidden during course preview to avoid covering Next button */}
       {step !== 'preview' && <HelpWidget userEmail={user?.email ?? ''} userId={user?.id} />}
       {/* Background decoration */}
       <div className="fixed inset-0 pointer-events-none">
@@ -1506,7 +1558,7 @@ export default function App() {
           <div className="flex gap-3 items-center">
 
 
-            {/* ── Pricing Button ── */}
+            {/* â”€â”€ Pricing Button â”€â”€ */}
             <button
               onClick={() => setStep('pricing')}
               className={`flex items-center gap-2 px-4 py-2 border rounded-lg font-bold text-sm transition-all ${
@@ -1519,7 +1571,7 @@ export default function App() {
               Pricing
             </button>
 
-            {/* ── User Profile ── */}
+            {/* â”€â”€ User Profile â”€â”€ */}
             {user && (
               <div className="relative">
                 {adminDropdownOpen && (
@@ -1534,7 +1586,7 @@ export default function App() {
                   </span>
                   <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform duration-150 ${adminDropdownOpen ? 'rotate-180' : ''}`} />
                 </button>
-                {/* Dropdown — click controlled */}
+                {/* Dropdown â€” click controlled */}
                 {adminDropdownOpen && (
                 <div className="absolute right-0 top-full mt-2 w-52 bg-slate-900 border border-slate-700/60 rounded-xl shadow-2xl overflow-hidden z-[700]">
                   <div className="px-4 py-3 border-b border-slate-800">
@@ -1549,7 +1601,7 @@ export default function App() {
                     </div>
                   </div>
                   <div className="p-1.5">
-                    {/* Sandbox — admin only */}
+                    {/* Sandbox â€” admin only */}
                     {isAdmin && (
                       <>
                         <div className="px-3 py-1.5">
@@ -1566,7 +1618,7 @@ export default function App() {
                           }}
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-purple-300 hover:bg-purple-500/10 text-sm font-medium transition-all text-left"
                         >
-                          <FileText className="w-3.5 h-3.5" /> Demo — Course Design
+                          <FileText className="w-3.5 h-3.5" /> Demo â€” Course Design
                         </button>
                         <button
                           onClick={() => {
@@ -1582,7 +1634,7 @@ export default function App() {
                           }}
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-purple-300 hover:bg-purple-500/10 text-sm font-medium transition-all text-left"
                         >
-                          <Eye className="w-3.5 h-3.5" /> Demo — Course Development
+                          <Eye className="w-3.5 h-3.5" /> Demo â€” Course Development
                         </button>
                         <button
                           onClick={() => {
@@ -1597,10 +1649,10 @@ export default function App() {
                           }}
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-purple-300 hover:bg-purple-500/10 text-sm font-medium transition-all text-left"
                         >
-                          <Gamepad2 className="w-3.5 h-3.5" /> Demo — Game Mode
+                          <Gamepad2 className="w-3.5 h-3.5" /> Demo â€” Game Mode
                         </button>
                         <div className="border-t border-slate-800 my-1" />
-                        {/* Trial Invites — admin only */}
+                        {/* Trial Invites â€” admin only */}
                         <button
                           onClick={() => {
                               setAdminDropdownOpen(false);
@@ -1678,7 +1730,7 @@ export default function App() {
             </motion.div>
           )}
 
-          {/* Publish Warning — pending QC items */}
+          {/* Publish Warning â€” pending QC items */}
           {showQcPublishWarning && (
             <div className="fixed inset-0 z-[900] flex items-center justify-center p-4">
               <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowQcPublishWarning(false)} />
@@ -1738,7 +1790,7 @@ export default function App() {
             }}
           />
 
-          {/* AI Edit Drawer — scenario and game-template slides */}
+          {/* AI Edit Drawer â€” scenario and game-template slides */}
           <AnimatePresence>
             {showAIEditDrawer && currentSlide && (['scenario', 'game-template', 'knowledge-check', 'mastery-exam'].includes(currentSlide.type)) && (
               <AIEditDrawer
@@ -1785,7 +1837,7 @@ export default function App() {
             />
           )}
 
-          {/* QC Track Changes Modal — overlays preview, persists across open/close */}
+          {/* QC Track Changes Modal â€” overlays preview, persists across open/close */}
           <QCTrackChangesModal
             open={qcModalOpen}
             report={qcReport}
@@ -1850,7 +1902,7 @@ export default function App() {
                 } : null);
               } catch (err) {
                 console.error('[QC] Regeneration failed:', err);
-                // Non-fatal — user can retry or use simple layout
+                // Non-fatal â€” user can retry or use simple layout
               }
             }}
             onRunScan={async () => {
@@ -1890,7 +1942,7 @@ export default function App() {
               {isAnalyzing ? (
                  <div className="relative z-10 max-w-2xl mx-auto text-center space-y-8 w-full px-6 py-16 bg-slate-950/80 backdrop-blur-xl rounded-[3rem] border border-indigo-500/30 shadow-2xl">
                    {analyzeError ? (
-                     /* ——— Error state: stay on overlay, show message + actions ——— */
+                     /* â€”â€”â€” Error state: stay on overlay, show message + actions â€”â€”â€” */
                      <>
                        <div className="w-20 h-20 mx-auto bg-red-500/20 rounded-full flex items-center justify-center">
                          <AlertCircle className="w-10 h-10 text-red-400" />
@@ -1915,7 +1967,7 @@ export default function App() {
                        </div>
                      </>
                    ) : (
-                     /* ——— Normal loading state ——— */
+                     /* â€”â€”â€” Normal loading state â€”â€”â€” */
                      <>
                        <div className="relative w-32 h-32 mx-auto mb-4">
                          <div className="absolute inset-0 bg-indigo-500/20 rounded-full blur-xl animate-pulse" />
@@ -1927,7 +1979,7 @@ export default function App() {
                          <h3 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">Analyzing Document</h3>
                          <p className="text-slate-400 mt-2">Extracting structure, topics, and generating learning objectives...</p>
                        </div>
-                       {/* Progress bar — driven by the analysisTimer in runAnalysis */}
+                       {/* Progress bar â€” driven by the analysisTimer in runAnalysis */}
                        <div className="w-full max-w-sm mx-auto space-y-2">
                          <div className="flex justify-between text-xs font-bold text-slate-500 uppercase tracking-widest">
                            <span>Progress</span>
@@ -1961,7 +2013,7 @@ export default function App() {
                     </p>
                   </div>
 
-                   {/* Mode Cards — 3-column */}
+                   {/* Mode Cards â€” 3-column */}
                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto">
                      <button
                        onClick={() => setBuildMode('course')}
@@ -1988,7 +2040,7 @@ export default function App() {
                            <span className="text-[10px] font-black bg-purple-500 text-white px-2 py-0.5 rounded-full uppercase tracking-widest">New</span>
                          </div>
                        </div>
-                       <p className="text-sm text-slate-400 leading-relaxed">Standalone game from any document. Jeopardy, Millionaire, Escape Room &amp; more — in 30 sec.</p>
+                       <p className="text-sm text-slate-400 leading-relaxed">Standalone game from any document. Jeopardy, Millionaire, Escape Room &amp; more â€” in 30 sec.</p>
                      </button>
                      <button
                        onClick={() => setBuildMode('workflow')}
@@ -2007,7 +2059,7 @@ export default function App() {
                      </button>
                    </div>
 
-                  {/* Main input area — hidden in Workflow Insights mode */}
+                  {/* Main input area â€” hidden in Workflow Insights mode */}
                   {buildMode !== 'workflow' ? (
                    <div className="w-full flex flex-col items-center gap-4 max-w-xl mx-auto">
                      {/* File upload */}
@@ -2023,7 +2075,7 @@ export default function App() {
                        </div>
                        <div className="text-center">
                          <span className="text-xl text-white font-bold block mb-1">
-                           {uploadedFile ? 'File Ready ✓' : 'Upload File to Begin'}
+                           {uploadedFile ? 'File Ready âœ“' : 'Upload File to Begin'}
                          </span>
                          <span className="text-sm text-indigo-300/70 font-medium group-hover:text-indigo-300 transition-colors">
                            {uploadedFile ? uploadedFile.name : 'Drop PDF, Word, or PowerPoint files here'}
@@ -2049,12 +2101,12 @@ export default function App() {
                           <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 text-left flex">Select Game Type</label>
                           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
                             {([
-                              { id: 'jeopardy',       label: 'Jeopardy',    icon: '🎯', desc: 'Category board' },
-                              { id: 'millionaire',    label: 'Millionaire', icon: '💰', desc: '12-question climb' },
-                              { id: 'family-feud',    label: 'Family Feud', icon: '👥', desc: 'Ranked surveys' },
-                              { id: 'escape-room',    label: 'Escape Room', icon: '🔐', desc: 'Narrative stages' },
-                              { id: 'spin-wheel',     label: 'Spin Wheel',  icon: '🎡', desc: 'Random segments' },
-                              { id: 'price-is-right', label: 'Price Is Right', icon: '📊', desc: 'Estimation game' },
+                              { id: 'jeopardy',       label: 'Jeopardy',    icon: 'ðŸŽ¯', desc: 'Category board' },
+                              { id: 'millionaire',    label: 'Millionaire', icon: 'ðŸ’°', desc: '12-question climb' },
+                              { id: 'family-feud',    label: 'Family Feud', icon: 'ðŸ‘¥', desc: 'Ranked surveys' },
+                              { id: 'escape-room',    label: 'Escape Room', icon: 'ðŸ”', desc: 'Narrative stages' },
+                              { id: 'spin-wheel',     label: 'Spin Wheel',  icon: 'ðŸŽ¡', desc: 'Random segments' },
+                              { id: 'price-is-right', label: 'Price Is Right', icon: 'ðŸ“Š', desc: 'Estimation game' },
                             ] as const).map(g => (
                               <button
                                 key={g.id}
@@ -2084,7 +2136,7 @@ export default function App() {
                     {/* Course Builder buttons */}
                     {buildMode === 'course' && (
                       <>
-                        <p className="text-sm text-slate-400 font-medium">AI-powered authoring that analyzes your content and builds a complete, SCORM-compliant, interactive course — automatically.</p>
+                        <p className="text-sm text-slate-400 font-medium">AI-powered authoring that analyzes your content and builds a complete, SCORM-compliant, interactive course â€” automatically.</p>
                         <button
                           onClick={() => handleStartDetails()}
                           disabled={!uploadedFile}
@@ -2101,7 +2153,7 @@ export default function App() {
                     )}
                    </div>
                   ) : (
-                    /* ── Workflow Insights Panel ───────────────────────────── */
+                    /* â”€â”€ Workflow Insights Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
                     <WorkflowInsightsPanel
                       onGenerateCourse={(topic) => {
                         // Pre-fill topic, switch to Course Builder, auto-start
@@ -2128,7 +2180,7 @@ export default function App() {
                       </div>
                       <h2 className="text-3xl font-extrabold text-white flex-1">Course Design</h2>
                     </div>
-                    {/* Replace Document button — separate from nav click area */}
+                    {/* Replace Document button â€” separate from nav click area */}
                     <label className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white font-bold text-sm rounded-xl cursor-pointer transition-all shrink-0">
                       <FileUp className="w-4 h-4 text-indigo-400" />
                       Replace Document
@@ -2160,7 +2212,7 @@ export default function App() {
                              <div key={p.id} onClick={() => handlePresetChange(p.id as any)} className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${preset === p.id ? 'border-indigo-500 bg-indigo-500/10' : 'border-slate-800 bg-slate-950 hover:border-slate-700'} ${isSuggesting && preset !== p.id ? 'opacity-50 pointer-events-none' : ''}`}>
                                 <h4 className="text-white font-bold text-lg mb-1">{p.label}</h4>
                                 <p className="text-slate-400 text-xs mb-3">{p.description}</p>
-                                <div className="text-xs font-mono text-indigo-400">{p.slideCountTarget} slides • {p.interactions.length} types</div>
+                                <div className="text-xs font-mono text-indigo-400">{p.slideCountTarget} slides â€¢ {p.interactions.length} types</div>
                              </div>
                            ))}
                         </div>
@@ -2236,7 +2288,7 @@ export default function App() {
                             ))}
                           </div>
                         </div>
-                        {/* Refine Objectives button — always visible when title/description exists */}
+                        {/* Refine Objectives button â€” always visible when title/description exists */}
                         {(courseTitle || courseDescription || prompt) && (
                           <div className="px-6 pb-4 pt-2 bg-slate-900/50 border-b border-slate-800">
                             <button
@@ -2302,7 +2354,7 @@ export default function App() {
                                     <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Enabling Objectives</p>
                                     {tObj.enablingObjectives.map((enablingObj, eIdx) => (
                                       <div key={eIdx} className="flex gap-2 items-start group/enabling">
-                                        <div className="mt-2 text-slate-600 shrink-0">↳</div>
+                                        <div className="mt-2 text-slate-600 shrink-0">â†³</div>
                                         <textarea 
                                           rows={3}
                                           value={enablingObj} 
@@ -2464,7 +2516,7 @@ export default function App() {
                           </div>
                         </div>
                         <div className="p-6">
-                           <p className="text-xs text-blue-400 font-bold tracking-widest uppercase mb-6">CLICK TO SELECT • CLICK ON EYE ICON TO PREVIEW</p>
+                           <p className="text-xs text-blue-400 font-bold tracking-widest uppercase mb-6">CLICK TO SELECT â€¢ CLICK ON EYE ICON TO PREVIEW</p>
                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                              {[
                                { id: 'multiple-choice', label: 'Multiple Choice' },
@@ -2501,7 +2553,7 @@ export default function App() {
                         </div>
                      </div>
 
-                      {/* Decision Simulation Config — shown immediately when 'scenario' is selected */}
+                      {/* Decision Simulation Config â€” shown immediately when 'scenario' is selected */}
                       {interactionTypes.includes('scenario') && (
                         <ScenarioBuilderPanel
                           config={scenarioConfig}
@@ -2521,25 +2573,25 @@ export default function App() {
                            </div>
                         </div>
                          <div className="p-6">
-                           <p className="text-xs text-orange-400 font-bold tracking-widest uppercase mb-5">CLICK TO SELECT • CLICK ON EYE ICON TO PREVIEW</p>
+                           <p className="text-xs text-orange-400 font-bold tracking-widest uppercase mb-5">CLICK TO SELECT â€¢ CLICK ON EYE ICON TO PREVIEW</p>
                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                             {getRecommendedGames(preset).map((gt: any) => {
                               const isSelected = gameTemplateIds.includes(gt.id);
                               const NICKNAMES: Record<string, {emoji:string; aka:string}> = {
-                                'jeopardy': { emoji: '📺', aka: 'aka Jeopardy!' },
-                                'knowledge-board': { emoji: '📺', aka: 'aka Jeopardy!' },
-                                'millionaire': { emoji: '💰', aka: "aka Who Wants to Be a Millionaire" },
-                                'millionaire-challenge': { emoji: '💰', aka: "aka Who Wants to Be a Millionaire" },
-                                'family-feud': { emoji: '👨‍👩‍👧', aka: 'aka Family Feud' },
-                                'ranked-survey': { emoji: '👨‍👩‍👧', aka: 'aka Family Feud' },
-                                'escape-room': { emoji: '🔒', aka: 'aka Digital Escape Room' },
-                                'digital-escape-room': { emoji: '🔒', aka: 'aka Digital Escape Room' },
-                                'spin-wheel': { emoji: '🎡', aka: 'aka Spin the Wheel' },
-                                'spin-the-wheel': { emoji: '🎡', aka: 'aka Spin the Wheel' },
-                                'price-is-right': { emoji: '🏷️', aka: "aka The Price is Right" },
-                                'price-estimator': { emoji: '🏷️', aka: "aka The Price is Right" },
+                                'jeopardy': { emoji: 'ðŸ“º', aka: 'aka Jeopardy!' },
+                                'knowledge-board': { emoji: 'ðŸ“º', aka: 'aka Jeopardy!' },
+                                'millionaire': { emoji: 'ðŸ’°', aka: "aka Who Wants to Be a Millionaire" },
+                                'millionaire-challenge': { emoji: 'ðŸ’°', aka: "aka Who Wants to Be a Millionaire" },
+                                'family-feud': { emoji: 'ðŸ‘¨â€ðŸ‘©â€ðŸ‘§', aka: 'aka Family Feud' },
+                                'ranked-survey': { emoji: 'ðŸ‘¨â€ðŸ‘©â€ðŸ‘§', aka: 'aka Family Feud' },
+                                'escape-room': { emoji: 'ðŸ”’', aka: 'aka Digital Escape Room' },
+                                'digital-escape-room': { emoji: 'ðŸ”’', aka: 'aka Digital Escape Room' },
+                                'spin-wheel': { emoji: 'ðŸŽ¡', aka: 'aka Spin the Wheel' },
+                                'spin-the-wheel': { emoji: 'ðŸŽ¡', aka: 'aka Spin the Wheel' },
+                                'price-is-right': { emoji: 'ðŸ·ï¸', aka: "aka The Price is Right" },
+                                'price-estimator': { emoji: 'ðŸ·ï¸', aka: "aka The Price is Right" },
                               };
-                              const nick = NICKNAMES[gt.id] || { emoji: '🎮', aka: '' };
+                              const nick = NICKNAMES[gt.id] || { emoji: 'ðŸŽ®', aka: '' };
                               return (
                                 <div key={gt.id} className={`relative flex flex-col items-center text-center gap-1.5 p-4 rounded-xl border-2 transition-all ${isSelected ? 'border-orange-500 bg-orange-500/10 text-white' : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700'}`}>
                                   <div className="absolute top-2 right-2 text-slate-400 hover:text-orange-300 cursor-pointer z-20 bg-slate-900 rounded-full p-1" onClick={(e) => { e.stopPropagation(); setPreviewModalOption(gt.name); }}>
@@ -2604,18 +2656,18 @@ export default function App() {
                          </div>
                        </div>
 
-                        {/* TTS Voice Picker — shown when voice-over is enabled */}
+                        {/* TTS Voice Picker â€” shown when voice-over is enabled */}
                         {voiceOverEnabled && (
                           <div className="mt-5 space-y-3">
                             <div className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">AI Narrator Voice</div>
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                               {([
-                                { id: 'alloy',   label: 'Alloy',   sub: 'Neutral · Balanced' },
-                                { id: 'echo',    label: 'Echo',    sub: 'Male · Measured' },
-                                { id: 'fable',   label: 'Fable',   sub: 'Male · Warm' },
-                                { id: 'onyx',    label: 'Onyx',    sub: 'Male · Deep' },
-                                { id: 'nova',    label: 'Nova',    sub: 'Female · Bright' },
-                                { id: 'shimmer', label: 'Shimmer', sub: 'Female · Soft' },
+                                { id: 'alloy',   label: 'Alloy',   sub: 'Neutral Â· Balanced' },
+                                { id: 'echo',    label: 'Echo',    sub: 'Male Â· Measured' },
+                                { id: 'fable',   label: 'Fable',   sub: 'Male Â· Warm' },
+                                { id: 'onyx',    label: 'Onyx',    sub: 'Male Â· Deep' },
+                                { id: 'nova',    label: 'Nova',    sub: 'Female Â· Bright' },
+                                { id: 'shimmer', label: 'Shimmer', sub: 'Female Â· Soft' },
                               ] as const).map(v => (
                                 <div key={v.id} className="relative">
                                   <button
@@ -2630,7 +2682,7 @@ export default function App() {
                                     <span className="text-xs font-bold pr-5">{v.label}</span>
                                     <span className="text-[10px] opacity-70 mt-0.5">{v.sub}</span>
                                   </button>
-                                  {/* Ear preview button — top-right corner of card */}
+                                  {/* Ear preview button â€” top-right corner of card */}
                                   <button
                                     onClick={e => { e.stopPropagation(); previewVoice(v.id); }}
                                     disabled={!!previewingVoice}
@@ -2655,7 +2707,7 @@ export default function App() {
                         )}
                      </div>
 
-                     {/* Footer Actions — Player Properties + Generate */}
+                     {/* Footer Actions â€” Player Properties + Generate */}
                      <div className="flex flex-col sm:flex-row gap-4 mt-8">
                        <button
                          onClick={() => setShowPlayerProperties(true)}
@@ -2716,8 +2768,8 @@ export default function App() {
 
           {step === 'preview' && course && (
             <motion.div key="preview" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed top-20 left-0 right-0 bottom-0 z-50">
-              {/* Auto-landscape wrapper: CSS-rotates 90° on mobile portrait so the player
-                  appears landscape immediately — no user action required. On desktop or
+              {/* Auto-landscape wrapper: CSS-rotates 90Â° on mobile portrait so the player
+                  appears landscape immediately â€” no user action required. On desktop or
                   physical landscape the wrapper is a transparent full-size container. */}
               <div
                 className="bg-slate-900 overflow-hidden flex flex-col"
@@ -2731,7 +2783,7 @@ export default function App() {
                   transform: 'rotate(90deg)',
                 } : { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
               >
-              {/* ── Preview Top Bar — hidden in SCORM/published view ── */}
+              {/* â”€â”€ Preview Top Bar â€” hidden in SCORM/published view â”€â”€ */}
               {!isScormPlayer && <div className="px-3 bg-slate-900 border-b border-slate-800 shrink-0">
                 <div className="h-11 flex items-center justify-between gap-2">
                   {/* Left: back + title */}
@@ -2747,11 +2799,11 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* ✨ Image generation in-progress badge */}
+                  {/* âœ¨ Image generation in-progress badge */}
                   {isGeneratingImages && (
                     <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-purple-900/50 border border-purple-700/50 text-purple-300 text-[10px] font-medium">
                       <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-ping inline-block" />
-                      Generating visuals…
+                      Generating visualsâ€¦
                     </div>
                   )}
 
@@ -2767,9 +2819,9 @@ export default function App() {
                       <span className="hidden lg:inline">{viewMode === 'desktop' ? 'Desktop' : 'Mobile'}</span>
                     </button>
 
-                    {/* Theme dropdown removed — Dark mode only */}
+                    {/* Theme dropdown removed â€” Dark mode only */}
 
-                    {/* QC Check — context-aware: reopen existing report if pending, or start new scan */}
+                    {/* QC Check â€” context-aware: reopen existing report if pending, or start new scan */}
                     {(() => {
                       const pendingCount = qcReport
                         ? qcReport.issues.filter(i => !qcConfirmed.has(i.id) && !qcDeclined.has(i.id)).length
@@ -2779,8 +2831,8 @@ export default function App() {
                         <button
                           id="qc-check-button"
                           title={hasPending
-                            ? `QC Report — ${pendingCount} item${pendingCount !== 1 ? 's' : ''} pending review (click to reopen)`
-                            : 'Quality Check — scan for spelling, grammar, and formatting issues'}
+                            ? `QC Report â€” ${pendingCount} item${pendingCount !== 1 ? 's' : ''} pending review (click to reopen)`
+                            : 'Quality Check â€” scan for spelling, grammar, and formatting issues'}
                           onClick={async () => {
                             // If a report exists with pending items, just reopen. Don't re-scan.
                             if (qcReport && hasPending) {
@@ -2838,10 +2890,10 @@ export default function App() {
                     </button>
 
 
-                    {/* Export SCORM — blocked for trial users */}
+                    {/* Export SCORM â€” blocked for trial users */}
                     {isTrial ? (
                       <button
-                        title="Export SCORM — not available in trial"
+                        title="Export SCORM â€” not available in trial"
                         onClick={() => setShowTrialExportModal(true)}
                         className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-700 text-slate-400 rounded-lg font-bold text-xs cursor-pointer border border-slate-600"
                       >
@@ -2859,7 +2911,7 @@ export default function App() {
                         </button>
                         {/* Export button */}
                         <button
-                          title={`Export SCORM ${scormVersion} — download a SCORM zip package`}
+                          title={`Export SCORM ${scormVersion} â€” download a SCORM zip package`}
                           disabled={isExporting}
                           onClick={() => {
                             const pendingCount = qcReport
@@ -2876,7 +2928,7 @@ export default function App() {
                           {isExporting ? (
                             <>
                               <div className="w-3 h-3 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                              <span className="hidden lg:inline">{exportProgress < 100 ? `${exportProgress}%` : 'Packaging…'}</span>
+                              <span className="hidden lg:inline">{exportProgress < 100 ? `${exportProgress}%` : 'Packagingâ€¦'}</span>
                             </>
                           ) : (
                             <>
@@ -2891,7 +2943,7 @@ export default function App() {
 
                     {/* Discard */}
                     <button
-                      title="Discard — exit preview and return to the home screen"
+                      title="Discard â€” exit preview and return to the home screen"
                       onClick={() => { setCourse(null); setStep('home'); }}
                       className="p-1.5 rounded-lg border border-red-800/50 hover:bg-red-900/20 text-red-400 transition-colors"
                     >
@@ -2900,7 +2952,7 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* ── Row 2: Editing tools strip ── */}
+                {/* â”€â”€ Row 2: Editing tools strip â”€â”€ */}
                 <div className="h-9 hidden md:flex items-center justify-end gap-1 pb-1">
                   {/* Undo */}
                   <button
@@ -2914,7 +2966,7 @@ export default function App() {
 
                   {/* Reset */}
                   <button
-                    title="Reset — restore to original generated state"
+                    title="Reset â€” restore to original generated state"
                     onClick={() => { if (originalCourse) { setCourse(originalCourse); setCurrentSlideIndex(0); setQuizState({}); setFloatingImagesMap({}); setCourseBg(null); setUndoHistory([]); setSyntheticSlideOverrides({}); } }}
                     className="flex items-center gap-1 px-2 py-1 rounded-md border border-amber-700/50 hover:bg-amber-800/20 text-amber-300 text-[11px] font-semibold"
                   >
@@ -2925,17 +2977,17 @@ export default function App() {
 
                   {/* Edit Text & Audio */}
                   <button
-                    title="Edit Text & Audio — open the rich-text and narration editor for this slide"
+                    title="Edit Text & Audio â€” open the rich-text and narration editor for this slide"
                     onClick={() => { editingSlideRef.current = currentSlide; setEditingSlide(currentSlide); setEditDrawerOpen(true); setEditDrawerTab('text'); }}
                     className="flex items-center gap-1 px-2 py-1 rounded-md border border-indigo-700/50 hover:bg-indigo-800/20 text-indigo-300 text-[11px] font-semibold"
                   >
                     <Edit3 className="w-3 h-3" /><span>Edit Text &amp; Audio</span>
                   </button>
 
-                  {/* Edit via AI — scenario and game-template slides only */}
+                  {/* Edit via AI â€” scenario and game-template slides only */}
                   {(currentSlide?.type === 'scenario' || currentSlide?.type === 'game-template') && (
                     <button
-                      title="Edit via AI — make targeted changes to this interaction using plain language"
+                      title="Edit via AI â€” make targeted changes to this interaction using plain language"
                       onClick={() => setShowAIEditDrawer(true)}
                       className="flex items-center gap-1 px-2 py-1 rounded-md border border-cyan-700/50 hover:bg-cyan-800/20 text-cyan-300 text-[11px] font-semibold"
                     >
@@ -2943,10 +2995,10 @@ export default function App() {
                     </button>
                   )}
 
-                  {/* Edit via AI — quiz, exam, knowledge-check slides */}
+                  {/* Edit via AI â€” quiz, exam, knowledge-check slides */}
                   {(['knowledge-check', 'mastery-exam'].includes(currentSlide?.type ?? '')) && (
                     <button
-                      title="Edit via AI — make targeted changes to this interaction using plain language"
+                      title="Edit via AI â€” make targeted changes to this interaction using plain language"
                       onClick={() => setShowAIEditDrawer(true)}
                       className="flex items-center gap-1 px-2 py-1 rounded-md border border-cyan-700/50 hover:bg-cyan-800/20 text-cyan-300 text-[11px] font-semibold"
                     >
@@ -2954,14 +3006,14 @@ export default function App() {
                     </button>
                   )}
 
-                  {/* Images dropdown — consolidates Slide Images, Upload, Source Image */}
+                  {/* Images dropdown â€” consolidates Slide Images, Upload, Source Image */}
                   <div className="relative" onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setShowImageDropdown(false); }} tabIndex={-1}>
                     <button
                       onClick={() => setShowImageDropdown(v => !v)}
-                      title="Images — add or manage images on this slide"
+                      title="Images â€” add or manage images on this slide"
                       className="flex items-center gap-1 px-2 py-1 rounded-md border border-violet-700/50 hover:bg-violet-800/20 text-violet-300 text-[11px] font-semibold"
                     >
-                      <ImageIcon className="w-3 h-3" /><span>Images</span><ChevronDown className="w-2.5 h-2.5 ml-0.5" />
+                      <ImageIcon className="w-3 h-3" /><span>Add Image</span><ChevronDown className="w-2.5 h-2.5 ml-0.5" />
                     </button>
                     {showImageDropdown && (
                       <div className="absolute top-full left-0 mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 py-1 min-w-[150px]">
@@ -3008,7 +3060,7 @@ export default function App() {
 
                   {/* Player Properties */}
                   <button
-                    title="Player Properties — configure controls, TOC, aspect ratio, branding"
+                    title="Player Properties â€” configure controls, TOC, aspect ratio, branding"
                     onClick={() => setShowPlayerProperties(true)}
                     className="flex items-center gap-1 px-2 py-1 rounded-md border border-orange-700/50 hover:bg-orange-800/20 text-orange-300 text-[11px] font-semibold"
                   >
@@ -3019,7 +3071,7 @@ export default function App() {
 
 
 
-              {/* ── Body: Sidebar + Main Player Area ── */}
+              {/* â”€â”€ Body: Sidebar + Main Player Area â”€â”€ */}
               <div className={cn("flex flex-row flex-1 overflow-hidden", playerConfig.playerResolution === 'full' ? 'overflow-x-hidden' : 'min-h-0')}>
                 {/* Course Navigation Sidebar */}
                 <CourseNavSidebar
@@ -3041,13 +3093,13 @@ export default function App() {
                   defaultCollapsed={typeof window !== 'undefined' && window.innerWidth < 768}
                 />
 
-                {/* Main slide area — swipe left/right on mobile to navigate slides */}
+                {/* Main slide area â€” swipe left/right on mobile to navigate slides */}
                 <div
                   className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden"
                   onTouchStart={handlePlayerTouchStart}
                   onTouchEnd={handlePlayerTouchEnd}
                 >
-                  {/* Background canvas — scaler measures this div to compute transform scale */}
+                  {/* Background canvas â€” scaler measures this div to compute transform scale */}
                   <div
                     ref={viewMode === 'desktop' ? scaler.containerRef : undefined}
                     className={cn(
@@ -3061,7 +3113,7 @@ export default function App() {
                     {/* Overlay only for image backgrounds */}
                     {courseBg && !courseBg.startsWith('#') && <div className="absolute inset-0 bg-slate-900/50 pointer-events-none" />}
 
-                  {/* Slide frame — aspect ratio driven by playerConfig.playerResolution */}
+                  {/* Slide frame â€” aspect ratio driven by playerConfig.playerResolution */}
                   <div className={cn(`theme-${theme}`,
                     "transition-all duration-500 flex flex-col relative z-10",
                     viewMode === 'desktop'
@@ -3081,9 +3133,9 @@ export default function App() {
                       : undefined
                     : undefined
                   }>
-                    {/* ── Content zone + accent strip ── */}
+                    {/* â”€â”€ Content zone + accent strip â”€â”€ */}
                     <div className="flex-1 flex flex-row overflow-hidden">
-                    {/* Per-module accent strip — flex column, no z-index issues */}
+                    {/* Per-module accent strip â€” flex column, no z-index issues */}
                     {!isFullBleed && (
                       <div
                         className="w-[3px] shrink-0 self-stretch pointer-events-none"
@@ -3091,7 +3143,7 @@ export default function App() {
                       />
                     )}
                     <div className="flex-1 relative overflow-hidden flex flex-col">
-                    {/* ── Full-bleed slide frame ─────────────────────── */}
+                    {/* â”€â”€ Full-bleed slide frame â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
                     <AnimatePresence mode="wait">
                       <motion.div
                         key={currentSlide?.id || currentSlideIndex}
@@ -3128,7 +3180,7 @@ export default function App() {
                               : "flex-1 w-full max-w-4xl flex flex-col justify-start"
                           )}>
                                <SlideErrorBoundary slideId={currentSlide?.id}>
-                               {/* ── Universal accent label + underline — all interactive/quiz slides ── */}
+                               {/* â”€â”€ Universal accent label + underline â€” all interactive/quiz slides â”€â”€ */}
                                {!isFullBleed && !['content','summary','title','cover','key-takeaways'].includes(currentSlide?.type as string) && (() => {
                                  const TYPE_LABELS: Record<string,string> = {
                                    'quiz': 'Knowledge Check', 'multiple-answers': 'Knowledge Check',
@@ -3150,7 +3202,7 @@ export default function App() {
                                  );
                                })()}
 
-                               {/* TITLE / COVER SLIDE — redesigned CourseTitleSlide */}
+                               {/* TITLE / COVER SLIDE â€” redesigned CourseTitleSlide */}
                                {(currentSlide?.type === 'title' || currentSlide?.type === 'cover') && (
                                  <div className="w-full h-full">
                                    <CourseTitleSlide
@@ -3205,7 +3257,7 @@ export default function App() {
                                    <PlayerTourSlide theme={theme} onSkip={() => setCurrentSlideIndex((si: number) => Math.min(allSlides.length - 1, si + 1))} />
                                  </div>
                                )}
-                               {/* COURSE OBJECTIVES SLIDE — course-level, no module number */}
+                               {/* COURSE OBJECTIVES SLIDE â€” course-level, no module number */}
                                {(currentSlide as any)?.type === 'course-objectives' && (
                                  <div className="w-full h-full">
                                    <CourseObjectivesSlide objectives={(currentSlide as any)._objectives || []} theme={theme} />
@@ -3305,7 +3357,7 @@ export default function App() {
                                            <span>{qs.selectedIdx === correctIdx ? 'Correct! Well done.' : 'Incorrect.'}</span>
                                          </div>
                                          {qs.selectedIdx !== correctIdx && correctLabel && (
-                                           <p className="text-sm font-medium">✓ Correct answer: <span className="font-bold">{correctLabel}</span></p>
+                                           <p className="text-sm font-medium">âœ“ Correct answer: <span className="font-bold">{correctLabel}</span></p>
                                          )}
                                          {quiz.feedback && <p className="text-sm font-medium opacity-80">{quiz.feedback}</p>}
                                        </div>
@@ -3369,7 +3421,7 @@ export default function App() {
                                        <div className={cn('p-4 rounded-xl font-bold flex flex-col gap-2', isAllCorrect ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-red-50 text-red-800 border border-red-200')}>
                                          <div className="flex items-center gap-2">
                                            {isAllCorrect ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
-                                           <span>{isAllCorrect ? 'Correct! All answers right.' : 'Not quite — check the highlighted answers.'}</span>
+                                           <span>{isAllCorrect ? 'Correct! All answers right.' : 'Not quite â€” check the highlighted answers.'}</span>
                                          </div>
                                          {quiz.feedback && <p className="text-sm font-medium opacity-80">{quiz.feedback}</p>}
                                        </div>
@@ -3381,7 +3433,7 @@ export default function App() {
                                {/* EXTERNAL COMPONENTS (zomako + interactions) */}
                                {currentSlide?.type === 'matching' && (() => {
                                   // MatchingActivity expects {items:[{id,content}], targets:[{id,content}]}
-                                  // AI may produce {pairs:[{id,term,definition}]} — normalise either format
+                                  // AI may produce {pairs:[{id,term,definition}]} â€” normalise either format
                                   const rawData = currentSlide.data || currentSlide.interactions?.[0] || {};
                                   const matchingProps = (() => {
                                     if (Array.isArray(rawData.pairs) && rawData.pairs.length > 0) {
@@ -3453,7 +3505,7 @@ export default function App() {
                                {currentSlide?.type === 'sorting' && (
                                   <div className="space-y-6 w-full">
                                      <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                     <SmartContent content={sanitizeContent(currentSlide.content) + '\n\nDrag items or use ↑ ↓ arrows to reorder.'} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
+                                     <SmartContent content={sanitizeContent(currentSlide.content) + '\n\nDrag items or use â†‘ â†“ arrows to reorder.'} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                      <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                         <CustomSortingActivity items={(currentSlide.data || currentSlide.interactions?.[0] || {}).items || []} correctOrder={(currentSlide.data || currentSlide.interactions?.[0] || {}).correctOrder || []}  />
                                      </div>
@@ -3582,22 +3634,41 @@ export default function App() {
                                )}
 
                                {/* MASTERY EXAM QUESTIONS */}
-                               {currentSlide?.type === 'mastery-exam' && examPhase === 'active' && (
-                                 <MasteryExamSlide
-                                   questions={examSession.questions.length > 0 ? examSession.questions : examQuestions}
-                                   examConfig={examConfig}
-                                   sessionState={examSession}
-                                   onAnswer={(qId, answer) => setExamSession(prev => ({ ...prev, answers: { ...prev.answers, [qId]: answer } }))}
-                                   onSubmit={(newState) => {
-                                     if (newState.submitted) {
-                                       setExamSession(newState);
-                                       setExamPhase('complete');
-                                       setCurrentSlideIndex(examResultsIndex);
-                                       scormReportScore(newState.score ?? 0, newState.passed ?? false);
-                                     } else { setExamSession(newState); }
-                                   }}
-                                 />
+                               {currentSlide?.type === 'mastery-exam' && (
+                                 isGeneratingExam ? (
+                                   // Still generating â€” show progress spinner
+                                   <div className="flex flex-col items-center justify-center gap-4 h-full">
+                                     <Loader2 className="w-10 h-10 animate-spin text-indigo-400" />
+                                     <p className="text-slate-300 font-semibold">Generating quiz questionsâ€¦</p>
+                                     <p className="text-slate-500 text-sm">This may take up to 30 seconds</p>
+                                   </div>
+                                 ) : examPhase === 'active' && (examSession.questions.length > 0 || examQuestions.length > 0) ? (
+                                   <MasteryExamSlide
+                                     questions={examSession.questions.length > 0 ? examSession.questions : examQuestions}
+                                     examConfig={examConfig}
+                                     sessionState={examSession}
+                                     onAnswer={(qId, answer) => setExamSession(prev => ({ ...prev, answers: { ...prev.answers, [qId]: answer } }))}
+                                     onSubmit={(newState) => {
+                                       if (newState.submitted) {
+                                         setExamSession(newState);
+                                         setExamPhase('complete');
+                                         setCurrentSlideIndex(examResultsIndex);
+                                         scormReportScore(newState.score ?? 0, newState.passed ?? false);
+                                       } else { setExamSession(newState); }
+                                     }}
+                                   />
+                                 ) : examPhase === 'idle' ? (
+                                   // Landed on mastery-exam slide without going through intro â€” redirect back
+                                   <div className="flex flex-col items-center justify-center gap-4 h-full">
+                                     <p className="text-slate-400 text-sm">Please start the quiz from the intro screen.</p>
+                                     <button onClick={() => setCurrentSlideIndex(examIntroIndex)}
+                                       className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold transition-all">
+                                       Go to Quiz Intro
+                                     </button>
+                                   </div>
+                                 ) : null
                                )}
+
 
                                {/* EXAM RESULTS */}
                                {currentSlide?.type === 'exam-results' && examPhase === 'complete' && examSession.submitted && (
@@ -3695,7 +3766,7 @@ export default function App() {
 
                            </div>
 
-                           {/* Slide media tools — Edit/Reset/Upload are in the top bar */}
+                           {/* Slide media tools â€” Edit/Reset/Upload are in the top bar */}
                            <div className="absolute top-0 right-0 z-[100] flex flex-wrap max-w-sm justify-end gap-2 shrink-0">
                              {sourceImages.length > 0 && (
                                <button 
@@ -3766,7 +3837,7 @@ export default function App() {
                               </div>
                             )}
 
-                       {/* Floating images — inside scroll so they scroll with content */}
+                       {/* Floating images â€” inside scroll so they scroll with content */}
                        <FloatingImageCanvas
                          images={floatingImagesMap[currentSlide?.id] || []}
                          isAuthoring={true}
@@ -3781,7 +3852,18 @@ export default function App() {
                      </div>{/* end inner content */}
                      </div>{/* end accent+content row */}
 
-                     {/* Learner Player Navigation Bar — sticky at bottom in full-screen mode */}
+
+                      {/* Closed Caption Overlay - above player bar */}
+                      {showCC && player.hasAudio && (
+                        <ClosedCaptionOverlay
+                          narrationText={currentSlide?.voiceOverText || (currentSlide as any)?.narration || null}
+                          currentTime={player.currentTime}
+                          duration={player.duration}
+                          isPlaying={player.isPlaying}
+                        />
+                      )}
+
+                     {/* Learner Player Navigation Bar â€” sticky at bottom in full-screen mode */}
                     <div className={cn(
                       "w-full z-[100] shrink-0 border-t backdrop-blur-md",
                       'sticky bottom-0',
@@ -3799,7 +3881,10 @@ export default function App() {
                         disablePrev={currentSlide?.type === 'mastery-exam'}
                         volume={player.volume}
                         onVolumeChange={player.setVolume}
+                        showCC={showCC}
+                        onToggleCC={player.hasAudio ? () => setShowCC(v => !v) : undefined}
                       />
+
                      </div>{/* end PlayerBar */}
                   </div>{/* end slide frame */}
                   </div>{/* end bg canvas */}
@@ -3862,7 +3947,7 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {/* ─── Right Slide-In Edit Drawer ─── */}
+        {/* â”€â”€â”€ Right Slide-In Edit Drawer â”€â”€â”€ */}
         <AnimatePresence>
           {editingSlide && (
             <>
@@ -3894,8 +3979,8 @@ export default function App() {
                 {/* Tabs */}
                 <div className="flex border-b border-slate-800 flex-shrink-0">
                   {[
-                    { id: 'text', icon: '✏', label: 'Edit Text', activeColor: 'border-indigo-500 text-indigo-300 bg-indigo-500/10' },
-                    { id: 'audio', icon: '🎤', label: 'Audio / Narration', activeColor: 'border-emerald-500 text-emerald-300 bg-emerald-500/10' },
+                    { id: 'text', icon: 'âœ', label: 'Edit Text', activeColor: 'border-indigo-500 text-indigo-300 bg-indigo-500/10' },
+                    { id: 'audio', icon: 'ðŸŽ¤', label: 'Audio / Narration', activeColor: 'border-emerald-500 text-emerald-300 bg-emerald-500/10' },
                   ].map(tab => (
                     <button
                       key={tab.id}
@@ -3943,13 +4028,13 @@ export default function App() {
                   {editDrawerTab === 'audio' && (
                     <>
                       <div className="p-3 bg-emerald-900/20 border border-emerald-700/30 rounded-xl text-xs text-emerald-300">
-                        <strong>ISD Best Practice:</strong> Narration should <em>expand</em> on what's on screen — never read line-by-line. Aim for conversational, explanatory language.
+                        <strong>ISD Best Practice:</strong> Narration should <em>expand</em> on what's on screen â€” never read line-by-line. Aim for conversational, explanatory language.
                       </div>
                       <div className="space-y-2">
                         <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest flex items-center justify-between">
                           <span>Audio Narration Script</span>
                           <span className={`normal-case font-normal ${voiceOverEnabled ? 'text-emerald-400' : 'text-slate-600'}`}>
-                            {voiceOverEnabled ? '🔊 Voice-Over Enabled' : '🔇 Voice-Over Off'}
+                            {voiceOverEnabled ? 'ðŸ”Š Voice-Over Enabled' : 'ðŸ”‡ Voice-Over Off'}
                           </span>
                         </label>
                         <textarea
@@ -3967,7 +4052,7 @@ export default function App() {
                            return (
                              <div className="flex items-center gap-4 text-xs text-slate-500">
                                <span>{words} words</span>
-                               <span>•</span>
+                               <span>â€¢</span>
                                <span>~{mins > 0 ? `${mins}m ` : ''}{remainSecs}s read time @ 130 wpm</span>
                              </div>
                            );
@@ -3983,14 +4068,14 @@ export default function App() {
                                  onChange={e => setTtsVoice(e.target.value)}
                                  className="flex-1 bg-slate-950 border border-emerald-700/40 rounded-lg px-3 py-1.5 text-emerald-200 text-xs font-bold outline-none focus:border-emerald-500 transition-all"
                                >
-                                 <option value="alloy">Alloy — Neutral / Balanced</option>
-                                 <option value="echo">Echo — Male / Measured</option>
-                                 <option value="fable">Fable — Male / Warm</option>
-                                 <option value="onyx">Onyx — Male / Deep</option>
-                                 <option value="nova">Nova — Female / Bright</option>
-                                 <option value="shimmer">Shimmer — Female / Soft</option>
+                                 <option value="alloy">Alloy â€” Neutral / Balanced</option>
+                                 <option value="echo">Echo â€” Male / Measured</option>
+                                 <option value="fable">Fable â€” Male / Warm</option>
+                                 <option value="onyx">Onyx â€” Male / Deep</option>
+                                 <option value="nova">Nova â€” Female / Bright</option>
+                                 <option value="shimmer">Shimmer â€” Female / Soft</option>
                                </select>
-                               {/* Ear preview button — previews the currently selected voice */}
+                               {/* Ear preview button â€” previews the currently selected voice */}
                                <button
                                  onClick={() => previewVoice(ttsVoice)}
                                  disabled={!!previewingVoice}
@@ -4025,7 +4110,7 @@ export default function App() {
                               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-700/20 border border-emerald-600/40 text-emerald-300 font-bold text-xs hover:bg-emerald-700/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               {regenSlideId === editingSlide?.id ? (
-                                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Generating audio…</>
+                                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Generating audioâ€¦</>
                               ) : (
                                 <><Mic className="w-3.5 h-3.5" /> Regenerate Audio for this Slide</>
                               )}
@@ -4035,7 +4120,7 @@ export default function App() {
                         {/* Audio URL if available */}
                         {(editingSlide?.voiceOverUrl || editingSlide?.audioUrl) && (
                           <div className="p-3 bg-slate-800 rounded-xl border border-slate-700">
-                            <p className="text-xs text-emerald-400 font-bold">✅ Audio ready for this slide</p>
+                            <p className="text-xs text-emerald-400 font-bold">âœ… Audio ready for this slide</p>
                           </div>
                         )}
                       </>
@@ -4122,7 +4207,7 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {/* ★ Player Properties Modal ★ */}
+        {/* â˜… Player Properties Modal â˜… */}
         <AnimatePresence>
           {showPlayerProperties && (
             <PlayerPropertiesModal
@@ -4133,7 +4218,7 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {/* ── TTS Generation Progress Toast ── */}
+        {/* â”€â”€ TTS Generation Progress Toast â”€â”€ */}
         <TTSProgressToast
           progress={ttsProgress}
           onDismiss={resetTTS}
@@ -4199,10 +4284,10 @@ export default function App() {
                          {previewModalOption === 'Tabs (Vertical)' && (
                             <div className="w-full max-w-2xl">
                               <TabbedVertical tabs={[
-                                { id: '1', label: 'Introduction', icon: '📖', content: 'This section introduces the core framework. Use the vertical navigation on the left to jump between areas. Each tab covers a distinct concept.' },
-                                { id: '2', label: 'Core Skills', icon: '⚡', content: 'These are the essential skills needed for mastery. Review each carefully and take notes on areas where you may need practice.' },
-                                { id: '3', label: 'Application', icon: '🔧', content: 'Apply the concepts through real-world scenarios. The exercises here reinforce your understanding with practical examples.' },
-                                { id: '4', label: 'Assessment', icon: '✅', content: 'Test your knowledge with a comprehensive review. Aim for 80% or above to demonstrate topic mastery.' },
+                                { id: '1', label: 'Introduction', icon: 'ðŸ“–', content: 'This section introduces the core framework. Use the vertical navigation on the left to jump between areas. Each tab covers a distinct concept.' },
+                                { id: '2', label: 'Core Skills', icon: 'âš¡', content: 'These are the essential skills needed for mastery. Review each carefully and take notes on areas where you may need practice.' },
+                                { id: '3', label: 'Application', icon: 'ðŸ”§', content: 'Apply the concepts through real-world scenarios. The exercises here reinforce your understanding with practical examples.' },
+                                { id: '4', label: 'Assessment', icon: 'âœ…', content: 'Test your knowledge with a comprehensive review. Aim for 80% or above to demonstrate topic mastery.' },
                               ]} />
                             </div>
                          )}
@@ -4238,7 +4323,7 @@ export default function App() {
            )}
          </AnimatePresence>
 
-      {/* ── Trial Expiry Interstitial ── */}
+      {/* â”€â”€ Trial Expiry Interstitial â”€â”€ */}
       <AnimatePresence>
         {isTrialExpired && (
           <motion.div
@@ -4251,7 +4336,7 @@ export default function App() {
               initial={{ scale: 0.88, y: 24 }} animate={{ scale: 1, y: 0 }}
             >
               <div className="w-14 h-14 rounded-full bg-amber-500/15 flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl">⏳</span>
+                <span className="text-2xl">â³</span>
               </div>
               <h2 className="text-white font-bold text-xl mb-2">Your trial has ended</h2>
               <p className="text-slate-400 text-sm leading-relaxed mb-6">
@@ -4277,7 +4362,7 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* ── Trial Export Blocked Modal ── */}
+      {/* â”€â”€ Trial Export Blocked Modal â”€â”€ */}
       <AnimatePresence>
         {showTrialExportModal && (
           <motion.div
@@ -4318,7 +4403,7 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* ── Admin Invite Panel ── */}
+      {/* â”€â”€ Admin Invite Panel â”€â”€ */}
       <AnimatePresence>
         {showTrialInvitePanel && isAdmin && (
           <TrialInvitePanel
@@ -4375,11 +4460,12 @@ function MultipleAnswersPreviewDemo() {
       ) : (
         <div className={`mt-2 p-3 rounded-xl font-bold text-sm flex items-center gap-2 ${isAllCorrect ? 'bg-emerald-500/15 border border-emerald-500/40 text-emerald-300' : 'bg-red-500/15 border border-red-500/40 text-red-300'}`}>
           {isAllCorrect ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-          {isAllCorrect ? 'Correct! Rabbit, Dog, and Cat are animals.' : 'Not quite — only Rabbit, Dog, and Cat are animals.'}
+          {isAllCorrect ? 'Correct! Rabbit, Dog, and Cat are animals.' : 'Not quite â€” only Rabbit, Dog, and Cat are animals.'}
         </div>
       )}
     </div>
   );
 }
+
 
 
