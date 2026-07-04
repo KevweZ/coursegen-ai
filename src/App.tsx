@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+﻿import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Sparkles, 
@@ -1231,55 +1231,83 @@ export default function App() {
       setCourse(finalCourse);
       setOriginalCourse(finalCourse);
 
-      // â”€â”€ Show preview immediately â€” don't make the user wait for QC or TTS â”€â”€
+      // â€”â€” Pre-generate Cover + Player Tour audio (in parallel) BEFORE showing preview â€”â€”
+      // This guarantees the selected AI voice plays from slide 1 â€” no robotic browser TTS.
+      const initialSyntheticMap: Record<string, string> = {};
+      if (voiceOverEnabled) {
+        try {
+          const { generateSlideTTS: genSlideTTS } = await import('./services/ttsService');
+          const criticalSlides = [
+            {
+              id: '__cover__',
+              text: `Welcome to ${finalCourse.title}. ${finalCourse.description || ''}`.trim(),
+            },
+            {
+              id: '__player-tour__',
+              text: 'Before we begin, take a moment to explore the player controls. Hover over each card to see the corresponding element highlighted in the player preview.',
+            },
+          ];
+          // Run both in parallel to minimise the pre-preview wait (~1â€“3 s total)
+          await Promise.all(
+            criticalSlides.map(async ({ id, text }) => {
+              if (!text.trim()) return;
+              try {
+                initialSyntheticMap[id] = await genSlideTTS(text, { voice: ttsVoice as any });
+              } catch { /* non-fatal â€” slide will be silent until user presses Play */ }
+            })
+          );
+        } catch { /* ttsService unavailable â€” continue without pre-generated audio */ }
+      }
+      setSyntheticAudioMap(initialSyntheticMap);
+
+      // â€”â€” Now show the preview â€” cover + player-tour audio is already loaded â€”â€”
       setStep('preview');
 
-      // â”€â”€ Kick off module image generation in background (non-blocking) â”€â”€
+      // â€”â€” Kick off module image generation in background (non-blocking) â€”â€”
       setIsGeneratingImages(true);
       generateModuleImages(finalCourse, (slideId, imageDataUrl) => {
         setCourse((prev: any) => prev ? applyCoverImageToCourse(prev, slideId, imageDataUrl) : prev);
       }).finally(() => setIsGeneratingImages(false));
-      // â”€â”€ Kick off TTS in the background (will update course as each slide is ready) â”€â”€
+
+      // â€”â€” Kick off main TTS in background (module content slides) â€”â€”
       if (voiceOverEnabled) {
-        // We start TTS with finalCourse; after QC may apply fixes via setCourse below
         generateTTS(finalCourse, setCourse, ttsVoice);
 
-        // Also generate TTS for synthetic slides using the same selected voice
-        // (cover, player-tour, and all module-overview slides)
-        // These are not in course.modules so the main generateTTS loop misses them.
+        // Background: generate TTS for module covers + overviews (NOT cover/player-tour â€” already done)
         ;(async () => {
           try {
             const { generateSlideTTS: genSlideTTS } = await import('./services/ttsService');
-            const syntheticToGenerate: Array<{ id: string; text: string }> = [
-              // Cover slide
-              { id: '__cover__', text: `Welcome to ${finalCourse.title}. ${finalCourse.description || ''}`.trim() },
-              // Player tour
-              { id: '__player-tour__', text: 'Before we begin, take a moment to explore the player controls. Hover over each card to see the corresponding element highlighted in the player preview.' },
-              // Module overviews â€” iterate through modules
-              ...(finalCourse.modules || []).flatMap((m: any, idx: number) => {
+            const moduleSynthetics: Array<{ id: string; text: string }> = (finalCourse.modules || []).flatMap(
+              (m: any, idx: number) => {
                 const modNum = idx + 1;
-                const ct = (m.title || `Module ${modNum}`).replace(/^Module\s+\d+\s*[â€”\-]\s*/i, '').trim();
+                const ct = (m.title || `Module ${modNum}`)
+                  .replace(/^Module\s+\d+\s*[\u2014\-]\s*/i, '')
+                  .trim();
                 return [
-                  { id: `__module-cover-${modNum}__`, text: `Module ${modNum}: ${ct}.${m.description ? ' ' + m.description : ''}`.trim() },
-                  { id: `__module-overview-${modNum}__`, text: `Hello, welcome to Module ${modNum}: ${ct}. ${m.description ? `In this module, you'll cover ${m.description}` : "Let's look at the learning objectives for this module."}` },
+                  {
+                    id: `__module-cover-${modNum}__`,
+                    text: `Module ${modNum}: ${ct}.${m.description ? ' ' + m.description : ''}`.trim(),
+                  },
+                  {
+                    id: `__module-overview-${modNum}__`,
+                    text: `Hello, welcome to Module ${modNum}: ${ct}. ${
+                      m.description
+                        ? `In this module, you'll cover ${m.description}`
+                        : "Let's look at the learning objectives for this module."
+                    }`,
+                  },
                 ];
-              }),
-            ];
-            const updates: Record<string, string> = {};
-            for (const { id, text } of syntheticToGenerate) {
+              }
+            );
+            for (const { id, text } of moduleSynthetics) {
               if (!text.trim()) continue;
               try {
                 const url = await genSlideTTS(text, { voice: ttsVoice as any });
-                updates[id] = url;
                 setSyntheticAudioMap(prev => ({ ...prev, [id]: url }));
-              } catch {
-                // Non-fatal; slide will fall back to browser TTS
-              }
+              } catch { /* non-fatal */ }
               await new Promise(r => setTimeout(r, 300));
             }
-          } catch {
-            // Silently ignore if ttsService is unavailable
-          }
+          } catch { /* silently ignore */ }
         })();
 
       } // end if (voiceOverEnabled)
