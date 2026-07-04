@@ -195,6 +195,12 @@ export async function analyzeUploadedFile(
   
   TASKS:
   1. Extract title(s), section headers, key topics, and definitions.
+     NOTE: The source text may be pre-parsed structured Markdown from a PPTX or PDF:
+     - "## Slide N: Title" lines = individual slide titles → use these as module/topic boundaries
+     - "## Page N" lines = PDF page breaks
+     - "### HEADING" lines = section headings detected in PDF
+     - "> Speaker Notes:" = presenter notes for context
+     Use this structure to identify modules and map content accurately.
   2. Generate a clean, professional course Title (concise, no raw artifact file names).
   3. Write a 2-4 sentence Description (what learners will learn, context, why it matters).
   4. Classify the complexity (simple vs moderate vs complex).
@@ -227,7 +233,7 @@ export async function analyzeUploadedFile(
     "possibleModules": ["string"]
   }`;
   
-  const userPrompt = `Analyze the following source material from a file named "${fileName}":\n\n${fileText.slice(0, 8000)}`;
+  const userPrompt = `Analyze the following source material from a file named "${fileName}":\n\n${fileText.slice(0, 12000)}`;
   
   const text = await executeAnthropicAI('complex', systemInstruction, userPrompt, 4096);
   const cleanedText = extractJsonFromText(text);

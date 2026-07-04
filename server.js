@@ -92,7 +92,7 @@ app.use((req, res, next) => {
   if (ALLOWED_ORIGINS.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-File-Name, X-File-Size');
     res.setHeader('Vary', 'Origin');
   }
   if (req.method === 'OPTIONS') return res.sendStatus(204);
@@ -165,6 +165,220 @@ const supportRateLimit = rateLimit({
   legacyHeaders:    false,
   message: { error: 'Too many support requests. Please wait before submitting again.' },
 });
+
+const parseRateLimit = rateLimit({
+  windowMs:         15 * 60 * 1000,
+  max:              20,                // 20 document parses per IP per 15 min
+  standardHeaders:  true,
+  legacyHeaders:    false,
+  message: { error: 'Too many parse requests. Please wait 15 minutes.' },
+});
+
+// ─── Document Parser Helpers ─────────────────────────────────────────────────
+
+/** Extract all <a:t> text from a shape or slide XML block, one line per <a:p>. */
+function extractAText(xml) {
+  const paras = xml.match(/<a:p[\s>][\s\S]*?<\/a:p>/g) ?? [];
+  return paras
+    .map(para => {
+      const runs = para.match(/<a:t[^>]*>([\s\S]*?)<\/a:t>/g) ?? [];
+      return runs.map(r => r.replace(/<[^>]*>/g, '')).join('');
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
+/** Find the title placeholder text in a slide XML (type title/ctrTitle/subTitle). */
+function extractSlideTitle(xml) {
+  // Split on shape elements; find the one containing a title placeholder
+  const shapes = xml.split(/<p:sp[\s>]/);
+  for (const shape of shapes) {
+    if (/<p:ph[^>]*(type="(title|ctrTitle|subTitle)")/i.test(shape)) {
+      const text = extractAText(shape).replace(/\n/g, ' ').trim();
+      return text;
+    }
+  }
+  return '';
+}
+
+/** Extract all non-title body text from a slide, formatted as a list. */
+function extractSlideBody(xml) {
+  const shapes = xml.split(/<p:sp[\s>]/);
+  const lines = [];
+  for (const shape of shapes) {
+    // Skip title / footer / slide-number / date placeholders
+    if (/<p:ph[^>]*(type="(title|ctrTitle|subTitle|ftr|sldNum|dt)")/i.test(shape)) continue;
+    const text = extractAText(shape);
+    if (text.trim()) {
+      // Turn each line into a bullet if it looks like a list item
+      text.split('\n').forEach(line => {
+        const t = line.trim();
+        if (t) lines.push(t.startsWith('-') || t.startsWith('•') ? t : `- ${t}`);
+      });
+    }
+  }
+  return lines.join('\n');
+}
+
+/** Apply heading heuristics to a list of PDF text lines. */
+function detectHeadings(lines) {
+  return lines.map(line => {
+    const t = line.trim();
+    if (!t) return '';
+    // ALL CAPS short line → heading (but not page numbers or single words)
+    if (t.length > 4 && t.length < 90 && t === t.toUpperCase() && /[A-Z]{2,}/.test(t) && !/^\d+$/.test(t)) {
+      return `### ${t}`;
+    }
+    // Chapter/Section/Module/Unit with number
+    if (/^(Chapter|Section|Module|Unit|Part|Lesson)\s+\d+/i.test(t) && t.length < 90) {
+      return `## ${t}`;
+    }
+    // Numbered section like "1 Introduction" or "1.1 Background"
+    if (/^\d+(\.\d+)*\s+[A-Z][a-z]/.test(t) && t.length < 80) {
+      return `### ${t}`;
+    }
+    return t;
+  });
+}
+
+/** Collapse 3+ blank lines into 2. */
+function cleanWhitespace(text) {
+  return text.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/** Minimal HTML → Markdown converter for DOCX mammoth output. */
+function htmlToMarkdown(html) {
+  const stripTags = s => s.replace(/<[^>]+>/g, '').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&nbsp;/g,' ').trim();
+  return html
+    .replace(/<h1[^>]*>([\s\S]*?)<\/h1>/gi, (_, c) => `# ${stripTags(c)}\n\n`)
+    .replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, (_, c) => `## ${stripTags(c)}\n\n`)
+    .replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, (_, c) => `### ${stripTags(c)}\n\n`)
+    .replace(/<h4[^>]*>([\s\S]*?)<\/h4>/gi, (_, c) => `#### ${stripTags(c)}\n\n`)
+    .replace(/<(strong|b)[^>]*>([\s\S]*?)<\/(strong|b)>/gi, (_, _t, c) => `**${stripTags(c)}**`)
+    .replace(/<(em|i)[^>]*>([\s\S]*?)<\/(em|i)>/gi, (_, _t, c) => `*${stripTags(c)}*`)
+    .replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (_, c) => `- ${stripTags(c)}\n`)
+    .replace(/<\/ul>|<\/ol>/gi, '\n')
+    .replace(/<ul[^>]*>|<ol[^>]*>/gi, '')
+    .replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, (_, c) => `${stripTags(c)}\n\n`)
+    .replace(/<br[^>]*\/?>/gi, '\n')
+    .replace(/<table[\s\S]*?<\/table>/gi, '[Table — see original document]\n\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/** Server-side PDF parser: pdf-parse + heading detection. */
+async function parsePdfToMarkdown(buffer) {
+  const pdfParse = (await import('pdf-parse')).default;
+  const data = await pdfParse(buffer);
+  const title = data.info?.Title?.trim() || '';
+  const lines = data.text.split('\n');
+  const processed = detectHeadings(lines);
+  const markdown = (title ? `# ${title}\n\n` : '') + processed.join('\n');
+  return {
+    markdown: cleanWhitespace(markdown),
+    metadata: { type: 'pdf', pageCount: data.numpages, wordCount: data.text.split(/\s+/).filter(Boolean).length },
+  };
+}
+
+/** Server-side PPTX parser: JSZip + slide-by-slide structure. */
+async function parsePptxToMarkdown(buffer) {
+  const { default: JSZip } = await import('jszip');
+  const zip = await JSZip.loadAsync(buffer);
+
+  // Slide files in order
+  const slideFiles = Object.keys(zip.files)
+    .filter(n => /^ppt\/slides\/slide\d+\.xml$/.test(n))
+    .sort((a, b) => {
+      const na = parseInt(a.match(/\d+/)[0], 10);
+      const nb = parseInt(b.match(/\d+/)[0], 10);
+      return na - nb;
+    });
+
+  const mdSlides = [];
+  let totalWords = 0;
+
+  for (let i = 0; i < slideFiles.length; i++) {
+    const xml = await zip.files[slideFiles[i]].async('string');
+    const title = extractSlideTitle(xml);
+    const body  = extractSlideBody(xml);
+
+    // Speaker notes
+    const slideNum = slideFiles[i].match(/\d+/)[0];
+    const notesPath = `ppt/notesSlides/notesSlide${slideNum}.xml`;
+    let notes = '';
+    if (zip.files[notesPath]) {
+      const notesXml = await zip.files[notesPath].async('string');
+      // Notes contain the slide body text again plus the actual notes — skip first block
+      const notesRaw = extractAText(notesXml);
+      // Filter out the duplicate slide content (notes slides echo body text first)
+      const notesLines = notesRaw.split('\n').filter(l => l.trim() && !body.includes(l.trim()));
+      notes = notesLines.join(' ').trim();
+    }
+
+    const words = [title, body, notes].join(' ').split(/\s+/).filter(Boolean).length;
+    totalWords += words;
+
+    let md = `## Slide ${i + 1}${title ? ': ' + title : ''}`;
+    if (body) md += `\n\n${body}`;
+    if (notes) md += `\n\n> **Speaker Notes:** ${notes}`;
+    mdSlides.push(md);
+  }
+
+  return {
+    markdown: mdSlides.join('\n\n---\n\n'),
+    metadata: { type: 'pptx', slideCount: slideFiles.length, wordCount: totalWords },
+  };
+}
+
+/** Server-side DOCX parser: mammoth HTML → Markdown. */
+async function parseDocxToMarkdown(buffer) {
+  const { default: mammoth } = await import('mammoth');
+  const result = await mammoth.convertToHtml({ buffer });
+  const markdown = htmlToMarkdown(result.value);
+  return {
+    markdown,
+    metadata: { type: 'docx', wordCount: markdown.split(/\s+/).filter(Boolean).length },
+  };
+}
+
+// ─── 5b. Document Parse Endpoint ────────────────────────────────────────────
+app.post('/api/parse-document',
+  parseRateLimit,
+  express.raw({ type: 'application/octet-stream', limit: '30mb' }),
+  async (req, res) => {
+    const rawName = req.headers['x-file-name'];
+    if (!rawName) return res.status(400).json({ error: 'Missing X-File-Name header.' });
+
+    const fileName = decodeURIComponent(rawName);
+    const extension = fileName.split('.').pop()?.toLowerCase() ?? '';
+    const buffer = req.body;
+
+    if (!buffer || buffer.length === 0) {
+      return res.status(400).json({ error: 'Empty file body.' });
+    }
+
+    try {
+      let result;
+      if (extension === 'pdf') {
+        result = await parsePdfToMarkdown(buffer);
+      } else if (extension === 'pptx') {
+        result = await parsePptxToMarkdown(buffer);
+      } else if (extension === 'docx') {
+        result = await parseDocxToMarkdown(buffer);
+      } else {
+        return res.status(415).json({ error: `Unsupported file type: .${extension}` });
+      }
+
+      console.log(`[ParseDoc] ${fileName} → ${extension.toUpperCase()} parsed: ${result.metadata.wordCount} words`);
+      return res.json(result);
+    } catch (err) {
+      console.error(`[ParseDoc] Failed to parse ${fileName}:`, err.message);
+      return res.status(500).json({ error: `Parse failed: ${err.message}` });
+    }
+  }
+);
 
 // ─── 6. Anthropic AI Proxy ──────────────────────────────────────────────────
 app.post('/api/ai', aiRateLimit, async (req, res) => {

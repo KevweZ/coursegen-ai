@@ -17,62 +17,133 @@ export interface SourceImage {
   height: number;
 }
 
+export interface ParsedDocumentMetadata {
+  type: 'pdf' | 'pptx' | 'docx';
+  pageCount?: number;
+  slideCount?: number;
+  wordCount: number;
+}
+
+// ─── Server-Side Parser (primary path) ───────────────────────────────────────
+
+/**
+ * Send the file to the Express server for structured Markdown extraction.
+ * The server uses pdf-parse / JSZip / mammoth to produce:
+ *   - PPTX: ## Slide N: [Title] + bullet body + speaker notes
+ *   - PDF:  heading detection (ALL CAPS, Chapter N, numbered sections)
+ *   - DOCX: full Markdown with # headings, **bold**, - lists
+ *
+ * Returns the structured markdown string on success, throws on failure.
+ */
+async function parseDocumentViaServer(file: File): Promise<{ markdown: string; metadata: ParsedDocumentMetadata }> {
+  const arrayBuffer = await file.arrayBuffer();
+  const response = await fetch('/api/parse-document', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/octet-stream',
+      'X-File-Name': encodeURIComponent(file.name),
+      'X-File-Size': String(file.size),
+    },
+    body: arrayBuffer,
+  });
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({ error: response.statusText }));
+    throw new Error(`Server parse failed (${response.status}): ${errData.error}`);
+  }
+
+  const data = await response.json();
+  return { markdown: data.markdown, metadata: data.metadata };
+}
+
+// ─── Client-Side Fallback Parsers ────────────────────────────────────────────
+// These are retained for when the server is unreachable (dev without server, etc.)
+
+async function extractPdfTextClient(file: File): Promise<string> {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+  let text = '';
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    text += content.items.map((item: any) => item.str).join(' ') + '\n';
+  }
+  return text;
+}
+
+async function extractDocxTextClient(file: File): Promise<string> {
+  const arrayBuffer = await file.arrayBuffer();
+  const result = await mammoth.extractRawText({ arrayBuffer });
+  return result.value;
+}
+
+async function extractPptxTextClient(file: File): Promise<string> {
+  const arrayBuffer = await file.arrayBuffer();
+  const zip = await JSZip.loadAsync(arrayBuffer);
+  const slideFiles = Object.keys(zip.files)
+    .filter(name => /^ppt\/slides\/slide\d+\.xml$/.test(name))
+    .sort((a, b) => {
+      const numA = parseInt(a.match(/\d+/)?.[0] ?? '0', 10);
+      const numB = parseInt(b.match(/\d+/)?.[0] ?? '0', 10);
+      return numA - numB;
+    });
+
+  let text = '';
+  for (const slideFile of slideFiles) {
+    const xml = await zip.files[slideFile].async('string');
+    const matches = xml.match(/<a:t[^>]*>([^<]*)<\/a:t>/g) ?? [];
+    const slideText = matches
+      .map(m => m.replace(/<[^>]*>/g, '').trim())
+      .filter(Boolean)
+      .join(' ');
+    if (slideText) text += slideText + '\n';
+  }
+
+  if (!text.trim()) throw new Error('No readable text found in the PowerPoint file.');
+  return text;
+}
+
+// ─── Primary Export ───────────────────────────────────────────────────────────
+
+/**
+ * Extract text from a user-uploaded file.
+ *
+ * Strategy:
+ *  1. For PDF / PPTX / DOCX → try server-side parser first (returns structured Markdown)
+ *  2. If server is unavailable or errors → fall back to client-side extraction
+ *  3. For .txt → always use client-side (no server benefit)
+ */
 export async function extractTextFromFile(file: File): Promise<string> {
   const extension = file.name.split('.').pop()?.toLowerCase();
 
-  if (extension === 'docx') {
-    const arrayBuffer = await file.arrayBuffer();
-    const result = await mammoth.extractRawText({ arrayBuffer });
-    return result.value;
-  } 
-  
-  if (extension === 'pdf') {
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
-    let text = '';
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const content = await page.getTextContent();
-      text += content.items.map((item: any) => item.str).join(' ') + '\n';
-    }
-    return text;
-  }
-
+  // Plain text — no server needed
   if (extension === 'txt') {
     return await file.text();
   }
 
-  if (extension === 'pptx') {
-    const arrayBuffer = await file.arrayBuffer();
-    const zip = await JSZip.loadAsync(arrayBuffer);
-
-    // Slide content lives in ppt/slides/slide1.xml, slide2.xml, ...
-    const slideFiles = Object.keys(zip.files)
-      .filter(name => /^ppt\/slides\/slide\d+\.xml$/.test(name))
-      .sort((a, b) => {
-        const numA = parseInt(a.match(/\d+/)?.[0] ?? '0', 10);
-        const numB = parseInt(b.match(/\d+/)?.[0] ?? '0', 10);
-        return numA - numB;
-      });
-
-    let text = '';
-    for (const slideFile of slideFiles) {
-      const xml = await zip.files[slideFile].async('string');
-      // <a:t> elements hold all visible text in OOXML
-      const matches = xml.match(/<a:t[^>]*>([^<]*)<\/a:t>/g) ?? [];
-      const slideText = matches
-        .map(m => m.replace(/<[^>]*>/g, '').trim())
-        .filter(Boolean)
-        .join(' ');
-      if (slideText) text += slideText + '\n';
+  // For PDF / PPTX / DOCX — try server first
+  if (extension === 'pdf' || extension === 'pptx' || extension === 'docx') {
+    try {
+      const { markdown } = await parseDocumentViaServer(file);
+      if (markdown && markdown.trim().length > 50) {
+        console.log(`[FileProcessor] Server parse succeeded for ${file.name} (${markdown.length} chars)`);
+        return markdown;
+      }
+    } catch (serverErr) {
+      console.warn(`[FileProcessor] Server parse failed, falling back to client-side:`, serverErr);
     }
 
-    if (!text.trim()) throw new Error('No readable text found in the PowerPoint file.');
-    return text;
+    // Client-side fallback
+    try {
+      if (extension === 'pdf')  return await extractPdfTextClient(file);
+      if (extension === 'docx') return await extractDocxTextClient(file);
+      if (extension === 'pptx') return await extractPptxTextClient(file);
+    } catch (clientErr) {
+      throw new Error(`Could not extract text from ${file.name}: ${(clientErr as Error).message}`);
+    }
   }
 
   throw new Error('Unsupported file format. Please upload a PDF, Word, PowerPoint, or Text file.');
-
 }
 
 /**
@@ -110,7 +181,7 @@ export async function extractImagesFromFile(file: File): Promise<SourceImage[]> 
         // Filter out decorative marks and tiny borders
         if (imgProps.width > 150 && imgProps.height > 150) {
           images.push({
-            pageIndex: imgIndex++, // Assign sequential index since unstructured media lacks slide IDs
+            pageIndex: imgIndex++,
             dataUrl: imgProps.src,
             width: imgProps.width,
             height: imgProps.height,
