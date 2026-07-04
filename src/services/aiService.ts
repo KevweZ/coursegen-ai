@@ -266,6 +266,10 @@ export async function suggestLearningObjectives(
   - Evaluating (simulations only): evaluate, judge, justify, critique, defend, prioritize, assess
   - Creating (simulations only): design, formulate, develop, compose, construct, devise, generate
 
+  FORBIDDEN VERBS — NEVER USE THESE (unmeasurable, not observable):
+  understand, know, learn, be aware of, appreciate, familiarize, grasp, comprehend, have knowledge of, be familiar with
+  Instead use: "understand" → describe/explain | "know" → identify/define | "be aware" → recognize/distinguish | "appreciate" → compare/evaluate
+
   CRITICAL CONSTRAINTS:
   1. COUNT: Generate ${countRange} objective(s). NEVER generate fewer than ${countMin} or more than ${countMax}.
   2. STRATEGY: ${preset.objectiveGenStrategy}
@@ -276,7 +280,12 @@ export async function suggestLearningObjectives(
   4. ONE VERB PER OBJECTIVE. NEVER combine verbs (e.g., NEVER "define and apply" -- that is two objectives). Each objective must describe exactly ONE measurable, observable behavior.
   5. TERMINAL vs ENABLING: A Terminal Objective is the high-level course outcome. Enabling Objectives are the individual knowledge/skill building blocks needed to achieve it. Ensure each Terminal Objective has 2-4 Enabling Objectives that logically scaffold toward it.
   6. BLOOM'S LEVEL: ${courseType === 'quick' ? 'Use ONLY Remembering and Understanding verbs.' : courseType === 'standard' ? 'Use primarily Remembering and Understanding verbs. Apply only if content is procedural and the eLearning simulates the task.' : 'Use Remembering and Understanding as the base. Apply higher-order verbs only for simulation-based or hands-on procedural content.'}
-  7. VALIDATION: Count your Terminal Objectives before returning. If the count is outside [${countMin}, ${countMax}], fix it.
+  7. VALIDATION: Before returning, apply this QUALITY CHECKLIST to every objective:
+     a) Can it be assessed with a single multiple-choice question? If no, rewrite.
+     b) Does the verb describe an OBSERVABLE LEARNER BEHAVIOR (not a state of mind)?
+     c) Does the objective contain the word "and"? If yes, split it into two objectives.
+     d) Is the outcome specific enough that two IDs would write the same assessment for it?
+  8. VALIDATION: Count your Terminal Objectives before returning. If the count is outside [${countMin}, ${countMax}], fix it.
 
   OUTPUT FORMAT: Return ONLY raw JSON: { "objectives": [{ "terminalObjective": "string", "enablingObjectives": ["string1", "string2"] }] }`;
 
@@ -390,7 +399,14 @@ Each game slide must have a unique title like "[Game Name] Knowledge Challenge".
     Learning Objectives: ${JSON.stringify(objectives)}
     Total Target Slide Count: ~${configParams.slideCount || 10}
     AVAILABLE VISUAL THEMES: ${availableThemes.length > 0 ? availableThemes.join(", ") : "Neutral"}
-    IMPORTANT AI DIRECTIVE: You must ONLY select a visualTheme if the course topic has a STRONG, LITERAL semantic match to that specific theme (e.g. use "Rigs" only for oil/gas/industrial topics, use "Forest" only for nature topics). If there is NO strong semantic match, you MUST default to "Neutral". Do not guess or select unrelated themes!${conversionNote}`;
+    IMPORTANT AI DIRECTIVE: You must ONLY select a visualTheme if the course topic has a STRONG, LITERAL semantic match to that specific theme (e.g. use "Rigs" only for oil/gas/industrial topics, use "Forest" only for nature topics). If there is NO strong semantic match, you MUST default to "Neutral". Do not guess or select unrelated themes!
+
+    MODULE TITLE QUALITY RULES:
+    - Module titles must be ACTIVE NOUN PHRASES that describe what the learner gains, NOT passive topic labels.
+    - WRONG: "Introduction to Compliance" | RIGHT: "Identifying Core Compliance Requirements"
+    - WRONG: "Data Security Overview" | RIGHT: "Protecting Sensitive Data in Your Workplace"
+    - WRONG: "Module 3" or "Chapter 3" | RIGHT: A meaningful phrase with an implied Bloom's verb
+    - Derive module titles from the Learning Objectives provided above — each module should clearly advance one enabling or terminal objective.${conversionNote}`;
 
   const rawText = await executeAnthropicAI('complex', systemInstruction, userPrompt, 8192);
   const cleanedText = extractJsonFromText(rawText);
@@ -431,12 +447,35 @@ export async function hydrateCourseContent(
   2. ONE CONCEPT PER SCREEN: Do not combine multiple major ideas on one slide.
   3. ACTIVE VOICE ONLY: "The pump delivers..." not "Delivery is achieved by..."
   4. CHUNKING: Use ### subheadings to group 2-4 related bullets under a theme.
-  5. BLOOM'S ALIGNMENT: Knowledge check questions MUST reflect the module's learning objective level.
-  6. NARRATION != SCREEN TEXT: voiceOverText must EXPAND on bullets with context, examples, and elaboration -- never just re-read them.
+  5. BLOOM'S ALIGNMENT — QUIZ QUESTION DESIGN (STRICT):
+     - REMEMBERING-level objectives (identify, define, recall, name, list, recognize):
+       → Questions MUST use recognition formats: "Which of the following CORRECTLY DEFINES [term]?" or "Which term BEST DESCRIBES [concept]?"
+       → All 4 options must be plausible definitions/descriptions — never obviously absurd distractors.
+     - UNDERSTANDING-level objectives (describe, explain, summarize, classify, compare):
+       → Questions MUST present a brief scenario then ask for the best explanation: "A team leader notices [situation]. Which statement BEST explains why [outcome]?"
+       → Distractors must be partially correct but miss a key nuance.
+     - NEVER write a Higher-Order question (apply/analyze/evaluate) for a Remembering objective — it's a level mismatch.
+     - Each question must have EXACTLY 4 options: 1 correct + 3 meaningfully wrong distractors (min 12 words each).
+  6. VOICE-OVER FORMULA (CEAP): voiceOverText MUST follow this 4-part spoken formula:
+     C — CONTEXT (1 sentence): "In [workplace scenario], [topic] matters because [reason]."
+     E — EXAMPLE (1 sentence): "For example, [concrete real-world situation a learner would face]."
+     A — APPLICATION (1 sentence): "In practice, this means [specific action or behavior the learner should adopt]."
+     P — PREVIEW/CONNECT (1 sentence): "As we explore this further, [bridge to next concept or upcoming interaction]."
+     Total: 3–4 natural spoken sentences. NEVER re-read slide bullets verbatim.
   7. CONCISENESS: Each content field <= 3 short sentences or <= 7 bullets. Use markdown (**, ###, >) for visual hierarchy.
   8. NO WALLS OF TEXT: If content exceeds 6 lines, break it with ### headers and subgroups.
   9. NO COLON-PIPE DIVIDERS: Never write "IDENTIFY: |" or any "KEYWORD: |" pattern. Use "**Identify:**" or a heading instead.
   10. NO EMPTY BOLD: Never write "** **" or "**  **". Only bold meaningful text.
+  11. CONCRETE-BEFORE-ABSTRACT: Lead content slides with a relatable real-world anchor BEFORE the formal definition.
+      WRONG: "**Risk** is the probability of an adverse event occurring."
+      RIGHT: "Before signing a new vendor agreement, ask: what could go wrong? That question is the starting point of **risk** management."
+  12. TERMINOLOGY ANCHOR: First use of any key technical term in a slide's content field must include an inline definition:
+      "**Social Engineering** — using psychological manipulation rather than technical exploits to access sensitive information."
+  13. APPLICATION BRIDGE: Every content slide (not quiz/interaction) MUST contain at least ONE of these formats:
+      "In your role, this means..." | "A practical example is..." | "When you encounter [situation], remember to..." | "Apply this by..."
+  14. ADVANCE ORGANIZER: The FIRST content slide of each module must begin with a 1-sentence orientation:
+      "In this module, you will [Bloom's verb from module objective] [specific outcome]."
+      This must appear as the first bullet or first sentence of the content field — not in voiceOverText.
 
   ========================================
   SLIDE TYPE RULES (STRICT -- NO EXCEPTIONS)
@@ -520,9 +559,16 @@ export async function hydrateCourseContent(
   CONTENT / KEY-TAKEAWAYS / SUMMARY:
   - Do NOT embed full-slide images. Use mediaPrompt to describe what image should appear.
   - content must use ### headers, bullet lists, or callout blocks -- NOT bare paragraphs.
-  - SUMMARY AND KEY-TAKEAWAY SLIDES: MAXIMUM 6 BULLETS. No prose. Each bullet = 1 key learning point from the module.
+  - BULLET COMPLETENESS: Every bullet must be a COMPLETE THOUGHT (minimum 10 words). Noun-fragment bullets are FORBIDDEN.
+    WRONG: "- Phishing attacks" | RIGHT: "- **Phishing** attacks use deceptive emails to trick employees into revealing login credentials"
+    WRONG: "- Risk Management" | RIGHT: "- Effective **risk management** requires identifying, assessing, and mitigating potential threats before they occur"
+  - SUMMARY SLIDES: MAXIMUM 6 bullets. Use PAST TENSE to confirm coverage: "- Examined the three types of...", "- Defined the role of..."
+  - KEY-TAKEAWAY SLIDES: MAXIMUM 6 bullets. Each must be an ACTIONABLE STATEMENT starting with an action verb:
+    "- Identify suspicious email patterns before clicking any links"
+    "- Report all security incidents to IT within 24 hours of discovery"
   - BOLD USAGE: Only bold specific key terms (nouns, verbs, named concepts). NEVER bold entire sentences, random adjectives, or more than 2-3 words per bullet.
   - Example correct: "- **Phishing** is the most common attack vector" — Example incorrect: "- **This module covered several important security practices**"
+  - APPLICATION BRIDGE REQUIRED: At least one bullet per content slide must connect theory to practice using: "In practice...", "This means that...", "When you encounter...", or "Apply this by..."
 
   ========================================
   CRITICAL VALIDATION RULES
