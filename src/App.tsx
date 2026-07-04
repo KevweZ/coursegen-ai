@@ -69,7 +69,7 @@ import {
 } from './components/interactions/ExtraPreviews';
 import { stripSlideTypePrefix } from './lib/stripSlideTypePrefix';
 import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft, generateMasteryExam } from './services/aiService';
-import { createScormPackage } from './services/scormService';
+import { createScormPackage, ScormVersion } from './services/scormService';
 import { FlashcardGrid } from './components/FlashcardGrid';
 import { ScenarioEngine } from './components/interactions/ScenarioEngine';
 import { ScenarioBuilderPanel } from './components/ScenarioBuilderPanel';
@@ -482,6 +482,9 @@ export default function App() {
   const [viewMode, setViewMode] = useState<'desktop' | 'mobile'>('desktop');
   const [theme, setTheme] = useState<'light' | 'dark' | 'unified'>('dark');
   const [courseBg, setCourseBg] = useState<string | null>(null);
+  const [scormVersion, setScormVersion] = useState<ScormVersion>('1.2');
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
 
   // Mobile portrait orientation detection
   const [isPortrait, setIsPortrait] = useState(() =>
@@ -1254,18 +1257,26 @@ export default function App() {
   };
 
   const exportScorm = async () => {
-    if (!course) return;
+    if (!course || isExporting) return;
+    setIsExporting(true);
+    setExportProgress(0);
     try {
-      const blob = await createScormPackage(course);
+      const blob = await createScormPackage(course, {
+        version: scormVersion,
+        onProgress: (pct) => setExportProgress(pct),
+      });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${course.title.replace(/\s+/g, '_')}_SCORM12.zip`;
+      a.download = `${course.title.replace(/\s+/g, '_')}_SCORM${scormVersion === '2004' ? '2004' : '12'}.zip`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to export SCORM', e);
-      alert('SCORM generation failed.');
+      alert('SCORM export failed: ' + (e?.message || 'Unknown error'));
+    } finally {
+      setIsExporting(false);
+      setExportProgress(0);
     }
   };
 
@@ -2807,22 +2818,44 @@ export default function App() {
                         <Download className="w-3.5 h-3.5" /> <span className="hidden lg:inline">Export SCORM</span>
                       </button>
                     ) : (
-                      <button
-                        title="Export SCORM — download a SCORM 1.2 zip package"
-                        onClick={() => {
-                          const pendingCount = qcReport
-                            ? qcReport.issues.filter(i => !qcConfirmed.has(i.id) && !qcDeclined.has(i.id)).length
-                            : 0;
-                          if (pendingCount > 0) {
-                            setShowQcPublishWarning(true);
-                          } else {
-                            exportScorm();
-                          }
-                        }}
-                        className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs transition-colors shadow-lg shadow-indigo-500/20"
-                      >
-                        <Download className="w-3.5 h-3.5" /> <span className="hidden lg:inline">Export SCORM</span>
-                      </button>
+                      <div className="flex items-center rounded-lg overflow-hidden border border-indigo-500/40 shadow-lg shadow-indigo-500/20">
+                        {/* Version toggle */}
+                        <button
+                          title={`Switch SCORM version (current: ${scormVersion})`}
+                          onClick={() => setScormVersion(v => v === '1.2' ? '2004' : '1.2')}
+                          className="px-2 py-1 bg-indigo-700/60 hover:bg-indigo-600/70 text-indigo-200 text-[10px] font-black tracking-wide transition-colors border-r border-indigo-500/30"
+                        >
+                          {scormVersion}
+                        </button>
+                        {/* Export button */}
+                        <button
+                          title={`Export SCORM ${scormVersion} — download a SCORM zip package`}
+                          disabled={isExporting}
+                          onClick={() => {
+                            const pendingCount = qcReport
+                              ? qcReport.issues.filter(i => !qcConfirmed.has(i.id) && !qcDeclined.has(i.id)).length
+                              : 0;
+                            if (pendingCount > 0) {
+                              setShowQcPublishWarning(true);
+                            } else {
+                              exportScorm();
+                            }
+                          }}
+                          className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-bold text-xs transition-colors"
+                        >
+                          {isExporting ? (
+                            <>
+                              <div className="w-3 h-3 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                              <span className="hidden lg:inline">{exportProgress < 100 ? `${exportProgress}%` : 'Packaging…'}</span>
+                            </>
+                          ) : (
+                            <>
+                              <Download className="w-3.5 h-3.5" />
+                              <span className="hidden lg:inline">Export SCORM</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                     )}
 
 
