@@ -827,7 +827,8 @@ export default function App() {
     if (currentSlide) {
       player.loadSlide(
         currentSlide.id,
-        currentSlide.voiceOverUrl || currentSlide.audioUrl || currentSyntheticUrl || null,
+        currentSlide.voiceOverUrl || (currentSlide as any).audioUrl || currentSyntheticUrl || null,
+
         voiceOverEnabled && !currentSlide.voiceOverUrl && !currentSyntheticUrl
           ? (currentSlide.voiceOverText || currentSlide.narration || null)
           : null

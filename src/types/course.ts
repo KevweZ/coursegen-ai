@@ -54,7 +54,21 @@ export type SlideType =
   | 'mastery-exam'
   | 'exam-results'
   | 'scenario'
-  | 'diagram';
+  | 'diagram'
+  // Virtual / synthetic slide types (cast via `as any` in JSX, listed here for type safety)
+  | 'cover'
+  | 'module-cover'
+  | 'module-overview'
+  | 'course-objectives'
+  | 'player-tour'
+  | 'closing'
+  | 'multiple-answers'
+  | 'wheel-diagram'
+  | 'tabbed-horizontal'
+  | 'tabbed-vertical'
+  | 'folder-explorer'
+  | 'carousel-panel'
+  | 'click-reveal';
 
 export interface FloatingImage {
   id: string;
@@ -135,6 +149,8 @@ export interface Interaction {
   options: string[];
   correctAnswer: string | number;
   feedback: string;
+  // Extended interaction data for complex types (cards, tabs, items etc.)
+  [key: string]: any;
 }
 
 // ─── Mastery Quiz + Navigation ────────────────────────────────────────────────

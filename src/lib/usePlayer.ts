@@ -330,8 +330,8 @@ export function usePlayer(): Player {
     loadingSlideId.current = slideId;
     const hasAudio = !!audioSrc || !!ttsText;
 
-    // Reset state immediately (snap to new slide)
-    setState({
+    // Reset state immediately (snap to new slide) — use functional form to preserve volume
+    setState(prev => ({
       activeSlideId: slideId,
       audioSrc: audioSrc ?? null,
       ttsText: ttsText ?? null,
@@ -342,7 +342,9 @@ export function usePlayer(): Player {
       isEnded: false,
       hasAudio,
       isLoading: !!audioSrc, // loading = true only for actual network audio
-    });
+      volume: prev.volume,   // preserve user's volume setting across slides
+    }));
+
 
     if (!hasAudio) return;
     if (ttsText && !audioSrc) return; // TTS is ready instantly

@@ -11,3 +11,8 @@ coverage/
 # which avoids Node version mismatch resolution conflicts.
 # Railway generates its own lock file on deploy too.
 package-lock.json
+
+# Backup files (should never be committed)
+*.backup.*
+*.backup
+
