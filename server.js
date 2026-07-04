@@ -1134,6 +1134,104 @@ app.post('/api/support/contact', supportRateLimit, async (req, res) => {
   }
 });
 
+// ─── 10b. Workflow Insights (autoskill integration) ──────────────────────────
+// Accepts anonymised activity clusters (app names + window titles only;
+// no OCR content) and uses Claude to suggest eLearning course topics.
+app.post('/api/workflow-insights', aiRateLimit, async (req, res) => {
+  try {
+    const { clusters = [], analyzedHours = 4 } = req.body;
+
+    if (!Array.isArray(clusters) || clusters.length === 0) {
+      return res.status(400).json({ error: 'clusters array is required and must not be empty.' });
+    }
+
+    // Build a compact, readable summary for the LLM
+    const activitySummary = clusters
+      .slice(0, 12)
+      .map(c => {
+        const topics = (c.topics ?? []).slice(0, 8).join(' · ');
+        return `• ${c.app} (${c.totalMinutes ?? '?'}m): ${topics}`;
+      })
+      .join('\n');
+
+    const KNOWN_SKILLS = [
+      'markdown-mermaid-writing', 'scientific-writing', 'generate-image',
+      'infographics', 'pptx', 'liteparse', 'markitdown',
+    ];
+
+    const systemInstruction = `You are a corporate learning & development advisor specialising in eLearning authoring.
+Given a summary of a user's recent computer activity (app names and window titles — no screen content), identify learning needs and suggest specific eLearning course topics they should build.
+
+Return ONLY a valid JSON object with this exact shape:
+{
+  "suggestions": [
+    {
+      "topic": "Exact, actionable course title (e.g. 'GDPR Compliance for HR Teams')",
+      "description": "2-sentence course description explaining what learners will gain.",
+      "targetAudience": "Who should take this course (e.g. 'Operations managers', 'New hires')",
+      "why": "1-sentence reason this topic was inferred from the activity pattern.",
+      "confidence": 0.0 to 1.0,
+      "relatedSkills": ["skill name from the known list if applicable — omit if none match"]
+    }
+  ],
+  "patterns": []
+}
+
+Rules:
+- Produce 3 to 5 suggestions, ordered by confidence descending.
+- Topic titles must be SPECIFIC and actionable — NOT generic (e.g. NOT 'General Safety Training').
+- confidence: 0.9 = strong signal, 0.7 = moderate, 0.5 = plausible.
+- relatedSkills: only include names from: ${KNOWN_SKILLS.join(', ')}.
+- Return ONLY the JSON — no markdown, no commentary.`;
+
+    const userPrompt = `Analyzed period: last ${analyzedHours} hours.
+
+Activity clusters (app · window titles):
+${activitySummary}
+
+Suggest 3–5 eLearning course topics this person should build based on their work patterns.`;
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key':         process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type':      'application/json',
+      },
+      body: JSON.stringify({
+        model:      'claude-haiku-4-5-20251001',
+        max_tokens: 2048,
+        system:     systemInstruction,
+        messages:   [{ role: 'user', content: userPrompt }],
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => response.statusText);
+      console.error('[WorkflowInsights] AI error:', errText);
+      return res.status(502).json({ error: `AI API error: ${response.status}` });
+    }
+
+    const aiData = await response.json();
+    const raw = aiData?.content?.[0]?.text ?? '{}';
+    const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+
+    let result = { suggestions: [], patterns: [] };
+    try {
+      result = JSON.parse(cleaned);
+      if (!Array.isArray(result.suggestions)) result.suggestions = [];
+    } catch {
+      console.warn('[WorkflowInsights] Could not parse AI response:', cleaned.slice(0, 200));
+    }
+
+    return res.json(result);
+
+  } catch (err) {
+    console.error('[WorkflowInsights] Error:', err.message);
+    return res.status(500).json({ error: 'Workflow analysis failed: ' + err.message });
+  }
+});
+
 // ─── 11. Health Check ───────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => {
   res.json({
