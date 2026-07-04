@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Check,
@@ -377,6 +377,93 @@ const CreditPackButtons = () => {
   );
 };
 
+// ── Manage Billing Banner (shown to subscribed users) ────────────────────────
+const ManageBillingBanner = () => {
+  const { user } = useAuth();
+  const [customerId, setCustomerId] = useState<string | null>(null);
+  const [planName, setPlanName]     = useState<string>('');
+  const [loading, setLoading]       = useState(false);
+  const [portalLoading, setPortalLoading] = useState(false);
+  const [error, setError]           = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    setLoading(true);
+    fetch(`/api/payments/status?userId=${user.id}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.stripe_customer_id) {
+          setCustomerId(d.stripe_customer_id);
+          setPlanName(d.subscription ?? '');
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [user?.id]);
+
+  if (loading || !customerId) return null;
+
+  const PLAN_LABELS: Record<string, string> = {
+    pro_creator:   'Pro Creator',
+    business_team: 'Business Team',
+    enterprise:    'Enterprise',
+    teacher_pro:   'Teacher Pro',
+    free:          'Free',
+  };
+
+  const handlePortal = async () => {
+    setPortalLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/payments/billing-portal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customerId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Failed to open billing portal.');
+      window.location.href = data.url;
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setPortalLoading(false);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="max-w-6xl mx-auto px-6 pt-6"
+    >
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-2xl border border-emerald-500/30 bg-emerald-500/5">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shrink-0">
+            <CreditCard className="w-4 h-4 text-emerald-400" />
+          </div>
+          <div>
+            <p className="text-white font-extrabold text-sm">
+              Current Plan: <span className="text-emerald-400">{PLAN_LABELS[planName] ?? planName}</span>
+            </p>
+            <p className="text-slate-400 text-xs mt-0.5">Manage invoices, update payment method, or cancel anytime.</p>
+          </div>
+        </div>
+        <div className="flex flex-col items-end gap-1">
+          <button
+            onClick={handlePortal}
+            disabled={portalLoading}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white text-sm font-bold rounded-xl transition-all shrink-0 whitespace-nowrap"
+          >
+            {portalLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CreditCard className="w-3.5 h-3.5" />}
+            Manage Subscription
+          </button>
+          {error && <p className="text-red-400 text-xs">{error}</p>}
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export function PricingPage() {
@@ -402,7 +489,10 @@ export function PricingPage() {
         </div>
       </div>
 
-      {/* ── Pricing Cards ── */}
+      {/* Manage Subscription Banner (subscribed users only) */}
+      <ManageBillingBanner />
+
+      {/* Pricing Cards */}
       <div className="max-w-6xl mx-auto px-6 pb-20">
         {/* Context banner */}
         <div className="flex items-center justify-center gap-2.5 mb-10 px-5 py-3 rounded-xl border text-sm font-semibold mx-auto max-w-xl bg-indigo-500/5 border-indigo-500/20 text-indigo-400">

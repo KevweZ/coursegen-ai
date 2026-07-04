@@ -838,7 +838,29 @@ app.post('/api/payments/create-checkout', async (req, res) => {
   }
 });
 
-// 8b. Stripe Webhook — MUST use raw body (not parsed JSON)
+// 8b-extra. Stripe Billing Portal (manage subscription, cancel, invoices)
+app.post('/api/payments/billing-portal', async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Payments not configured on this server.' });
+
+  const { customerId } = req.body;
+  if (!customerId?.trim()) {
+    return res.status(400).json({ error: 'customerId is required.' });
+  }
+
+  const frontendBase = isProd ? 'https://nexcourse.ai' : 'http://localhost:3000';
+
+  try {
+    const session = await stripe.billingPortal.sessions.create({
+      customer:   customerId,
+      return_url: `${frontendBase}/`,
+    });
+    return res.json({ url: session.url });
+  } catch (err) {
+    console.error('[Billing Portal] Error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 app.post(
   '/api/payments/webhook',
   express.raw({ type: 'application/json' }),

@@ -256,7 +256,7 @@ export function AuthPage({ onBackToHome, initialMode = 'login' }: { onBackToHome
                 </button>
               </form>
 
-              {/* Google OAuth */}
+              {/* Google OAuth — follows Google brand guidelines: white surface, coloured logo */}
               {mode !== 'forgot' && (
                 <>
                   <div className="flex items-center gap-3 my-5">
@@ -264,10 +264,17 @@ export function AuthPage({ onBackToHome, initialMode = 'login' }: { onBackToHome
                     <span className="text-xs text-slate-500 font-medium">or continue with</span>
                     <div className="flex-1 h-px bg-slate-800" />
                   </div>
-                  <button onClick={handleGoogle} disabled={googleLoading}
-                    className="w-full flex items-center justify-center gap-3 py-3 rounded-xl border border-slate-700 hover:border-slate-600 bg-slate-800/40 hover:bg-slate-800 text-white text-sm font-bold transition-all disabled:opacity-60">
-                    {googleLoading ? <Loader2 className="w-4 h-4 animate-spin text-slate-400" /> : <GoogleIcon />}
-                    Sign in with Google
+                  <button
+                    onClick={handleGoogle}
+                    disabled={googleLoading}
+                    className="w-full flex items-center justify-center gap-3 py-2.5 px-4 rounded-xl bg-white hover:bg-[#f8faff] border border-[#747775] hover:border-[#4285F4] text-[#1f1f1f] text-sm font-medium transition-all disabled:opacity-60 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#4285F4]/40"
+                    aria-label="Sign in with Google"
+                  >
+                    {googleLoading
+                      ? <Loader2 className="w-4 h-4 animate-spin text-slate-500" />
+                      : <GoogleIcon />
+                    }
+                    <span className="font-medium">Sign in with Google</span>
                   </button>
                 </>
               )}
