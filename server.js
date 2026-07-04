@@ -174,6 +174,14 @@ const parseRateLimit = rateLimit({
   message: { error: 'Too many parse requests. Please wait 15 minutes.' },
 });
 
+const imageRateLimit = rateLimit({
+  windowMs:         15 * 60 * 1000,
+  max:              60,                // 60 image requests per IP per 15 min (full course = ~10)
+  standardHeaders:  true,
+  legacyHeaders:    false,
+  message: { error: 'Too many image generation requests. Please wait 15 minutes.' },
+});
+
 // ─── Document Parser Helpers ─────────────────────────────────────────────────
 
 /** Extract all <a:t> text from a shape or slide XML block, one line per <a:p>. */
@@ -379,6 +387,75 @@ app.post('/api/parse-document',
     }
   }
 );
+
+// ─── 5c. Image Generation Endpoint ──────────────────────────────────────────
+app.post('/api/generate-image', imageRateLimit, async (req, res) => {
+  const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? '';
+  if (!OPENROUTER_API_KEY) {
+    return res.status(503).json({ error: 'Image generation not configured on this server (missing OPENROUTER_API_KEY).' });
+  }
+
+  const { prompt, model = 'google/gemini-3.1-flash-image-preview' } = req.body ?? {};
+  if (!prompt?.trim()) {
+    return res.status(400).json({ error: 'Missing required field: prompt' });
+  }
+
+  try {
+    const orResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization':  `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type':   'application/json',
+        'HTTP-Referer':   'https://nexcourse.ai',
+        'X-Title':        'NexCourse AI',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'user', content: prompt.trim() }],
+        modalities: ['image', 'text'],
+      }),
+    });
+
+    if (!orResponse.ok) {
+      const errText = await orResponse.text().catch(() => orResponse.statusText);
+      console.error(`[ImageGen] OpenRouter error ${orResponse.status}:`, errText.slice(0, 300));
+      return res.status(orResponse.status).json({ error: `Image model error: ${errText.slice(0, 200)}` });
+    }
+
+    const data = await orResponse.json();
+    const message = data?.choices?.[0]?.message;
+
+    // OpenRouter returns images in one of two formats depending on the model
+    let imageDataUrl = null;
+
+    if (message?.images?.length > 0) {
+      // Format 1: message.images array (FLUX models)
+      const img = message.images[0];
+      imageDataUrl = img?.image_url?.url ?? img?.url ?? null;
+    } else if (Array.isArray(message?.content)) {
+      // Format 2: message.content as multimodal array (Gemini models)
+      for (const part of message.content) {
+        if (part?.type === 'image' || part?.type === 'image_url') {
+          imageDataUrl = part?.image_url?.url ?? part?.url ?? null;
+          if (imageDataUrl) break;
+        }
+      }
+    }
+
+    if (!imageDataUrl) {
+      const preview = JSON.stringify(message ?? {}).slice(0, 300);
+      console.warn('[ImageGen] No image in response:', preview);
+      return res.status(502).json({ error: 'No image returned from AI model.' });
+    }
+
+    console.log(`[ImageGen] ✓ Generated image — prompt: "${prompt.slice(0, 60)}..."`);
+    return res.json({ imageDataUrl });
+
+  } catch (err) {
+    console.error('[ImageGen] Error:', err.message);
+    return res.status(500).json({ error: `Image generation failed: ${err.message}` });
+  }
+});
 
 // ─── 6. Anthropic AI Proxy ──────────────────────────────────────────────────
 app.post('/api/ai', aiRateLimit, async (req, res) => {

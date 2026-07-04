@@ -90,6 +90,7 @@ import { GameContainer } from './components/game-templates/core/GameContainer';
 import { getRandomBackgroundForTheme } from './lib/backgrounds';
 import { getPresetOptions, getPresetConfig } from './lib/presetEngine';
 import { GameTemplateType } from './types/game';
+import { generateModuleImages, applyCoverImageToCourse } from './services/imageService';
 import { usePlayer } from './lib/usePlayer';
 import { PlayerBar } from './components/player/PlayerBar';
 import { SlideHeader } from './components/player/SlideHeader';
@@ -441,6 +442,7 @@ export default function App() {
   
   const [isGenerating, setIsGenerating] = useState(false);
   const [isHydrating, setIsHydrating] = useState(false);
+  const [isGeneratingImages, setIsGeneratingImages] = useState(false);
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [isRunningQC, setIsRunningQC] = useState(false);
   const [qcPhase, setQcPhase] = useState<'structural' | 'ai' | 'done' | null>(null);
@@ -1164,6 +1166,11 @@ export default function App() {
         const finalCourse = await hydrateCourseContent(draft, prompt, { courseType, scenarioConfig: interactionTypes.includes('scenario') ? scenarioConfig : undefined });
         setCourse(finalCourse);
         setStep('preview');
+        // Kick off module image generation in background (non-blocking)
+        setIsGeneratingImages(true);
+        generateModuleImages(finalCourse, (slideId, imageDataUrl) => {
+          setCourse((prev: any) => prev ? applyCoverImageToCourse(prev, slideId, imageDataUrl) : prev);
+        }).finally(() => setIsGeneratingImages(false));
       } else {
         // Item 7: Jump to 100% when outline generation is done
         setProgress(100);
@@ -1194,6 +1201,11 @@ export default function App() {
       // ── Show preview immediately — don't make the user wait for QC or TTS ──
       setStep('preview');
 
+      // ── Kick off module image generation in background (non-blocking) ──
+      setIsGeneratingImages(true);
+      generateModuleImages(finalCourse, (slideId, imageDataUrl) => {
+        setCourse((prev: any) => prev ? applyCoverImageToCourse(prev, slideId, imageDataUrl) : prev);
+      }).finally(() => setIsGeneratingImages(false));
       // ── Kick off TTS in the background (will update course as each slide is ready) ──
       if (voiceOverEnabled) {
         // We start TTS with finalCourse; after QC may apply fixes via setCourse below
@@ -2678,6 +2690,14 @@ export default function App() {
                       <span className="hidden sm:inline px-1.5 py-0.5 rounded-md bg-slate-700 text-slate-400 text-[10px] font-bold uppercase tracking-wider shrink-0">Dev</span>
                     </div>
                   </div>
+
+                  {/* ✨ Image generation in-progress badge */}
+                  {isGeneratingImages && (
+                    <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-purple-900/50 border border-purple-700/50 text-purple-300 text-[10px] font-medium">
+                      <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-ping inline-block" />
+                      Generating visuals…
+                    </div>
+                  )}
 
                   {/* Right: view mode + theme + divider + export + discard */}
                   <div className="flex items-center gap-1.5 shrink-0">

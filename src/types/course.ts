@@ -74,6 +74,8 @@ export interface Slide {
   mediaUrl?: string | null;
   floatingMedia?: FloatingImage[];
   imagePlaceholder?: boolean;
+  /** AI-generated banner image data URL for title/cover slides */
+  coverImage?: string;
   voiceOverText?: string;
   voiceOverUrl?: string;
   interactions?: Interaction[];
