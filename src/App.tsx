@@ -827,11 +827,11 @@ export default function App() {
     if (currentSlide) {
       player.loadSlide(
         currentSlide.id,
-        currentSlide.voiceOverUrl || (currentSlide as any).audioUrl || currentSyntheticUrl || null,
-
-        voiceOverEnabled && !currentSlide.voiceOverUrl && !currentSyntheticUrl
-          ? (currentSlide.voiceOverText || currentSlide.narration || null)
-          : null
+        // AI audio only — never fall back to browser TTS
+        voiceOverEnabled
+          ? (currentSlide.voiceOverUrl || (currentSlide as any).audioUrl || currentSyntheticUrl || null)
+          : null,
+        null  // ttsText always null: slides are silent while AI audio loads, then auto-play
       );
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1236,36 +1236,10 @@ export default function App() {
       setCourse(finalCourse);
       setOriginalCourse(finalCourse);
 
-      // â€”â€” Pre-generate Cover + Player Tour audio (in parallel) BEFORE showing preview â€”â€”
-      // This guarantees the selected AI voice plays from slide 1 â€” no robotic browser TTS.
-      const initialSyntheticMap: Record<string, string> = {};
-      if (voiceOverEnabled) {
-        try {
-          const { generateSlideTTS: genSlideTTS } = await import('./services/ttsService');
-          const criticalSlides = [
-            {
-              id: '__cover__',
-              text: `Welcome to ${finalCourse.title}. ${finalCourse.description || ''}`.trim(),
-            },
-            {
-              id: '__player-tour__',
-              text: 'Before we begin, take a moment to explore the player controls. Hover over each card to see the corresponding element highlighted in the player preview.',
-            },
-          ];
-          // Run both in parallel to minimise the pre-preview wait (~1â€“3 s total)
-          await Promise.all(
-            criticalSlides.map(async ({ id, text }) => {
-              if (!text.trim()) return;
-              try {
-                initialSyntheticMap[id] = await genSlideTTS(text, { voice: ttsVoice as any });
-              } catch { /* non-fatal â€” slide will be silent until user presses Play */ }
-            })
-          );
-        } catch { /* ttsService unavailable â€” continue without pre-generated audio */ }
-      }
-      setSyntheticAudioMap(initialSyntheticMap);
+      // Show preview immediately - AI audio generated in background, arrives within ~2s
+      setSyntheticAudioMap({});
 
-      // â€”â€” Now show the preview â€” cover + player-tour audio is already loaded â€”â€”
+      // -- Show the preview --
       setStep('preview');
 
       // â€”â€” Kick off module image generation in background (non-blocking) â€”â€”
@@ -1282,6 +1256,19 @@ export default function App() {
         ;(async () => {
           try {
             const { generateSlideTTS: genSlideTTS } = await import('./services/ttsService');
+
+            // Cover + Player Tour FIRST (shown immediately when preview opens)
+            for (const { id, text } of [
+              { id: '__cover__', text: `Welcome to ${finalCourse.title}. ${finalCourse.description || ''}`.trim() },
+              { id: '__player-tour__', text: 'Before we begin, take a moment to explore the player controls. Hover over each card to see the corresponding element highlighted in the player preview.' },
+            ]) {
+              if (!text.trim()) continue;
+              try {
+                const url = await genSlideTTS(text, { voice: ttsVoice as any });
+                setSyntheticAudioMap(prev => ({ ...prev, [id]: url }));
+              } catch { /* non-fatal */ }
+            }
+
             const moduleSynthetics: Array<{ id: string; text: string }> = (finalCourse.modules || []).flatMap(
               (m: any, idx: number) => {
                 const modNum = idx + 1;

@@ -11,31 +11,19 @@ interface ModuleCoverSlideProps {
   theme: Theme;
 }
 
-
 function getModuleColor(n: number): string {
   return MODULE_COLORS[(n - 1) % MODULE_COLORS.length];
 }
 
-/**
- * Prevent one-word-hanging: if the title has more than 2 words and wrapping
- * would leave a single word on the last line, we return the full title as-is
- * and let the container wrap it naturally with enough width.
- * The "Module N" label is on its own row, so the title gets a full row.
- */
-function getTitleLines(title: string): string {
-  // Remove any leading "Module N — " prefix if present (it's shown separately)
-  return title.replace(/^Module\s+\d+\s*[—\-]\s*/i, '').trim() || title;
+/** Remove leading "Module N — " prefix if present; it's shown separately. */
+function cleanModuleTitle(title: string): string {
+  return title.replace(/^Module\s+\d+\s*[—\-–]\s*/i, '').trim() || title;
 }
 
-/**
- * Prevents a single "widow" word hanging alone on the last line.
- * Replaces the last space with a non-breaking space so the last two words
- * always stay together on the same line.
- */
+/** Prevent a single orphan word on the last line. */
 function preventWidow(text: string): string {
   const words = text.trim().split(/\s+/);
-  if (words.length < 3) return text; // Nothing to prevent with 1-2 words
-  // Replace the space before the last word with \u00A0
+  if (words.length < 3) return text;
   return words.slice(0, -1).join(' ') + '\u00A0' + words[words.length - 1];
 }
 
@@ -45,84 +33,102 @@ export const ModuleCoverSlide: React.FC<ModuleCoverSlideProps> = ({
   description,
   theme,
 }) => {
-  const accent    = getModuleColor(moduleNumber);
-  const darkPanel = theme === 'dark' ? '#0a0f1e' : '#1a1a2e';
-  const cleanTitle = preventWidow(getTitleLines(moduleTitle));
+  const accent   = getModuleColor(moduleNumber);
+  const isDark   = theme !== 'light';
+  const cleanTitle = preventWidow(cleanModuleTitle(moduleTitle));
+
+  // Background: dark navy (dark mode) or very dark indigo (light mode)
+  const bg = isDark ? '#0a0f1e' : '#1e1b4b';
 
   return (
-    <div className="w-full h-full flex flex-row overflow-hidden">
-      {/* ── Left dark panel ───────────────────────────────────── */}
-      <motion.div
-        className="relative flex items-center justify-center overflow-hidden"
-        style={{ width: '40%', flexShrink: 0, backgroundColor: darkPanel }}
-        initial={{ scaleX: 0, originX: 0 }}
-        animate={{ scaleX: 1 }}
-        transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-      >
-        {/* Giant module number — FILLED with accent color */}
-        <motion.div
-          className="select-none pointer-events-none font-black text-center"
-          style={{
-            fontSize: 'clamp(8rem, 22vw, 16rem)',
-            lineHeight: 1,
-            color: accent,           // ← solid fill, not just stroke
-            opacity: 0.85,           // slight transparency so it feels embedded
-          }}
-          initial={{ opacity: 0, scale: 0.5 }}
-          animate={{ opacity: 0.85, scale: 1 }}
-          transition={{ duration: 0.5, delay: 0.25, ease: [0.22, 1, 0.36, 1] }}
-        >
-          {moduleNumber}
-        </motion.div>
-      </motion.div>
+    <div
+      className="w-full h-full flex flex-col items-center justify-center relative overflow-hidden"
+      style={{ backgroundColor: bg }}
+    >
+      {/* ── Subtle accent gradient bar at the top ──────────────────────── */}
+      <div
+        className="absolute top-0 left-0 right-0"
+        style={{ height: '4px', background: accent }}
+      />
 
-      {/* ── Right accent panel ────────────────────────────────── */}
-      <motion.div
-        className="flex-1 flex flex-col"
-        style={{ backgroundColor: accent }}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.35, delay: 0.35 }}
+      {/* ── Faint large number watermark (very subtle, bottom-right) ───── */}
+      <div
+        className="absolute select-none pointer-events-none font-black"
+        style={{
+          fontSize: 'clamp(10rem, 28vw, 22rem)',
+          lineHeight: 1,
+          color: accent,
+          opacity: 0.06,
+          bottom: '-2rem',
+          right: '-1rem',
+        }}
       >
-        {/* Centered content block */}
-        <div className="flex-1 flex flex-col justify-center px-10 py-8">
-          {/* "Module N" label — always its own line */}
-          <motion.div
-            className="text-white/70 font-bold uppercase tracking-widest text-sm mb-3"
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.45 }}
+        {moduleNumber}
+      </div>
+
+      {/* ── Centered content ─────────────────────────────────────────────── */}
+      <div className="relative z-10 flex flex-col items-center text-center px-12 max-w-3xl">
+
+        {/* "MODULE 2" pill label */}
+        <motion.div
+          className="flex items-center gap-2 mb-6"
+          initial={{ opacity: 0, y: -12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+        >
+          {/* Circled number */}
+          <div
+            className="w-8 h-8 rounded-full flex items-center justify-center text-white font-black text-sm shrink-0"
+            style={{ backgroundColor: accent }}
+          >
+            {moduleNumber}
+          </div>
+          <span
+            className="text-xs font-bold uppercase tracking-widest"
+            style={{ color: accent }}
           >
             Module {moduleNumber}
-          </motion.div>
+          </span>
+        </motion.div>
 
-          {/* Module title — on its own full-width row, no hanging risk */}
-          <motion.h2
-            className="font-extrabold text-white leading-tight"
-            style={{
-              fontSize: 'clamp(1.6rem, 3.5vw, 2.8rem)',
-              wordBreak: 'break-word',
-              hyphens: 'auto',
-            }}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.5 }}
+        {/* Module title — full width, horizontal, centered */}
+        <motion.h1
+          className="font-extrabold text-white text-center leading-tight"
+          style={{
+            fontSize: 'clamp(1.8rem, 4.5vw, 3.4rem)',
+            letterSpacing: '-0.01em',
+            wordBreak: 'break-word',
+            hyphens: 'auto',
+          }}
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45, delay: 0.12, ease: [0.22, 1, 0.36, 1] }}
+        >
+          {cleanTitle}
+        </motion.h1>
+
+        {/* Optional description */}
+        {description && (
+          <motion.p
+            className="mt-5 text-white/60 leading-relaxed max-w-lg"
+            style={{ fontSize: 'clamp(0.85rem, 1.4vw, 1rem)' }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.35, delay: 0.3 }}
           >
-            {cleanTitle}
-          </motion.h2>
+            {description}
+          </motion.p>
+        )}
 
-          {description && (
-            <motion.p
-              className="mt-4 text-white/70 text-sm leading-relaxed max-w-xs"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.3, delay: 0.65 }}
-            >
-              {description}
-            </motion.p>
-          )}
-        </div>
-      </motion.div>
+        {/* Thin accent divider below title */}
+        <motion.div
+          className="mt-8 rounded-full"
+          style={{ height: '3px', backgroundColor: accent, width: '60px' }}
+          initial={{ scaleX: 0 }}
+          animate={{ scaleX: 1 }}
+          transition={{ duration: 0.4, delay: 0.35, ease: [0.22, 1, 0.36, 1] }}
+        />
+      </div>
     </div>
   );
 };
