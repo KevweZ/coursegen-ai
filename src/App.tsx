@@ -3869,9 +3869,6 @@ export default function App() {
                        />
                         </motion.div>
                        </AnimatePresence>
-                     </div>{/* end inner content */}
-                     </div>{/* end accent+content row */}
-
 
                       {/* Closed Caption Overlay - above player bar */}
                       {showCC && player.hasAudio && (
@@ -3882,6 +3879,9 @@ export default function App() {
                           isPlaying={player.isPlaying}
                         />
                       )}
+                     </div>{/* end inner content */}
+                     </div>{/* end accent+content row */}
+
 
                      {/* Learner Player Navigation Bar â€” sticky at bottom in full-screen mode */}
                     <div className={cn(
