@@ -3181,7 +3181,7 @@ export default function App() {
                                 theme === 'light' ? 'bg-white text-slate-900' : theme === 'unified' ? 'bg-indigo-950 text-slate-100' : 'bg-slate-900 text-white'
                               )
                         )}
-                        style={viewMode === 'desktop' && scaler.scale > 1.05
+                        style={viewMode === 'desktop' && (scaler.scale > 1.05 || scaler.scale < 0.98)
                           ? { zoom: Math.min(scaler.scale, 1.8) }
                           : undefined
                         }
