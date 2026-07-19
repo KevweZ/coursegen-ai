@@ -3142,15 +3142,24 @@ export default function App() {
                     theme === 'light' ? 'bg-white' : theme === 'unified' ? 'bg-indigo-950' : 'bg-slate-900'
                   )}
                   style={viewMode === 'desktop'
-                    ? playerConfig.playerResolution !== 'full'
-                      ? {
-                          borderRadius: '1rem',
-                          overflow: 'hidden',
-                          boxShadow: '0 25px 50px -12px rgba(0,0,0,0.4)',
-                          border: '1px solid rgba(255,255,255,0.12)',
-                          margin: '0.75rem',
-                        }
-                      : undefined
+                    ? {
+                        ...(playerConfig.playerResolution !== 'full'
+                          ? {
+                              borderRadius: '1rem',
+                              overflow: 'hidden',
+                              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.4)',
+                              border: '1px solid rgba(255,255,255,0.12)',
+                              margin: '0.75rem',
+                            }
+                          : {}),
+                        // Scale the ENTIRE frame (content + player bar) to fit the
+                        // available screen space -- previously only the inner slide
+                        // content was zoomed, leaving the player bar unscaled and
+                        // causing it to overflow/crop on smaller screens.
+                        ...(scaler.scale > 1.05 || scaler.scale < 0.98
+                          ? { zoom: Math.min(scaler.scale, 1.8) }
+                          : {}),
+                      }
                     : undefined
                   }>
                     {/* â”€â”€ Content zone + accent strip â”€â”€ */}
@@ -3181,10 +3190,6 @@ export default function App() {
                                 theme === 'light' ? 'bg-white text-slate-900' : theme === 'unified' ? 'bg-indigo-950 text-slate-100' : 'bg-slate-900 text-white'
                               )
                         )}
-                        style={viewMode === 'desktop' && (scaler.scale > 1.05 || scaler.scale < 0.98)
-                          ? { zoom: Math.min(scaler.scale, 1.8) }
-                          : undefined
-                        }
                       >
                         {!isFullBleed && (
                           <div className="w-[120%] h-[120%] absolute -top-[10%] -left-[10%] pointer-events-none opacity-[0.03] mix-blend-overlay"></div>
