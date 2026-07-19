@@ -59,7 +59,11 @@ export const defaultPlayerConfig: PlayerConfig = {
   showPrevNext: true,
   allowFullscreen: true,
   logoUrl: null,
-  playerResolution: 'full',
+  // '16:9' uses the fixed-design-size + CSS transform scale-to-fit technique
+  // (see useScaleToFit.ts), which is layout-safe and cannot overflow/crop its
+  // container. 'full' mode has its own independent overflow issues, so new
+  // courses default to '16:9' to match the known-good Demo Course setup.
+  playerResolution: '16:9',
   navigationMode: 'free',
   examPresentationMode: 'one-at-a-time',
   accentMode: 'module',
