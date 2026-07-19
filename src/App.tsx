@@ -586,10 +586,12 @@ export default function App() {
   const [extractedFileText, setExtractedFileText] = useState<string>('');
   const [voiceOverEnabled, setVoiceOverEnabled] = useState(true);
 
-  // Articulate-style scale-to-fit: always called at hook level regardless of step
+  // Articulate-style scale-to-fit: always called at hook level regardless of step.
+  // 'full' resolution mode intentionally fills the available space responsively
+  // (no fixed aspect-ratio box), so it is excluded from scaling.
   const scaler = useScaleToFit(
     playerConfig?.playerResolution ?? '16:9',
-    step === 'preview' && viewMode === 'desktop' // active for ALL resolution modes
+    step === 'preview' && viewMode === 'desktop' && playerConfig?.playerResolution !== 'full'
   );
   const [ttsVoice, setTtsVoice] = useState<string>('alloy');
   // Per-slide TTS regeneration state
@@ -3123,7 +3125,8 @@ export default function App() {
                   <div
                     ref={viewMode === 'desktop' ? scaler.containerRef : undefined}
                     className={cn(
-                      "bg-cover bg-center relative flex flex-col flex-1 overflow-hidden"
+                      "bg-cover bg-center relative flex flex-col flex-1 overflow-hidden",
+                      viewMode === 'desktop' && playerConfig.playerResolution !== 'full' ? 'items-center justify-center' : undefined
                     )}
                     style={{
                       backgroundImage: courseBg && !courseBg.startsWith('#') ? `url('${courseBg}')` : undefined,
@@ -3133,33 +3136,28 @@ export default function App() {
                     {/* Overlay only for image backgrounds */}
                     {courseBg && !courseBg.startsWith('#') && <div className="absolute inset-0 bg-slate-900/50 pointer-events-none" />}
 
-                  {/* Slide frame â€” aspect ratio driven by playerConfig.playerResolution */}
+                  {/* Slide frame â€” aspect ratio driven by playerConfig.playerResolution.
+                      16:9 / 4:3 modes render at a FIXED design size (scaler.frameStyle) and are
+                      visually scaled to fit with CSS transform -- transform never affects layout,
+                      so this can never overflow/crop its container the way the old `zoom`-based
+                      approach did (which double-scaled an already-100%-wide flex box). 'full'
+                      mode intentionally skips scaling and fills the available space directly. */}
                   <div className={cn(`theme-${theme}`,
                     "transition-all duration-500 flex flex-col relative z-10",
                     viewMode === 'desktop'
-                      ? 'flex-1 overflow-hidden w-full'
+                      ? (playerConfig.playerResolution !== 'full' ? 'overflow-hidden' : 'flex-1 overflow-hidden w-full')
                       : 'shadow-2xl overflow-hidden w-[375px] h-[667px] my-4 rounded-[3rem] border-[8px] border-gray-800',
                     theme === 'light' ? 'bg-white' : theme === 'unified' ? 'bg-indigo-950' : 'bg-slate-900'
                   )}
                   style={viewMode === 'desktop'
-                    ? {
-                        ...(playerConfig.playerResolution !== 'full'
-                          ? {
-                              borderRadius: '1rem',
-                              overflow: 'hidden',
-                              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.4)',
-                              border: '1px solid rgba(255,255,255,0.12)',
-                              margin: '0.75rem',
-                            }
-                          : {}),
-                        // Scale the ENTIRE frame (content + player bar) to fit the
-                        // available screen space -- previously only the inner slide
-                        // content was zoomed, leaving the player bar unscaled and
-                        // causing it to overflow/crop on smaller screens.
-                        ...(scaler.scale > 1.05 || scaler.scale < 0.98
-                          ? { zoom: Math.min(scaler.scale, 1.8) }
-                          : {}),
-                      }
+                    ? (playerConfig.playerResolution !== 'full'
+                        ? {
+                            ...scaler.frameStyle,
+                            borderRadius: '1rem',
+                            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.4)',
+                            border: '1px solid rgba(255,255,255,0.12)',
+                          }
+                        : undefined)
                     : undefined
                   }>
                     {/* â”€â”€ Content zone + accent strip â”€â”€ */}
