@@ -2974,8 +2974,12 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* â”€â”€ Row 2: Editing tools strip â”€â”€ */}
-                <div className="h-9 hidden md:flex items-center justify-end gap-1 pb-1">
+                {/* â”€â”€ Row 2: Editing tools strip â”€â”€
+                     flex-wrap (instead of a fixed h-9 single line) guarantees no button is ever
+                     silently clipped off the right edge on narrower viewports -- it wraps to a
+                     second line instead of overflowing invisibly past the header's overflow-hidden
+                     boundary. */}
+                <div className="min-h-9 hidden md:flex items-center justify-end flex-wrap gap-1 pb-1">
                   {/* Undo */}
                   <button
                     title={undoHistory.length > 0 ? `Undo (${undoHistory.length} step${undoHistory.length !== 1 ? 's' : ''} available)` : 'Nothing to undo'}
@@ -3789,16 +3793,12 @@ export default function App() {
 
                            </div>
 
-                           {/* Slide media tools â€” Edit/Reset/Upload are in the top bar */}
-                           <div className="absolute top-0 right-0 z-[100] flex flex-wrap max-w-sm justify-end gap-2 shrink-0">
-                             {sourceImages.length > 0 && (
-                               <button 
-                                 onClick={() => setShowImageGalleryForSlide(currentSlide.id)}
-                                 className="px-3 py-1.5 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 rounded-lg transition-colors flex items-center gap-2"
-                                 title="Select from Source Document"
-                               ><ImageIcon className="w-4 h-4"/><span className="text-xs font-bold">Source Image</span></button>
-                             )}
-
+                           {/* Slide media tools â€” Edit/Reset/Upload are in the top bar.
+                               "Source Image" was removed from here: it duplicated the identical
+                               "Source Image" option already in the top bar's Add Image dropdown,
+                               and this on-slide absolutely-positioned copy was prone to being
+                               clipped at the slide edge on some layouts. */}
+                           <div className="absolute top-2 right-2 z-[100] flex flex-wrap max-w-sm justify-end gap-2 shrink-0">
                              {currentSlide?.mediaUrl && (
                                <button 
                                  onClick={() => handleUpdateSlideMedia(currentSlide.id, { mediaUrl: null })}
