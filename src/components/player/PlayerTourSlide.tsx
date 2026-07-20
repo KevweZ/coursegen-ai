@@ -57,24 +57,38 @@ const REPLICA: Record<Theme, {
   hiText: string; ltText: string; mdText: string;
   border: string; chipBg: string; chipBorder: string;
   accordionOpenText: string; navBtnBg: string; seekTrack: string;
+  // Sidebar tokens — the real CourseNavSidebar follows the course theme too
+  // (light theme = white sidebar with dark text), so the replica must match.
+  sideBg: string; sideBorder: string; sideHeaderText: string; sideChipBg: string;
+  sideChipText: string; sideActiveBg: string; sideActiveText: string;
+  sideModuleText: string; sideInactiveText: string;
 }> = {
   dark: {
     bg: '#0f172a', bar: '#111827', card: '#1e293b',
     hiText: '#f1f5f9', ltText: '#94a3b8', mdText: '#64748b',
     border: 'rgba(255,255,255,0.07)', chipBg: '#1e293b', chipBorder: '#334155',
     accordionOpenText: '#c7d2fe', navBtnBg: 'rgba(255,255,255,0.07)', seekTrack: 'rgba(255,255,255,0.1)',
+    sideBg: '#0d1117', sideBorder: 'rgba(255,255,255,0.06)', sideHeaderText: '#e2e8f0',
+    sideChipBg: '#1e293b', sideChipText: '#94a3b8', sideActiveBg: 'rgba(99,102,241,0.2)',
+    sideActiveText: '#a5b4fc', sideModuleText: '#e2e8f0', sideInactiveText: '#64748b',
   },
   light: {
     bg: '#ffffff', bar: '#f8fafc', card: '#ffffff',
     hiText: '#0f172a', ltText: '#475569', mdText: '#94a3b8',
     border: 'rgba(0,0,0,0.08)', chipBg: '#f1f5f9', chipBorder: '#e2e8f0',
     accordionOpenText: '#4338ca', navBtnBg: 'rgba(0,0,0,0.05)', seekTrack: 'rgba(0,0,0,0.1)',
+    sideBg: '#ffffff', sideBorder: '#e2e8f0', sideHeaderText: '#1e293b',
+    sideChipBg: '#f1f5f9', sideChipText: '#64748b', sideActiveBg: '#eef2ff',
+    sideActiveText: '#4338ca', sideModuleText: '#334155', sideInactiveText: '#64748b',
   },
   unified: {
     bg: '#1e1b4b', bar: '#171331', card: '#2e1065',
     hiText: '#e0e7ff', ltText: '#a5b4fc', mdText: '#8b7cc9',
     border: 'rgba(167,139,250,0.15)', chipBg: '#2e1065', chipBorder: '#4c1d95',
     accordionOpenText: '#c7d2fe', navBtnBg: 'rgba(167,139,250,0.1)', seekTrack: 'rgba(167,139,250,0.15)',
+    sideBg: '#1e1033', sideBorder: 'rgba(167,139,250,0.15)', sideHeaderText: '#e0d5fc',
+    sideChipBg: '#2e1065', sideChipText: '#a5b4fc', sideActiveBg: 'rgba(124,58,237,0.3)',
+    sideActiveText: '#e0d5fc', sideModuleText: '#c4b5fd', sideInactiveText: '#8b7cc9',
   },
 };
 
@@ -84,13 +98,8 @@ const REPLICA: Record<Theme, {
 function PlayerReplica({ theme, hovered, activeZone }: { theme: Theme; hovered: string | null; activeZone: typeof ZONES[0] | null }) {
   const acc  = '#6366f1';
   const r    = REPLICA[theme] ?? REPLICA.dark;
-  const { bg, bar, card, hiText, ltText, mdText, border, chipBg, chipBorder, accordionOpenText, navBtnBg, seekTrack } = r;
-  // Sidebar is always dark — it mirrors the real player's TOC chrome, which
-  // never follows the course theme.
-  const side       = '#0d1117';
-  const sideCard   = '#1e293b';
-  const sideLt     = '#94a3b8';
-  const sideMd     = '#64748b';
+  const { bg, bar, card, hiText, ltText, mdText, border, chipBg, chipBorder, accordionOpenText, navBtnBg, seekTrack,
+    sideBg, sideBorder, sideHeaderText, sideChipBg, sideChipText, sideActiveBg, sideActiveText, sideModuleText, sideInactiveText } = r;
 
   const hColor = (id: string) => ZONES.find(z => z.id === id)?.color ?? acc;
   const h = (id: string) => hovered === id;
@@ -138,30 +147,30 @@ function PlayerReplica({ theme, hovered, activeZone }: { theme: Theme; hovered: 
       {/* BODY */}
       <div className="flex-1 flex min-h-0">
 
-        {/* SIDEBAR — always dark, matches the real player's TOC chrome */}
+        {/* SIDEBAR — follows the course theme, matching the real player's TOC */}
         <div className="shrink-0 flex flex-col overflow-hidden"
           style={{ ...sectionHL(h('sidebar'), hColor('sidebar')),
             width:'190px',
-            backgroundColor: h('sidebar') ? `color-mix(in srgb, ${hColor('sidebar')} 6%, ${side})` : side,
-            borderRight: h('sidebar') ? `2px solid ${hColor('sidebar')}` : '2px solid rgba(255,255,255,0.06)',
+            backgroundColor: h('sidebar') ? `color-mix(in srgb, ${hColor('sidebar')} 6%, ${sideBg})` : sideBg,
+            borderRight: h('sidebar') ? `2px solid ${hColor('sidebar')}` : `2px solid ${sideBorder}`,
             transition:'all 0.18s' }}>
           <div className="flex items-center justify-between px-3 py-2.5"
-            style={{ borderBottom:'1px solid rgba(255,255,255,0.06)' }}>
-            <span style={{ color:'#e2e8f0', fontSize:'9.5px', fontWeight:800, letterSpacing:'0.12em' }}>
+            style={{ borderBottom:`1px solid ${sideBorder}` }}>
+            <span style={{ color:sideHeaderText, fontSize:'9.5px', fontWeight:800, letterSpacing:'0.12em' }}>
               TABLE OF CONTENTS
             </span>
-            <div className="px-1.5 py-0.5 rounded" style={{ background:sideCard }}>
-              <span style={{ color:sideLt, fontSize:'9px', fontWeight:600 }}>28</span>
+            <div className="px-1.5 py-0.5 rounded" style={{ background:sideChipBg }}>
+              <span style={{ color:sideChipText, fontSize:'9px', fontWeight:600 }}>28</span>
             </div>
           </div>
           <div className="flex-1 overflow-y-auto py-1">
             {TOC.map((row,i) => (
               <div key={i} className="flex items-center justify-between mx-1.5 my-px px-2 py-1.5 rounded-md"
                 style={{ marginLeft:row.module?'6px':'18px',
-                  background:row.active?`${acc}22`:'transparent',
+                  background:row.active?sideActiveBg:'transparent',
                   border:row.active?`1px solid ${acc}44`:'1px solid transparent',
                   marginTop:row.module&&i>0?'4px':undefined }}>
-                <span style={{ color:row.active?'#a5b4fc':row.module?'#e2e8f0':sideMd,
+                <span style={{ color:row.active?sideActiveText:row.module?sideModuleText:sideInactiveText,
                   fontSize:row.module?'9.5px':'9px',
                   fontWeight:row.module?700:row.active?600:400,
                   letterSpacing:row.module?'0.06em':0,
