@@ -1,3 +1,3 @@
 # Cloudflare Workers — Routing Rules
-# API proxy to Railway is handled by worker.js (not _redirects)
+# API proxy to Render is handled by worker.js (not _redirects)
 # _redirects does not support external URL proxying in Workers mode

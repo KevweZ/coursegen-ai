@@ -2,10 +2,11 @@
  * paymentService.ts
  * ─────────────────────────────────────────────────────────────────────────────
  * Frontend service layer for all Stripe payment operations.
- * Talks to the Railway backend proxy (never directly to Stripe from the client).
+ * Talks to the Render backend via the Cloudflare Worker's /api/* proxy
+ * (never directly to Stripe from the client).
  *
  * Security model:
- *   - Secret key lives on Railway (server.js) ONLY
+ *   - Secret key lives on Render (server.js) ONLY
  *   - Publishable key used by browser only for display (not used here directly)
  *   - Checkout sessions created server-side, user redirected to Stripe-hosted page
  * ─────────────────────────────────────────────────────────────────────────────
@@ -13,7 +14,7 @@
 
 const API_BASE =
   import.meta.env.MODE === 'production'
-    ? '' // same origin in production (Railway serves the frontend)
+    ? '' // same origin in production (Cloudflare Worker serves the frontend and proxies /api/* to Render)
     : 'http://localhost:3001';
 
 // ── Plan IDs that map to Stripe Price IDs on the backend ─────────────────────

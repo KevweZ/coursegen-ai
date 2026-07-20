@@ -47,7 +47,7 @@ const OPENAI_API_KEY    = process.env.OPENAI_API_KEY ?? '';
 const STRIPE_SECRET_KEY      = process.env.STRIPE_SECRET_KEY ?? '';
 const STRIPE_WEBHOOK_SECRET  = process.env.STRIPE_WEBHOOK_SECRET ?? '';
 
-// Map frontend plan IDs → Stripe Price IDs (set in Railway env vars)
+// Map frontend plan IDs → Stripe Price IDs (set in Render env vars)
 const STRIPE_PRICE_MAP = {
   teacher_pro:      process.env.STRIPE_PRICE_TEACHER_PRO      ?? '',
   pro_creator:      process.env.STRIPE_PRICE_PRO_CREATOR      ?? '',
@@ -102,7 +102,7 @@ app.use((req, res, next) => {
 // ─── 3. HTTPS Enforcement (production only) ─────────────────────────────────
 if (isProd) {
   app.use((req, res, next) => {
-    // Trust proxy (Cloud Run, Heroku, Railway etc. terminates TLS upstream)
+    // Trust proxy (Cloud Run, Heroku, Render etc. terminates TLS upstream)
     const proto = req.headers['x-forwarded-proto'];
     if (proto && proto !== 'https') {
       return res.redirect(301, `https://${req.headers.host}${req.url}`);
@@ -561,7 +561,7 @@ app.post('/api/ai', aiRateLimit, async (req, res) => {
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL ?? '').toLowerCase();
 
 // Try multiple env var names for the service key — SUPA_ADMIN_KEY takes priority
-// so we can set a fresh variable in Railway if SUPABASE_SERVICE_KEY is corrupted.
+// so we can set a fresh variable in Render if SUPABASE_SERVICE_KEY is corrupted.
 function getSupabaseKey() {
   return process.env.SUPA_ADMIN_KEY
       || process.env.SUPABASE_SERVICE_KEY

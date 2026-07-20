@@ -26,7 +26,7 @@ CREATE POLICY "Users can view their own entitlements"
   FOR SELECT
   USING (auth.uid() = user_id);
 
--- The server (Railway) uses the service key which bypasses RLS — no INSERT policy needed
+-- The server (Render) uses the service key which bypasses RLS — no INSERT policy needed
 -- but add one for completeness (service key will upsert via admin client):
 CREATE POLICY "Service role can manage all entitlements"
   ON public.user_entitlements

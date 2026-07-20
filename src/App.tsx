@@ -484,7 +484,9 @@ export default function App() {
   
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [viewMode, setViewMode] = useState<'desktop' | 'mobile'>('desktop');
-  const [theme, setTheme] = useState<'light' | 'dark' | 'unified'>('dark');
+  // 'light' is the default course theme: white background, black body text,
+  // clean minimal slide layouts (per global visual redesign direction).
+  const [theme, setTheme] = useState<'light' | 'dark' | 'unified'>('light');
   const [courseBg, setCourseBg] = useState<string | null>(null);
   const [scormVersion, setScormVersion] = useState<ScormVersion>('1.2');
   const [isExporting, setIsExporting] = useState(false);
@@ -1566,6 +1568,10 @@ export default function App() {
         <div className="absolute inset-0 opacity-20 mix-blend-overlay"></div>
       </div>
 
+      {/* Global marketing/nav header — hidden during course preview so the player
+          gets the full viewport height (more height => bigger scale-to-fit => a
+          visibly wider/larger player frame, not just taller). */}
+      {step !== 'preview' && (
       <header className="relative z-[600] border-b border-slate-800/80 bg-slate-900/50 backdrop-blur-xl">
         <div className="container mx-auto px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3 relative group cursor-pointer" onClick={() => setStep('home')}>
@@ -1646,7 +1652,7 @@ export default function App() {
                           onClick={() => {
                             setAdminDropdownOpen(false);
                             setCourse(DUMMY_COURSE); setOriginalCourse(DUMMY_COURSE);
-                            setCurrentSlideIndex(0); setQuizState({}); setTheme('dark'); setViewMode('desktop');
+                            setCurrentSlideIndex(0); setQuizState({}); setTheme('light'); setViewMode('desktop');
                             setFloatingImagesMap({}); setSyntheticSlideOverrides({}); setCourseBg('/eLearning Template Backgrounds/Neutral/blue background coffee books_01.png');
                             setIsSandboxMode(true); setShowPlayerProperties(false);
                             setExamQuestions(DUMMY_EXAM_QUESTIONS); setExamConfig(DUMMY_COURSE.examConfig!);
@@ -1711,6 +1717,7 @@ export default function App() {
           </div>
         </div>
       </header>
+      )}
 
       <main className="relative">
         <AnimatePresence mode="wait">
@@ -2789,7 +2796,9 @@ export default function App() {
           )}
 
           {step === 'preview' && course && (
-            <motion.div key="preview" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed top-20 left-0 right-0 bottom-0 z-50">
+            // top-0 (not top-20) -- the global header is hidden during preview (see above),
+            // so the player now owns the full viewport height.
+            <motion.div key="preview" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed top-0 left-0 right-0 bottom-0 z-50">
               {/* Auto-landscape wrapper: CSS-rotates 90° on mobile portrait so the player
                   appears landscape immediately — no user action required. On desktop or
                   physical landscape the wrapper is a transparent full-size container. */}

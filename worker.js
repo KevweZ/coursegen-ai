@@ -2,7 +2,7 @@
  * worker.js — NexCourse AI Edge Worker
  *
  * Runs at Cloudflare's edge (nexcourse.ai). Responsibilities:
- *  - Proxy /api/* requests to the Railway backend (server.js)
+ *  - Proxy /api/* requests to the Render backend (server.js)
  *  - Serve all other requests from the static Vite build (via env.ASSETS)
  *  - SPA fallback: serve index.html for unknown paths (React Router)
  */
