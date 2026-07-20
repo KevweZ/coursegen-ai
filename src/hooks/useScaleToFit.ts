@@ -40,16 +40,16 @@ export function useScaleToFit(resolution: Resolution | string, active: boolean =
     const h = rect.height;
     if (w < 10 || h < 10) return; // skip if layout not ready
 
-    // Reserve a fixed pixel safety margin in addition to the percentage factor
-    // below -- this protects against late-appearing scrollbars, sidebar width
-    // changes after content loads, and sub-pixel rounding, all of which were
-    // still letting player-bar controls (e.g. the CC button) sit flush against
-    // -- and get clipped at -- the true container edge.
-    const SAFETY_PX = 16;
+    // Reserve a small fixed pixel safety margin in addition to the percentage
+    // factor below -- this protects against late-appearing scrollbars, sidebar
+    // width changes after content loads, and sub-pixel rounding, without
+    // wasting large amounts of screen space around the frame.
+    const SAFETY_PX = 8;
     const scaleX = (w - SAFETY_PX) / design.w;
     const scaleY = (h - SAFETY_PX) / design.h;
-    // Use 0.96 factor (extra margin) so the frame never clips at the edges
-    setScale(Math.min(scaleX, scaleY) * 0.96);
+    // 0.99 factor -- frame fills nearly the entire available area while still
+    // leaving a hair of breathing room so nothing sits flush against the edge.
+    setScale(Math.min(scaleX, scaleY) * 0.99);
   }, [active, design.w, design.h]);
 
   // Schedule recalculate via rAF so layout is always settled before measuring
