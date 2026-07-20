@@ -49,17 +49,48 @@ const ACC = [
   { title:'Practical Techniques', open:false, body:'' },
 ];
 
+/* ── Replica palette — canvas/top/bottom bars follow the course theme; the
+   sidebar stays permanently dark to match the real player's chrome, which
+   never changes with the course theme. ────────────────────────────────── */
+const REPLICA: Record<Theme, {
+  bg: string; bar: string; card: string;
+  hiText: string; ltText: string; mdText: string;
+  border: string; chipBg: string; chipBorder: string;
+  accordionOpenText: string; navBtnBg: string; seekTrack: string;
+}> = {
+  dark: {
+    bg: '#0f172a', bar: '#111827', card: '#1e293b',
+    hiText: '#f1f5f9', ltText: '#94a3b8', mdText: '#64748b',
+    border: 'rgba(255,255,255,0.07)', chipBg: '#1e293b', chipBorder: '#334155',
+    accordionOpenText: '#c7d2fe', navBtnBg: 'rgba(255,255,255,0.07)', seekTrack: 'rgba(255,255,255,0.1)',
+  },
+  light: {
+    bg: '#ffffff', bar: '#f8fafc', card: '#ffffff',
+    hiText: '#0f172a', ltText: '#475569', mdText: '#94a3b8',
+    border: 'rgba(0,0,0,0.08)', chipBg: '#f1f5f9', chipBorder: '#e2e8f0',
+    accordionOpenText: '#4338ca', navBtnBg: 'rgba(0,0,0,0.05)', seekTrack: 'rgba(0,0,0,0.1)',
+  },
+  unified: {
+    bg: '#1e1b4b', bar: '#171331', card: '#2e1065',
+    hiText: '#e0e7ff', ltText: '#a5b4fc', mdText: '#8b7cc9',
+    border: 'rgba(167,139,250,0.15)', chipBg: '#2e1065', chipBorder: '#4c1d95',
+    accordionOpenText: '#c7d2fe', navBtnBg: 'rgba(167,139,250,0.1)', seekTrack: 'rgba(167,139,250,0.15)',
+  },
+};
+
 /* ══════════════════════════════════════════════════════════════════════════════
    PLAYER REPLICA — learner view only
 ══════════════════════════════════════════════════════════════════════════════ */
-function PlayerReplica({ hovered, activeZone }: { hovered: string | null; activeZone: typeof ZONES[0] | null }) {
+function PlayerReplica({ theme, hovered, activeZone }: { theme: Theme; hovered: string | null; activeZone: typeof ZONES[0] | null }) {
   const acc  = '#6366f1';
-  const bg   = '#0f172a';
-  const bar  = '#111827';
-  const side = '#0d1117';
-  const card = '#1e293b';
-  const lt   = '#94a3b8';
-  const md   = '#64748b';
+  const r    = REPLICA[theme] ?? REPLICA.dark;
+  const { bg, bar, card, hiText, ltText, mdText, border, chipBg, chipBorder, accordionOpenText, navBtnBg, seekTrack } = r;
+  // Sidebar is always dark — it mirrors the real player's TOC chrome, which
+  // never follows the course theme.
+  const side       = '#0d1117';
+  const sideCard   = '#1e293b';
+  const sideLt     = '#94a3b8';
+  const sideMd     = '#64748b';
 
   const hColor = (id: string) => ZONES.find(z => z.id === id)?.color ?? acc;
   const h = (id: string) => hovered === id;
@@ -80,34 +111,34 @@ function PlayerReplica({ hovered, activeZone }: { hovered: string | null; active
 
   return (
     <div className="w-full h-full flex flex-col overflow-hidden rounded-xl"
-      style={{ background:bg, border:'1.5px solid rgba(255,255,255,0.09)',
-        boxShadow:'0 32px 80px rgba(0,0,0,0.7)' }}>
+      style={{ background:bg, border:`1.5px solid ${border}`,
+        boxShadow:'0 32px 80px rgba(0,0,0,0.35)' }}>
 
       {/* TOP BAR */}
       <div className="shrink-0 flex items-center justify-between px-4"
         style={{ height:'42px', background:bar,
-          borderBottom:'1px solid rgba(255,255,255,0.07)' }}>
+          borderBottom:`1px solid ${border}` }}>
         <div className="flex items-center gap-2.5">
           <div className="w-6 h-6 rounded-md flex items-center justify-center"
             style={{ background:`linear-gradient(135deg,${acc},#818cf8)` }}>
             <span style={{ color:'#fff', fontSize:'10px', fontWeight:900 }}>N</span>
           </div>
-          <span style={{ color:'#e2e8f0', fontSize:'13px', fontWeight:700 }}>Demo Course</span>
-          <div className="px-2 py-0.5 rounded-md" style={{ background:'#1e293b', border:'1px solid #334155' }}>
-            <span style={{ color:'#64748b', fontSize:'10px', fontWeight:700, letterSpacing:'0.06em' }}>PREVIEW</span>
+          <span style={{ color:hiText, fontSize:'13px', fontWeight:700 }}>Demo Course</span>
+          <div className="px-2 py-0.5 rounded-md" style={{ background:chipBg, border:`1px solid ${chipBorder}` }}>
+            <span style={{ color:mdText, fontSize:'10px', fontWeight:700, letterSpacing:'0.06em' }}>PREVIEW</span>
           </div>
         </div>
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md"
-          style={{ background:'#1e293b', border:'1px solid #334155' }}>
-          <Monitor style={{ width:'12px', height:'12px', color:lt }} />
-          <span style={{ color:lt, fontSize:'10px', fontWeight:600 }}>Desktop</span>
+          style={{ background:chipBg, border:`1px solid ${chipBorder}` }}>
+          <Monitor style={{ width:'12px', height:'12px', color:ltText }} />
+          <span style={{ color:ltText, fontSize:'10px', fontWeight:600 }}>Desktop</span>
         </div>
       </div>
 
       {/* BODY */}
       <div className="flex-1 flex min-h-0">
 
-        {/* SIDEBAR */}
+        {/* SIDEBAR — always dark, matches the real player's TOC chrome */}
         <div className="shrink-0 flex flex-col overflow-hidden"
           style={{ ...sectionHL(h('sidebar'), hColor('sidebar')),
             width:'190px',
@@ -119,8 +150,8 @@ function PlayerReplica({ hovered, activeZone }: { hovered: string | null; active
             <span style={{ color:'#e2e8f0', fontSize:'9.5px', fontWeight:800, letterSpacing:'0.12em' }}>
               TABLE OF CONTENTS
             </span>
-            <div className="px-1.5 py-0.5 rounded" style={{ background:card }}>
-              <span style={{ color:lt, fontSize:'9px', fontWeight:600 }}>28</span>
+            <div className="px-1.5 py-0.5 rounded" style={{ background:sideCard }}>
+              <span style={{ color:sideLt, fontSize:'9px', fontWeight:600 }}>28</span>
             </div>
           </div>
           <div className="flex-1 overflow-y-auto py-1">
@@ -130,7 +161,7 @@ function PlayerReplica({ hovered, activeZone }: { hovered: string | null; active
                   background:row.active?`${acc}22`:'transparent',
                   border:row.active?`1px solid ${acc}44`:'1px solid transparent',
                   marginTop:row.module&&i>0?'4px':undefined }}>
-                <span style={{ color:row.active?'#a5b4fc':row.module?'#e2e8f0':md,
+                <span style={{ color:row.active?'#a5b4fc':row.module?'#e2e8f0':sideMd,
                   fontSize:row.module?'9.5px':'9px',
                   fontWeight:row.module?700:row.active?600:400,
                   letterSpacing:row.module?'0.06em':0,
@@ -143,33 +174,33 @@ function PlayerReplica({ hovered, activeZone }: { hovered: string | null; active
           </div>
         </div>
 
-        {/* CANVAS */}
+        {/* CANVAS — follows the course theme */}
         <div className="flex-1 flex flex-col min-w-0 p-4 gap-3 overflow-hidden"
           style={{ ...sectionHL(h('canvas'), hColor('canvas')),
             backgroundColor: h('canvas') ? `color-mix(in srgb, ${hColor('canvas')} 5%, ${bg})` : bg,
             transition:'all 0.18s' }}>
           <div>
-            <p style={{ color:'#f1f5f9', fontSize:'18px', fontWeight:800,
+            <p style={{ color:hiText, fontSize:'18px', fontWeight:800,
               letterSpacing:'-0.02em', marginBottom:'4px' }}>Active Listening</p>
             <div style={{ height:'2px', width:'100%', borderRadius:'2px',
               background:`linear-gradient(to right, ${acc}cc, transparent)` }} />
           </div>
-          <p style={{ color:lt, fontSize:'11px', marginTop:'-4px' }}>
+          <p style={{ color:ltText, fontSize:'11px', marginTop:'-4px' }}>
             Explore each section — click to expand
           </p>
           {ACC.map((item,i) => (
             <div key={i} className="rounded-lg overflow-hidden"
-              style={{ border:`1px solid ${item.open?`${acc}55`:'rgba(255,255,255,0.08)'}`,
+              style={{ border:`1px solid ${item.open?`${acc}55`:border}`,
                 background:item.open?`${acc}12`:card }}>
               <div className="flex items-center justify-between px-4 py-2.5">
-                <span style={{ color:item.open?'#c7d2fe':'#e2e8f0',
+                <span style={{ color:item.open?accordionOpenText:hiText,
                   fontSize:'11.5px', fontWeight:item.open?700:500 }}>{item.title}</span>
-                <ChevronDown style={{ width:'13px', height:'13px', color:item.open?'#818cf8':md,
+                <ChevronDown style={{ width:'13px', height:'13px', color:item.open?'#818cf8':mdText,
                   transform:item.open?'rotate(180deg)':'none', transition:'transform 0.2s' }} />
               </div>
               {item.open&&(
                 <div className="px-4 pb-3">
-                  <p style={{ color:lt, fontSize:'10.5px', lineHeight:1.6 }}>{item.body}</p>
+                  <p style={{ color:ltText, fontSize:'10.5px', lineHeight:1.6 }}>{item.body}</p>
                 </div>
               )}
             </div>
@@ -184,7 +215,7 @@ function PlayerReplica({ hovered, activeZone }: { hovered: string | null; active
                   initial={{ opacity:0, y:8 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0, y:4 }}
                   transition={{ duration:0.18 }}
                   style={{
-                    background: `color-mix(in srgb, ${activeZone.color} 10%, #0f172a)`,
+                    background: `color-mix(in srgb, ${activeZone.color} 10%, ${bg})`,
                     border: `1px solid ${activeZone.color}45`,
                     borderRadius: '10px',
                     padding: '10px 14px',
@@ -197,7 +228,7 @@ function PlayerReplica({ hovered, activeZone }: { hovered: string | null; active
                       {activeZone.label}
                     </span>
                   </div>
-                  <p style={{ color:'#cbd5e1', fontSize:'10.5px', lineHeight:1.6, margin:0 }}>
+                  <p style={{ color:ltText, fontSize:'10.5px', lineHeight:1.6, margin:0 }}>
                     {activeZone.desc}
                   </p>
                 </motion.div>
@@ -205,7 +236,7 @@ function PlayerReplica({ hovered, activeZone }: { hovered: string | null; active
                 <motion.p
                   key="placeholder"
                   initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
-                  style={{ color:md, fontSize:'10px', textAlign:'center', padding:'8px 0' }}
+                  style={{ color:mdText, fontSize:'10px', textAlign:'center', padding:'8px 0' }}
                 >
                   Hover a button below to learn about each part of the player
                 </motion.p>
@@ -217,12 +248,12 @@ function PlayerReplica({ hovered, activeZone }: { hovered: string | null; active
 
       {/* BOTTOM BAR */}
       <div className="shrink-0 flex flex-col"
-        style={{ background:bar, borderTop:'1px solid rgba(255,255,255,0.07)' }}>
+        style={{ background:bar, borderTop:`1px solid ${border}` }}>
         {/* Seekbar */}
         <div className="px-4 pt-2.5 pb-1">
           <div style={{ ...controlHL(h('seekbar'), hColor('seekbar')),
             position:'relative', height:'6px', borderRadius:'999px', overflow:'visible',
-            background:'rgba(255,255,255,0.1)' }}>
+            background:seekTrack }}>
             <div style={{ position:'absolute', inset:'0', right:'88%',
               background:h('seekbar')?hColor('seekbar'):acc,
               borderRadius:'999px', transition:'background 0.18s' }} />
@@ -247,20 +278,20 @@ function PlayerReplica({ hovered, activeZone }: { hovered: string | null; active
               <Volume2 style={{ width:'11px', height:'11px', color:'#22c55e' }} />
             </div>
             <div className="rounded-full overflow-hidden"
-              style={{ width:'44px', height:'4px', background:'rgba(255,255,255,0.12)' }}>
+              style={{ width:'44px', height:'4px', background:seekTrack }}>
               <div style={{ width:'55%', height:'100%', background:'#22c55e', borderRadius:'999px' }} />
             </div>
-            <span style={{ color:md, fontSize:'9.5px' }}>No narration</span>
+            <span style={{ color:mdText, fontSize:'9.5px' }}>No narration</span>
           </div>
           {/* Slide info */}
-          <span style={{ color:lt, fontSize:'9.5px', fontWeight:500 }}>2 / 28 · Player Tour</span>
+          <span style={{ color:ltText, fontSize:'9.5px', fontWeight:500 }}>2 / 28 · Player Tour</span>
           {/* Prev + Next */}
           <div className="flex items-center gap-1.5"
             style={controlHL(h('prevnext'), hColor('prevnext'))}>
             <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg"
-              style={{ background:'rgba(255,255,255,0.07)' }}>
-              <ChevronLeft style={{ width:'11px', height:'11px', color:lt }} />
-              <span style={{ color:lt, fontSize:'10px', fontWeight:600 }}>Prev</span>
+              style={{ background:navBtnBg }}>
+              <ChevronLeft style={{ width:'11px', height:'11px', color:ltText }} />
+              <span style={{ color:ltText, fontSize:'10px', fontWeight:600 }}>Prev</span>
             </div>
             <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg"
               style={{ background:acc }}>
@@ -351,16 +382,18 @@ const BG:      Record<Theme,string> = { dark:'#060d1a', light:'#f1f5f9', unified
 const CARD_BG: Record<Theme,string> = { dark:'#1e293b', light:'#ffffff', unified:'#2e1065' };
 const TEXT:    Record<Theme,string> = { dark:'#e2e8f0', light:'#1e293b', unified:'#e0e7ff' };
 const SUB:     Record<Theme,string> = { dark:'#94a3b8', light:'#475569', unified:'#a5b4fc' };
+const BORDER:  Record<Theme,string> = { dark:'rgba(255,255,255,0.12)', light:'rgba(15,23,42,0.12)', unified:'rgba(167,139,250,0.2)' };
 
 export const PlayerTourSlide: React.FC<Props> = ({ theme, onSkip }) => {
   const [showModal, setShowModal] = useState(true);
   const [hovered,   setHovered]   = useState<string | null>(null);
   const [clicked,   setClicked]   = useState<string | null>(null);
 
-  const bg     = BG[theme]     ?? BG.dark;
-  const cardBg = CARD_BG[theme]?? CARD_BG.dark;
-  const textClr= TEXT[theme]   ?? TEXT.dark;
-  const subClr = SUB[theme]    ?? SUB.dark;
+  const bg      = BG[theme]     ?? BG.dark;
+  const cardBg  = CARD_BG[theme]?? CARD_BG.dark;
+  const textClr = TEXT[theme]   ?? TEXT.dark;
+  const subClr  = SUB[theme]    ?? SUB.dark;
+  const borderClr = BORDER[theme] ?? BORDER.dark;
 
   // Active zone: clicked takes priority over hovered
   const activeId   = clicked ?? hovered;
@@ -383,14 +416,14 @@ export const PlayerTourSlide: React.FC<Props> = ({ theme, onSkip }) => {
         </div>
         <button onClick={onSkip}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold"
-          style={{ color:subClr, border:'1px solid rgba(255,255,255,0.12)' }}>
+          style={{ color:subClr, border:`1px solid ${borderClr}` }}>
           Skip <ArrowRight className="w-4 h-4" />
         </button>
       </div>
 
       {/* Main body: Player — full width, no side panel */}
       <div className="flex-1 min-h-0 px-5 py-1">
-        <PlayerReplica hovered={hovered} activeZone={activeZone} />
+        <PlayerReplica theme={theme} hovered={hovered} activeZone={activeZone} />
       </div>
 
       {/* Feature buttons row */}
@@ -429,7 +462,7 @@ export const PlayerTourSlide: React.FC<Props> = ({ theme, onSkip }) => {
             style={{ backgroundColor:'rgba(0,0,0,0.75)', backdropFilter:'blur(6px)' }}
             initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}>
             <motion.div className="rounded-2xl p-8 mx-6 max-w-sm w-full text-center shadow-2xl"
-              style={{ backgroundColor:cardBg, border:'1.5px solid rgba(255,255,255,0.1)' }}
+              style={{ backgroundColor:cardBg, border:`1.5px solid ${borderClr}` }}
               initial={{ scale:0.88, y:20 }} animate={{ scale:1, y:0 }} exit={{ scale:0.88, y:20 }}>
               <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4"
                 style={{ background:'rgba(99,102,241,0.15)' }}>
@@ -442,7 +475,7 @@ export const PlayerTourSlide: React.FC<Props> = ({ theme, onSkip }) => {
               <div className="flex gap-3">
                 <button onClick={onSkip}
                   className="flex-1 px-4 py-2.5 rounded-xl border-2 font-semibold text-sm hover:opacity-80"
-                  style={{ borderColor:'rgba(255,255,255,0.15)', color:subClr }}>
+                  style={{ borderColor:borderClr, color:subClr }}>
                   Skip
                 </button>
                 <button onClick={() => setShowModal(false)}

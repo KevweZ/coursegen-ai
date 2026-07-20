@@ -40,14 +40,15 @@ const THEME_DESC_COLOR: Record<Theme, string> = {
 };
 
 /**
- * Split title: first word on line 1, ALL remaining words on line 2.
- * This avoids lone-word hangers on line 2.
- * If the title is a single word, line2 is empty.
+ * Split title into a short, bold "key phrase" (line 1 — up to 2 words) and a
+ * smaller supporting phrase (line 2 — everything else). Both lines share the
+ * same font color; only size/weight differ, so the hierarchy reads clearly
+ * without the visual noise of a color change partway through the title.
  */
 function splitTitle(title: string): [string, string] {
-  const words = title.trim().split(/\s+/);
-  if (words.length <= 1) return [words[0] || '', ''];
-  return [words[0], words.slice(1).join(' ')];
+  const words = title.trim().split(/\s+/).filter(Boolean);
+  if (words.length <= 2) return [words.join(' '), ''];
+  return [words.slice(0, 2).join(' '), words.slice(2).join(' ')];
 }
 
 // Pick a stable default cover image (Neutral theme BG)
@@ -88,18 +89,19 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
         className="flex flex-col justify-center px-14 py-10"
         style={{ width: '52%', flexShrink: 0, backgroundColor: leftBg }}
       >
-        {/* Two-tone title — wider wrap zone */}
+        {/* Title — one key phrase (H1) + a smaller supporting phrase (H3),
+            both in the same font color to keep the slide easy to scan. */}
         <motion.div
           initial={{ opacity: 0, x: -24 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.5, ease: 'easeOut' }}
           style={{ maxWidth: '100%' }}
         >
-          {/* Line 1: first word — dark color */}
+          {/* Line 1: key phrase (first 1-2 words) — large, bold */}
           <div
             className="font-extrabold leading-tight tracking-tight"
             style={{
-              fontSize: 'clamp(2.2rem, 5vw, 4rem)',
+              fontSize: 'clamp(2.4rem, 5.5vw, 4.25rem)',
               color: darkText,
               wordBreak: 'keep-all',
             }}
@@ -107,13 +109,14 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
             {line1}
           </div>
 
-          {/* Line 2: remaining words — accent color, wraps within the 52% panel */}
+          {/* Line 2: supporting phrase — smaller, same color, lighter weight */}
           {line2 && (
             <div
-              className="font-extrabold leading-tight tracking-tight"
+              className="font-semibold leading-snug tracking-tight mt-1"
               style={{
-                fontSize: 'clamp(2.2rem, 5vw, 4rem)',
-                color: accent,
+                fontSize: 'clamp(1.15rem, 2.4vw, 1.75rem)',
+                color: darkText,
+                opacity: 0.82,
                 wordBreak: 'break-word',
                 overflowWrap: 'break-word',
                 maxWidth: '100%',

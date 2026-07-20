@@ -26,24 +26,31 @@ const PANELS: Record<Theme, {
   numText: string; titleText: string;
   bodyText: string; subText: string;
   descText: string; rowBorder: string; expandBg: string;
+  // Text sitting on `leftBg`. The left panel is always a solid, dark accent
+  // color regardless of theme, so its text must stay light for contrast —
+  // it should NOT follow `bodyText`, which is tuned for `rightBg` instead.
+  leftText: string; leftSubText: string;
 }> = {
   dark: {
     leftBg: '#1e1b4b', rightBg: '#0f172a',
     numText: 'rgba(255,255,255,0.08)', titleText: '#818cf8',
     bodyText: '#e2e8f0', subText: '#94a3b8',
     descText: '#cbd5e1', rowBorder: 'rgba(255,255,255,0.08)', expandBg: 'rgba(255,255,255,0.04)',
+    leftText: '#f1f5f9', leftSubText: '#cbd5e1',
   },
   light: {
     leftBg: '#1e3a8a', rightBg: '#f8fafc',
     numText: 'rgba(255,255,255,0.08)', titleText: '#1e3a8a',
     bodyText: '#1e293b', subText: '#475569',
     descText: '#334155', rowBorder: 'rgba(0,0,0,0.08)', expandBg: 'rgba(0,0,0,0.03)',
+    leftText: '#f8fafc', leftSubText: '#dbeafe',
   },
   unified: {
     leftBg: '#2e1065', rightBg: '#1e1b4b',
     numText: 'rgba(255,255,255,0.08)', titleText: '#a78bfa',
     bodyText: '#e0e7ff', subText: '#a5b4fc',
     descText: '#c4b5fd', rowBorder: 'rgba(167,139,250,0.15)', expandBg: 'rgba(167,139,250,0.06)',
+    leftText: '#f1f5f9', leftSubText: '#e0d5fc',
   },
 };
 
@@ -71,7 +78,7 @@ export const ModuleOverviewSlide: React.FC<Props> = ({
         {/* Top: module label */}
         <div className="relative z-10 flex flex-col items-center gap-3">
           <BookOpen className="w-10 h-10 opacity-60" style={{ color: accent }} />
-          <p className="text-sm font-black uppercase tracking-[0.2em] opacity-60" style={{ color: p.bodyText }}>Module</p>
+          <p className="text-sm font-black uppercase tracking-[0.2em] opacity-60" style={{ color: p.leftText }}>Module</p>
           <div
             className="w-16 h-16 rounded-full flex items-center justify-center font-black text-2xl"
             style={{ border: `2px solid ${accent}`, color: accent }}
@@ -85,7 +92,7 @@ export const ModuleOverviewSlide: React.FC<Props> = ({
           <p
             className="text-center font-bold leading-snug"
             style={{
-              color: p.bodyText,
+              color: p.leftText,
               opacity: 0.60,
               fontSize: 'clamp(0.55rem, 1vw, 0.75rem)',
               wordBreak: 'break-word',
