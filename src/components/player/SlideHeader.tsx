@@ -25,7 +25,7 @@ interface SlideHeaderProps {
 export const SlideHeader: React.FC<SlideHeaderProps> = ({ title, theme, className, accentColor }) => {
   const colorClass =
     theme === 'light'
-      ? 'text-indigo-700'
+      ? 'text-slate-900'
       : theme === 'unified'
       ? 'text-indigo-300'
       : 'text-indigo-400';

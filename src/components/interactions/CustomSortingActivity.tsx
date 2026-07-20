@@ -3,20 +3,50 @@ import { motion } from 'framer-motion';
 import { ChevronUp, ChevronDown, GripVertical, CheckCircle2 } from 'lucide-react';
 import { markdownToHtml } from '../../lib/markdownInline';
 
+function cn(...c: (string | false | undefined | null)[]) { return c.filter(Boolean).join(' '); }
+
 interface SortItem { id: string; content: string; }
+
+type SortTheme = 'light' | 'dark' | 'unified';
 
 interface CustomSortingActivityProps {
   items?: SortItem[];
   /** correct order as array of item ids */
   correctOrder?: string[];
   prompt?: string;
+  theme?: SortTheme;
 }
+
+// Each draggable item always needs a clearly visible border — without one,
+// nothing signals that the row is interactive, especially on a white slide.
+const T: Record<SortTheme, {
+  itemBg: string; itemBorder: string; text: string; handle: string; chevron: string;
+  resetBg: string; resetHover: string; resetText: string;
+}> = {
+  light: {
+    itemBg: '#ffffff', itemBorder: '#cbd5e1', text: '#0f172a',
+    handle: '#94a3b8', chevron: '#475569',
+    resetBg: '#e2e8f0', resetHover: '#cbd5e1', resetText: '#1e293b',
+  },
+  dark: {
+    itemBg: 'rgba(255,255,255,0.06)', itemBorder: 'rgba(255,255,255,0.18)', text: '#ffffff',
+    handle: '#94a3b8', chevron: '#cbd5e1',
+    resetBg: '#334155', resetHover: '#475569', resetText: '#ffffff',
+  },
+  unified: {
+    itemBg: 'rgba(167,139,250,0.08)', itemBorder: 'rgba(167,139,250,0.35)', text: '#e0e7ff',
+    handle: '#a5b4fc', chevron: '#c4b5fd',
+    resetBg: '#4c1d95', resetHover: '#5b21b6', resetText: '#ffffff',
+  },
+};
 
 export const CustomSortingActivity: React.FC<CustomSortingActivityProps> = ({
   items = [],
   correctOrder = [],
   prompt,
+  theme = 'light',
 }) => {
+  const t = T[theme] ?? T.light;
   const [order, setOrder] = useState<SortItem[]>([...items]);
   const [checked, setChecked] = useState(false);
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
@@ -83,27 +113,28 @@ export const CustomSortingActivity: React.FC<CustomSortingActivityProps> = ({
               onDragEnd={handleDragEnd}
               className="flex items-center gap-3 px-4 py-3 rounded-lg border-2 transition-colors select-none"
               style={{
-                backgroundColor: isDragging ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.06)',
+                backgroundColor: t.itemBg,
                 borderColor: isOver
                   ? '#6366f1'
                   : status === true
                   ? '#22c55e'
                   : status === false
                   ? '#ef4444'
-                  : 'rgba(255,255,255,0.15)',
+                  : t.itemBorder,
+                boxShadow: isOver ? '0 0 0 3px rgba(99,102,241,0.15)' : '0 1px 2px rgba(0,0,0,0.04)',
                 cursor: 'grab',
                 opacity: isDragging ? 0.5 : 1,
               }}
             >
               {/* Drag handle */}
-              <GripVertical className="w-5 h-5 text-slate-400 shrink-0" />
+              <GripVertical className="w-5 h-5 shrink-0" style={{ color: t.handle }} />
 
               {/* Item text */}
-              <span className="flex-1 text-base font-bold text-white leading-snug" dangerouslySetInnerHTML={{ __html: markdownToHtml(item.content) }} />
+              <span className="flex-1 text-base font-bold leading-snug" style={{ color: t.text }} dangerouslySetInnerHTML={{ __html: markdownToHtml(item.content) }} />
 
               {/* Status icon */}
-              {status === true  && <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />}
-              {status === false && <span className="text-red-400 text-sm font-bold shrink-0">✕</span>}
+              {status === true  && <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />}
+              {status === false && <span className="text-red-500 text-sm font-bold shrink-0">✕</span>}
 
               {/* Up / Down arrow buttons */}
               {!checked && (
@@ -111,18 +142,18 @@ export const CustomSortingActivity: React.FC<CustomSortingActivityProps> = ({
                   <button
                     onClick={() => moveItem(idx, idx - 1)}
                     disabled={idx === 0}
-                    className="p-0.5 rounded hover:bg-white/10 disabled:opacity-20 transition-colors"
+                    className={cn('p-0.5 rounded disabled:opacity-20 transition-colors', theme === 'light' ? 'hover:bg-black/5' : 'hover:bg-white/10')}
                     title="Move up"
                   >
-                    <ChevronUp className="w-3.5 h-3.5 text-slate-300" />
+                    <ChevronUp className="w-3.5 h-3.5" style={{ color: t.chevron }} />
                   </button>
                   <button
                     onClick={() => moveItem(idx, idx + 1)}
                     disabled={idx === order.length - 1}
-                    className="p-0.5 rounded hover:bg-white/10 disabled:opacity-20 transition-colors"
+                    className={cn('p-0.5 rounded disabled:opacity-20 transition-colors', theme === 'light' ? 'hover:bg-black/5' : 'hover:bg-white/10')}
                     title="Move down"
                   >
-                    <ChevronDown className="w-3.5 h-3.5 text-slate-300" />
+                    <ChevronDown className="w-3.5 h-3.5" style={{ color: t.chevron }} />
                   </button>
                 </div>
               )}
@@ -135,7 +166,7 @@ export const CustomSortingActivity: React.FC<CustomSortingActivityProps> = ({
 
       {/* Success message */}
       {allCorrect && (
-        <div className="flex items-center gap-2 text-green-400 font-semibold text-sm">
+        <div className="flex items-center gap-2 text-green-600 font-semibold text-sm">
           <CheckCircle2 className="w-5 h-5" /> Correct order!
         </div>
       )}
@@ -152,7 +183,10 @@ export const CustomSortingActivity: React.FC<CustomSortingActivityProps> = ({
         )}
         <button
           onClick={handleReset}
-          className="px-5 py-2 rounded-lg bg-slate-700 text-white font-semibold text-sm hover:bg-slate-600 transition-colors"
+          className="px-5 py-2 rounded-lg font-semibold text-sm transition-colors"
+          style={{ backgroundColor: t.resetBg, color: t.resetText }}
+          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = t.resetHover; }}
+          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = t.resetBg; }}
         >
           Reset
         </button>

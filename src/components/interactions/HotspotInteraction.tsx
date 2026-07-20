@@ -28,7 +28,7 @@ function cn(...c: (string | false | undefined | null)[]) { return c.filter(Boole
 export const HotspotInteraction: React.FC<HotspotInteractionProps> = ({
   imageUrl,
   points = [],
-  theme = 'dark',
+  theme = 'light',
   editable = true,
 }) => {
   const [active, setActive]               = useState<string | null>(null);
@@ -41,9 +41,17 @@ export const HotspotInteraction: React.FC<HotspotInteractionProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const panelBg   = theme === 'light' ? '#f8fafc' : '#1e293b';
-  const panelText = theme === 'light' ? '#1e293b' : '#e2e8f0';
-  const borderClr = theme === 'light' ? '#e2e8f0' : 'rgba(255,255,255,0.12)';
+  const panelBg    = theme === 'light' ? '#f8fafc' : '#1e293b';
+  const panelText  = theme === 'light' ? '#1e293b' : '#e2e8f0';
+  const borderClr  = theme === 'light' ? '#e2e8f0' : 'rgba(255,255,255,0.12)';
+  // The pin canvas is its own bounded area (it needs a background even
+  // without an uploaded image), so it always needs a theme-matched fill —
+  // never a hardcoded dark one.
+  const canvasBg   = theme === 'light' ? '#f1f5f9' : '#0f172a';
+  const uploadIconClr  = theme === 'light' ? '#4f46e5' : '#818cf8';
+  const uploadTextClr  = theme === 'light' ? '#334155' : '#cbd5e1';
+  const uploadSubClr   = theme === 'light' ? '#64748b' : '#64748b';
+  const uploadHoverClr = theme === 'light' ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.05)';
 
   // ── Image upload ──────────────────────────────────────────────────────────
   const handleUploadClick = () => { if (editable) fileInputRef.current?.click(); };
@@ -105,7 +113,7 @@ export const HotspotInteraction: React.FC<HotspotInteractionProps> = ({
           width: 'clamp(280px, 60%, 600px)',
           minHeight: '420px',
           height: '100%',
-          backgroundColor: '#0f172a',
+          backgroundColor: canvasBg,
           borderColor: borderClr,
           cursor: draggingPinId ? 'grabbing' : isPanningImg ? 'grabbing' : 'default',
         }}
@@ -128,13 +136,15 @@ export const HotspotInteraction: React.FC<HotspotInteractionProps> = ({
           />
         ) : (
           <div
-            className="w-full h-full flex flex-col items-center justify-center gap-3 cursor-pointer hover:bg-white/5 transition-colors"
+            className="w-full h-full flex flex-col items-center justify-center gap-3 cursor-pointer transition-colors"
+            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = uploadHoverClr; }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
             onClick={handleUploadClick}
           >
-            <Upload className="w-10 h-10 text-indigo-400 opacity-70" />
+            <Upload className="w-10 h-10 opacity-70" style={{ color: uploadIconClr }} />
             <div className="text-center px-6">
-              <p className="text-slate-300 text-sm font-semibold">Click to upload a background image</p>
-              <p className="text-slate-500 text-xs mt-1">Pins remain interactive without an image</p>
+              <p className="text-sm font-semibold" style={{ color: uploadTextClr }}>Click to upload a background image</p>
+              <p className="text-xs mt-1" style={{ color: uploadSubClr }}>Pins remain interactive without an image</p>
             </div>
           </div>
         )}

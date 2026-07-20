@@ -6,11 +6,48 @@ import { markdownToHtml } from '../../lib/markdownInline';
 interface MatchItem   { id: string; content: string; }
 interface MatchTarget { id: string; content: string; }
 
+type MatchTheme = 'light' | 'dark' | 'unified';
+
 interface CustomMatchingActivityProps {
   items: MatchItem[];
   targets: MatchTarget[];
   correctAnswers?: Record<string, string>;
+  theme?: MatchTheme;
 }
+
+// Unplaced item text, drop-zone borders, and placeholder copy all need enough
+// contrast to read clearly against a white slide background.
+const T: Record<MatchTheme, {
+  itemText: string; targetText: string; placeholderIdle: string; placeholderHover: string;
+  targetBorderIdle: string; targetBorderHover: string; targetBgIdle: string; targetBgHover: string;
+  unmatchIdle: string; unmatchHover: string;
+  resetBorder: string; resetText: string; resetHoverBorder: string; resetHoverText: string;
+}> = {
+  light: {
+    itemText: '#0f172a', targetText: '#1e293b',
+    placeholderIdle: '#64748b', placeholderHover: '#4f46e5',
+    targetBorderIdle: '#cbd5e1', targetBorderHover: '#818cf8',
+    targetBgIdle: '#f8fafc', targetBgHover: 'rgba(79,70,229,0.06)',
+    unmatchIdle: '#94a3b8', unmatchHover: '#dc2626',
+    resetBorder: '#cbd5e1', resetText: '#334155', resetHoverBorder: '#94a3b8', resetHoverText: '#0f172a',
+  },
+  dark: {
+    itemText: '#ffffff', targetText: '#e2e8f0',
+    placeholderIdle: '#94a3b8', placeholderHover: '#c7d2fe',
+    targetBorderIdle: 'rgba(255,255,255,0.30)', targetBorderHover: 'rgba(255,255,255,0.65)',
+    targetBgIdle: 'rgba(255,255,255,0.035)', targetBgHover: 'rgba(255,255,255,0.10)',
+    unmatchIdle: '#94a3b8', unmatchHover: '#ffffff',
+    resetBorder: '#475569', resetText: '#cbd5e1', resetHoverBorder: '#64748b', resetHoverText: '#ffffff',
+  },
+  unified: {
+    itemText: '#e0e7ff', targetText: '#e0e7ff',
+    placeholderIdle: '#a5b4fc', placeholderHover: '#e0e7ff',
+    targetBorderIdle: 'rgba(167,139,250,0.35)', targetBorderHover: 'rgba(167,139,250,0.7)',
+    targetBgIdle: 'rgba(167,139,250,0.05)', targetBgHover: 'rgba(167,139,250,0.12)',
+    unmatchIdle: '#a5b4fc', unmatchHover: '#ffffff',
+    resetBorder: '#6d28d9', resetText: '#c4b5fd', resetHoverBorder: '#7c3aed', resetHoverText: '#ffffff',
+  },
+};
 
 /** Distinct accent palette — each item gets its own color */
 const ITEM_COLORS = [
@@ -28,7 +65,9 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
   items = [],
   targets = [],
   correctAnswers = {},
+  theme = 'light',
 }) => {
+  const t = T[theme] ?? T.light;
   const [userMatches, setUserMatches] = useState<Record<string, string>>({});
   const [checked, setChecked] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -98,7 +137,7 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
 
         {/* ── Left: Draggable item blocks ──────────────────────────────────── */}
         <div className="flex-1 space-y-2.5">
-          <p className="text-xs font-extrabold uppercase tracking-widest opacity-50 mb-3">Items</p>
+          <p className="text-xs font-extrabold uppercase tracking-widest mb-3" style={{ color: t.targetText, opacity: 0.6 }}>Items</p>
           {items.map((item, idx) => {
             const color     = ITEM_COLORS[idx % ITEM_COLORS.length];
             const placed    = placedItemIds.has(item.id);
@@ -114,7 +153,7 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
                   /* Colorful left border + tinted background — dimmed when placed */
                   borderLeft: placed ? `4px solid ${color}60` : `4px solid ${color}`,
                   backgroundColor: placed ? `${color}12` : 'transparent',
-                  color:  placed ? `${color}80` : 'white',
+                  color:  placed ? `${color}` : t.itemText,
                   cursor: placed || checked ? 'default' : 'grab',
                   opacity: isDragging ? 0.45 : 1,
                   boxShadow: (!placed && !checked) ? `0 2px 8px ${color}33` : 'none',
@@ -137,7 +176,7 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
 
         {/* ── Right: Drop targets ───────────────────────────────────────────── */}
         <div className="flex-1 space-y-2.5">
-          <p className="text-xs font-extrabold uppercase tracking-widest opacity-50 mb-3">Matches</p>
+          <p className="text-xs font-extrabold uppercase tracking-widest mb-3" style={{ color: t.targetText, opacity: 0.6 }}>Matches</p>
           {targets.map(target => {
             const matchedItemId = userMatches[target.id];
             const matchColor    = matchedItemId ? colorOf(matchedItemId) : null;
@@ -161,8 +200,8 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
                     : matchedItemId
                     ? (matchColor ?? '#4f46e5') + 'cc'
                     : isHovering
-                    ? 'rgba(255,255,255,0.65)'
-                    : 'rgba(255,255,255,0.30)',
+                    ? t.targetBorderHover
+                    : t.targetBorderIdle,
                   backgroundColor: status === true
                     ? 'rgba(34,197,94,0.08)'
                     : status === false
@@ -170,10 +209,10 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
                     : matchedItemId
                     ? `${matchColor}18`
                     : isHovering
-                    ? 'rgba(255,255,255,0.10)'
-                    : 'rgba(255,255,255,0.035)',
+                    ? t.targetBgHover
+                    : t.targetBgIdle,
                   boxShadow: isHovering && !matchedItemId
-                    ? '0 0 0 3px rgba(255,255,255,0.15) inset'
+                    ? `0 0 0 3px ${t.targetBorderHover}22 inset`
                     : matchedItemId
                     ? `0 0 0 1px ${matchColor ?? '#4f46e5'}40 inset`
                     : 'none',
@@ -181,7 +220,7 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
               >
                 <div className="flex items-center gap-3 px-4 py-3 h-full min-h-[72px]">
                   {/* Target description */}
-                  <div className="flex-1 text-sm text-slate-200 leading-snug" dangerouslySetInnerHTML={{ __html: markdownToHtml(target.content) }} />
+                  <div className="flex-1 text-sm font-medium leading-snug" style={{ color: t.targetText }} dangerouslySetInnerHTML={{ __html: markdownToHtml(target.content) }} />
 
                   {/* Matched item pill */}
                   {matchedItemId ? (
@@ -194,17 +233,20 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
                       {!checked && (
                         <button
                           onClick={() => handleUnmatch(target.id)}
-                          className="text-slate-400 hover:text-white transition-colors text-base leading-none"
+                          className="transition-colors text-base leading-none"
+                          style={{ color: t.unmatchIdle }}
+                          onMouseEnter={(e) => { e.currentTarget.style.color = t.unmatchHover; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.color = t.unmatchIdle; }}
                           title="Remove match"
                         >
                           ✕
                         </button>
                       )}
-                      {status === true  && <CheckCircle className="w-4 h-4 text-green-400 shrink-0" />}
-                      {status === false && <XCircle    className="w-4 h-4 text-red-400  shrink-0" />}
+                      {status === true  && <CheckCircle className="w-4 h-4 text-green-500 shrink-0" />}
+                      {status === false && <XCircle    className="w-4 h-4 text-red-500  shrink-0" />}
                     </div>
                   ) : (
-                    <span className={`text-xs italic shrink-0 transition-colors ${isHovering ? 'text-white' : 'text-slate-500'}`}>
+                    <span className="text-xs italic shrink-0 font-semibold transition-colors" style={{ color: isHovering ? t.placeholderHover : t.placeholderIdle }}>
                       {isHovering ? '↓ Drop here' : 'Drop here'}
                     </span>
                   )}
@@ -260,7 +302,10 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
         {!checked && (
           <motion.button
             onClick={handleReset}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl border-2 border-slate-600 text-slate-300 font-bold text-sm hover:border-slate-400 hover:text-white transition-all"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl border-2 font-bold text-sm transition-all"
+            style={{ borderColor: t.resetBorder, color: t.resetText }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = t.resetHoverBorder; e.currentTarget.style.color = t.resetHoverText; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = t.resetBorder; e.currentTarget.style.color = t.resetText; }}
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.97 }}
           >

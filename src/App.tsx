@@ -307,7 +307,7 @@ const SlideContent = ({ content, theme }: { content: string, theme: string }) =>
           <ol {...props} className="pl-6 space-y-2 list-decimal pb-4">{children}</ol>
         ),
         strong: ({ node, children, ...props }) => (
-          <strong {...props} className={cn("font-extrabold", theme === 'light' ? "text-indigo-900" : "text-white")}>{children}</strong>
+          <strong {...props} className={cn("font-extrabold", theme === 'light' ? "text-slate-900" : "text-white")}>{children}</strong>
         ),
         // Render ```mermaid code blocks as actual Mermaid diagrams
         code({ node, className, children, ...props }: any) {
@@ -3490,6 +3490,7 @@ export default function App() {
                                         items={matchingProps.items || []}
                                         targets={matchingProps.targets || []}
                                         correctAnswers={matchingProps.correctAnswers || {}}
+                                        theme={theme}
                                        />
                                     </div>
                                   );
@@ -3541,7 +3542,7 @@ export default function App() {
                                      <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
                                      <SmartContent content={sanitizeContent(currentSlide.content) + '\n\nDrag items or use ↑ ↓ arrows to reorder.'} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                      <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
-                                        <CustomSortingActivity items={(currentSlide.data || currentSlide.interactions?.[0] || {}).items || []} correctOrder={(currentSlide.data || currentSlide.interactions?.[0] || {}).correctOrder || []}  />
+                                        <CustomSortingActivity items={(currentSlide.data || currentSlide.interactions?.[0] || {}).items || []} correctOrder={(currentSlide.data || currentSlide.interactions?.[0] || {}).correctOrder || []} theme={theme} />
                                      </div>
                                   </div>
                                )}

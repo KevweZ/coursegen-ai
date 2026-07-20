@@ -27,6 +27,10 @@ function preventWidow(text: string): string {
   return words.slice(0, -1).join(' ') + '\u00A0' + words[words.length - 1];
 }
 
+const BG:        Record<Theme, string> = { light: '#ffffff', dark: '#0a0f1e', unified: '#1e1b4b' };
+const TITLE_CLR: Record<Theme, string> = { light: '#0f172a', dark: '#ffffff', unified: '#ffffff' };
+const DESC_CLR:  Record<Theme, string> = { light: '#475569', dark: 'rgba(255,255,255,0.6)', unified: 'rgba(255,255,255,0.6)' };
+
 export const ModuleCoverSlide: React.FC<ModuleCoverSlideProps> = ({
   moduleNumber,
   moduleTitle,
@@ -34,11 +38,10 @@ export const ModuleCoverSlide: React.FC<ModuleCoverSlideProps> = ({
   theme,
 }) => {
   const accent   = getModuleColor(moduleNumber);
-  const isDark   = theme !== 'light';
+  const bg       = BG[theme] ?? BG.dark;
+  const titleClr = TITLE_CLR[theme] ?? TITLE_CLR.dark;
+  const descClr  = DESC_CLR[theme] ?? DESC_CLR.dark;
   const cleanTitle = preventWidow(cleanModuleTitle(moduleTitle));
-
-  // Background: dark navy (dark mode) or very dark indigo (light mode)
-  const bg = isDark ? '#0a0f1e' : '#1e1b4b';
 
   return (
     <div
@@ -58,7 +61,7 @@ export const ModuleCoverSlide: React.FC<ModuleCoverSlideProps> = ({
           fontSize: 'clamp(10rem, 28vw, 22rem)',
           lineHeight: 1,
           color: accent,
-          opacity: 0.06,
+          opacity: theme === 'light' ? 0.08 : 0.06,
           bottom: '-2rem',
           right: '-1rem',
         }}
@@ -93,12 +96,13 @@ export const ModuleCoverSlide: React.FC<ModuleCoverSlideProps> = ({
 
         {/* Module title — full width, horizontal, centered */}
         <motion.h1
-          className="font-extrabold text-white text-center leading-tight"
+          className="font-extrabold text-center leading-tight"
           style={{
             fontSize: 'clamp(1.8rem, 4.5vw, 3.4rem)',
             letterSpacing: '-0.01em',
             wordBreak: 'break-word',
             hyphens: 'auto',
+            color: titleClr,
           }}
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
@@ -110,8 +114,8 @@ export const ModuleCoverSlide: React.FC<ModuleCoverSlideProps> = ({
         {/* Optional description */}
         {description && (
           <motion.p
-            className="mt-5 text-white/60 leading-relaxed max-w-lg"
-            style={{ fontSize: 'clamp(0.85rem, 1.4vw, 1rem)' }}
+            className="mt-5 leading-relaxed max-w-lg"
+            style={{ fontSize: 'clamp(0.85rem, 1.4vw, 1rem)', color: descClr }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.35, delay: 0.3 }}
