@@ -158,7 +158,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
       {/* ── Slide progress track (thin, top of bar) ── */}
       <div className="h-[3px] w-full bg-gray-400/20 relative overflow-hidden">
         <motion.div
-          className="absolute left-0 top-0 h-full bg-indigo-500"
+          className={cn('absolute left-0 top-0 h-full', isLight ? 'bg-slate-500' : 'bg-slate-400')}
           initial={false}
           animate={{ width: `${slideProgress * 100}%` }}
           transition={{ duration: 0.35, ease: 'easeOut' }}
@@ -179,7 +179,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               onSeekStart={player.beginSeek}
               onSeek={player.endSeek}
               disabled={player.isLoading || player.duration === 0}
-              accentClass="bg-indigo-500"
+              accentClass={isLight ? 'bg-slate-500' : 'bg-slate-400'}
             />
           </div>
           <span className="text-[11px] font-mono tabular-nums w-10 shrink-0 text-right">
@@ -198,9 +198,9 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               aria-label={showCC ? 'Hide closed captions' : 'Show closed captions'}
               aria-pressed={showCC}
               className={cn(
-                'ml-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border transition-all shrink-0 focus:outline-none focus:ring-2 focus:ring-indigo-500/50',
+                'ml-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border transition-all shrink-0 focus:outline-none focus:ring-2 focus:ring-slate-400/50',
                 showCC
-                  ? 'bg-indigo-600 border-indigo-500 text-white'
+                  ? 'bg-slate-700 border-slate-600 text-white'
                   : isLight
                   ? 'border-gray-300 text-gray-500 hover:border-gray-500 hover:text-gray-700'
                   : 'border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300'
@@ -222,8 +222,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
             disabled={player.isLoading || player.duration === 0}
             aria-label={player.isPlaying ? 'Pause narration' : 'Play narration'}
             className={cn(
-              'w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/50',
-              'bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed shadow-md'
+              'w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-all focus:outline-none focus:ring-2 focus:ring-slate-400/50',
+              'bg-slate-700 text-white hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed shadow-md'
             )}
           >
             {player.isLoading ? (

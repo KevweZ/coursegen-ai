@@ -3609,9 +3609,7 @@ export default function App() {
                                  <div className="space-y-6 w-full">
                                    <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
                                    <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
-                                   <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
-                                     <TabbedVertical tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []} />
-                                   </div>
+                                   <TabbedVertical tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []} theme={theme} />
                                  </div>
                                )}
                                {currentSlide?.type === 'folder-explorer' && (
@@ -3881,8 +3879,10 @@ export default function App() {
                         </motion.div>
                        </AnimatePresence>
 
-                      {/* Closed Caption Overlay - above player bar */}
-                      {showCC && player.hasAudio && (
+                      {/* Closed Caption Overlay - above player bar. Hides once narration
+                          finishes; reappears automatically on replay or seeking backward
+                          (usePlayer clears isEnded in both of those cases). */}
+                      {showCC && player.hasAudio && !player.isEnded && (
                         <ClosedCaptionOverlay
                           narrationText={currentSlide?.voiceOverText || (currentSlide as any)?.narration || null}
                           currentTime={player.currentTime}

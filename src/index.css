@@ -78,6 +78,19 @@ button, [role="button"], a { cursor: pointer; }
 .interaction-light-fix [class*="text-green"] {
   color: inherit !important;
 }
+/* Text explicitly set to white/near-white is almost always sitting on a
+   colored or dark "active state" chip/button (e.g. an active tab). The
+   element-level override above (rule 1) would otherwise force it back to
+   dark text, making it illegible against its own background — this was the
+   root cause of some interaction buttons showing dark text on colored bg
+   while others correctly showed white text. Use an explicit white (not
+   `inherit`) since `inherit` would just pick up the dark ambient text color
+   from an ancestor instead of actually restoring white. */
+.interaction-light-fix [class*="text-white"],
+.interaction-light-fix [class*="text-slate-50"],
+.interaction-light-fix [class*="text-slate-100"] {
+  color: #ffffff !important;
+}
 
 /* 3) Background: force white panels (not dark slate) */
 .interaction-light-fix [class*="bg-gray-8"],

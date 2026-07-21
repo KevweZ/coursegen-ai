@@ -22,6 +22,8 @@ const T: Record<MatchTheme, {
   targetBorderIdle: string; targetBorderHover: string; targetBgIdle: string; targetBgHover: string;
   unmatchIdle: string; unmatchHover: string;
   resetBorder: string; resetText: string; resetHoverBorder: string; resetHoverText: string;
+  scoreOkBg: string; scoreOkText: string; scoreOkBorder: string;
+  scoreWarnBg: string; scoreWarnText: string; scoreWarnBorder: string;
 }> = {
   light: {
     itemText: '#0f172a', targetText: '#1e293b',
@@ -30,6 +32,8 @@ const T: Record<MatchTheme, {
     targetBgIdle: '#f8fafc', targetBgHover: 'rgba(79,70,229,0.06)',
     unmatchIdle: '#94a3b8', unmatchHover: '#dc2626',
     resetBorder: '#cbd5e1', resetText: '#334155', resetHoverBorder: '#94a3b8', resetHoverText: '#0f172a',
+    scoreOkBg: '#ecfdf5', scoreOkText: '#065f46', scoreOkBorder: '#a7f3d0',
+    scoreWarnBg: '#fffbeb', scoreWarnText: '#92400e', scoreWarnBorder: '#fde68a',
   },
   dark: {
     itemText: '#ffffff', targetText: '#e2e8f0',
@@ -38,6 +42,8 @@ const T: Record<MatchTheme, {
     targetBgIdle: 'rgba(255,255,255,0.035)', targetBgHover: 'rgba(255,255,255,0.10)',
     unmatchIdle: '#94a3b8', unmatchHover: '#ffffff',
     resetBorder: '#475569', resetText: '#cbd5e1', resetHoverBorder: '#64748b', resetHoverText: '#ffffff',
+    scoreOkBg: 'rgba(16,185,129,0.15)', scoreOkText: '#6ee7b7', scoreOkBorder: 'rgba(16,185,129,0.35)',
+    scoreWarnBg: 'rgba(245,158,11,0.15)', scoreWarnText: '#fcd34d', scoreWarnBorder: 'rgba(245,158,11,0.35)',
   },
   unified: {
     itemText: '#e0e7ff', targetText: '#e0e7ff',
@@ -46,6 +52,8 @@ const T: Record<MatchTheme, {
     targetBgIdle: 'rgba(167,139,250,0.05)', targetBgHover: 'rgba(167,139,250,0.12)',
     unmatchIdle: '#a5b4fc', unmatchHover: '#ffffff',
     resetBorder: '#6d28d9', resetText: '#c4b5fd', resetHoverBorder: '#7c3aed', resetHoverText: '#ffffff',
+    scoreOkBg: 'rgba(16,185,129,0.15)', scoreOkText: '#6ee7b7', scoreOkBorder: 'rgba(16,185,129,0.35)',
+    scoreWarnBg: 'rgba(245,158,11,0.15)', scoreWarnText: '#fcd34d', scoreWarnBorder: 'rgba(245,158,11,0.35)',
   },
 };
 
@@ -268,7 +276,12 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
               initial={{ opacity: 0, y: -6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
-              className={`flex items-center gap-3 px-5 py-3 rounded-xl text-sm font-semibold ${allOk ? 'bg-green-500/20 text-green-300 border border-green-500/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'}`}
+              className="flex items-center gap-3 px-5 py-3 rounded-xl text-sm font-semibold border"
+              style={{
+                backgroundColor: allOk ? t.scoreOkBg : t.scoreWarnBg,
+                color: allOk ? t.scoreOkText : t.scoreWarnText,
+                borderColor: allOk ? t.scoreOkBorder : t.scoreWarnBorder,
+              }}
             >
               {allOk ? '🎉' : '📝'} {correct} / {total} correct
               {!allOk && <span className="font-normal opacity-70">— review the incorrect items and try again</span>}

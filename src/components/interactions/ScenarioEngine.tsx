@@ -302,11 +302,11 @@ const EndingScreen: React.FC<{
 
       {/* Outcomes */}
       <div className={cn('rounded-xl border p-4 space-y-2', isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-800/50 border-slate-700')}>
-        <p className={cn('text-xs font-black uppercase tracking-wider text-indigo-400')}>Outcomes</p>
+        <p className={cn('text-xs font-black uppercase tracking-wider', isLight ? 'text-indigo-600' : 'text-indigo-400')}>Outcomes</p>
         <ul className="space-y-1">
           {ending.outcomes.map((o, i) => (
             <li key={i} className={cn('flex items-start gap-2 text-base', isLight ? 'text-slate-700' : 'text-slate-300')}>
-              <span className="text-indigo-400 mt-0.5">·</span>{o}
+              <span className={cn('mt-0.5', isLight ? 'text-indigo-600' : 'text-indigo-400')}>·</span>{o}
             </li>
           ))}
         </ul>
@@ -314,7 +314,7 @@ const EndingScreen: React.FC<{
 
       {/* Score breakdown */}
       <div className={cn('rounded-xl border p-4 space-y-3', isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-800/50 border-slate-700')}>
-        <p className="text-xs font-black uppercase tracking-wider text-indigo-400">Decision Profile</p>
+        <p className={cn('text-xs font-black uppercase tracking-wider', isLight ? 'text-indigo-600' : 'text-indigo-400')}>Decision Profile</p>
         {scoreLabels.map(({ key, label }) => {
           const val = scores[key] ?? 0;
           const pct = Math.max(0, Math.min(100, ((val + 10) / 20) * 100));
@@ -341,7 +341,7 @@ const EndingScreen: React.FC<{
 
       {/* Coaching feedback */}
       <div className={cn('rounded-xl border-l-4 border-indigo-500 px-5 py-4', isLight ? 'bg-indigo-50' : 'bg-indigo-900/20')}>
-        <p className="text-xs font-black uppercase tracking-wider text-indigo-400 mb-2">Coaching Insight</p>
+        <p className={cn('text-xs font-black uppercase tracking-wider mb-2', isLight ? 'text-indigo-600' : 'text-indigo-400')}>Coaching Insight</p>
         <p className={cn('text-base leading-relaxed', isLight ? 'text-slate-700' : 'text-slate-300')}>{ending.competencyFeedback}</p>
       </div>
 
@@ -398,7 +398,7 @@ export const ScenarioEngine: React.FC<Props> = ({ data, theme, onComplete }) => 
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6 w-full">
         <div className={cn('rounded-xl border p-6 space-y-4', isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-800/40 border-slate-700')}>
           <div>
-            <p className="text-xs font-black uppercase tracking-wider text-indigo-400 mb-1">Your Role</p>
+            <p className={cn('text-xs font-black uppercase tracking-wider mb-1', isLight ? 'text-indigo-600' : 'text-indigo-400')}>Your Role</p>
             <p className={cn('font-bold text-base', isLight ? 'text-slate-900' : 'text-white')}>{data.role}</p>
           </div>
           <div className={cn('border-t pt-4', isLight ? 'border-slate-200' : 'border-slate-700')}>
@@ -472,7 +472,7 @@ export const ScenarioEngine: React.FC<Props> = ({ data, theme, onComplete }) => 
       <p className={cn('font-black text-lg leading-snug', isLight ? 'text-slate-900' : 'text-white')}>
         {node.question}
         {node.type === 'multi' && (
-          <span className="ml-2 text-xs font-normal text-indigo-400">(Select {node.multiSelectCount})</span>
+          <span className={cn('ml-2 text-xs font-normal', isLight ? 'text-indigo-600' : 'text-indigo-400')}>(Select {node.multiSelectCount})</span>
         )}
       </p>
 

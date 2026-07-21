@@ -39,6 +39,14 @@ const THEME_DESC_COLOR: Record<Theme, string> = {
   unified: '#a5b4fc',
 };
 
+// Far-right accent strip — kept neutral/gray rather than a loud accent color
+// so it reads as a quiet visual divider instead of competing for attention.
+const THEME_STRIP: Record<Theme, string> = {
+  light:   '#e2e8f0',
+  dark:    '#1e293b',
+  unified: '#312e81',
+};
+
 /**
  * Split title into a short, bold "key phrase" (line 1 — up to 2 words) and a
  * smaller supporting phrase (line 2 — everything else). Both lines share the
@@ -67,6 +75,7 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
   const darkText = THEME_DARK_TEXT[theme];
   const leftBg   = THEME_LEFT_BG[theme];
   const descColor = THEME_DESC_COLOR[theme];
+  const stripBg  = THEME_STRIP[theme];
 
   const [line1, line2] = splitTitle(title);
   const [hovering, setHovering] = useState(false);
@@ -196,10 +205,10 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
         </label>
       </div>
 
-      {/* ── Accent color strip (far right) ────────────────────── */}
+      {/* ── Divider strip (far right) — neutral gray, not the loud accent color ── */}
       <div
         className="shrink-0"
-        style={{ width: '7%', backgroundColor: accent }}
+        style={{ width: '7%', backgroundColor: stripBg }}
       />
     </div>
   );

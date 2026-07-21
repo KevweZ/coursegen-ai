@@ -113,10 +113,12 @@ export const HorizontalTimeline: React.FC<Props> = ({
           className="relative flex items-start pt-2"
           style={{ minWidth: `${events.length * 120}px` }}
         >
-          {/* Horizontal spine — sits at the node center-line (top-[30px] accounting for pt-2) */}
+          {/* Horizontal spine — sits at the node center-line (top-[30px] accounting for pt-2).
+              zIndex kept below the nodes (which are explicitly stacked above) so the line
+              renders BEHIND the numbered circles instead of drawing across their faces. */}
           <div
             className="absolute left-0 right-0 h-0.5 rounded-full overflow-hidden"
-            style={{ top: '30px', background: spineBg }}
+            style={{ top: '30px', background: spineBg, zIndex: 0 }}
           >
             <motion.div
               className="h-full rounded-full origin-left"
@@ -136,7 +138,8 @@ export const HorizontalTimeline: React.FC<Props> = ({
             return (
               <motion.div
                 key={ev.id}
-                className="flex flex-col items-center flex-1 cursor-pointer group"
+                className="relative flex flex-col items-center flex-1 cursor-pointer group"
+                style={{ zIndex: 1 }}
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.08 + 0.15, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}

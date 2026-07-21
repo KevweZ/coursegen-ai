@@ -108,10 +108,15 @@ export const VerticalTimeline: React.FC<Props> = ({
       {/* Spine + events */}
       <div className="relative" ref={spineRef}>
 
-        {/* Vertical spine */}
+        {/* Vertical spine — z-index kept below the events layer (which is
+            explicitly positioned + stacked higher) so it renders BEHIND the
+            numbered circles instead of drawing across their faces. Without an
+            explicit stacking context on the events layer, this absolutely
+            positioned spine would otherwise paint above all in-flow content
+            regardless of any z-index set deeper in the tree. */}
         <div
           className="absolute left-[22px] top-4 bottom-4 w-0.5 rounded-full"
-          style={{ background: spineColor, overflow: 'hidden' }}
+          style={{ background: spineColor, overflow: 'hidden', zIndex: 0 }}
         >
           <motion.div
             className="w-full rounded-full origin-top"
@@ -126,8 +131,9 @@ export const VerticalTimeline: React.FC<Props> = ({
           />
         </div>
 
-        {/* Events */}
-        <div className="flex flex-col gap-1">
+        {/* Events — relatively positioned + stacked above the spine so the
+            connector line renders behind the numbered circles, not over them. */}
+        <div className="relative flex flex-col gap-1" style={{ zIndex: 1 }}>
           {events.map((ev, i) => {
             const isActive  = activeId === ev.id;
             const wasVisited = visited.has(ev.id);

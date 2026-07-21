@@ -446,9 +446,26 @@ export async function hydrateCourseContent(
   Your ONLY job: hydrate the provided module JSON skeleton with rich, ISD-compliant content. Do NOT change the slide structure.
 
   ========================================
+  GLOBAL PRINCIPLE — ON-SCREEN TEXT vs NARRATION (APPLIES TO EVERY SLIDE)
+  ========================================
+  On-screen text (content field) and spoken narration (voiceOverText) serve DIFFERENT jobs. Never make them the same text.
+  - ON-SCREEN TEXT = a short visual anchor the learner can scan in 2-3 seconds. Default to SHORT PHRASES of 5-8 words per
+    bullet, MAXIMUM 5-6 bullets per slide. Bullets are memory hooks, not complete explanations.
+  - NARRATION (voiceOverText) = where the real teaching happens. It expands on each bullet in natural spoken language,
+    gives context/examples/application — but it must NEVER just re-read the bullets verbatim or restate them one by one.
+    It should feel like a person explaining the big picture, not narrating a list.
+  - EXCEPTION (full sentences/paragraphs ARE appropriate): scenario/branching narrative text the learner must read closely,
+    direct quotes or excerpts from a source document, or a screenshot/image caption that needs a complete sentence for
+    context. Outside those cases, default to short bullets everywhere — content slides, summaries, key takeaways,
+    accordion items, tabs, flashcards, click-reveal definitions, etc.
+  - MODULE SUMMARY / KEY TAKEAWAYS SPECIFICALLY: never write one bullet per topic taught in the module. Instead select
+    ONLY the 4-6 most important, highest-value takeaways across the WHOLE module. The narration should give a big-picture
+    synthesis of why these matter together — ideally ending on a short, memorable line — NOT a recap of every slide.
+
+  ========================================
   ISD BEST PRACTICES (MANDATORY)
   ========================================
-  1. 7+/-2 RULE: Maximum 7 bullet points per slide. Never paste a wall of text.
+  1. 5-6 BULLET RULE: Maximum 5-6 short bullet points per slide (see Global Principle above for bullet length). Never paste a wall of text.
   2. ONE CONCEPT PER SCREEN: Do not combine multiple major ideas on one slide.
   3. ACTIVE VOICE ONLY: "The pump delivers..." not "Delivery is achieved by..."
   4. CHUNKING: Use ### subheadings to group 2-4 related bullets under a theme.
@@ -467,20 +484,27 @@ export async function hydrateCourseContent(
      A — APPLICATION (1 sentence): "In practice, this means [specific action or behavior the learner should adopt]."
      P — PREVIEW/CONNECT (1 sentence): "As we explore this further, [bridge to next concept or upcoming interaction]."
      Total: 3–4 natural spoken sentences. NEVER re-read slide bullets verbatim.
-  7. CONCISENESS: Each content field <= 3 short sentences or <= 7 bullets. Use markdown (**, ###, >) for visual hierarchy.
+  7. CONCISENESS: Each content field <= 5-6 short bullets (5-8 words each) OR <= 2 short sentences for the rare cases that
+     call for prose (see Global Principle exceptions). Use markdown (**, ###, >) for visual hierarchy.
   8. NO WALLS OF TEXT: If content exceeds 6 lines, break it with ### headers and subgroups.
   9. NO COLON-PIPE DIVIDERS: Never write "IDENTIFY: |" or any "KEYWORD: |" pattern. Use "**Identify:**" or a heading instead.
   10. NO EMPTY BOLD: Never write "** **" or "**  **". Only bold meaningful text.
-  11. CONCRETE-BEFORE-ABSTRACT: Lead content slides with a relatable real-world anchor BEFORE the formal definition.
-      WRONG: "**Risk** is the probability of an adverse event occurring."
-      RIGHT: "Before signing a new vendor agreement, ask: what could go wrong? That question is the starting point of **risk** management."
-  12. TERMINOLOGY ANCHOR: First use of any key technical term in a slide's content field must include an inline definition:
-      "**Social Engineering** — using psychological manipulation rather than technical exploits to access sensitive information."
-  13. APPLICATION BRIDGE: Every content slide (not quiz/interaction) MUST contain at least ONE of these formats:
-      "In your role, this means..." | "A practical example is..." | "When you encounter [situation], remember to..." | "Apply this by..."
-  14. ADVANCE ORGANIZER: The FIRST content slide of each module must begin with a 1-sentence orientation:
-      "In this module, you will [Bloom's verb from module objective] [specific outcome]."
-      This must appear as the first bullet or first sentence of the content field — not in voiceOverText.
+  11. CONCRETE-BEFORE-ABSTRACT (NARRATION, not on-screen text): the voiceOverText should lead with a relatable real-world
+      anchor BEFORE the formal definition. On-screen bullets stay short phrases per the Global Principle above.
+      WRONG on-screen bullet: "- Risk is the probability of an adverse event occurring."
+      RIGHT on-screen bullet: "- **Risk**: probability of an adverse event"
+      RIGHT narration: "Before signing a new vendor agreement, ask: what could go wrong? That question is the starting
+      point of risk management."
+  12. TERMINOLOGY ANCHOR (NARRATION): the FIRST time a key technical term appears, the narration should define it in
+      spoken language, e.g. "Social engineering means using psychological manipulation rather than technical exploits to
+      access sensitive information." The on-screen bullet just needs the bolded term as a short label, e.g.
+      "- **Social engineering**: manipulation, not technical exploits".
+  13. APPLICATION BRIDGE (NARRATION, not on-screen bullets): every content slide's voiceOverText should connect theory to
+      practice using a phrase like "In your role, this means..." | "A practical example is..." | "Apply this by...".
+      Do NOT paste these as extra on-screen bullets — keep the content field to short phrase bullets only.
+  14. ADVANCE ORGANIZER: The FIRST content slide of each module must open its voiceOverText with a 1-sentence orientation:
+      "In this module, you will [Bloom's verb from module objective] [specific outcome]." Keep this in the narration —
+      the on-screen content field still starts directly with its short bullet list, not a full orientation sentence.
 
   ========================================
   SLIDE TYPE RULES (STRICT -- NO EXCEPTIONS)
@@ -582,16 +606,21 @@ export async function hydrateCourseContent(
   CONTENT / KEY-TAKEAWAYS / SUMMARY:
   - Do NOT embed full-slide images. Use mediaPrompt to describe what image should appear.
   - content must use ### headers, bullet lists, or callout blocks -- NOT bare paragraphs.
-  - BULLET COMPLETENESS: Every bullet must be a COMPLETE THOUGHT (minimum 10 words). Noun-fragment bullets are FORBIDDEN.
-    WRONG: "- Phishing attacks" | RIGHT: "- **Phishing** attacks use deceptive emails to trick employees into revealing login credentials"
-    WRONG: "- Risk Management" | RIGHT: "- Effective **risk management** requires identifying, assessing, and mitigating potential threats before they occur"
-  - SUMMARY SLIDES: MAXIMUM 6 bullets. Use PAST TENSE to confirm coverage: "- Examined the three types of...", "- Defined the role of..."
-  - KEY-TAKEAWAY SLIDES: MAXIMUM 6 bullets. Each must be an ACTIONABLE STATEMENT starting with an action verb:
-    "- Identify suspicious email patterns before clicking any links"
-    "- Report all security incidents to IT within 24 hours of discovery"
+  - BULLET BREVITY (see Global Principle above): each bullet is a SHORT PHRASE, 5-8 words. NOT a complete explanatory
+    sentence — the narration explains, the bullet just labels. MAXIMUM 5-6 bullets per slide.
+    WRONG (too long/explanatory): "- Phishing attacks use deceptive emails to trick employees into revealing login credentials"
+    RIGHT (short phrase): "- **Phishing**: deceptive emails targeting login credentials"
+    WRONG: "- Effective risk management requires identifying, assessing, and mitigating potential threats before they occur"
+    RIGHT: "- **Risk management**: identify, assess, mitigate threats early"
+  - SUMMARY SLIDES: pick ONLY the 4-6 most important takeaways from the WHOLE module — never one bullet per topic/slide
+    covered. MAXIMUM 6 short bullets (5-8 words), PAST TENSE: "- Explored the three phishing types", "- Defined escalation steps"
+  - KEY-TAKEAWAY SLIDES: MAXIMUM 5-6 short bullets (5-8 words each), each an ACTION-VERB phrase, not a full sentence:
+    "- Spot suspicious email patterns early"
+    "- Report incidents to IT within 24 hours"
   - BOLD USAGE: Only bold specific key terms (nouns, verbs, named concepts). NEVER bold entire sentences, random adjectives, or more than 2-3 words per bullet.
-  - Example correct: "- **Phishing** is the most common attack vector" — Example incorrect: "- **This module covered several important security practices**"
-  - APPLICATION BRIDGE REQUIRED: At least one bullet per content slide must connect theory to practice using: "In practice...", "This means that...", "When you encounter...", or "Apply this by..."
+  - Example correct: "- **Phishing**: the most common attack vector" — Example incorrect: "- **This module covered several important security practices**"
+  - The APPLICATION BRIDGE ("In practice...", "This means that...", "Apply this by...") belongs in voiceOverText (narration),
+    NOT copy-pasted as an on-screen bullet — keep bullets short and let narration carry the explanation and application.
 
   ========================================
   CRITICAL VALIDATION RULES
@@ -651,11 +680,42 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     const raw = await executeAnthropicAI('bulk', systemInstruction, singlePrompt, 8192);
     let parsed = parseJsonSafely(raw);
     // If the AI returned a module wrapper, unwrap it
-    if (parsed.slides?.length) return parsed.slides[0];
-    if (parsed.module?.slides?.length) return parsed.module.slides[0];
+    if (parsed.slides?.length) parsed = parsed.slides[0];
+    else if (parsed.module?.slides?.length) parsed = parsed.module.slides[0];
     // Validate it has the minimum fields
     if (!parsed.id || !parsed.type) throw new Error('Single slide response missing id/type fields.');
+    // Validate actual content is present -- a "successfully parsed but empty" response
+    // must NOT be treated as success, otherwise it skips every retry tier and the
+    // learner sees a blank slide (Bug #7). Throwing here routes back through the
+    // caller's catch block so the next fallback tier gets a chance.
+    if (!parsed.content?.trim() || !parsed.voiceOverText?.trim()) {
+      throw new Error(`Single slide response for "${slide.title}" has empty content or voiceOverText.`);
+    }
     return parsed;
+  }
+
+  /**
+   * Last-mile safety net for Bug #7 (slides that "successfully" parse but come back
+   * blank). Retries each empty slide individually up to `attempts` times before
+   * falling back to real, title-derived text (never a "content unavailable" placeholder).
+   */
+  async function ensureSlideHasContent(slide: any, moduleTitle: string, attempts = 2): Promise<any> {
+    if (slide.content?.trim() && slide.voiceOverText?.trim()) return slide;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        const retried = await hydrateSingleSlide(slide, moduleTitle);
+        return { ...slide, ...retried };
+      } catch (err: any) {
+        console.warn(`[Bug#7 safety net] Retry ${i + 1}/${attempts} failed for slide "${slide.title}": ${err.message}`);
+      }
+    }
+    console.error(`[Bug#7 safety net] All retries exhausted for slide "${slide.title}" -- using derived fallback text.`);
+    return {
+      ...slide,
+      content: slide.content?.trim() || `**${slide.title}**\n\nThis slide covers key content for module: ${moduleTitle}. Please review and edit as needed.`,
+      voiceOverText: slide.voiceOverText?.trim() || `In this slide we cover ${slide.title}, which is an important aspect of ${moduleTitle}.`,
+      mediaPrompt: slide.mediaPrompt || `Professional illustration related to ${slide.title}`,
+    };
   }
 
   // --- Helper: validate and normalize a parsed slide ---
@@ -679,8 +739,12 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     }
     // Scenario slides — data will be populated async; skip sync validation here
 
-    // Density auto-splitter
-    if (slide.type === 'content' && slide.content?.length > 800) {
+    // Density auto-splitter — skip Summary/Key-Takeaway slides entirely. Those are
+    // now capped to 5-6 short bullets by the system prompt, so they should never
+    // need splitting; splitting a short bullet list produced uneven, near-empty
+    // "Part 2" slides in practice.
+    const isSummaryOrTakeaway = /summary|key\s*takeaway/i.test(slide.title || '');
+    if (slide.type === 'content' && !isSummaryOrTakeaway && slide.content?.length > 800) {
       const paragraphs = slide.content.split('\n\n');
       if (paragraphs.length > 1) {
         const mid = Math.ceil(paragraphs.length / 2);
@@ -778,6 +842,16 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
       if (onProgress) onProgress(Math.round(10 + (completedChunks / totalChunks) * 88));
       for (const slide of parsedChunk.slides) {
         hydratedSlides.push(...processSlide(slide));
+      }
+    }
+
+    // ── Post-pass: safety net for slides that parsed successfully but came back
+    // blank (Bug #7) — retries each empty slide individually before falling back
+    // to derived text, so the learner never sees a truly empty slide. ─────────────
+    for (let i = 0; i < hydratedSlides.length; i++) {
+      const s = hydratedSlides[i];
+      if (!s.content?.trim() || !s.voiceOverText?.trim()) {
+        hydratedSlides[i] = await ensureSlideHasContent(s, emptyModule.title);
       }
     }
 
