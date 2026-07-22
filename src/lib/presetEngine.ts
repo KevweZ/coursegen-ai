@@ -72,7 +72,11 @@ export function getPresetConfig(pathway: PathwayId, presetId: PresetId): PresetC
         objectiveCountMax: 4,
         interactions: ['quiz', 'sorting', 'hotspot', 'tabbed-vertical', 'click-reveal'],
         includeModuleTitleSlides: true,
-        includeObjectiveSlides: true,
+        // Off by default: the auto-injected "Module X — Overview" slide already
+        // displays this module's objective (and sub-objectives) directly from the
+        // canonical learningObjectives list. A separate AI-authored objectives
+        // slide duplicated that content with different, disconnected wording.
+        includeObjectiveSlides: false,
         includeKnowledgeChecks: true,
         includeSummarySlides: true,
         includeExitTickets: false,
@@ -94,7 +98,9 @@ export function getPresetConfig(pathway: PathwayId, presetId: PresetId): PresetC
         objectiveCountMax: 7,
         interactions: ['quiz', 'timeline', 'matching', 'accordion', 'flashcards', 'tabbed-vertical', 'carousel-panel'],
         includeModuleTitleSlides: true,
-        includeObjectiveSlides: true,
+        // See note in 'standard' preset above — the Module Overview slide already
+        // covers this module's objective, so a separate objectives slide is redundant.
+        includeObjectiveSlides: false,
         includeKnowledgeChecks: true,
         includeSummarySlides: true,
         includeExitTickets: false,

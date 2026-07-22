@@ -354,8 +354,8 @@ export async function generateCourseOutline(
   COURSE STRUCTURE REQUIREMENTS:
   You must create EXACTLY ONE module per provided Learning Objective/Target.
   Every module MUST follow this exact sequence of slides:
-  1. NO title slide — The course player now automatically injects a styled "Module X — Overview" slide as the FIRST slide of EVERY module. This slide displays the module description and its learning objectives. Do NOT generate a title, intro, or overview slide for any module. Each module must start directly with its first content or interaction slide.
-  2. ${configParams.includeObjectiveSlides !== false ? "Objectives Slide (type: content)" : "NO objectives slide"}
+  1. NO title slide — The course player now automatically injects a styled "Module X — Overview" slide as the FIRST slide of EVERY module. This slide displays the module description and its learning objectives. Do NOT generate a title, intro, overview, or objectives slide for any module. Each module must start directly with its first content or interaction slide.
+  2. ${configParams.includeObjectiveSlides !== false ? "Objectives Slide (type: content)" : "NO objectives slide — FORBIDDEN. Do NOT create any slide titled \"Learning Objectives\", \"Module Objectives\", \"Objectives\", or similar. Do NOT use click-reveal (or any other type) to restate objectives. The auto-injected Module Overview already shows this module's objective and sub-objectives from the canonical Learning Objectives list."}
   3. Content & Interaction Slides -- use the SPECIFIC allowed interaction type as the slide type. Allowed interaction types: ${configParams.interactionTypes.join(", ")}. Map them to slide types like this:
      - accordion, flashcards, timeline, sorting, matching -> use the exact string as the slide 'type'
      - tabbed-horizontal, tabbed-vertical, folder-explorer, carousel-panel, click-reveal -> use the exact string as the slide 'type'
@@ -364,7 +364,7 @@ export async function generateCourseOutline(
   4. ${configParams.includeKnowledgeChecks !== false ? 'Knowledge Check Slides (type: quiz)' : 'NO knowledge check slides'}
   5. ${configParams.includeSummarySlides !== false ? "Summary Slide (type: content)" : "NO summary slide"}
   
-  CRITICAL: The course player automatically injects (1) a Cover/Introduction slide before all modules, and (2) a "Module X — Overview" slide as the FIRST slide of EVERY module. Do NOT create any intro, overview, title, or welcome slide for ANY module. All modules must start directly with their first content or interaction slide.
+  CRITICAL: The course player automatically injects (1) a Cover/Introduction slide before all modules, and (2) a "Module X — Overview" slide as the FIRST slide of EVERY module (showing that module's objective + sub-objectives). Do NOT create any intro, overview, title, welcome, OR objectives/learning-objectives slide for ANY module. All modules must start directly with their first content or interaction slide.
   
   GAME TEMPLATE INTEGRATION:
   ${gameIds.length === 0
@@ -418,7 +418,19 @@ Each game slide must have a unique title like "[Game Name] Knowledge Challenge".
   
   const parsedOutline = parseJsonSafely(rawText) as CourseOutlineDraft;
   if (!parsedOutline) throw new Error("Critical Data Failure: Outline could not be parsed.");
-  
+
+  // Safety net: strip any AI-authored objectives / learning-objectives slides.
+  // The Module Overview slide already surfaces each module's objective from the
+  // canonical learningObjectives list, so a separate objectives slide is
+  // redundant and often invents disconnected wording (Bug #4 / item 3).
+  if (configParams.includeObjectiveSlides === false && Array.isArray(parsedOutline.modules)) {
+    const OBJECTIVES_TITLE = /^(learning\s+)?objectives?$|module\s+objectives?/i;
+    parsedOutline.modules = parsedOutline.modules.map(mod => ({
+      ...mod,
+      slides: (mod.slides || []).filter(s => !OBJECTIVES_TITLE.test((s.title || '').trim())),
+    }));
+  }
+
   return parsedOutline;
 }
 
@@ -595,10 +607,14 @@ export async function hydrateCourseContent(
     * stateDiagram-v2 → status changes or lifecycle stages
     * mindmap → concept hierarchy or brainstorm map
   - Node labels: max 4 words. Use [Step Label] for process steps, {Decision?} for yes/no branches, (Start/End) for terminals, ((Circle)) for events
+  - LABEL SAFETY (STRICT -- prevents render failures): if a label contains ANY of these characters —
+    parentheses (), quotes ", colons :, semicolons ;, or curly braces {} — you MUST wrap the whole label in
+    double quotes inside its brackets: A["Check Availability (fast path)"] NOT A[Check Availability (fast path)].
+    Plain labels with only letters/numbers/spaces/hyphens do NOT need quotes.
   - Decision branches: always label arrows with -->|Yes| and -->|No| or -->|Approve| and -->|Reject|
   - Max 10 nodes for clarity on a slide
-  - Style key nodes with classDef: classDef highlight fill:#6366f1,stroke:#4f46e5,color:#fff
-  - Example mermaidCode: "flowchart TD\n  A(Start) --> B[Identify Risk]\n  B --> C{Severity?}\n  C -->|High| D[Escalate to Manager]\n  C -->|Low| E[Log & Monitor]\n  D --> F(End)\n  E --> F"
+  - Prefer NO custom classDef. If you style a node, use light fills only (e.g. fill:#eef2ff,stroke:#6366f1,color:#1e293b) — NEVER dark slate fills. The player renders diagrams on a white slide canvas.
+  - Example mermaidCode: "flowchart TD\n  A(\"Start\") --> B[\"Identify Risk\"]\n  B --> C{\"Severity?\"}\n  C -->|High| D[\"Escalate to Manager\"]\n  C -->|Low| E[\"Log & Monitor\"]\n  D --> F(\"End\")\n  E --> F"
   - content: 1-2 sentence description of what the diagram illustrates (shown as a caption)
   - data.caption: optional short caption string (alternative to content for the label below diagram)
   - FAIL CONDITION: empty or syntactically invalid mermaidCode → change type to "content" instead
@@ -873,7 +889,13 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
       }
     }
 
-    fullCourse.modules.push({ ...emptyModule, slides: hydratedSlides } as any);
+    // Strip any leftover "Learning Objectives" / "Module Objectives" slides the
+    // AI may have authored despite the outline rules — the Module Overview
+    // already shows the canonical objective for this module.
+    const OBJECTIVES_TITLE = /^(learning\s+)?objectives?$|module\s+objectives?/i;
+    const cleanedSlides = hydratedSlides.filter(s => !OBJECTIVES_TITLE.test((s.title || '').trim()));
+
+    fullCourse.modules.push({ ...emptyModule, slides: cleanedSlides } as any);
   }
 
   return fullCourse;
@@ -917,7 +939,19 @@ export async function generateMasteryExam(
   const courseSummary = course.modules.map((mod, mIdx) => {
     const slideSummaries = mod.slides
       .filter(s => !['title','intro','outro','exam-intro','mastery-exam','exam-results'].includes(s.type))
-      .map(s => `  - ${s.title}: ${(s.content || s.narration || '').slice(0, 200)}`)
+      .map(s => {
+        // Prefer on-screen content, then narration, then a compact dump of
+        // interaction payloads (quiz options, accordion items, etc.) so the
+        // quiz generator always has enough substance from source-converted
+        // courses where the content field can be very short.
+        const body = (s.content || s.voiceOverText || s.narration || '').slice(0, 220);
+        const dataHint = s.data
+          ? ` | data: ${JSON.stringify(s.data).slice(0, 180)}`
+          : s.interactions?.length
+          ? ` | interactions: ${JSON.stringify(s.interactions).slice(0, 180)}`
+          : '';
+        return `  - [${s.type}] ${s.title}: ${body}${dataHint}`;
+      })
       .join('\n');
     return `Module ${mIdx + 1}: ${mod.title}\n${slideSummaries}`;
   }).join('\n\n');
@@ -938,7 +972,7 @@ OUTPUT: Return ONLY valid JSON: { "questions": [{ "id": "q1", "type": "mc", "que
   const userPrompt = `Course: "${course.title}"
 Objectives: ${JSON.stringify(course.learningObjectives).slice(0, 400)}
 Content:
-${courseSummary.slice(0, 5500)}
+${courseSummary.slice(0, 8000)}
 Generate ${totalNeeded} questions.`;
 
   try {

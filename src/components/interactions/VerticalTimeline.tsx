@@ -9,7 +9,7 @@
  * - Active step header highlights with accent color
  * - Progress indicator fills as learner explores steps
  */
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence, useSpring, useMotionValue } from 'framer-motion';
 import { ChevronDown, ChevronUp, Clock } from 'lucide-react';
 
@@ -41,12 +41,11 @@ function lerp(a: string, b: string, t: number): string {
 
 export const VerticalTimeline: React.FC<Props> = ({
   events = [],
-  theme = 'dark',
+  theme = 'light',
   accentColor = '#4f46e5',
 }) => {
   const [activeId, setActiveId]   = useState<string | null>(null);
   const [visited,  setVisited]    = useState<Set<string>>(new Set());
-  const [lineH,    setLineH]      = useState(0);
   const spineRef = useRef<HTMLDivElement>(null);
 
   const isLight = theme === 'light';
@@ -56,12 +55,6 @@ export const VerticalTimeline: React.FC<Props> = ({
     const t = events.length > 1 ? i / (events.length - 1) : 0;
     return lerp(accentColor, colorB, t);
   });
-
-  // Animate spine height on mount
-  useEffect(() => {
-    const id = requestAnimationFrame(() => setLineH(100));
-    return () => cancelAnimationFrame(id);
-  }, []);
 
   const toggle = (id: string) => {
     const next = activeId === id ? null : id;
@@ -105,43 +98,22 @@ export const VerticalTimeline: React.FC<Props> = ({
         </span>
       </div>
 
-      {/* Spine + events */}
-      <div className="relative" ref={spineRef}>
-
-        {/* Vertical spine — z-index kept below the events layer (which is
-            explicitly positioned + stacked higher) so it renders BEHIND the
-            numbered circles instead of drawing across their faces. Without an
-            explicit stacking context on the events layer, this absolutely
-            positioned spine would otherwise paint above all in-flow content
-            regardless of any z-index set deeper in the tree. */}
-        <div
-          className="absolute left-[22px] top-4 bottom-4 w-0.5 rounded-full"
-          style={{ background: spineColor, overflow: 'hidden', zIndex: 0 }}
-        >
-          <motion.div
-            className="w-full rounded-full origin-top"
-            style={{
-              height: '100%',
-              background: `linear-gradient(to bottom, ${accentColor}, ${colorB})`,
-              opacity: 0.5,
-            }}
-            initial={{ scaleY: 0 }}
-            animate={{ scaleY: 1 }}
-            transition={{ duration: 1.1, ease: [0.22, 1, 0.36, 1] }}
-          />
-        </div>
-
-        {/* Events — relatively positioned + stacked above the spine so the
-            connector line renders behind the numbered circles, not over them. */}
-        <div className="relative flex flex-col gap-1" style={{ zIndex: 1 }}>
-          {events.map((ev, i) => {
+      {/* Events + connectors. Redesigned to NOT use one tall spine line behind
+          everything — instead each connector is a small standalone segment
+          rendered ONLY in the flow gap between one circle's bottom and the
+          next circle's top. Because it never occupies the same vertical space
+          as a circle, it is structurally impossible for it to render over a
+          number, regardless of any z-index/stacking-context behavior. */}
+      <div className="flex flex-col" ref={spineRef}>
+        {events.map((ev, i) => {
             const isActive  = activeId === ev.id;
             const wasVisited = visited.has(ev.id);
             const color = stepColors[i];
+            const nextColor = stepColors[i + 1] ?? color;
 
             return (
+              <React.Fragment key={ev.id}>
               <motion.div
-                key={ev.id}
                 initial={{ opacity: 0, x: -16 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.09 + 0.2, duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
@@ -205,7 +177,8 @@ export const VerticalTimeline: React.FC<Props> = ({
                           ? `linear-gradient(135deg, ${color}, ${colorB})`
                           : wasVisited
                           ? color
-                          : isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.08)',
+                          // Opaque fill so any connector can never "bleed" through the circle face
+                          : isLight ? '#e2e8f0' : '#1e293b',
                         border: isActive
                           ? `2.5px solid white`
                           : `2.5px solid ${wasVisited ? color : isLight ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.18)'}`,
@@ -288,9 +261,23 @@ export const VerticalTimeline: React.FC<Props> = ({
                   )}
                 </AnimatePresence>
               </motion.div>
+
+              {/* Connector segment — only exists in the gap between this circle
+                  and the next one, so it can never draw across a number. */}
+              {i < events.length - 1 && (
+                <div className="shrink-0" style={{ height: 20, paddingLeft: 30 }} aria-hidden>
+                  <motion.div
+                    className="w-0.5 h-full rounded-full origin-top"
+                    style={{ background: `linear-gradient(to bottom, ${color}, ${nextColor})`, opacity: 0.5 }}
+                    initial={{ scaleY: 0 }}
+                    animate={{ scaleY: 1 }}
+                    transition={{ delay: i * 0.09 + 0.3, duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+                  />
+                </div>
+              )}
+              </React.Fragment>
             );
-          })}
-        </div>
+        })}
       </div>
 
       {/* Completion nudge */}

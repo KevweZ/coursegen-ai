@@ -510,3 +510,14 @@ img:not([loading]) {
   border-radius: 9999px;
   background: rgba(255,255,255,0.18);
 }
+
+/* ── Mermaid diagrams: blend into the slide landscape (no dark gray card) ── */
+.mermaid-diagram-wrapper,
+.mermaid-diagram-wrapper svg {
+  background: transparent !important;
+}
+/* Mermaid often injects an opaque backdrop <rect> as the first child of the SVG.
+   Force it transparent so flowchart shapes sit directly on the white slide. */
+.mermaid-diagram-wrapper svg > rect:first-child {
+  fill: transparent !important;
+}

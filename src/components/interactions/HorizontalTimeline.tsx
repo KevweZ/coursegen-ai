@@ -42,13 +42,18 @@ function lerp(a: string, b: string, t: number): string {
 
 export const HorizontalTimeline: React.FC<Props> = ({
   events = [],
-  theme = 'dark',
+  theme = 'light',
   accentColor = '#4f46e5',
 }) => {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [visited, setVisited]   = useState<Set<string>>(new Set());
-  const [spineW, setSpineW]     = useState(0);
+  // Measured circle centers (px, relative to the track) so connector segments
+  // can be drawn to span EXACTLY the gap between two circles -- never across
+  // one -- instead of relying on z-index/stacking order against a full-width
+  // spine, which proved fragile.
+  const [centers, setCenters] = useState<number[]>([]);
   const trackRef = useRef<HTMLDivElement>(null);
+  const nodeRefs = useRef<(HTMLDivElement | null)[]>([]);
   const colorB   = '#06b6d4';
 
   const isLight   = theme === 'light';
@@ -63,11 +68,31 @@ export const HorizontalTimeline: React.FC<Props> = ({
     return lerp(accentColor, colorB, t);
   });
 
-  // Animate spine width on mount
+  // Measure each node's horizontal center relative to the track, so connector
+  // segments can be positioned to land exactly between circles. Re-measures on
+  // resize since node columns are flexible-width (flex-1).
   useEffect(() => {
-    const id = requestAnimationFrame(() => setSpineW(100));
-    return () => cancelAnimationFrame(id);
-  }, []);
+    const measure = () => {
+      const track = trackRef.current;
+      if (!track) return;
+      const trackRect = track.getBoundingClientRect();
+      const next = nodeRefs.current.map(el => {
+        if (!el) return 0;
+        const r = el.getBoundingClientRect();
+        return r.left - trackRect.left + r.width / 2;
+      });
+      setCenters(next);
+    };
+    const id = requestAnimationFrame(measure);
+    const ro = new ResizeObserver(measure);
+    if (trackRef.current) ro.observe(trackRef.current);
+    window.addEventListener('resize', measure);
+    return () => {
+      cancelAnimationFrame(id);
+      ro.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [events.length]);
 
   const select = (id: string) => {
     const next = activeId === id ? null : id;
@@ -113,23 +138,33 @@ export const HorizontalTimeline: React.FC<Props> = ({
           className="relative flex items-start pt-2"
           style={{ minWidth: `${events.length * 120}px` }}
         >
-          {/* Horizontal spine — sits at the node center-line (top-[30px] accounting for pt-2).
-              zIndex kept below the nodes (which are explicitly stacked above) so the line
-              renders BEHIND the numbered circles instead of drawing across their faces. */}
-          <div
-            className="absolute left-0 right-0 h-0.5 rounded-full overflow-hidden"
-            style={{ top: '30px', background: spineBg, zIndex: 0 }}
-          >
-            <motion.div
-              className="h-full rounded-full origin-left"
-              style={{ background: `linear-gradient(to right, ${accentColor}, ${colorB})`, opacity: 0.55 }}
-              initial={{ scaleX: 0 }}
-              animate={{ scaleX: 1 }}
-              transition={{ duration: 1.1, ease: [0.22, 1, 0.36, 1] }}
-            />
-          </div>
+          {/* Connector segments — each spans ONLY the measured gap between two
+              circle centers (minus the circle radius on each side), so it is
+              structurally confined to the space between nodes and can never
+              draw across a number, regardless of stacking order. */}
+          {centers.length === events.length && events.slice(0, -1).map((ev, i) => {
+            const x1 = centers[i] + 22;
+            const x2 = centers[i + 1] - 22;
+            if (x2 <= x1) return null;
+            return (
+              <div
+                key={`connector-${ev.id}`}
+                className="absolute h-0.5 rounded-full overflow-hidden"
+                style={{ top: '30px', left: x1, width: x2 - x1, background: spineBg, zIndex: 0 }}
+                aria-hidden
+              >
+                <motion.div
+                  className="h-full rounded-full origin-left"
+                  style={{ background: `linear-gradient(to right, ${stepColors[i]}, ${stepColors[i + 1]})`, opacity: 0.55 }}
+                  initial={{ scaleX: 0 }}
+                  animate={{ scaleX: 1 }}
+                  transition={{ delay: i * 0.06, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                />
+              </div>
+            );
+          })}
 
-          {/* Nodes */}
+          {/* Nodes — stacked above connectors so numbers stay fully readable */}
           {events.map((ev, i) => {
             const isActive   = activeId === ev.id;
             const wasVisited = visited.has(ev.id);
@@ -146,7 +181,7 @@ export const HorizontalTimeline: React.FC<Props> = ({
                 onClick={() => select(ev.id)}
               >
                 {/* Node circle */}
-                <div className="relative flex items-center justify-center" style={{ width: 44, height: 44 }}>
+                <div ref={el => { nodeRefs.current[i] = el; }} className="relative flex items-center justify-center" style={{ width: 44, height: 44 }}>
                   {/* Glow ring */}
                   <AnimatePresence>
                     {isActive && (
@@ -164,7 +199,7 @@ export const HorizontalTimeline: React.FC<Props> = ({
                     className="absolute inset-0 rounded-full flex items-center justify-center font-black text-white z-10"
                     style={{
                       fontSize: '0.75rem',
-                      background: wasVisited ? color : isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.08)',
+                      background: wasVisited ? color : isLight ? '#e2e8f0' : '#1e293b',
                       border: `2.5px solid ${wasVisited ? color : isLight ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.18)'}`,
                       color: wasVisited ? 'white' : textSub,
                     }}

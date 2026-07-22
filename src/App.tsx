@@ -633,7 +633,11 @@ export default function App() {
     }
   };
   const [soundEffectsEnabled, setSoundEffectsEnabled] = useState(true);
-  const [includeObjectiveSlides, setIncludeObjectiveSlides] = useState(true);
+  // Default OFF: the auto-injected "Module X — Overview" slide already shows this
+  // module's objective (and sub-objectives) straight from the canonical
+  // learningObjectives list. A separate AI-authored objectives slide per module
+  // duplicated that with different, disconnected wording -- confusing for learners.
+  const [includeObjectiveSlides, setIncludeObjectiveSlides] = useState(false);
   const [includeSummarySlides, setIncludeSummarySlides] = useState(true);
   const [includeModuleTitleSlides, setIncludeModuleTitleSlides] = useState(true);
   const [generatedCourseTitle, setGeneratedCourseTitle] = useState('');
@@ -675,16 +679,25 @@ export default function App() {
         const moduleObj = (learningObjectives as any)?.[moduleIdx] ?? null;
         const modNum = moduleIdx + 1;
         return [
-          // Full-bleed animated module cover (stays as-is)
+          // Full-bleed animated module cover (stays as-is) — this is where the
+          // module NAME is announced. The overview slide right after it must
+          // NOT repeat the name (see its voiceOverText below).
           {
             id: `__module-cover-${modNum}__`,
             title: m.title || `Module ${modNum}`,
             type: 'module-cover' as any,
             content: m.description || '',
+            voiceOverText: (() => {
+              const ct = (m.title || `Module ${modNum}`).replace(/^Module\s+\d+\s*[—\-]\s*/i, '').trim();
+              return `Module ${modNum}: ${ct}.${m.description ? ' ' + m.description : ''}`.trim();
+            })(),
             _moduleNumber: modNum,
             _moduleTitle:  m.title || `Module ${modNum}`,
           } as Slide,
-          // Synthetic Module Overview slide: objectives accordion, full-bleed
+          // Synthetic Module Overview slide: objectives accordion, full-bleed.
+          // Narration picks up right where the module-cover slide left off --
+          // the module name was already announced there, so this slide flows
+          // straight into the overview content instead of re-announcing it.
           {
             id: `__module-overview-${modNum}__`,
             title: `Module ${modNum} — Overview`,
@@ -692,10 +705,7 @@ export default function App() {
             // Merge any user edits stored in syntheticSlideOverrides
             content: syntheticSlideOverrides[`__module-overview-${modNum}__`]?.content ?? (m.description || ''),
             voiceOverText: syntheticSlideOverrides[`__module-overview-${modNum}__`]?.voiceOverText
-              ?? (() => {
-                  const ct = (m.title || `Module ${modNum}`).replace(/^Module\s+\d+\s*[—\-]\s*/i, '').trim();
-                  return `Hello, welcome to Module ${modNum}: ${ct}. ${m.description ? `In this module, you'll cover ${m.description}` : "Let's look at the learning objectives for this module."}`;
-                })(),
+              ?? (m.description ? `Here's what you'll cover: ${m.description}` : "Let's look at the learning objectives for this module."),
 
             _moduleNumber: modNum,
             _moduleTitle:  m.title || `Module ${modNum}`,
@@ -1285,12 +1295,14 @@ export default function App() {
                     text: `Module ${modNum}: ${ct}.${m.description ? ' ' + m.description : ''}`.trim(),
                   },
                   {
+                    // No "Welcome to Module N: <title>" here -- the module-cover
+                    // slide right before this one already announced the name.
+                    // Repeating it made the narration feel redundant, so this
+                    // slide transitions straight into the overview content.
                     id: `__module-overview-${modNum}__`,
-                    text: `Hello, welcome to Module ${modNum}: ${ct}. ${
-                      m.description
-                        ? `In this module, you'll cover ${m.description}`
-                        : "Let's look at the learning objectives for this module."
-                    }`,
+                    text: m.description
+                      ? `Here's what you'll cover: ${m.description}`
+                      : "Let's look at the learning objectives for this module.",
                   },
                 ];
               }
@@ -3579,7 +3591,13 @@ export default function App() {
                                         />
                                       )}
                                       {mermaidCode ? (
-                                        <div className="w-full overflow-auto rounded-xl bg-slate-800/40 border border-slate-700/40 p-4">
+                                        <div className={cn(
+                                          'w-full overflow-auto rounded-xl p-4',
+                                          // Light theme: blend straight into the white slide canvas (no boxed
+                                          // "card" look) so the diagram reads as part of the page, not a widget
+                                          // floating in a dark gray container.
+                                          theme === 'light' ? 'bg-transparent' : 'bg-slate-800/40 border border-slate-700/40'
+                                        )}>
                                           <MermaidDiagram
                                             code={mermaidCode}
                                             theme={theme as any}
@@ -3587,7 +3605,10 @@ export default function App() {
                                           />
                                         </div>
                                       ) : (
-                                        <div className="rounded-xl bg-slate-800/50 border border-amber-700/30 p-6 text-amber-400 text-sm text-center">
+                                        <div className={cn(
+                                          'rounded-xl p-6 text-sm text-center',
+                                          theme === 'light' ? 'bg-amber-50 border border-amber-200 text-amber-700' : 'bg-slate-800/50 border border-amber-700/30 text-amber-400'
+                                        )}>
                                           No diagram code found. Edit this slide to add Mermaid markup.
                                         </div>
                                       )}
@@ -3638,9 +3659,7 @@ export default function App() {
                                    <div className="space-y-6 w-full">
                                      <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
                                      {currentSlide.content && <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />}
-                                     <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
-                                       <ClickRevealInteraction items={crItems} />
-                                     </div>
+                                     <ClickRevealInteraction items={crItems} theme={theme as any} />
                                    </div>
                                  );
                                })()}
@@ -3650,6 +3669,7 @@ export default function App() {
                                  <ExamIntroSlide
                                    examConfig={examConfig}
                                    courseTitle={course?.title}
+                                   isGenerating={isGeneratingExam}
                                    onBegin={async () => {
                                      let questions = examQuestions;
                                      if (!questions || questions.length === 0) {
@@ -3657,7 +3677,20 @@ export default function App() {
                                        try {
                                          questions = await generateMasteryExam(course, examConfig);
                                          setExamQuestions(questions);
-                                       } finally { setIsGeneratingExam(false); }
+                                       } catch (err) {
+                                         console.error('[Mastery Quiz] Generation failed:', err);
+                                         // generateMasteryExam already falls back internally; if it
+                                         // somehow still throws, stay on the intro so the learner
+                                         // can retry instead of navigating to a blank quiz.
+                                         setIsGeneratingExam(false);
+                                         return;
+                                       } finally {
+                                         setIsGeneratingExam(false);
+                                       }
+                                     }
+                                     if (!questions || questions.length === 0) {
+                                       console.error('[Mastery Quiz] No questions available after generation.');
+                                       return;
                                      }
                                      setExamSession({ questions, answers: Object.fromEntries(questions.map(q => [q.id, null])), currentQuestionIdx: 0, submitted: false, score: null, passed: null });
                                      setExamPhase('active');

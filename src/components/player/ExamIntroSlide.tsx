@@ -1,12 +1,14 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { GraduationCap, AlertTriangle, CheckSquare, ToggleLeft, List } from 'lucide-react';
+import { GraduationCap, AlertTriangle, CheckSquare, ToggleLeft, List, Loader2 } from 'lucide-react';
 import type { ExamConfig } from '../../types/course';
 
 interface Props {
   examConfig: ExamConfig;
   courseTitle?: string;
   onBegin: () => void;
+  /** True while quiz questions are being generated after the learner clicks Begin */
+  isGenerating?: boolean;
 }
 
 const typeLabelMap: Record<string, string> = {
@@ -15,7 +17,7 @@ const typeLabelMap: Record<string, string> = {
   tf: 'True / False',
 };
 
-export const ExamIntroSlide: React.FC<Props> = ({ examConfig, courseTitle, onBegin }) => {
+export const ExamIntroSlide: React.FC<Props> = ({ examConfig, courseTitle, onBegin, isGenerating = false }) => {
   const totalQuestions =
     examConfig.questionMode === 'total'
       ? examConfig.questionCount
@@ -85,13 +87,23 @@ export const ExamIntroSlide: React.FC<Props> = ({ examConfig, courseTitle, onBeg
 
         {/* Begin button */}
         <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={onBegin}
-          className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-lg rounded-2xl transition-colors shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-3"
+          whileHover={isGenerating ? undefined : { scale: 1.02 }}
+          whileTap={isGenerating ? undefined : { scale: 0.98 }}
+          onClick={() => { if (!isGenerating) onBegin(); }}
+          disabled={isGenerating}
+          className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-70 disabled:cursor-wait text-white font-extrabold text-lg rounded-2xl transition-colors shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-3"
         >
-          <GraduationCap className="w-5 h-5" />
-          Begin Mastery Quiz
+          {isGenerating ? (
+            <>
+              <Loader2 className="w-5 h-5 animate-spin" />
+              Generating quiz questions…
+            </>
+          ) : (
+            <>
+              <GraduationCap className="w-5 h-5" />
+              Begin Mastery Quiz
+            </>
+          )}
         </motion.button>
       </div>
     </motion.div>

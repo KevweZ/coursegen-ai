@@ -8,6 +8,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlertCircle } from 'lucide-react';
 
+function cn(...classes: (string | false | undefined | null)[]): string {
+  return classes.filter(Boolean).join(' ');
+}
+
 interface MermaidDiagramProps {
   /** Raw mermaid markup — no markdown fences */
   code: string;
@@ -20,6 +24,38 @@ let _idCounter = 0;
 function nextId(): string {
   _idCounter += 1;
   return `mermaid-diagram-${_idCounter}`;
+}
+
+/**
+ * Best-effort auto-repair for the #1 cause of "Diagram rendering failed": the AI
+ * writes an UNQUOTED node label (e.g. `A[Check Suite Availability (fast path)]`)
+ * that contains characters mermaid's flowchart parser treats as syntax --
+ * parentheses, quotes, colons, semicolons, braces. Quoting the label text fixes
+ * this without changing what it says. Applied automatically as a retry when the
+ * first render attempt fails, so a single stray character never blanks a slide.
+ */
+function sanitizeMermaidCode(code: string): string {
+  let out = code
+    // Normalize smart quotes/dashes the AI sometimes emits -- also invalid here
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2013\u2014]/g, '-');
+
+  const wrapLabel = (label: string): string => {
+    const inner = label.trim();
+    if (!inner || /^".*"$/.test(inner)) return label; // empty or already quoted
+    if (/[()":;{}]/.test(inner)) {
+      return `"${inner.replace(/"/g, '#quot;')}"`;
+    }
+    return label;
+  };
+
+  // Node shape labels: [square], {curly/decision}, (round/terminal)
+  out = out.replace(/\[([^\[\]]*)\]/g, (_m, label) => `[${wrapLabel(label)}]`);
+  out = out.replace(/\{([^{}]*)\}/g, (_m, label) => `{${wrapLabel(label)}}`);
+  out = out.replace(/\(([^()]*)\)/g, (_m, label) => `(${wrapLabel(label)})`);
+
+  return out;
 }
 
 export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
@@ -44,22 +80,31 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
         // Lazy-load mermaid so it doesn't bloat the initial bundle
         const mermaid = (await import('mermaid')).default;
 
+        // Always prefer the light/base palette on light course themes so the
+        // diagram blends into the white slide canvas (no dark gray "card" fill).
+        // `theme: 'base'` + transparent background is more reliable than
+        // `default`, which still paints an opaque SVG backdrop rect.
         mermaid.initialize({
           startOnLoad: false,
-          theme: theme === 'light' ? 'default' : 'dark',
+          theme: theme === 'light' ? 'base' : 'dark',
           themeVariables:
             theme === 'light'
               ? {
-                  background: '#ffffff',
-                  primaryColor: '#6366f1',
+                  background: 'transparent',
+                  mainBkg: '#eef2ff',
+                  primaryColor: '#eef2ff',
                   primaryTextColor: '#1e293b',
                   primaryBorderColor: '#6366f1',
+                  secondaryColor: '#f1f5f9',
+                  tertiaryColor: '#ffffff',
                   lineColor: '#64748b',
-                  secondaryColor: '#e2e8f0',
-                  tertiaryColor: '#f8fafc',
+                  edgeLabelBackground: '#ffffff',
+                  clusterBkg: '#f8fafc',
+                  titleColor: '#0f172a',
+                  nodeTextColor: '#1e293b',
                 }
               : {
-                  background: '#1e293b',
+                  background: 'transparent',
                   primaryColor: '#6366f1',
                   primaryTextColor: '#f1f5f9',
                   primaryBorderColor: '#4f46e5',
@@ -78,11 +123,22 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
           securityLevel: 'loose',
         });
 
-        // Always use a fresh ID on each render to avoid SVG ID conflicts
+        // Sanitize FIRST so a single stray parenthesis in a node label never
+        // blanks the slide. Fall back to the raw string only if sanitizing
+        // somehow produces empty output.
+        const raw = code.trim();
+        const sanitized = sanitizeMermaidCode(raw) || raw;
         const renderId = `${idRef.current}-${Date.now()}`;
-        const { svg: renderedSvg } = await mermaid.render(renderId, code.trim());
-        if (!cancelled) {
-          setSvg(renderedSvg);
+        try {
+          const { svg: renderedSvg } = await mermaid.render(renderId, sanitized);
+          if (!cancelled) setSvg(renderedSvg);
+        } catch (firstErr: any) {
+          // Last-chance retry with the unsanitized original (in case our
+          // quote-wrapping accidentally broke a rare valid construct).
+          if (sanitized === raw) throw firstErr;
+          const retryId = `${idRef.current}-${Date.now()}-retry`;
+          const { svg: retrySvg } = await mermaid.render(retryId, raw);
+          if (!cancelled) setSvg(retrySvg);
         }
       } catch (err: any) {
         if (!cancelled) {
@@ -96,15 +152,17 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
     };
   }, [code, theme]);
 
+  const isLight = theme === 'light';
+
   // ─── Error state ─────────────────────────────────────────────────────────────
   if (error) {
     return (
       <div
-        className={`flex flex-col items-center justify-center gap-3 rounded-xl border border-red-500/30 bg-red-950/20 p-6 text-center ${className}`}
+        className={`flex flex-col items-center justify-center gap-3 rounded-xl border p-6 text-center ${isLight ? 'border-red-200 bg-red-50' : 'border-red-500/30 bg-red-950/20'} ${className}`}
       >
-        <AlertCircle className="w-8 h-8 text-red-400" />
-        <p className="text-sm text-red-300 font-medium">Diagram rendering failed</p>
-        <pre className="text-xs text-red-400/70 max-w-full overflow-auto whitespace-pre-wrap">
+        <AlertCircle className={cn('w-8 h-8', isLight ? 'text-red-500' : 'text-red-400')} />
+        <p className={cn('text-sm font-medium', isLight ? 'text-red-700' : 'text-red-300')}>Diagram rendering failed</p>
+        <pre className={cn('text-xs max-w-full overflow-auto whitespace-pre-wrap', isLight ? 'text-red-600/80' : 'text-red-400/70')}>
           {error}
         </pre>
       </div>
@@ -115,24 +173,29 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
   if (!svg) {
     return (
       <div
-        className={`rounded-xl bg-slate-800/50 border border-slate-700/50 animate-pulse flex items-center justify-center ${className}`}
+        className={`rounded-xl animate-pulse flex items-center justify-center ${isLight ? 'bg-slate-50 border border-slate-200' : 'bg-slate-800/50 border border-slate-700/50'} ${className}`}
         style={{ minHeight: 220 }}
       >
-        <div className="flex flex-col items-center gap-3 opacity-40">
+        <div className={cn('flex flex-col items-center gap-3', isLight ? 'opacity-60' : 'opacity-40')}>
           <div className="w-16 h-16 rounded-full border-4 border-indigo-500/40 border-t-indigo-400 animate-spin" />
-          <span className="text-slate-400 text-sm">Rendering diagram…</span>
+          <span className={cn('text-sm', isLight ? 'text-slate-500' : 'text-slate-400')}>Rendering diagram…</span>
         </div>
       </div>
     );
   }
 
   // ─── Rendered SVG ─────────────────────────────────────────────────────────────
+  // Transparent wrapper so the diagram sits on the slide landscape itself —
+  // no dark gray "card" behind the flowchart/shapes.
   return (
     <div
-      className={`mermaid-diagram-wrapper w-full overflow-auto rounded-xl ${className}`}
+      className={`mermaid-diagram-wrapper w-full overflow-auto ${className}`}
       // Mermaid outputs complete SVG — safe since securityLevel is 'loose' with our own content
       dangerouslySetInnerHTML={{ __html: svg }}
-      style={{ lineHeight: 1.5 }}
+      style={{
+        lineHeight: 1.5,
+        background: 'transparent',
+      }}
     />
   );
 };
