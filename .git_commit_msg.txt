@@ -1,7 +1,0 @@
-Harden quiz begin timeout, pass module accent to all SmartContent, ban bold in bullets
-
-- generateMasteryExam: 45s timeout so Begin Mastery Quiz never hangs silently
-- SmartContent: receive slideAccentColor so bullet markers match module chrome
-- CSS: force ::marker color via --slide-marker (overrides prose indigo)
-- AI prompt: no bold inside bullet lists; titles carry hierarchy
-- MasteryExamSlide: fix invalid bg-slate-1000 class
