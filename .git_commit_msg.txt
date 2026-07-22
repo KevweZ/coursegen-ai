@@ -1,9 +1,7 @@
-Neutral quiz chrome, module-matched bullets, quieter bold, and fix Begin Quiz
+Harden quiz begin timeout, pass module accent to all SmartContent, ban bold in bullets
 
-- Slide bullets use the module accent (or near-black) instead of hardcoded indigo.
-- Strip partial **bold** from bullet lines at render time and soften remaining
-  strong tags so lists don't compete with bold titles; AI prompt updated too.
-- Mastery Quiz intro/questions and the player Next button move from indigo to
-  dark slate / gray to match the white theme.
-- Begin Mastery Quiz: resolve the quiz slide by id, show spinner + error text,
-  and refuse to navigate when generation fails (was failing silently).
+- generateMasteryExam: 45s timeout so Begin Mastery Quiz never hangs silently
+- SmartContent: receive slideAccentColor so bullet markers match module chrome
+- CSS: force ::marker color via --slide-marker (overrides prose indigo)
+- AI prompt: no bold inside bullet lists; titles carry hierarchy
+- MasteryExamSlide: fix invalid bg-slate-1000 class

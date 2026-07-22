@@ -633,10 +633,10 @@ export async function hydrateCourseContent(
   - KEY-TAKEAWAY SLIDES: MAXIMUM 5-6 short bullets (5-8 words each), each an ACTION-VERB phrase, not a full sentence:
     "- Spot suspicious email patterns early"
     "- Report incidents to IT within 24 hours"
-  - BOLD USAGE: Prefer NO bold inside bullet lists on content/summary slides — the slide title already
-    carries visual hierarchy, and partial bold mid-bullet looks noisy. If you must emphasize a term,
-    bold at most ONE short term (1-2 words) per slide total, never the first half of every bullet.
-    NEVER bold entire sentences or more than 2-3 words in a row.
+  - BOLD USAGE: Do NOT bold words inside bullet lists on content/summary/key-takeaway slides.
+    The slide title already carries visual hierarchy; partial bold mid-bullet looks noisy and
+    competes with the header. Write plain bullets with no ** markers. Reserve bold for rare
+    inline terms in paragraph prose only (never in list items).
   - Example correct: "- **Phishing**: the most common attack vector" — Example incorrect: "- **This module covered several important security practices**"
   - The APPLICATION BRIDGE ("In practice...", "This means that...", "Apply this by...") belongs in voiceOverText (narration),
     NOT copy-pasted as an on-screen bullet — keep bullets short and let narration carry the explanation and application.
@@ -979,7 +979,14 @@ ${courseSummary.slice(0, 8000)}
 Generate ${totalNeeded} questions.`;
 
   try {
-    const text = await executeAnthropicAI('complex', systemInstruction, userPrompt, 4096);
+    // Cap wait time so "Begin Mastery Quiz" never appears frozen if the AI
+    // proxy hangs — fall through to content-derived fallback questions.
+    const text = await Promise.race([
+      executeAnthropicAI('complex', systemInstruction, userPrompt, 4096),
+      new Promise<string>((_, reject) =>
+        setTimeout(() => reject(new Error('Quiz generation timed out after 45s')), 45000)
+      ),
+    ]);
     const parsed = parseJsonSafely(text);
     if (parsed?.questions && Array.isArray(parsed.questions) && parsed.questions.length > 0) {
       return (parsed.questions as ExamQuestion[]).slice(0, totalNeeded);

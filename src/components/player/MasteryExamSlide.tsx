@@ -97,7 +97,7 @@ const QuestionCard: React.FC<{
               <span className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 text-xs font-black ${
                 submitted && state === 'correct' ? 'border-emerald-500 bg-emerald-500 text-white'
                 : submitted && state === 'wrong' ? 'border-red-500 bg-red-500 text-white'
-                : isSelected ? 'border-slate-700 bg-slate-1000 text-white'
+                : isSelected ? 'border-slate-700 bg-slate-900 text-white'
                 : 'border-slate-300 text-slate-500'
               }`}>
                 {submitted && state === 'correct' ? '✓' : submitted && state === 'wrong' ? '✗' : String.fromCharCode(65 + oIdx)}

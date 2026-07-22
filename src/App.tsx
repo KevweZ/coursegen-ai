@@ -278,8 +278,10 @@ function autoFormatAsBullets(raw: string): string {
 }
 
 const SlideContent = ({ content, theme, accentColor }: { content: string; theme: string; accentColor?: string }) => {
-  // Bullet markers follow the module accent when provided; otherwise fall back to
-  // near-black (light) / soft gray (dark) so they never stay stuck on indigo.
+  // Bullet markers: use the module accent when provided so lists match the
+  // module chrome (header / divider). Fall back to near-black so we never
+  // leave the old hardcoded indigo/light-blue markers that clashed with
+  // non-indigo modules (e.g. teal Module 2 headers with blue bullets).
   const markerColor = accentColor || (theme === 'light' ? '#0f172a' : '#94a3b8');
 
   if (isHTML(content)) {
@@ -3576,7 +3578,7 @@ export default function App() {
                                   return (
                                     <div className="space-y-6 w-full">
                                       <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                      <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
+                                      <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                                                              <CustomMatchingActivity
                                         items={matchingProps.items || []}
                                         targets={matchingProps.targets || []}
@@ -3589,7 +3591,7 @@ export default function App() {
                                {currentSlide?.type === 'accordion' && (
                                  <div className="space-y-6 w-full">
                                    <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                   <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
+                                   <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                    <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                      <VerticalTimeline
                                        events={((currentSlide.data || currentSlide.interactions?.[0] || {}).items || []).map((item: any, idx: number) => ({
@@ -3607,7 +3609,7 @@ export default function App() {
                                {currentSlide?.type === 'flashcards' && (
                                  <div className="space-y-6 w-full">
                                    <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                   <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
+                                   <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                    <FlashcardGrid cards={currentSlide.data?.cards || currentSlide.interactions?.[0]?.cards || []} theme={theme} />
                                  </div>
                                )}
@@ -3631,7 +3633,7 @@ export default function App() {
                                {currentSlide?.type === 'sorting' && (
                                   <div className="space-y-6 w-full">
                                      <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                     <SmartContent content={sanitizeContent(currentSlide.content) + '\n\nDrag items or use ↑ ↓ arrows to reorder.'} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
+                                     <SmartContent content={sanitizeContent(currentSlide.content) + '\n\nDrag items or use ↑ ↓ arrows to reorder.'} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                      <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                         <CustomSortingActivity items={(currentSlide.data || currentSlide.interactions?.[0] || {}).items || []} correctOrder={(currentSlide.data || currentSlide.interactions?.[0] || {}).correctOrder || []} theme={theme} />
                                      </div>
@@ -3642,7 +3644,7 @@ export default function App() {
                                   return (
                                     <div className="space-y-4 w-full">
                                       <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                      <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
+                                      <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                       <div className="w-full overflow-x-auto" style={{ height: '560px' }}>
                                         <WheelDiagram
                                           centerLabel={wd.centerLabel || currentSlide.title}
@@ -3699,7 +3701,7 @@ export default function App() {
                                {currentSlide?.type === 'tabbed-horizontal' && (
                                  <div className="space-y-6 w-full">
                                    <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                   <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
+                                   <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                    <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                      <TabbedHorizontal tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []} />
                                    </div>
@@ -3708,14 +3710,14 @@ export default function App() {
                                {currentSlide?.type === 'tabbed-vertical' && (
                                  <div className="space-y-6 w-full">
                                    <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                   <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
+                                   <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                    <TabbedVertical tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []} theme={theme} />
                                  </div>
                                )}
                                {currentSlide?.type === 'folder-explorer' && (
                                   <div className="space-y-6 w-full">
                                     <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                    <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
+                                    <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                     <div className={cn('overflow-visible', theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                       <FolderExplorer items={currentSlide.data?.items || currentSlide.interactions?.[0]?.items || []} />
                                     </div>
@@ -3724,7 +3726,7 @@ export default function App() {
                                {currentSlide?.type === 'carousel-panel' && (
                                  <div className="space-y-6 w-full">
                                    <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                   <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
+                                   <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                    <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                      <CarouselPanel cards={currentSlide.data?.cards || currentSlide.data?.items || currentSlide.interactions?.[0]?.cards || currentSlide.interactions?.[0]?.items || []} />
                                    </div>
@@ -3737,7 +3739,7 @@ export default function App() {
                                  return (
                                    <div className="space-y-6 w-full">
                                      <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                     {currentSlide.content && <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />}
+                                     {currentSlide.content && <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />}
                                      <ClickRevealInteraction items={crItems} theme={theme as any} />
                                    </div>
                                  );
@@ -3874,7 +3876,7 @@ export default function App() {
                                   return (
                                     <div className="space-y-4 w-full">
                                       <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                      <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
+                                      <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                       <div style={{ minHeight: '320px' }}>
                                         <HotspotInteraction
                                           imageUrl={hd.imageUrl || hd.image || hd.backgroundImage}
@@ -3889,7 +3891,7 @@ export default function App() {
                                {['drop-targets', 'memory-match'].includes(currentSlide?.type) && (
                                   <div className="space-y-6 w-full">
                                      <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                     <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
+                                     <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                      <div className="p-8 border-2 border-dashed border-indigo-400/50 bg-indigo-500/10 rounded-2xl text-center">
                                        <Gamepad2 className="w-12 h-12 text-indigo-400 mx-auto mb-4 opacity-50" />
                                        <p className="text-xl font-bold text-indigo-300">[{currentSlide.type}] interaction is under construction.</p>
