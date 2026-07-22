@@ -138,7 +138,11 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   );
   const btnPrimary = cn(
     btnBase,
-    'border-indigo-500 bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-30'
+    // Neutral gray primary (Next) — aligns with the white/light player theme
+    // instead of the previous indigo/blue accent.
+    isLight
+      ? 'border-slate-300 bg-slate-800 text-white hover:bg-slate-700 disabled:opacity-30'
+      : 'border-slate-500 bg-slate-700 text-white hover:bg-slate-600 disabled:opacity-30'
   );
 
   // Editor tab button style

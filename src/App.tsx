@@ -277,12 +277,17 @@ function autoFormatAsBullets(raw: string): string {
   return raw;
 }
 
-const SlideContent = ({ content, theme }: { content: string, theme: string }) => {
+const SlideContent = ({ content, theme, accentColor }: { content: string; theme: string; accentColor?: string }) => {
+  // Bullet markers follow the module accent when provided; otherwise fall back to
+  // near-black (light) / soft gray (dark) so they never stay stuck on indigo.
+  const markerColor = accentColor || (theme === 'light' ? '#0f172a' : '#94a3b8');
+
   if (isHTML(content)) {
     return (
       <div
         className={cn('prose max-w-none text-lg lg:text-xl leading-relaxed rich-slide-content', theme !== 'light' ? 'prose-invert text-gray-200' : 'text-gray-800')}
-        dangerouslySetInnerHTML={{ __html: content }}
+        style={{ ['--slide-marker' as any]: markerColor }}
+        dangerouslySetInnerHTML={{ __html: stripBulletBold(content) }}
       />
     );
   }
@@ -297,17 +302,47 @@ const SlideContent = ({ content, theme }: { content: string, theme: string }) =>
         },
         li: ({ node, children, ...props }) => {
           const instructional = renderInstructionalText(children, theme, true);
-          if (instructional) return <li {...props} className="marker:text-indigo-400">{instructional}</li>;
-          return <li {...props} className={cn("marker:text-indigo-400", theme === 'light' ? "text-gray-800" : "text-gray-200")}>{children}</li>;
+          if (instructional) {
+            return (
+              <li {...props} className="marker:[color:var(--slide-marker,#0f172a)]">
+                {instructional}
+              </li>
+            );
+          }
+          return (
+            <li
+              {...props}
+              className={cn(
+                'marker:[color:var(--slide-marker,#0f172a)]',
+                theme === 'light' ? 'text-gray-800' : 'text-gray-200'
+              )}
+            >
+              {children}
+            </li>
+          );
         },
         ul: ({ node, children, ...props }) => (
-          <ul {...props} className="pl-6 space-y-2 lg:list-disc border-l-0 border-indigo-500/20 mb-4">{children}</ul>
+          <ul
+            {...props}
+            className="pl-6 space-y-2 list-disc border-l-0 mb-4"
+            style={{ ['--slide-marker' as any]: markerColor }}
+          >
+            {children}
+          </ul>
         ),
         ol: ({ node, children, ...props }) => (
-          <ol {...props} className="pl-6 space-y-2 list-decimal pb-4">{children}</ol>
+          <ol
+            {...props}
+            className="pl-6 space-y-2 list-decimal pb-4 marker:[color:var(--slide-marker,#0f172a)]"
+            style={{ ['--slide-marker' as any]: markerColor }}
+          >
+            {children}
+          </ol>
         ),
+        // Body bold is intentionally subdued: headers already carry hierarchy, so
+        // mid-bullet **keywords** should not compete with the title (looked noisy).
         strong: ({ node, children, ...props }) => (
-          <strong {...props} className={cn("font-extrabold", theme === 'light' ? "text-slate-900" : "text-white")}>{children}</strong>
+          <strong {...props} className="font-medium text-inherit">{children}</strong>
         ),
         // Render ```mermaid code blocks as actual Mermaid diagrams
         code({ node, className, children, ...props }: any) {
@@ -325,27 +360,70 @@ const SlideContent = ({ content, theme }: { content: string, theme: string }) =>
         },
       }}
     >
-      {autoFormatAsBullets(content)}
+      {stripBulletBold(autoFormatAsBullets(content))}
     </ReactMarkdown>
   );
 };
 
 /**
+ * Strip partial **bold** markers from bullet lines so on-screen lists don't
+ * compete with already-bold slide titles. Leaves headings (#) untouched.
+ * Existing courses that were generated with "**Keyword** rest of sentence"
+ * patterns get cleaned at render time — no re-generation required.
+ */
+function stripBulletBold(raw: string): string {
+  if (!raw) return raw;
+  // Skip if it's already HTML from the rich-text editor
+  if (/<[a-z][\s\S]*>/i.test(raw)) {
+    // Soften <strong>/<b> inside list items only
+    return raw.replace(/<(ul|ol)[\s\S]*?<\/\1>/gi, (block) =>
+      block.replace(/<\/?(strong|b)\b[^>]*>/gi, '')
+    );
+  }
+  return raw
+    .split('\n')
+    .map(line => {
+      // Only touch bullet / numbered lines — leave headings & paragraphs alone
+      if (!/^\s*([-*+]|\d+\.)\s+/.test(line)) return line;
+      return line.replace(/\*\*(.+?)\*\*/g, '$1').replace(/__(.+?)__/g, '$1');
+    })
+    .join('\n');
+}
+
+/**
  * SmartContent — handles the numerous inline `<ReactMarkdown>` usages in the slide renderer.
  * Automatically switches between HTML rendering and Markdown based on content type.
  */
-const SmartContent = ({ content, className, theme }: { content: string; className?: string; theme?: string }) => {
+const SmartContent = ({ content, className, theme, accentColor }: { content: string; className?: string; theme?: string; accentColor?: string }) => {
+  const markerColor = accentColor || (theme === 'light' ? '#0f172a' : '#94a3b8');
   if (isHTML(content)) {
     return (
       <div
         className={cn(className, 'rich-slide-content')}
-        dangerouslySetInnerHTML={{ __html: content }}
+        style={{ ['--slide-marker' as any]: markerColor }}
+        dangerouslySetInnerHTML={{ __html: stripBulletBold(content) }}
       />
     );
   }
   return (
-    <ReactMarkdown className={className}>
-      {autoFormatAsBullets(content)}
+    <ReactMarkdown
+      className={className}
+      components={{
+        ul: ({ node, children, ...props }) => (
+          <ul {...props} className="pl-6 space-y-2 list-disc mb-4" style={{ ['--slide-marker' as any]: markerColor }}>{children}</ul>
+        ),
+        ol: ({ node, children, ...props }) => (
+          <ol {...props} className="pl-6 space-y-2 list-decimal mb-4" style={{ ['--slide-marker' as any]: markerColor }}>{children}</ol>
+        ),
+        li: ({ node, children, ...props }) => (
+          <li {...props} className="marker:[color:var(--slide-marker,#0f172a)]">{children}</li>
+        ),
+        strong: ({ node, children, ...props }) => (
+          <strong {...props} className="font-medium text-inherit">{children}</strong>
+        ),
+      }}
+    >
+      {stripBulletBold(autoFormatAsBullets(content))}
     </ReactMarkdown>
   );
 };
@@ -654,6 +732,7 @@ export default function App() {
   });
   const [examQuestions, setExamQuestions] = useState<ExamQuestion[]>([]);
   const [examPhase, setExamPhase] = useState<'idle' | 'active' | 'complete'>('idle');
+  const [examError, setExamError] = useState<string | null>(null);
   const [examSession, setExamSession] = useState<ExamSessionState>({
     questions: [],
     answers: {},
@@ -3292,7 +3371,7 @@ export default function App() {
                                      </p>
                                        <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
                                      {/* Body content */}
-                                     {currentSlide.content && <SlideContent content={sanitizeContent(currentSlide.content)} theme={theme} />}
+                                     {currentSlide.content && <SlideContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} />}
                                    </div>
                                  );
                                })()}
@@ -3536,7 +3615,7 @@ export default function App() {
                                    <div className="space-y-4 w-full">
                                      <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
                                      {currentSlide.content && (
-                                       <SlideContent content={sanitizeContent(currentSlide.content)} theme={theme} />
+                                       <SlideContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} />
                                      )}
                                      <HorizontalTimeline
                                        events={((currentSlide.data || currentSlide.interactions?.[0] || {}).events || []).map((ev: any) => ({
@@ -3670,31 +3749,52 @@ export default function App() {
                                    examConfig={examConfig}
                                    courseTitle={course?.title}
                                    isGenerating={isGeneratingExam}
+                                   errorMessage={examError}
                                    onBegin={async () => {
+                                     setExamError(null);
+                                     if (!course) {
+                                       setExamError('Course data is missing. Please reload the preview and try again.');
+                                       return;
+                                     }
+
+                                     // Resolve the quiz slide by id — more reliable than arithmetic
+                                     // indices when synthetic slides are injected around content.
+                                     const qIdx = allSlides.findIndex(s => (s as any).id === '__mastery-exam__');
+                                     if (qIdx < 0) {
+                                       setExamError('Quiz Questions slide is missing. Enable Mastery Quiz in course settings and regenerate.');
+                                       return;
+                                     }
+
                                      let questions = examQuestions;
                                      if (!questions || questions.length === 0) {
                                        setIsGeneratingExam(true);
                                        try {
                                          questions = await generateMasteryExam(course, examConfig);
+                                         if (!questions?.length) {
+                                           setExamError('No quiz questions could be generated from this course. Try again, or check that slides have content.');
+                                           return;
+                                         }
                                          setExamQuestions(questions);
-                                       } catch (err) {
+                                       } catch (err: any) {
                                          console.error('[Mastery Quiz] Generation failed:', err);
-                                         // generateMasteryExam already falls back internally; if it
-                                         // somehow still throws, stay on the intro so the learner
-                                         // can retry instead of navigating to a blank quiz.
-                                         setIsGeneratingExam(false);
+                                         setExamError(err?.message || 'Quiz generation failed. Please try again.');
                                          return;
                                        } finally {
                                          setIsGeneratingExam(false);
                                        }
                                      }
-                                     if (!questions || questions.length === 0) {
-                                       console.error('[Mastery Quiz] No questions available after generation.');
-                                       return;
-                                     }
-                                     setExamSession({ questions, answers: Object.fromEntries(questions.map(q => [q.id, null])), currentQuestionIdx: 0, submitted: false, score: null, passed: null });
+
+                                     setExamSession({
+                                       questions,
+                                       answers: Object.fromEntries(questions.map(q => [q.id, null])),
+                                       currentQuestionIdx: 0,
+                                       submitted: false,
+                                       score: null,
+                                       passed: null,
+                                     });
                                      setExamPhase('active');
-                                     setCurrentSlideIndex(examQIndex);
+                                     setHighestVisitedIndex(prev => Math.max(prev, qIdx));
+                                     setCurrentSlideIndex(qIdx);
                                    }}
                                  />
                                )}

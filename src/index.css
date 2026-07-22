@@ -343,6 +343,10 @@ button, [role="button"], a { cursor: pointer; }
 .rich-slide-content li {
   margin: 0.3rem 0;
 }
+.rich-slide-content li::marker,
+.prose li::marker {
+  color: var(--slide-marker, #0f172a);
+}
 .rich-slide-content li > p {
   margin: 0;
 }

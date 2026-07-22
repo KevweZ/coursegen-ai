@@ -51,7 +51,7 @@ const QuestionCard: React.FC<{
       {/* Progress indicator (one-at-a-time) */}
       <div className="flex items-center justify-between text-xs text-slate-500 font-bold">
         <span>Question {idx + 1} of {total}</span>
-        <span className={q.type === 'ma' ? 'text-purple-600' : q.type === 'tf' ? 'text-amber-600' : 'text-indigo-600'}>
+        <span className={q.type === 'ma' ? 'text-slate-600' : q.type === 'tf' ? 'text-slate-600' : 'text-slate-600'}>
           {q.type === 'mc' ? 'Multiple Choice' : q.type === 'ma' ? 'Multiple Answer — select all that apply' : 'True / False'}
         </span>
       </div>
@@ -59,7 +59,7 @@ const QuestionCard: React.FC<{
       {/* Progress bar */}
       <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
         <div
-          className="h-full bg-indigo-500 rounded-full transition-all duration-500"
+          className="h-full bg-slate-700 rounded-full transition-all duration-500"
           style={{ width: `${((idx + 1) / total) * 100}%` }}
         />
       </div>
@@ -90,14 +90,14 @@ const QuestionCard: React.FC<{
               }}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all ${
                 submitted ? stateClasses[state] : isSelected
-                  ? 'border-indigo-500 bg-indigo-50 text-slate-900'
+                  ? 'border-slate-700 bg-slate-100 text-slate-900'
                   : stateClasses['default']
               }`}
             >
               <span className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 text-xs font-black ${
                 submitted && state === 'correct' ? 'border-emerald-500 bg-emerald-500 text-white'
                 : submitted && state === 'wrong' ? 'border-red-500 bg-red-500 text-white'
-                : isSelected ? 'border-indigo-500 bg-indigo-500 text-white'
+                : isSelected ? 'border-slate-700 bg-slate-1000 text-white'
                 : 'border-slate-300 text-slate-500'
               }`}>
                 {submitted && state === 'correct' ? '✓' : submitted && state === 'wrong' ? '✗' : String.fromCharCode(65 + oIdx)}
@@ -196,7 +196,7 @@ export const MasteryExamSlide: React.FC<Props> = ({
           <button
             disabled={!allAnswered || submitted}
             onClick={() => setConfirming(true)}
-            className="px-8 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-extrabold rounded-xl transition-colors"
+            className="px-8 py-3 bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white font-extrabold rounded-xl transition-colors"
           >
             Submit Quiz
           </button>
@@ -208,7 +208,7 @@ export const MasteryExamSlide: React.FC<Props> = ({
               <p className="text-slate-500 text-sm">You answered {answeredCount} of {questions.length} questions. Once submitted, you cannot change your answers.</p>
               <div className="flex gap-3">
                 <button onClick={() => setConfirming(false)} className="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 text-slate-600 hover:text-slate-900 hover:border-slate-400 font-bold text-sm transition-all">Cancel</button>
-                <button onClick={() => { setConfirming(false); handleSubmitExam(); }} className="flex-1 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition-all">Submit</button>
+                <button onClick={() => { setConfirming(false); handleSubmitExam(); }} className="flex-1 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm transition-all">Submit</button>
               </div>
             </div>
           </div>
@@ -251,7 +251,7 @@ export const MasteryExamSlide: React.FC<Props> = ({
           <button
             disabled={currentAnswer === null || (Array.isArray(currentAnswer) && currentAnswer.length === 0) || submitted}
             onClick={() => setConfirming(true)}
-            className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-extrabold rounded-xl transition-colors"
+            className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white font-extrabold rounded-xl transition-colors"
           >
             Submit Quiz
           </button>
@@ -259,7 +259,7 @@ export const MasteryExamSlide: React.FC<Props> = ({
           <button
             disabled={currentAnswer === null || (Array.isArray(currentAnswer) && currentAnswer.length === 0)}
             onClick={handleNext}
-            className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-bold rounded-xl transition-colors"
+            className="flex items-center gap-2 px-6 py-2.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white font-bold rounded-xl transition-colors"
           >
             Next Question
             <ChevronRight className="w-4 h-4" />
@@ -275,7 +275,7 @@ export const MasteryExamSlide: React.FC<Props> = ({
             <p className="text-slate-500 text-sm">Once submitted, you cannot change your answers.</p>
             <div className="flex gap-3">
               <button onClick={() => setConfirming(false)} className="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 text-slate-600 hover:text-slate-900 hover:border-slate-400 font-bold text-sm transition-all">Cancel</button>
-              <button onClick={() => { setConfirming(false); handleSubmitExam(); }} className="flex-1 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition-all">Submit</button>
+              <button onClick={() => { setConfirming(false); handleSubmitExam(); }} className="flex-1 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm transition-all">Submit</button>
             </div>
           </div>
         </div>

@@ -633,7 +633,10 @@ export async function hydrateCourseContent(
   - KEY-TAKEAWAY SLIDES: MAXIMUM 5-6 short bullets (5-8 words each), each an ACTION-VERB phrase, not a full sentence:
     "- Spot suspicious email patterns early"
     "- Report incidents to IT within 24 hours"
-  - BOLD USAGE: Only bold specific key terms (nouns, verbs, named concepts). NEVER bold entire sentences, random adjectives, or more than 2-3 words per bullet.
+  - BOLD USAGE: Prefer NO bold inside bullet lists on content/summary slides — the slide title already
+    carries visual hierarchy, and partial bold mid-bullet looks noisy. If you must emphasize a term,
+    bold at most ONE short term (1-2 words) per slide total, never the first half of every bullet.
+    NEVER bold entire sentences or more than 2-3 words in a row.
   - Example correct: "- **Phishing**: the most common attack vector" — Example incorrect: "- **This module covered several important security practices**"
   - The APPLICATION BRIDGE ("In practice...", "This means that...", "Apply this by...") belongs in voiceOverText (narration),
     NOT copy-pasted as an on-screen bullet — keep bullets short and let narration carry the explanation and application.
