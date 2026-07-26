@@ -54,7 +54,8 @@ import {
   Save,
   Undo2,
   Send,
-  Activity
+  Activity,
+  SlidersHorizontal
 } from 'lucide-react';
 import { 
   Accordion, 
@@ -83,7 +84,10 @@ import { QCTrackChangesModal } from './components/QCTrackChangesModal';
 import { runFullQC, runStructuralQC, autoFixCourse, applyConfirmedFixes, simplifySlide, regenerateSlideData, QCReport } from './services/qcService';
 
 import { OutlinePreview } from './components/builder/OutlinePreview';
+import { CourseSettingsPage } from './components/builder/CourseSettingsPage';
+import { UploadPathModal, UploadPathChoice } from './components/builder/UploadPathModal';
 import { PlayerPropertiesModal, PlayerConfig, defaultPlayerConfig } from './components/builder/PlayerPropertiesModal';
+import { loadCourseSettings, saveCourseSettings, SavedCourseSettings } from './lib/courseSettingsStorage';
 import { CourseOutline, Slide, TerminalObjectiveGroup, ExamConfig, ExamQuestion, ExamSessionState, NavigationMode } from './types/course';
 import { extractTextFromFile, extractImagesFromFile, SourceImage } from './lib/fileProcessor';
 import { generateGameTemplate, generateStandaloneGame } from './services/aiGameService';
@@ -538,6 +542,13 @@ export default function App() {
   const [courseTitle, setCourseTitle] = useState('');
   const [prompt, setPrompt] = useState('');
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [pendingUploadFile, setPendingUploadFile] = useState<File | null>(null);
+  const [showUploadPathModal, setShowUploadPathModal] = useState(false);
+  /** defaults = profile menu; session = after customize upload; quick = one-click build */
+  const [settingsMode, setSettingsMode] = useState<'defaults' | 'session' | 'quick'>('session');
+  const [isGeneratingOutline, setIsGeneratingOutline] = useState(false);
+  const [settingsSavedFlash, setSettingsSavedFlash] = useState(false);
+  const [lastUploadPath, setLastUploadPath] = useState<UploadPathChoice | null>(null);
   
   const [isGenerating, setIsGenerating] = useState(false);
   const [isHydrating, setIsHydrating] = useState(false);
@@ -988,11 +999,77 @@ export default function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
 
+  const applySavedSettings = (saved: SavedCourseSettings) => {
+    setPreset(saved.preset);
+    setCourseType(saved.preset);
+    setObjectiveFormat(saved.objectiveFormat);
+    setExamConfig(saved.examConfig);
+    setNavigationMode(saved.navigationMode);
+    setInteractionTypes(saved.interactionTypes);
+    setGameTemplateIds(saved.gameTemplateIds);
+    setVoiceOverEnabled(saved.voiceOverEnabled);
+    setTtsVoice(saved.ttsVoice);
+    setIncludeModuleTitleSlides(saved.includeModuleTitleSlides);
+    setIncludeObjectiveSlides(saved.includeObjectiveSlides);
+    setIncludeSummarySlides(saved.includeSummarySlides ?? true);
+    setSlideCount(saved.slideCount);
+  };
+
+  const collectCurrentSettings = (): SavedCourseSettings => ({
+    preset,
+    objectiveFormat,
+    examConfig,
+    navigationMode,
+    interactionTypes,
+    gameTemplateIds,
+    voiceOverEnabled,
+    ttsVoice,
+    includeModuleTitleSlides,
+    includeObjectiveSlides,
+    includeSummarySlides,
+    slideCount,
+  });
+
+  const persistCourseSettings = () => {
+    saveCourseSettings(collectCurrentSettings(), user?.id);
+    setSettingsSavedFlash(true);
+    setTimeout(() => setSettingsSavedFlash(false), 2000);
+  };
+
+  // Load saved course defaults once auth is ready
+  useEffect(() => {
+    if (authLoading) return;
+    const saved = loadCourseSettings(user?.id);
+    if (saved) applySavedSettings(saved);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, user?.id]);
+
+  const buildOutlineFromCurrentSettings = async (): Promise<CourseOutlineDraft> => {
+    return generateCourseOutline(
+      prompt,
+      learningObjectives,
+      {
+        courseType,
+        interactionTypes,
+        slideCount,
+        includeModuleTitleSlides,
+        includeObjectiveSlides,
+        gameTemplateIds: gameTemplateIds.length > 0 ? gameTemplateIds : undefined,
+      }
+    );
+  };
+
   /**
    * Runs the full AI document analysis. Can be called directly for retries.
    * Stays on the analyzing screen on failure — shows error + Retry button in-place.
+   * @param path 'quick' skips settings UI and builds; 'customize' opens Course Settings with outline;
+   *             'game' extracts text only; undefined keeps legacy → details without outline.
    */
-  const runAnalysis = async (file: File) => {
+  const runAnalysis = async (
+    file: File,
+    path?: UploadPathChoice | 'game',
+    settingsOverride?: SavedCourseSettings | null
+  ) => {
     setIsAnalyzing(true);
     setAnalyzeError(null);
     setProgress(15);
@@ -1003,7 +1080,9 @@ export default function App() {
       const text = await extractTextFromFile(file);
       setExtractedFileText(text);
 
-      if (buildMode === 'game') {
+      const effectivePath = path ?? (buildMode === 'game' ? 'game' : undefined);
+
+      if (effectivePath === 'game' || buildMode === 'game') {
         // Game Mode: extract text only, derive topic from filename, stay on home screen
         const baseName = file.name.replace(/\.(pdf|docx|pptx|txt)$/i, '').replace(/[-_]/g, ' ');
         setPrompt(baseName);
@@ -1021,28 +1100,118 @@ export default function App() {
       setCourseTitle(result.title || file.name);
       if (result.summary) setCourseDescription(result.summary);
       if (result.objectives) setLearningObjectives(result.objectives);
-      if (result.recommendedObjectiveFormat) setObjectiveFormat(result.recommendedObjectiveFormat as any);
-      if (result.recommendedPreset) {
-         const rp = result.recommendedPreset as 'quick' | 'standard' | 'comprehensive';
-         setPreset(rp);
-         const config = getPresetConfig('corporate', rp);
-         setSlideCount(config.slideCountTarget);
-         setInteractionTypes(mapToGridIds(config.interactions));
-         if (config.objectiveFormat) setObjectiveFormat(config.objectiveFormat);
+
+      // Snapshot settings for outline/hydrate (avoid stale React state after setState)
+      let outlineCourseType: 'quick' | 'standard' | 'comprehensive' = settingsOverride?.preset ?? preset;
+      let outlineInteractions = settingsOverride?.interactionTypes ?? interactionTypes;
+      let outlineSlideCount = settingsOverride?.slideCount ?? slideCount;
+      let outlineIncludeModuleTitles = settingsOverride?.includeModuleTitleSlides ?? includeModuleTitleSlides;
+      let outlineIncludeObjectives = settingsOverride?.includeObjectiveSlides ?? includeObjectiveSlides;
+      let outlineGameIds = settingsOverride?.gameTemplateIds ?? gameTemplateIds;
+
+      // Quick build: keep user-saved defaults. Customize: allow AI preset recommendations.
+      if (effectivePath !== 'quick') {
+        if (result.recommendedObjectiveFormat) setObjectiveFormat(result.recommendedObjectiveFormat as any);
+        if (result.recommendedPreset) {
+          const rp = result.recommendedPreset as 'quick' | 'standard' | 'comprehensive';
+          setPreset(rp);
+          setCourseType(rp);
+          const config = getPresetConfig('corporate', rp);
+          setSlideCount(config.slideCountTarget);
+          setInteractionTypes(mapToGridIds(config.interactions));
+          if (config.objectiveFormat) setObjectiveFormat(config.objectiveFormat);
+          outlineCourseType = rp;
+          outlineInteractions = mapToGridIds(config.interactions);
+          outlineSlideCount = config.slideCountTarget;
+        }
       }
+
       await new Promise(r => setTimeout(r, 300));
-      setProgress(0);
+
+      if (effectivePath === 'quick') {
+        setSettingsMode('quick');
+        setIsAnalyzing(false);
+        setIsGenerating(true);
+        setProgress(20);
+        try {
+          const draft = await generateCourseOutline(
+            result.title || file.name,
+            result.objectives || learningObjectives,
+            {
+              courseType: outlineCourseType,
+              interactionTypes: outlineInteractions,
+              slideCount: outlineSlideCount,
+              includeModuleTitleSlides: outlineIncludeModuleTitles,
+              includeObjectiveSlides: outlineIncludeObjectives,
+              gameTemplateIds: outlineGameIds.length > 0 ? outlineGameIds : undefined,
+            }
+          );
+          setOutlineDraft(draft);
+          setProgress(45);
+          const finalCourse = await hydrateCourseContent(
+            draft,
+            result.title || file.name,
+            {
+              courseType: outlineCourseType,
+              scenarioConfig: outlineInteractions.includes('scenario') ? scenarioConfig : undefined,
+            },
+            (pct) => setProgress(45 + Math.round(pct * 0.5))
+          );
+          setCourse(finalCourse);
+          setOriginalCourse(finalCourse);
+          setSyntheticAudioMap({});
+          setProgress(100);
+          setStep('preview');
+          setIsGeneratingImages(true);
+          generateModuleImages(finalCourse, (slideId, imageDataUrl) => {
+            setCourse((prev: any) => prev ? applyCoverImageToCourse(prev, slideId, imageDataUrl) : prev);
+          }).finally(() => setIsGeneratingImages(false));
+        } catch (e: any) {
+          setError(e?.message || 'Quick build failed.');
+          setSettingsMode('session');
+          setStep('details');
+        } finally {
+          setIsGenerating(false);
+          setProgress(0);
+        }
+        return;
+      }
+
+      // Customize path: open Course Settings and generate outline for Design tab
+      setSettingsMode('session');
       setIsAnalyzing(false);
+      setProgress(0);
       setStep('details');
+      setIsGeneratingOutline(true);
+      try {
+        const draft = await generateCourseOutline(
+          result.title || file.name,
+          result.objectives || learningObjectives,
+          {
+            courseType: outlineCourseType,
+            interactionTypes: outlineInteractions,
+            slideCount: outlineSlideCount,
+            includeModuleTitleSlides: outlineIncludeModuleTitles,
+            includeObjectiveSlides: outlineIncludeObjectives,
+            gameTemplateIds: outlineGameIds.length > 0 ? outlineGameIds : undefined,
+          }
+        );
+        setOutlineDraft(draft);
+      } catch (e: any) {
+        console.warn('[runAnalysis] Outline generation failed:', e);
+        setError(e?.message || 'Could not generate course structure. You can retry from the Design tab.');
+      } finally {
+        setIsGeneratingOutline(false);
+      }
     } catch (err: any) {
       clearInterval(analysisTimer);
       console.error('File analysis error:', err);
       const isColdStart = err?.message?.includes('COLD_START') || err?.message?.includes('warming up') || err?.message?.includes('503');
-      const isTrial = err?.message?.includes('TRIAL_LIMIT_EXCEEDED') || err?.message?.includes('trial limit');
+      const isTrialErr = err?.message?.includes('TRIAL_LIMIT_EXCEEDED') || err?.message?.includes('trial limit');
       setAnalyzeError(
         isColdStart
           ? 'The server is warming up. Please wait 20–30 seconds and click “Try Again”.'
-          : isTrial
+          : isTrialErr
           ? 'Trial generation limit reached. Please upgrade your plan to continue.'
           : `Analysis failed: ${err?.message ?? 'Unknown error'}. Please try again.`
       );
@@ -1054,10 +1223,92 @@ export default function App() {
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
+    if (!file) return;
+    e.target.value = '';
+    if (buildMode === 'game') {
       setUploadedFile(file);
-      await runAnalysis(file);
+      await runAnalysis(file, 'game');
+      return;
     }
+    // Course Builder: choose quick vs customize before analysis
+    setPendingUploadFile(file);
+    setUploadedFile(file);
+    setShowUploadPathModal(true);
+  };
+
+  const confirmUploadPath = async (choice: UploadPathChoice) => {
+    const file = pendingUploadFile || uploadedFile;
+    setShowUploadPathModal(false);
+    setPendingUploadFile(null);
+    setLastUploadPath(choice);
+    if (!file) return;
+    let settingsOverride: SavedCourseSettings | null = null;
+    if (choice === 'quick') {
+      settingsOverride = loadCourseSettings(user?.id);
+      if (settingsOverride) applySavedSettings(settingsOverride);
+    }
+    await runAnalysis(file, choice, settingsOverride);
+  };
+
+  const cancelUploadPath = () => {
+    setShowUploadPathModal(false);
+    setPendingUploadFile(null);
+    setUploadedFile(null);
+  };
+
+  const regenerateOutlineForSettings = async () => {
+    setIsGeneratingOutline(true);
+    setError(null);
+    setProgress(15);
+    try {
+      const draft = await buildOutlineFromCurrentSettings();
+      setOutlineDraft(draft);
+      setProgress(100);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to regenerate course structure.');
+    } finally {
+      setIsGeneratingOutline(false);
+      setProgress(0);
+    }
+  };
+
+  const handleGenerateCourseFromSettings = async () => {
+    if (isSandboxMode) {
+      // Sandbox: jump to preview with dummy course (optionally reordered from outline)
+      if (outlineDraft) {
+        const allDummySlides: any[] = [];
+        DUMMY_COURSE.modules.forEach((m: any) => m.slides.forEach((s: any) => allDummySlides.push(s)));
+        const reorderedCourse = {
+          ...DUMMY_COURSE,
+          modules: outlineDraft.modules.map((mod: any, mi: number) => ({
+            ...DUMMY_COURSE.modules[mi] || DUMMY_COURSE.modules[0],
+            id: mod.id,
+            title: mod.title,
+            slides: mod.slides.map((s: any) => {
+              const found = allDummySlides.find(ds => ds.id === s.id);
+              return found || allDummySlides[0];
+            }),
+          })),
+        };
+        setCourse(reorderedCourse);
+        setOriginalCourse(reorderedCourse);
+      } else {
+        setCourse(DUMMY_COURSE);
+        setOriginalCourse(DUMMY_COURSE);
+      }
+      setCurrentSlideIndex(0);
+      setCourseBg(null);
+      setExamError(null);
+      setIsGeneratingExam(false);
+      setTheme('light');
+      setStep('preview');
+      return;
+    }
+    if (!outlineDraft) {
+      await regenerateOutlineForSettings();
+      return;
+    }
+    await hydrateCourse();
   };
 
 /**
@@ -1255,6 +1506,13 @@ export default function App() {
 
 
   const handleStartDetails = () => {
+    // With a file already chosen, show the quick/customize chooser first.
+    if (uploadedFile && buildMode === 'course') {
+      setPendingUploadFile(uploadedFile);
+      setShowUploadPathModal(true);
+      return;
+    }
+    setSettingsMode('session');
     setStep('details');
   };
 
@@ -1735,21 +1993,23 @@ export default function App() {
                             setCourseDescription('A comprehensive eLearning course covering modern workplace communication strategies.');
                             setLearningObjectives([{ terminalObjective: 'Given a workplace scenario, the learner will identify the communication strategy that best supports effective collaboration.', enablingObjectives: [] }]);
                             setCourseType('standard'); setPreset('standard');
+                            setSettingsMode('session');
                             setIsSandboxMode(true); setShowPlayerProperties(false); setStep('details');
                           }}
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-purple-300 hover:bg-purple-500/10 text-sm font-medium transition-all text-left"
                         >
-                          <FileText className="w-3.5 h-3.5" /> Demo — Course Design
+                          <FileText className="w-3.5 h-3.5" /> Demo — Course Settings
                         </button>
                         <button
                           onClick={() => {
                             setAdminDropdownOpen(false);
                             setCourse(DUMMY_COURSE); setOriginalCourse(DUMMY_COURSE);
                             setCurrentSlideIndex(0); setQuizState({}); setTheme('light'); setViewMode('desktop');
-                            setFloatingImagesMap({}); setSyntheticSlideOverrides({}); setCourseBg('/eLearning Template Backgrounds/Neutral/blue background coffee books_01.png');
+                            setFloatingImagesMap({}); setSyntheticSlideOverrides({}); setCourseBg(null);
                             setIsSandboxMode(true); setShowPlayerProperties(false);
                             setExamQuestions(DUMMY_EXAM_QUESTIONS); setExamConfig(DUMMY_COURSE.examConfig!);
-                            setExamPhase('idle'); setHighestVisitedIndex(0);
+                            setExamPhase('idle'); setExamError(null); setIsGeneratingExam(false);
+                            setHighestVisitedIndex(0);
                             setPlayerConfig(prev => ({ ...prev, playerResolution: '16:9' }));
                             setNavigationMode(DUMMY_COURSE.navigationMode ?? 'free'); setStep('preview');
                           }}
@@ -1788,6 +2048,30 @@ export default function App() {
                       </>
                     )}
 
+                    <button
+                      onClick={() => {
+                        setAdminDropdownOpen(false);
+                        const saved = loadCourseSettings(user?.id);
+                        if (saved) applySavedSettings(saved);
+                        setSettingsMode('defaults');
+                        setIsSandboxMode(false);
+                        setStep('details');
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800 text-sm font-medium transition-all text-left"
+                    >
+                      <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-400" />
+                      Course Settings
+                    </button>
+                    <button
+                      onClick={() => {
+                        setAdminDropdownOpen(false);
+                        setShowPlayerProperties(true);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800 text-sm font-medium transition-all text-left"
+                    >
+                      <Settings2 className="w-3.5 h-3.5 text-indigo-400" />
+                      Player Properties
+                    </button>
                     <button
                       onClick={() => { setAdminDropdownOpen(false); setStep('account'); }}
                       className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800 text-sm font-medium transition-all text-left"
@@ -2061,9 +2345,9 @@ export default function App() {
             <motion.div key="home" className="flex flex-col items-center justify-center w-full min-h-[calc(100vh-5rem)] relative z-10 overflow-hidden">
 
 
-              {isAnalyzing ? (
+              {(isAnalyzing || (isGenerating && settingsMode === 'quick')) ? (
                  <div className="relative z-10 max-w-2xl mx-auto text-center space-y-8 w-full px-6 py-16 bg-slate-950/80 backdrop-blur-xl rounded-[3rem] border border-indigo-500/30 shadow-2xl">
-                   {analyzeError ? (
+                   {analyzeError && isAnalyzing ? (
                      /* ——— Error state: stay on overlay, show message + actions ——— */
                      <>
                        <div className="w-20 h-20 mx-auto bg-red-500/20 rounded-full flex items-center justify-center">
@@ -2075,7 +2359,19 @@ export default function App() {
                        </div>
                        <div className="flex gap-3 justify-center">
                          <button
-                           onClick={() => { if (uploadedFile) runAnalysis(uploadedFile); }}
+                           onClick={() => {
+                             if (!uploadedFile) return;
+                             if (lastUploadPath) {
+                               const override = lastUploadPath === 'quick' ? loadCourseSettings(user?.id) : null;
+                               if (override) applySavedSettings(override);
+                               runAnalysis(uploadedFile, lastUploadPath, override);
+                             } else {
+                               setPendingUploadFile(uploadedFile);
+                               setIsAnalyzing(false);
+                               setAnalyzeError(null);
+                               setShowUploadPathModal(true);
+                             }
+                           }}
                            className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-all"
                          >
                            Try Again
@@ -2098,8 +2394,14 @@ export default function App() {
                          <FileText className="w-10 h-10 text-indigo-400 absolute inset-0 m-auto animate-pulse" />
                        </div>
                        <div>
-                         <h3 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">Analyzing Document</h3>
-                         <p className="text-slate-400 mt-2">Extracting structure, topics, and generating learning objectives...</p>
+                         <h3 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">
+                           {isGenerating && settingsMode === 'quick' && !isAnalyzing ? 'Building Your Course' : 'Analyzing Document'}
+                         </h3>
+                         <p className="text-slate-400 mt-2">
+                           {isGenerating && settingsMode === 'quick' && !isAnalyzing
+                             ? 'Using your saved defaults to generate the full course…'
+                             : 'Extracting structure, topics, and generating learning objectives...'}
+                         </p>
                        </div>
                        {/* Progress bar — driven by the analysisTimer in runAnalysis */}
                        <div className="w-full max-w-sm mx-auto space-y-2">
@@ -2114,10 +2416,14 @@ export default function App() {
                            />
                          </div>
                          <p className="text-xs text-slate-600 text-center">
-                           {progress < 30 ? 'Reading document structure...' :
-                            progress < 55 ? 'Extracting topics and key concepts...' :
-                            progress < 80 ? 'Generating learning objectives...' :
-                            'Finalizing course blueprint...'}
+                           {isGenerating && settingsMode === 'quick' && !isAnalyzing
+                             ? (progress < 40 ? 'Creating course structure...' :
+                                progress < 70 ? 'Writing slides and interactions...' :
+                                'Finishing up…')
+                             : (progress < 30 ? 'Reading document structure...' :
+                                progress < 55 ? 'Extracting topics and key concepts...' :
+                                progress < 80 ? 'Generating learning objectives...' :
+                                'Finalizing course blueprint...')}
                          </p>
                        </div>
                      </>
@@ -2292,560 +2598,65 @@ export default function App() {
           )}
 
           {step === 'details' && (
-            <motion.div key="details" className="w-full relative z-10 min-h-[calc(100vh-80px)]">
-               <div className="max-w-4xl mx-auto space-y-8 pb-32 relative z-10 pt-16 px-6">
-                  <div className="flex items-center justify-between mb-8 gap-4">
-                    {/* Back nav */}
-                    <div className="flex items-center gap-4 border-b border-slate-800 pb-0 cursor-pointer group flex-1" onClick={() => setStep('home')} style={{paddingBottom: 0}}>
-                      <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center group-hover:bg-indigo-500/20 transition-colors shrink-0">
-                        <ArrowRight className="w-5 h-5 text-slate-400 rotate-180 group-hover:text-indigo-400" />
-                      </div>
-                      <h2 className="text-3xl font-extrabold text-white flex-1">Course Design</h2>
-                    </div>
-                    {/* Replace Document button — separate from nav click area */}
-                    <label className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white font-bold text-sm rounded-xl cursor-pointer transition-all shrink-0">
-                      <FileUp className="w-4 h-4 text-indigo-400" />
-                      Replace Document
-                      <input
-                        type="file"
-                        className="hidden"
-                        accept=".pdf,.docx,.pptx,.txt"
-                        onChange={(e) => { if (e.target.files?.[0]) { setUploadedFile(e.target.files[0]); handleFileUpload(e); } }}
-                      />
-                    </label>
-                  </div>
-                  <div className="border-b border-slate-800 mb-8" />
-
-                 {(isGenerating || isHydrating) ? renderProgressState() : (
-                   <div className="space-y-6">
-                     {/* Complexity Presets */}
-                     <div className="bg-slate-900/80 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
-                        <div className="p-6 border-b border-slate-800 bg-slate-900 relative">
-                           <div className="flex items-center gap-3 relative z-10">
-                             <div className="w-10 h-10 rounded-lg bg-teal-500/20 flex items-center justify-center"><Layers className="w-5 h-5 text-teal-400" /></div>
-                             <div>
-                               <h3 className="text-xl font-bold text-white">Complexity Level</h3>
-                               <p className="text-slate-400 text-sm">Auto-configure the depth, slides, and interactivity.</p>
-                             </div>
-                           </div>
-                        </div>
-                        <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-                           {getPresetOptions('corporate').map(p => (
-                             <div key={p.id} onClick={() => handlePresetChange(p.id as any)} className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${preset === p.id ? 'border-indigo-500 bg-indigo-500/10' : 'border-slate-800 bg-slate-950 hover:border-slate-700'} ${isSuggesting && preset !== p.id ? 'opacity-50 pointer-events-none' : ''}`}>
-                                <h4 className="text-white font-bold text-lg mb-1">{p.label}</h4>
-                                <p className="text-slate-400 text-xs mb-3">{p.description}</p>
-                                <div className="text-xs font-mono text-indigo-400">{p.slideCountTarget} slides • {p.interactions.length} types</div>
-                             </div>
-                           ))}
-                        </div>
-                     </div>
-
-                     {/* Course Topic */}
-                     <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-6 flex flex-col shadow-xl">
-                       <div className="flex items-center gap-3 mb-6 border-b border-slate-800 pb-4">
-                         <div className="w-10 h-10 rounded-lg bg-pink-500/20 flex items-center justify-center">
-                           <FileText className="w-5 h-5 text-pink-400" />
-                         </div>
-                         <div>
-                           <h3 className="text-xl font-bold text-white">Course Topic</h3>
-                           <p className="text-slate-400 text-sm">Review or manually refine the course title and focus.</p>
-                         </div>
-                       </div>
-                       <div className="space-y-6">
-                         <div className="space-y-2">
-                           <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Course Title</label>
-                           <input 
-                             value={courseTitle}
-                             onChange={e => setCourseTitle(e.target.value)}
-                             className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:border-indigo-500 focus:bg-slate-900 outline-none transition-all placeholder-slate-600 font-bold"
-                             placeholder="Course Title"
-                           />
-                         </div>
-                         {(courseDescription || prompt) && (
-                           <div className="space-y-2">
-                             <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Description / Prompt</label>
-                             <textarea 
-                               rows={5}
-                               value={courseDescription || prompt}
-                               onChange={e => {
-                                 setCourseDescription(e.target.value);
-                                 setPrompt(e.target.value);
-                               }}
-                               className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:border-indigo-500 focus:bg-slate-900 outline-none transition-all placeholder-slate-600 font-medium whitespace-pre-wrap"
-                               placeholder="Course description or prompt focus..."
-                             />
-                           </div>
-                         )}
-                       </div>
-                     </div>
-
-                     {/* Objectives */}
-                      <div className="bg-slate-900/80 rounded-2xl border border-slate-800 overflow-hidden backdrop-blur-sm shadow-xl">
-                        <div className="p-6 border-b border-slate-800 flex flex-col gap-4 bg-slate-900 relative overflow-hidden">
-                          <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_left,_var(--tw-gradient-stops))] from-indigo-500 via-transparent to-transparent"></div>
-                          <div className="flex items-center gap-3 relative z-10">
-                            <div className="w-10 h-10 rounded-lg bg-indigo-500/20 flex items-center justify-center">
-                              <Target className="w-5 h-5 text-indigo-400" />
-                            </div>
-                            <div>
-                              <h3 className="text-xl font-bold text-white">Learning Objectives</h3>
-                              <p className="text-slate-400 text-sm">What learners will achieve upon completion.</p>
-                            </div>
-                          </div>
-                          <div className="relative z-10 flex flex-wrap items-center gap-2">
-                            {(pathway === 'corporate' ? ['AB', 'ABC', 'ABCD'] : ['I Can', 'ABC', 'ABCD']).map(fmt => (
-                              <button
-                                key={fmt}
-                                onClick={() => {
-                                 // Always call the AI to refine objectives for the selected format
-                                 // (works the same way in sandbox/demo mode and real course creation)
-                                 handleFormatChange(fmt);
-                                }}
-                                className={`px-3 py-1.5 rounded-lg text-sm font-bold border transition-all ${objectiveFormat === fmt ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-950 border-slate-700 text-slate-400 hover:text-white hover:border-slate-500'}`}
-                              >
-                                {isSuggesting && objectiveFormat === fmt ? (
-                                  <span className="flex items-center gap-1.5"><Loader2 className="w-3 h-3 animate-spin" />{fmt}</span>
-                                ) : fmt}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                        {/* Refine Objectives button — always visible when title/description exists */}
-                        {(courseTitle || courseDescription || prompt) && (
-                          <div className="px-6 pb-4 pt-2 bg-slate-900/50 border-b border-slate-800">
-                            <button
-                              onClick={handleSuggestObjectives}
-                              disabled={isSuggesting || (!prompt && !courseDescription && !courseTitle)}
-                              className="flex items-center justify-center gap-2 px-6 py-3 w-full bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 rounded-xl font-bold transition-colors border border-purple-500/30 disabled:opacity-50"
-                            >
-                              {isSuggesting ? (
-                                <><Loader2 className="w-5 h-5 animate-spin" />Refining Objectives...</>
-                              ) : (
-                                <><Wand2 className="w-5 h-5" />Refine Objectives</>
-                              )}
-                            </button>
-                          </div>
-                        )}
-                       <div className="p-6 space-y-4">
-                          {learningObjectives.map((obj, i) => {
-                            const isString = typeof obj === 'string';
-                            if (isString) {
-                              const strObj = obj as string;
-                              return (
-                                <div key={i} className="flex gap-3 items-start group">
-                                  <div className="mt-2.5 w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0 shadow-[0_0_8px_rgba(99,102,241,0.8)]" />
-                                  <textarea 
-                                    rows={2}
-                                    value={strObj} 
-                                    onChange={(e) => {
-                                      const newObjs = [...learningObjectives];
-                                      newObjs[i] = e.target.value;
-                                      setLearningObjectives(newObjs);
-                                    }}
-                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white focus:border-indigo-500 focus:bg-slate-900 outline-none transition-all placeholder-slate-600 font-medium whitespace-pre-wrap resize-none"
-                                    placeholder="e.g., Understand the core principles of..."
-                                  />
-                                  <button onClick={() => setLearningObjectives(learningObjectives.filter((_, idx) => idx !== i))} className="p-2.5 mt-1 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded-xl transition-all opacity-0 group-hover:opacity-100"><Trash2 className="w-5 h-5"/></button>
-                                </div>
-                              );
-                            } else {
-                              const tObj = obj as TerminalObjectiveGroup;
-                              return (
-                                <div key={i} className="bg-slate-950/50 border border-indigo-500/20 rounded-xl p-4 space-y-3 relative group">
-                                  <div className="flex gap-3 items-start">
-                                     <div className="mt-2.5 w-2 h-2 rounded-full bg-indigo-400 shrink-0 shadow-[0_0_8px_rgba(129,140,248,0.8)]" />
-                                     <div className="flex-1 space-y-1">
-                                       <p className="text-xs font-bold text-indigo-400 uppercase tracking-wider">Terminal Objective</p>
-                                       <textarea 
-                                          rows={4}
-                                          value={tObj.terminalObjective} 
-                                          onChange={(e) => {
-                                            const newObjs = [...learningObjectives];
-                                            const currentObj = newObjs[i] as TerminalObjectiveGroup;
-                                            newObjs[i] = { ...currentObj, terminalObjective: e.target.value };
-                                            setLearningObjectives(newObjs);
-                                          }}
-                                          className="w-full bg-indigo-950/30 border border-indigo-500/30 rounded-lg px-3 py-2 text-white focus:border-indigo-500 outline-none transition-all placeholder-slate-600 font-bold whitespace-pre-wrap resize-none"
-                                          placeholder="e.g., The learner will design a marketing brochure..."
-                                       />
-                                     </div>
-                                     <button onClick={() => setLearningObjectives(learningObjectives.filter((_, idx) => idx !== i))} className="p-2 mt-6 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all opacity-0 group-hover:opacity-100 absolute top-0 right-2"><Trash2 className="w-4 h-4"/></button>
-                                  </div>
-                                  
-                                  <div className="pl-6 space-y-2">
-                                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Enabling Objectives</p>
-                                    {tObj.enablingObjectives.map((enablingObj, eIdx) => (
-                                      <div key={eIdx} className="flex gap-2 items-start group/enabling">
-                                        <div className="mt-2 text-slate-600 shrink-0">↳</div>
-                                        <textarea 
-                                          rows={3}
-                                          value={enablingObj} 
-                                          onChange={(e) => {
-                                            const newObjs = [...learningObjectives];
-                                            const currentObj = newObjs[i] as TerminalObjectiveGroup;
-                                            const newEnabling = [...currentObj.enablingObjectives];
-                                            newEnabling[eIdx] = e.target.value;
-                                            newObjs[i] = { ...currentObj, enablingObjectives: newEnabling };
-                                            setLearningObjectives(newObjs);
-                                          }}
-                                          className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-slate-300 focus:border-slate-500 outline-none transition-all placeholder-slate-700 text-sm resize-none"
-                                          placeholder="e.g., The learner will identify the target audience..."
-                                        />
-                                        <button onClick={() => {
-                                           const newObjs = [...learningObjectives];
-                                           const currentObj = newObjs[i] as TerminalObjectiveGroup;
-                                           const newEnabling = currentObj.enablingObjectives.filter((_, idx) => idx !== eIdx);
-                                           newObjs[i] = { ...currentObj, enablingObjectives: newEnabling };
-                                           setLearningObjectives(newObjs);
-                                        }} className="p-1.5 mt-0.5 text-slate-600 hover:text-red-400 rounded-md transition-all opacity-0 group-hover/enabling:opacity-100"><Trash2 className="w-3.5 h-3.5"/></button>
-                                      </div>
-                                    ))}
-                                    <button onClick={() => {
-                                       const newObjs = [...learningObjectives];
-                                       const currentObj = newObjs[i] as TerminalObjectiveGroup;
-                                       newObjs[i] = { ...currentObj, enablingObjectives: [...currentObj.enablingObjectives, ''] };
-                                       setLearningObjectives(newObjs);
-                                    }} className="flex items-center gap-1.5 text-slate-500 hover:text-indigo-400 font-bold px-2 py-1 hover:bg-indigo-500/10 rounded-md transition-all text-xs ml-5 mt-1"><Plus className="w-3 h-3"/> Add Enabling Objective</button>
-                                  </div>
-                                </div>
-                              );
-                            }
-                          })}
-                          <div className="flex gap-3">
-                             <button onClick={() => setLearningObjectives([...learningObjectives, ''])} className="flex items-center gap-2 text-slate-400 hover:text-slate-300 font-bold px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-all text-sm"><Plus className="w-4 h-4"/> Add Custom String</button>
-                             <button onClick={() => setLearningObjectives([...learningObjectives, { terminalObjective: '', enablingObjectives: [''] }])} className="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 font-bold px-4 py-2 bg-indigo-500/10 border border-indigo-500/30 hover:bg-indigo-500/30 rounded-lg transition-all text-sm"><Plus className="w-4 h-4"/> Add Terminal Framework</button>
-                          </div>
-                        </div>
-                     </div>
-
-
-                     {/* Mastery Quiz Configuration */}
-                     <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-6 w-full space-y-5">
-                   <div className="flex items-center justify-between">
-                   <div className="flex items-center gap-3">
-                     <div className="w-10 h-10 rounded-lg bg-indigo-500/20 flex items-center justify-center"><Target className="w-5 h-5 text-indigo-400" /></div>
-                     <div>
-                       <h3 className="text-xl font-bold text-white">Mastery Quiz</h3>
-                       <p className="text-xs text-slate-500">Final assessment appended after course content</p>
-                     </div>
-                   </div>
-                   <div onClick={() => setExamConfig(c => ({ ...c, enabled: !c.enabled }))} className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${examConfig.enabled ? 'bg-indigo-500' : 'bg-slate-700'}`}>
-                     <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${examConfig.enabled ? 'translate-x-6' : ''}`} />
-                   </div>
-                   </div>
-                   {examConfig.enabled && (
-                   <div className="space-y-5 pt-3 border-t border-slate-800">
-                     <div>
-                       <div className="flex justify-between mb-2"><span className="text-sm font-bold text-slate-300">Passing Score</span><span className="text-indigo-400 font-extrabold">{examConfig.passingScore}%</span></div>
-                       <input type="range" min="50" max="100" value={examConfig.passingScore} onChange={e => setExamConfig(c => ({ ...c, passingScore: Number(e.target.value) }))} className="w-full accent-indigo-500 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer" />
-                       <div className="flex justify-between text-xs text-slate-600 mt-1"><span>50%</span><span>100%</span></div>
-                     </div>
-                     <div><p className="text-sm font-bold text-slate-300 mb-2">Question Count Mode</p>
-                       <div className="flex gap-2">
-                         {(['total', 'per-module'] as const).map(m => (<button key={m} onClick={() => setExamConfig(c => ({ ...c, questionMode: m }))} className={`flex-1 py-2 rounded-lg text-sm font-bold border transition-all ${examConfig.questionMode === m ? 'bg-indigo-600/30 border-indigo-500/50 text-indigo-300' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}>{m === 'total' ? 'Total' : 'Per Module'}</button>))}
-                       </div>
-                     </div>
-                     <div><p className="text-sm font-bold text-slate-300 mb-2">{examConfig.questionMode === 'total' ? 'Total Questions' : 'Questions per Module'}</p>
-                       <div className="flex items-center gap-3">
-                         <button onClick={() => setExamConfig(c => ({ ...c, questionCount: Math.max(1, c.questionCount - 1) }))} className="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:text-white font-extrabold text-xl flex items-center justify-center">-</button>
-                         <span className="text-white font-extrabold text-xl w-8 text-center">{examConfig.questionCount}</span>
-                         <button onClick={() => setExamConfig(c => ({ ...c, questionCount: c.questionCount + 1 }))} className="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:text-white font-extrabold text-xl flex items-center justify-center">+</button>
-                       </div>
-                     </div>
-                     <div><p className="text-sm font-bold text-slate-300 mb-2">Question Types</p>
-                       <div className="flex gap-2 flex-wrap">
-                         {([['mc','Multiple Choice'],['ma','Multiple Answer'],['tf','True / False']] as [string,string][]).map(([type,label]) => { const active = examConfig.questionTypes.includes(type as any); return (<button key={type} onClick={() => setExamConfig(c => ({ ...c, questionTypes: active ? c.questionTypes.filter(t => t !== type) : [...c.questionTypes, type as any] }))} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${active ? 'bg-indigo-600/30 border-indigo-500/40 text-indigo-300' : 'bg-slate-800 border-slate-700 text-slate-500 hover:text-slate-300'}`}>{label}</button>); })}
-                       </div>
-                     </div>
-                     <div><p className="text-sm font-bold text-slate-300 mb-2">Presentation Mode</p>
-                       <div className="flex gap-2">
-                         {([['one-at-a-time','One at a Time'],['scroll-all','All at Once']] as [string,string][]).map(([m,label]) => (<button key={m} onClick={() => setExamConfig(c => ({ ...c, presentationMode: m as any }))} className={`flex-1 py-2 rounded-lg text-sm font-bold border transition-all ${examConfig.presentationMode === m ? 'bg-purple-600/30 border-purple-500/50 text-purple-300' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}>{label}</button>))}
-                       </div>
-                     </div>
-                     <label className="flex items-center justify-between cursor-pointer">
-                       <div><p className="text-sm font-bold text-slate-300">Allow Retake on Fail</p><p className="text-xs text-slate-600">Disabled = learner must restart full course</p></div>
-                       <div onClick={() => setExamConfig(c => ({ ...c, allowRetake: !c.allowRetake }))} className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${examConfig.allowRetake ? 'bg-emerald-500' : 'bg-slate-700'}`}><div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${examConfig.allowRetake ? 'translate-x-6' : ''}`} /></div>
-                     </label>
-                   </div>
-                   )}
-                     </div>
-
-                     {/* Navigation Mode */}
-                     <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-6 w-full space-y-4">
-                   <div className="flex items-center gap-3">
-                   <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center"><Lock className="w-5 h-5 text-amber-400" /></div>
-                   <div><h3 className="text-xl font-bold text-white">Navigation Mode</h3><p className="text-xs text-slate-500">Controls how learners move through course slides</p></div>
-                   </div>
-                   <div className="grid grid-cols-1 gap-2">
-                   {([{mode:'free' as NavigationMode,label:'Free Roam',desc:'Click any slide at any time'},{mode:'linear' as NavigationMode,label:'Linear',desc:'Next button only - no menu skipping'},{mode:'restricted' as NavigationMode,label:'Restricted',desc:'Next to advance; revisit viewed slides via menu'}]).map(({mode,label,desc}) => (<button key={mode} onClick={() => setNavigationMode(mode)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all ${navigationMode === mode ? 'bg-amber-500/10 border-amber-500/30 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white hover:border-slate-600'}`}><div className="flex-1"><p className="text-sm font-bold">{label}</p><p className="text-xs text-slate-500">{desc}</p></div>{navigationMode === mode && <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0" />}</button>))}
-                   </div>
-                     </div>
-
-                     {/* Configuration Grid */}
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
-                       <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-6 flex flex-col justify-between">
-                         <div>
-                           <div className="flex items-center gap-3 mb-6">
-                             <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center"><LayoutTemplate className="w-5 h-5 text-emerald-400" /></div>
-                             <h3 className="text-xl font-bold text-white">Course Length</h3>
-                           </div>
-                           <div className="flex justify-between items-end mb-2">
-                             <span className="text-white font-bold">{slideCount} Slides</span>
-                             <span className="text-slate-500 text-xs font-bold uppercase">~{Math.round(slideCount * 1.5)} Mins</span>
-                           </div>
-                           <input type="range" min="3" max="100" value={slideCount} onChange={(e) => setSlideCount(Number(e.target.value))} className="w-full accent-emerald-500 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer" />
-                           <div className="flex justify-between text-xs font-bold text-slate-500 mt-2 uppercase"><span>Bite-sized</span><span>In-depth (up to 100)</span></div>
-                         </div>
-                       </div>
-                       
-                       <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-6 flex flex-col justify-between">
-                         <div>
-                           <div className="flex items-center gap-3 mb-6">
-                             <div className="w-10 h-10 rounded-lg bg-pink-500/20 flex items-center justify-center"><Grid3X3 className="w-5 h-5 text-pink-400" /></div>
-                             <h3 className="text-xl font-bold text-white">Structure Components</h3>
-                           </div>
-                           <p className="text-slate-400 text-sm mb-6 pb-6 border-b border-slate-800">Select which automated slides to include.</p>
-                           <div className="space-y-4">
-                             {[
-                               { label: 'Module Title Slides', state: includeModuleTitleSlides, set: setIncludeModuleTitleSlides },
-                               { label: 'Objectives Slides', state: includeObjectiveSlides, set: setIncludeObjectiveSlides },
-                               { label: 'Knowledge Checks', state: true, set: () => {} },
-                               { label: 'Summary/Recap Slides', state: includeSummarySlides, set: setIncludeSummarySlides }
-                             ].map((opt, i) => (
-                               <label key={i} className={`flex items-center justify-between cursor-pointer group ${opt.label === 'Knowledge Checks' ? 'opacity-80' : ''}`}>
-                                 <span className="text-slate-300 font-medium group-hover:text-white transition-colors">{opt.label}</span>
-                                 <div className={`w-12 h-6 rounded-full transition-colors relative ${opt.state ? 'bg-pink-500' : 'bg-slate-700'}`}>
-                                   <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${opt.state ? 'translate-x-6' : ''}`} />
-                                 </div>
-                                 <input type="checkbox" className="hidden" checked={opt.state} onChange={(e) => opt.set(e.target.checked)} disabled={opt.label === 'Knowledge Checks'} />
-                               </label>
-                             ))}
-                           </div>
-                         </div>
-                       </div>
-                     </div>
-
-                     {/* Previews Modal triggers for interactions */}
-                     <div className="bg-slate-900/80 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
-                        <div className="p-6 border-b border-slate-800 bg-slate-900 relative">
-                          <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_right,_var(--tw-gradient-stops))] from-blue-500 via-transparent to-transparent"></div>
-                          <div className="flex items-center gap-3 relative z-10">
-                            <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center"><Gamepad2 className="w-5 h-5 text-blue-400" /></div>
-                            <div>
-                              <h3 className="text-xl font-bold text-white">Interactive Elements</h3>
-                              <p className="text-slate-400 text-sm">Select activity types to include in your course.</p>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="p-6">
-                           <p className="text-xs text-blue-400 font-bold tracking-widest uppercase mb-6">CLICK TO SELECT • CLICK ON EYE ICON TO PREVIEW</p>
-                           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                             {[
-                               { id: 'multiple-choice', label: 'Multiple Choice' },
-                               { id: 'multiple-answers', label: 'Multiple Answers' },
-                               { id: 'hotspot', label: 'Hotspot' },
-                               { id: 'accordion', label: 'Accordion' },
-                               { id: 'flashcards', label: 'Flashcards' },
-                               { id: 'timeline', label: 'Timeline' },
-                               { id: 'sorting', label: 'Sorting' },
-                               { id: 'matching', label: 'Matching' },
-                               { id: 'drop-targets', label: 'Drop Targets' },
-                               { id: 'scenario', label: 'Scenario' },
-                               { id: 'tabbed-horizontal', label: 'Tabs (Horizontal)' },
-                               { id: 'tabbed-vertical', label: 'Tabs (Vertical)' },
-                               { id: 'folder-explorer', label: 'Folder Explorer' },
-                               { id: 'carousel-panel', label: 'Carousel Panel' },
-                               { id: 'click-reveal', label: 'Click & Reveal' },
-                             ].map(({ id, label }) => {
-                                 const isSelected = interactionTypes.includes(id);
-                                 return (
-                                   <div key={id} className={`relative flex flex-col items-center gap-2 transition-all p-4 rounded-xl border-2 ${isSelected ? 'border-blue-500 bg-blue-500/10 text-white' : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'}`}>
-                                       <div className={`absolute top-2 right-2 cursor-pointer z-20 bg-slate-900 rounded-full p-1 ${isSelected ? 'text-blue-300 hover:text-blue-200' : 'text-slate-400 hover:text-white'}`} onClick={(e) => { e.stopPropagation(); setPreviewModalOption(label); }}>
-                                         <Eye className="w-4 h-4"/>
-                                       </div>
-                                       <button className="absolute inset-0 z-10 w-full h-full" onClick={() => {
-                                          if (isSelected) setInteractionTypes(interactionTypes.filter(t => t !== id));
-                                          else setInteractionTypes([...interactionTypes, id]);
-                                       }} />
-                                       <span className={`font-bold text-sm text-center relative z-0 mt-3 ${isSelected ? 'text-blue-200' : ''}`}>{label}</span>
-                                   </div>
-                                 );
-                             })}
-                           </div>
-                        </div>
-                     </div>
-
-                      {/* Decision Simulation Config — shown immediately when 'scenario' is selected */}
-                      {interactionTypes.includes('scenario') && (
-                        <ScenarioBuilderPanel
-                          config={scenarioConfig}
-                          onChange={setScenarioConfig}
-                        />
-                      )}
-
-                     {/* Gamification grid */}
-                     <div className="bg-slate-900/80 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
-                        <div className="p-6 border-b border-slate-800 bg-slate-900 relative">
-                           <div className="flex items-center gap-3 relative z-10">
-                             <div className="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center"><Gamepad2 className="w-5 h-5 text-orange-400" /></div>
-                             <div>
-                               <h3 className="text-xl font-bold text-white">Gamification Templates</h3>
-                               <p className="text-slate-400 text-sm">Select game activities to include in your course.</p>
-                             </div>
-                           </div>
-                        </div>
-                         <div className="p-6">
-                           <p className="text-xs text-orange-400 font-bold tracking-widest uppercase mb-5">CLICK TO SELECT • CLICK ON EYE ICON TO PREVIEW</p>
-                           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                            {getRecommendedGames(preset).map((gt: any) => {
-                              const isSelected = gameTemplateIds.includes(gt.id);
-                              const NICKNAMES: Record<string, {emoji:string; aka:string}> = {
-                                'jeopardy': { emoji: '📺', aka: 'aka Jeopardy!' },
-                                'knowledge-board': { emoji: '📺', aka: 'aka Jeopardy!' },
-                                'millionaire': { emoji: '💰', aka: "aka Who Wants to Be a Millionaire" },
-                                'millionaire-challenge': { emoji: '💰', aka: "aka Who Wants to Be a Millionaire" },
-                                'family-feud': { emoji: '👨‍👩‍👧', aka: 'aka Family Feud' },
-                                'ranked-survey': { emoji: '👨‍👩‍👧', aka: 'aka Family Feud' },
-                                'escape-room': { emoji: '🔒', aka: 'aka Digital Escape Room' },
-                                'digital-escape-room': { emoji: '🔒', aka: 'aka Digital Escape Room' },
-                                'spin-wheel': { emoji: '🎡', aka: 'aka Spin the Wheel' },
-                                'spin-the-wheel': { emoji: '🎡', aka: 'aka Spin the Wheel' },
-                                'price-is-right': { emoji: '🏷️', aka: "aka The Price is Right" },
-                                'price-estimator': { emoji: '🏷️', aka: "aka The Price is Right" },
-                              };
-                              const nick = NICKNAMES[gt.id] || { emoji: '🎮', aka: '' };
-                              return (
-                                <div key={gt.id} className={`relative flex flex-col items-center text-center gap-1.5 p-4 rounded-xl border-2 transition-all ${isSelected ? 'border-orange-500 bg-orange-500/10 text-white' : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700'}`}>
-                                  <div className="absolute top-2 right-2 text-slate-400 hover:text-orange-300 cursor-pointer z-20 bg-slate-900 rounded-full p-1" onClick={(e) => { e.stopPropagation(); setPreviewModalOption(gt.name); }}>
-                                    <Eye className="w-4 h-4"/>
-                                  </div>
-                                  <button className="absolute inset-0 z-10 w-full h-full" onClick={() => {
-                                    if (isSelected) setGameTemplateIds(gameTemplateIds.filter(id => id !== gt.id));
-                                    else setGameTemplateIds([...gameTemplateIds, gt.id]);
-                                  }} />
-                                  <span className="text-2xl relative z-0">{nick.emoji}</span>
-                                  <span className="font-bold text-sm relative z-0 leading-snug">{gt.name}</span>
-                                  {nick.aka && <span className="text-[10px] opacity-50 relative z-0 leading-snug italic">{nick.aka}</span>}
-                                </div>
-                              );
-                            })}
-                           </div>
-                         </div>
-                     </div>
-
-                      {/* Item 5: Soft advisory warning for large interaction selections */}
-                      {(interactionTypes.length + gameTemplateIds.length) > 5 && (
-                        <div className="flex items-start gap-3 p-4 rounded-xl border border-amber-500/30 bg-amber-500/10">
-                          <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-                          <div>
-                            <p className="text-sm font-bold text-amber-300">Large selection detected</p>
-                            <p className="text-xs text-amber-400/80 mt-0.5 leading-relaxed">
-                              {`You've selected ${interactionTypes.length + gameTemplateIds.length} interaction/game types. Larger selections increase slide count and generation time. Consider narrowing to 3-5 types for best results.`}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-
-                     {/* Audio & Accessibility Section */}
-                     <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-6 shadow-xl">
-                       <div className="flex items-center gap-3 mb-5">
-                         <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center">
-                           <Volume2 className="w-5 h-5 text-emerald-400" />
-                         </div>
-                         <div>
-                           <h3 className="text-xl font-bold text-white">Audio & Accessibility</h3>
-                           <p className="text-slate-400 text-sm">Control narration and audio settings for the generated course.</p>
-                         </div>
-                       </div>
-                       <div className="grid grid-cols-1 gap-4">
-                         {/* Voice-Over Toggle */}
-                         <div className="flex items-center justify-between p-4 bg-slate-950 rounded-xl border border-slate-800 hover:border-slate-700 transition-all">
-                           <div className="flex items-center gap-3">
-                             <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
-                               <Volume2 className="w-4 h-4 text-emerald-400" />
-                             </div>
-                             <div>
-                               <span className="text-slate-200 font-bold block text-sm">Voice-Over Narration</span>
-                               <span className="text-slate-500 text-xs">AI reads slide narration aloud</span>
-                             </div>
-                           </div>
-                           <button
-                             onClick={() => setVoiceOverEnabled(!voiceOverEnabled)}
-                             className={`w-12 h-6 rounded-full transition-colors relative flex-shrink-0 ${voiceOverEnabled ? 'bg-emerald-500' : 'bg-slate-700'}`}
-                           >
-                             <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform shadow-sm ${voiceOverEnabled ? 'translate-x-6' : ''}`} />
-                           </button>
-                         </div>
-                       </div>
-
-                        {/* TTS Voice Picker — shown when voice-over is enabled */}
-                        {voiceOverEnabled && (
-                          <div className="mt-5 space-y-3">
-                            <div className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">AI Narrator Voice</div>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                              {([
-                                { id: 'alloy',   label: 'Alloy',   sub: 'Neutral · Balanced' },
-                                { id: 'echo',    label: 'Echo',    sub: 'Male · Measured' },
-                                { id: 'fable',   label: 'Fable',   sub: 'Male · Warm' },
-                                { id: 'onyx',    label: 'Onyx',    sub: 'Male · Deep' },
-                                { id: 'nova',    label: 'Nova',    sub: 'Female · Bright' },
-                                { id: 'shimmer', label: 'Shimmer', sub: 'Female · Soft' },
-                              ] as const).map(v => (
-                                <div key={v.id} className="relative">
-                                  <button
-                                    onClick={() => setTtsVoice(v.id)}
-                                    className={cn(
-                                      'w-full flex flex-col items-start px-3 pt-2.5 pb-2 rounded-xl border text-left transition-all',
-                                      ttsVoice === v.id
-                                        ? 'border-emerald-500 bg-emerald-500/10 text-emerald-300'
-                                        : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-600 hover:text-slate-300'
-                                    )}
-                                  >
-                                    <span className="text-xs font-bold pr-5">{v.label}</span>
-                                    <span className="text-[10px] opacity-70 mt-0.5">{v.sub}</span>
-                                  </button>
-                                  {/* Ear preview button — top-right corner of card */}
-                                  <button
-                                    onClick={e => { e.stopPropagation(); previewVoice(v.id); }}
-                                    disabled={!!previewingVoice}
-                                    title={`Preview ${v.label} voice`}
-                                    className={cn(
-                                      'absolute top-1.5 right-1.5 w-5 h-5 rounded flex items-center justify-center transition-all',
-                                      previewingVoice === v.id
-                                        ? 'text-emerald-400'
-                                        : 'text-slate-500 hover:text-emerald-400 hover:bg-emerald-900/40',
-                                      'disabled:cursor-wait'
-                                    )}
-                                  >
-                                    {previewingVoice === v.id
-                                      ? <Loader2 className="w-3 h-3 animate-spin" />
-                                      : <Ear className="w-3 h-3" />
-                                    }
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                     </div>
-
-                     {/* Footer Actions — Player Properties + Generate */}
-                     <div className="flex flex-col sm:flex-row gap-4 mt-8">
-                       <button
-                         onClick={() => setShowPlayerProperties(true)}
-                         className="flex items-center justify-center gap-2 px-6 py-4 rounded-2xl border-2 border-slate-700 bg-slate-900 text-slate-300 font-bold text-base hover:border-indigo-500/50 hover:text-white hover:bg-slate-800 transition-all group"
-                       >
-                         <Settings2 className="w-5 h-5 text-indigo-400 group-hover:rotate-45 transition-transform" />
-                         Player Properties
-                       </button>
-                       <button onClick={generateOutline} className="flex-1 py-5 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold text-xl hover:shadow-[0_0_40px_-10px_rgba(79,70,229,0.5)] hover:-translate-y-1 transition-all flex items-center justify-center gap-3 group">
-                         Generate Course Design
-                         <ArrowRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
-                       </button>
-                     </div>
-                   </div>
-                 )}
-               </div>
+            <motion.div key="details" className="w-full relative z-10">
+              <CourseSettingsPage
+                mode={settingsMode === 'defaults' ? 'defaults' : 'session'}
+                isSandboxMode={isSandboxMode}
+                isGenerating={isGenerating}
+                isHydrating={isHydrating}
+                isSuggesting={isSuggesting}
+                isGeneratingOutline={isGeneratingOutline}
+                progress={progress}
+                error={error}
+                renderProgressState={renderProgressState}
+                courseTitle={courseTitle}
+                setCourseTitle={setCourseTitle}
+                courseDescription={courseDescription}
+                setCourseDescription={setCourseDescription}
+                prompt={prompt}
+                setPrompt={setPrompt}
+                objectiveFormat={objectiveFormat}
+                learningObjectives={learningObjectives}
+                setLearningObjectives={setLearningObjectives}
+                onFormatChange={settingsMode === 'defaults' ? (fmt) => setObjectiveFormat(fmt) : handleFormatChange}
+                onSuggestObjectives={handleSuggestObjectives}
+                examConfig={examConfig}
+                setExamConfig={setExamConfig}
+                navigationMode={navigationMode}
+                setNavigationMode={setNavigationMode}
+                preset={preset}
+                onPresetChange={handlePresetChange}
+                slideCount={slideCount}
+                setSlideCount={setSlideCount}
+                includeModuleTitleSlides={includeModuleTitleSlides}
+                setIncludeModuleTitleSlides={setIncludeModuleTitleSlides}
+                includeObjectiveSlides={includeObjectiveSlides}
+                setIncludeObjectiveSlides={setIncludeObjectiveSlides}
+                includeSummarySlides={includeSummarySlides}
+                setIncludeSummarySlides={setIncludeSummarySlides}
+                interactionTypes={interactionTypes}
+                setInteractionTypes={setInteractionTypes}
+                scenarioConfig={scenarioConfig}
+                setScenarioConfig={setScenarioConfig}
+                onPreviewOption={setPreviewModalOption}
+                gameTemplateIds={gameTemplateIds}
+                setGameTemplateIds={setGameTemplateIds}
+                voiceOverEnabled={voiceOverEnabled}
+                setVoiceOverEnabled={setVoiceOverEnabled}
+                ttsVoice={ttsVoice}
+                setTtsVoice={setTtsVoice}
+                previewingVoice={previewingVoice}
+                onPreviewVoice={previewVoice}
+                outlineDraft={outlineDraft}
+                onOutlineChange={setOutlineDraft}
+                onRegenerateOutline={regenerateOutlineForSettings}
+                onBack={() => { setIsSandboxMode(false); setStep('home'); }}
+                onReplaceDocument={(e) => { if (e.target.files?.[0]) handleFileUpload(e); }}
+                onSaveSettings={persistCourseSettings}
+                onGenerateCourse={handleGenerateCourseFromSettings}
+                onOpenPlayerProperties={() => setShowPlayerProperties(true)}
+                settingsSavedFlash={settingsSavedFlash}
+              />
             </motion.div>
           )}
 
@@ -2874,7 +2685,9 @@ export default function App() {
                      pushUndo(); setCourse(reorderedCourse);
                      setOriginalCourse(reorderedCourse);
                      setCurrentSlideIndex(0);
-                     setCourseBg('/eLearning Template Backgrounds/Neutral/blue background coffee books_01.png');
+                     setCourseBg(null);
+                     setExamError(null); setIsGeneratingExam(false);
+                     setTheme('light');
                      setStep('preview');
                    }
                  : hydrateCourse
@@ -4375,6 +4188,16 @@ export default function App() {
         </AnimatePresence>
 
         {/* ★ Player Properties Modal ★ */}
+        <AnimatePresence>
+          {showUploadPathModal && (pendingUploadFile || uploadedFile) && (
+            <UploadPathModal
+              fileName={(pendingUploadFile || uploadedFile)!.name}
+              onConfirm={confirmUploadPath}
+              onCancel={cancelUploadPath}
+            />
+          )}
+        </AnimatePresence>
+
         <AnimatePresence>
           {showPlayerProperties && (
             <PlayerPropertiesModal

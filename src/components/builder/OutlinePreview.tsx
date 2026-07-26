@@ -12,10 +12,36 @@ interface Props {
   error?: string | null;
   progress?: number;
   sandboxMode?: boolean;
+  /** When true, hide full-page chrome/CTAs — used inside Course Settings Design tab */
+  embedded?: boolean;
+  onOutlineChange?: (outline: CourseOutlineDraft) => void;
+  onRegenerate?: () => void;
+  isRegenerating?: boolean;
 }
 
-export function OutlinePreview({ initialOutline, onApprove, onCancel, isHydrating, error, progress = 10, sandboxMode = false }: Props) {
+export function OutlinePreview({
+  initialOutline,
+  onApprove,
+  onCancel,
+  isHydrating,
+  error,
+  progress = 10,
+  sandboxMode = false,
+  embedded = false,
+  onOutlineChange,
+  onRegenerate,
+  isRegenerating = false,
+}: Props) {
   const [outline, setOutline] = useState<CourseOutlineDraft>(initialOutline);
+
+  React.useEffect(() => {
+    setOutline(initialOutline);
+  }, [initialOutline]);
+
+  const updateOutline = (next: CourseOutlineDraft) => {
+    setOutline(next);
+    onOutlineChange?.(next);
+  };
   const [draggedItem, setDraggedItem] = useState<{ mIndex: number, sIndex: number } | null>(null);
   const [dragOverItem, setDragOverItem] = useState<{ mIndex: number, sIndex: number } | null>(null);
 
@@ -65,14 +91,18 @@ export function OutlinePreview({ initialOutline, onApprove, onCancel, isHydratin
     // Insert at specific target
     modules[targetMIndex].slides.splice(targetSIndex, 0, slideToMove);
     newOutline.modules = modules;
-    setOutline(newOutline);
+    updateOutline(newOutline);
     setDraggedItem(null);
   };
 
   return (
-    <div className="w-full max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
+    <div className={cn(
+      'w-full animate-in fade-in slide-in-from-bottom-8 duration-700',
+      embedded ? 'space-y-6' : 'max-w-4xl mx-auto space-y-8'
+    )}>
       
-      {/* Header Panel */}
+      {/* Header Panel — full page only */}
+      {!embedded && (
       <div className={cn("bg-slate-900/80 backdrop-blur-xl border rounded-3xl p-8 shadow-2xl relative overflow-hidden group", sandboxMode ? 'border-purple-700/40' : 'border-slate-700/80')}>
         <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl opacity-50 pointer-events-none"></div>
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -109,11 +139,32 @@ export function OutlinePreview({ initialOutline, onApprove, onCancel, isHydratin
               disabled={!sandboxMode && isHydrating}
               className="text-gray-400 hover:text-white px-8 py-3 rounded-xl border border-slate-700/50 hover:bg-slate-800 transition-colors text-sm font-bold disabled:opacity-50"
             >
-              {sandboxMode ? 'Back to Course Details' : 'Cancel'}
+              {sandboxMode ? 'Back to Course Settings' : 'Cancel'}
             </button>
           </div>
         </div>
       </div>
+      )}
+
+      {embedded && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-bold text-white">Course Structure</h3>
+            <p className="text-sm text-slate-400">Drag slides to reorder. Regenerate after changing interaction settings.</p>
+          </div>
+          {onRegenerate && (
+            <button
+              type="button"
+              onClick={onRegenerate}
+              disabled={isRegenerating || isHydrating}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-700 bg-slate-900 text-slate-200 text-sm font-bold hover:border-indigo-500/50 hover:text-white transition-all disabled:opacity-50"
+            >
+              {isRegenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 text-indigo-400" />}
+              Regenerate Structure
+            </button>
+          )}
+        </div>
+      )}
 
       {error && (
         <div className="p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl flex items-center gap-3 backdrop-blur-md">

@@ -22,9 +22,9 @@ export const DUMMY_COURSE: CourseOutline = {
       terminalObjective: 'Given an interactive slide, the learner will demonstrate how exploratory and display interactions present information.',
       enablingObjectives: [
         'The learner will explain how the accordion interaction reveals content when a heading is selected.',
-        'The learner will define key player terminology using the flashcard interaction.',
+        'The learner will define key player terminology using the flashcard and click-reveal interactions.',
         'The learner will outline a sequence of events displayed in the timeline interaction.',
-        'The learner will navigate a wheel diagram to explore layered content segments.',
+        'The learner will navigate tabbed content and a wheel diagram to explore layered sections.',
       ],
     },
     {
@@ -55,7 +55,7 @@ export const DUMMY_COURSE: CourseOutline = {
   settings: {
     voiceOverEnabled: true,
     soundEffectsEnabled: true,
-    theme: 'dark',
+    theme: 'light',
     pathway: 'corporate',
   },
   modules: [
@@ -68,7 +68,20 @@ export const DUMMY_COURSE: CourseOutline = {
           id: 'slide-content-1',
           type: 'content',
           title: 'Understanding the Player Layout',
-          content: `## Player Architecture\n\nThe NexCourse player is composed of several key layers:\n\n- **Slide Canvas** — The central content area that renders each slide type\n- **Player Bar** — The bottom navigation with play/pause, seekbar, and slide controls\n- **Edit Drawer** — The right-side panel for modifying slide text and audio\n- **Theme System** — Dark, Light, and Unified color modes\n\n---\n\n## Navigation\n\nUse the **Previous** and **Next** buttons in the player bar, or click directly on the seekbar to jump to any slide.`,
+          content: `## Player Architecture
+
+The NexCourse player is composed of several key layers:
+
+- Slide Canvas — central content area
+- Player Bar — play, seek, and navigation
+- Edit Drawer — text and audio editing
+- Theme System — Dark, Light, Unified modes
+
+---
+
+## Navigation
+
+Use Previous and Next in the player bar, or click the seekbar to jump to any slide.`,
           narration: 'The NexCourse player is built from four key layers: the slide canvas, the player bar, the edit drawer, and the theme system.',
           voiceOverText: 'The NexCourse player has four key layers: the slide canvas, the player bar, the edit drawer, and the theme system.',
           imagePlaceholder: true,
@@ -190,6 +203,38 @@ export const DUMMY_COURSE: CourseOutline = {
           },
         },
         {
+          id: 'slide-tabs-vertical',
+          type: 'tabbed-vertical',
+          title: 'Tabs — How Content Is Organized',
+          content: 'Select each tab to explore how the player groups related information.',
+          narration: 'Use the tabs on the left to move between sections.',
+          voiceOverText: 'Select each tab to explore how content is organized.',
+          data: {
+            tabs: [
+              { id: 'tab-1', label: 'Structure', content: 'Courses are organized into modules. Each module contains slides that advance a single learning goal.' },
+              { id: 'tab-2', label: 'Interactions', content: 'Exploratory interactions let learners browse content at their own pace before assessment.' },
+              { id: 'tab-3', label: 'Assessment', content: 'Knowledge checks and the Mastery Quiz verify understanding against a passing threshold.' },
+              { id: 'tab-4', label: 'Export', content: 'When ready, export a SCORM package for delivery in your LMS.' },
+            ],
+          },
+        },
+        {
+          id: 'slide-click-reveal',
+          type: 'click-reveal',
+          title: 'Click & Reveal — Key Terms',
+          content: 'Click each term to reveal its definition.',
+          narration: 'Click each term to reveal its definition.',
+          voiceOverText: 'Click each term to reveal its definition.',
+          data: {
+            items: [
+              { id: 'cr-1', term: 'Slide Canvas', definition: 'The central area that renders the active slide type.' },
+              { id: 'cr-2', term: 'Player Bar', definition: 'Bottom controls for play, seek, and slide navigation.' },
+              { id: 'cr-3', term: 'Module Overview', definition: 'Auto-injected slide that lists the module goal and sub-objectives.' },
+              { id: 'cr-4', term: 'Mastery Quiz', definition: 'End-of-course exam with a configurable passing score.' },
+            ],
+          },
+        },
+        {
           id: 'slide-wheel',
           type: 'wheel-diagram',
           title: 'The eLearning Development Lifecycle',
@@ -219,7 +264,13 @@ export const DUMMY_COURSE: CourseOutline = {
           id: 'slide-mod3-intro',
           type: 'content',
           title: 'Module 3 — Assessment & Spatial Interactions',
-          content: '## Assessment Interactions\n\nThis module covers three interaction types that challenge the learner to actively categorize, connect, and locate information:\n\n- **Sorting** — Drag items into the correct order\n- **Matching** — Connect terms to their definitions\n- **Hotspot** — Click labeled regions to reveal details',
+          content: `## Assessment Interactions
+
+This module covers three interaction types that challenge the learner to categorize, connect, and locate information:
+
+- Sorting — drag items into order
+- Matching — connect terms to definitions
+- Hotspot — click regions for details`,
           narration: 'Module 3 covers assessment interactions: sorting, matching, and hotspot.',
           voiceOverText: 'Module 3 covers sorting, matching, and hotspot interactions.',
         },
@@ -294,9 +345,17 @@ export const DUMMY_COURSE: CourseOutline = {
           id: 'slide-summary',
           type: 'summary',
           title: 'Course Summary — Player Sandbox Complete',
-          content: `## What This Course Covered\n\n**Module 1** — Core player architecture: Slide Canvas, Player Bar, Edit Drawer, Theme System + Knowledge Checks\n\n**Module 2** — Exploratory interactions: Accordion, Flashcards, Timeline, Wheel Diagram\n\n**Module 3** — Assessment interactions: Sorting, Matching, Hotspot\n\n**Module 4** — This summary\n\n**Module 5** — Decision Simulation: The Deadline Spiral (SHRM/ATD-quality workplace scenario)\n\n---\n\n> Use this sandbox any time via **Admin → Preview Mode** to test player changes without generating a full course.`,
-          narration: 'Congratulations on completing the Admin Preview Mode sandbox. You have now seen every major slide type and interaction component the NexCourse player supports.',
-          voiceOverText: 'Congratulations on completing the sandbox. You have now tested every major component in the player.',
+          content: `## What This Course Covered
+
+- Explored core player architecture
+- Tried accordion, flashcards, timeline
+- Practiced sorting, matching, hotspot
+- Completed a decision simulation
+- Ready to test Mastery Quiz flow
+
+> Use Admin → Preview Mode anytime to retest player changes without generating a full course.`,
+          narration: 'That’s a wrap on the sandbox. You’ve covered the core player layers, exploratory and assessment interactions, and the mastery quiz flow.',
+          voiceOverText: 'That’s a wrap. You’ve covered the core player, interactions, and the mastery quiz flow.',
           imagePlaceholder: false,
         },
       ],
@@ -311,8 +370,19 @@ export const DUMMY_COURSE: CourseOutline = {
           id: 'slide-scenario-intro',
           type: 'content',
           title: 'Decision Simulation — The Deadline Spiral',
-          content: `## Workplace Decision Simulation\n\nThe following scenario places you in a realistic leadership situation. You will navigate multiple decision points, each with realistic consequences. Your accumulated choices determine the outcome.\n\nThis simulation assesses:\n- Leadership Communication\n- Conflict Resolution\n- Emotional Intelligence\n- Accountability Management\n- Stakeholder Communication`,
-          narration: 'In this module you will experience a workplace decision simulation.',
+          content: `## Workplace Decision Simulation
+
+Navigate decision points in a leadership scenario. Your choices shape the outcome.
+
+This simulation assesses:
+
+- Leadership communication
+- Conflict resolution
+- Emotional intelligence
+- Accountability
+- Stakeholder communication`,
+          narration: 'You’ll work through a workplace decision simulation. Choose carefully — each decision has consequences.',
+          voiceOverText: 'You’ll work through a workplace decision simulation. Each choice has consequences.',
           imagePlaceholder: false,
         },
         {
