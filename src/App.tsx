@@ -1057,6 +1057,52 @@ export default function App() {
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  /** When set, shows a non-error warm-up UI and auto-retries analysis at 0 */
+  const [coldStartCountdown, setColdStartCountdown] = useState<number | null>(null);
+  const coldStartTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const clearColdStartCountdown = () => {
+    if (coldStartTimerRef.current) {
+      clearInterval(coldStartTimerRef.current);
+      coldStartTimerRef.current = null;
+    }
+    setColdStartCountdown(null);
+  };
+
+  const retryAnalysisAfterWarmup = () => {
+    if (!uploadedFile) return;
+    clearColdStartCountdown();
+    setAnalyzeError(null);
+    if (lastUploadPath) {
+      const override = lastUploadPath === 'quick' ? loadCourseSettings(user?.id) : null;
+      if (override) applySavedSettings(override);
+      runAnalysis(uploadedFile, lastUploadPath, override);
+    } else {
+      runAnalysis(uploadedFile);
+    }
+  };
+
+  const startColdStartCountdown = () => {
+    clearColdStartCountdown();
+    setAnalyzeError(null);
+    setColdStartCountdown(30);
+    setProgress(80);
+    coldStartTimerRef.current = setInterval(() => {
+      setColdStartCountdown(prev => {
+        if (prev == null) return null;
+        if (prev <= 1) {
+          if (coldStartTimerRef.current) {
+            clearInterval(coldStartTimerRef.current);
+            coldStartTimerRef.current = null;
+          }
+          // Defer retry so we don't call setState during this updater
+          setTimeout(() => retryAnalysisAfterWarmup(), 0);
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
 
   const applySavedSettings = (saved: SavedCourseSettings) => {
     setPreset(saved.preset);
@@ -1129,6 +1175,7 @@ export default function App() {
     path?: UploadPathChoice | 'game',
     settingsOverride?: SavedCourseSettings | null
   ) => {
+    clearColdStartCountdown();
     setIsAnalyzing(true);
     setAnalyzeError(null);
     setProgress(15);
@@ -1266,10 +1313,13 @@ export default function App() {
       console.error('File analysis error:', err);
       const isColdStart = err?.message?.includes('COLD_START') || err?.message?.includes('warming up') || err?.message?.includes('503');
       const isTrialErr = err?.message?.includes('TRIAL_LIMIT_EXCEEDED') || err?.message?.includes('trial limit');
+      if (isColdStart) {
+        // Friendly warm-up state with auto-retry — not framed as a failure
+        startColdStartCountdown();
+        return;
+      }
       setAnalyzeError(
-        isColdStart
-          ? 'The server is warming up. Please wait 20–30 seconds and click “Try Again”.'
-          : isTrialErr
+        isTrialErr
           ? 'Trial generation limit reached. Please upgrade your plan to continue.'
           : `Analysis failed: ${err?.message ?? 'Unknown error'}. Please try again.`
       );
@@ -2478,9 +2528,53 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
             <motion.div key="home" className="flex flex-col items-center justify-center w-full min-h-[calc(100vh-5rem)] relative z-10 overflow-hidden">
 
 
-              {(isAnalyzing || (isGenerating && settingsMode === 'quick')) ? (
+              {(isAnalyzing || coldStartCountdown != null || (isGenerating && settingsMode === 'quick')) ? (
                  <div className="relative z-10 max-w-2xl mx-auto text-center space-y-8 w-full px-6 py-16 bg-slate-950/80 backdrop-blur-xl rounded-[3rem] border border-indigo-500/30 shadow-2xl">
-                   {analyzeError && isAnalyzing ? (
+                   {coldStartCountdown != null ? (
+                     /* ——— Cold start: warm-up countdown + auto-retry ——— */
+                     <>
+                       <div className="relative w-32 h-32 mx-auto mb-2">
+                         <div className="absolute inset-0 bg-amber-500/15 rounded-full blur-xl animate-pulse" />
+                         <div className="absolute inset-0 border-2 border-amber-500/40 rounded-full" />
+                         <div className="absolute inset-0 flex items-center justify-center">
+                           <span className="text-5xl font-black text-amber-300 tabular-nums">{coldStartCountdown}</span>
+                         </div>
+                       </div>
+                       <div>
+                         <h3 className="text-2xl font-bold text-white">Server is warming up</h3>
+                         <p className="text-slate-400 mt-3 text-sm leading-relaxed max-w-md mx-auto">
+                           This is normal after a period of inactivity — nothing is wrong with your file or account.
+                           The app will automatically try again in <span className="text-amber-300 font-bold">{coldStartCountdown} second{coldStartCountdown === 1 ? '' : 's'}</span>.
+                         </p>
+                       </div>
+                       <div className="w-full max-w-sm mx-auto h-2.5 bg-slate-800 rounded-full overflow-hidden">
+                         <div
+                           className="h-full bg-gradient-to-r from-amber-500 to-indigo-500 rounded-full transition-all duration-1000 ease-linear"
+                           style={{ width: `${((30 - coldStartCountdown) / 30) * 100}%` }}
+                         />
+                       </div>
+                       <div className="flex gap-3 justify-center">
+                         <button
+                           onClick={retryAnalysisAfterWarmup}
+                           className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-all"
+                         >
+                           Try Now
+                         </button>
+                         <button
+                           onClick={() => {
+                             clearColdStartCountdown();
+                             setIsAnalyzing(false);
+                             setAnalyzeError(null);
+                             setUploadedFile(null);
+                             setProgress(0);
+                           }}
+                           className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl transition-all"
+                         >
+                           Cancel
+                         </button>
+                       </div>
+                     </>
+                   ) : analyzeError && isAnalyzing ? (
                      /* ——— Error state: stay on overlay, show message + actions ——— */
                      <>
                        <div className="w-20 h-20 mx-auto bg-red-500/20 rounded-full flex items-center justify-center">
@@ -2510,7 +2604,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                            Try Again
                          </button>
                          <button
-                           onClick={() => { setIsAnalyzing(false); setAnalyzeError(null); setUploadedFile(null); setProgress(0); }}
+                           onClick={() => { setIsAnalyzing(false); setAnalyzeError(null); setUploadedFile(null); setProgress(0); clearColdStartCountdown(); }}
                            className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl transition-all"
                          >
                            Cancel
