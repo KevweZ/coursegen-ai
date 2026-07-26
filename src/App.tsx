@@ -2971,8 +2971,16 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                     </div>
                   )}
 
-                  {/* Single unified toolbar row — outlined aesthetic */}
+                  {/* Single unified toolbar — L→R: Player Props, Quality, Undo, Reset, Add Image, Edit Text & Audio, Save, Publish */}
                   <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
+                    <button
+                      title="Player Properties"
+                      onClick={() => setShowPlayerProperties(true)}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-orange-700/50 hover:bg-orange-800/20 text-orange-300 text-[11px] font-semibold"
+                    >
+                      <Settings2 className="w-3 h-3" /><span className="hidden lg:inline">Player Props</span>
+                    </button>
+
                     {(() => {
                       const pendingCount = qcReport
                         ? qcReport.issues.filter(i => !qcConfirmed.has(i.id) && !qcDeclined.has(i.id)).length
@@ -3020,6 +3028,77 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                         </button>
                       );
                     })()}
+
+                    <button
+                      title={undoHistory.length > 0 ? `Undo (${undoHistory.length})` : 'Nothing to undo'}
+                      onClick={handleUndo}
+                      disabled={undoHistory.length === 0}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-slate-600/60 hover:bg-slate-700/30 text-slate-300 text-[11px] font-semibold disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <Undo2 className="w-3 h-3" /><span className="hidden lg:inline">Undo</span>
+                    </button>
+
+                    <button
+                      title="Reset — restore to original generated state"
+                      onClick={() => { if (originalCourse) { setCourse(originalCourse); setCurrentSlideIndex(0); setQuizState({}); setFloatingImagesMap({}); setCourseBg(null); setUndoHistory([]); setSyntheticSlideOverrides({}); } }}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-amber-700/50 hover:bg-amber-800/20 text-amber-300 text-[11px] font-semibold"
+                    >
+                      <RotateCw className="w-3 h-3" /><span className="hidden lg:inline">Reset</span>
+                    </button>
+
+                    <div className="relative" onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setShowImageDropdown(false); }} tabIndex={-1}>
+                      <button
+                        onClick={() => setShowImageDropdown(v => !v)}
+                        title="Add Image"
+                        className="flex items-center gap-1 px-2 py-1 rounded-md border border-violet-700/50 hover:bg-violet-800/20 text-violet-300 text-[11px] font-semibold"
+                      >
+                        <ImageIcon className="w-3 h-3" /><span className="hidden lg:inline">Add Image</span><ChevronDown className="w-2.5 h-2.5 ml-0.5" />
+                      </button>
+                      {showImageDropdown && (
+                        <div className="absolute top-full right-0 mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 py-1 min-w-[150px]">
+                          <button onClick={() => { setShowAppImagePicker(true); setShowImageDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-white">
+                            <ImageIcon className="w-3 h-3 text-violet-400 shrink-0" /> Image Library
+                          </button>
+                          <label htmlFor="topbar-img-upload" onClick={() => setShowImageDropdown(false)} className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-white cursor-pointer">
+                            <Upload className="w-3 h-3 text-emerald-400 shrink-0" /> Upload Image
+                            <input id="topbar-img-upload" type="file" accept="image/*" multiple className="hidden"
+                              onChange={e => {
+                                if (e.target.files?.length) {
+                                  const newImgs: FloatingImage[] = Array.from(e.target.files).map((f, i) => ({
+                                    id: `fi-${Date.now()}-${i}`,
+                                    url: URL.createObjectURL(f),
+                                    x: 40 + i * 20, y: 40 + i * 20, width: 320, height: 240,
+                                  }));
+                                  pushUndo(); setFloatingImagesMap(prev => ({ ...prev, [currentSlide?.id]: [...(prev[currentSlide?.id] || []), ...newImgs] }));
+                                  e.target.value = '';
+                                }
+                              }}
+                            />
+                          </label>
+                          <button onClick={() => { setShowImageGalleryForSlide(currentSlide?.id || null); setShowImageDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-white">
+                            <Layers className="w-3 h-3 text-teal-400 shrink-0" /> Source Image
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      title="Edit Text & Audio"
+                      onClick={() => { editingSlideRef.current = currentSlide; setEditingSlide(currentSlide); setEditDrawerOpen(true); setEditDrawerTab('text'); }}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-indigo-700/50 hover:bg-indigo-800/20 text-indigo-300 text-[11px] font-semibold"
+                    >
+                      <Edit3 className="w-3 h-3" /><span className="hidden lg:inline">Edit Text &amp; Audio</span>
+                    </button>
+
+                    {(currentSlide?.type === 'scenario' || currentSlide?.type === 'game-template' || ['knowledge-check', 'mastery-exam'].includes(currentSlide?.type ?? '')) && (
+                      <button
+                        title="Edit via AI"
+                        onClick={() => setShowAIEditDrawer(true)}
+                        className="flex items-center gap-1 px-2 py-1 rounded-md border border-cyan-700/50 hover:bg-cyan-800/20 text-cyan-300 text-[11px] font-semibold"
+                      >
+                        <Sparkles className="w-3 h-3" /><span className="hidden lg:inline">Edit via AI</span>
+                      </button>
+                    )}
 
                     <button
                       title={`Save Draft (${draftManager.slotsUsed}/${draftManager.slotsTotal} slots used)`}
@@ -3078,95 +3157,6 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                         </button>
                       </div>
                     )}
-
-                    <div className="w-px h-4 bg-slate-700 mx-0.5" />
-
-                    <button
-                      title={undoHistory.length > 0 ? `Undo (${undoHistory.length})` : 'Nothing to undo'}
-                      onClick={handleUndo}
-                      disabled={undoHistory.length === 0}
-                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-slate-600/60 hover:bg-slate-700/30 text-slate-300 text-[11px] font-semibold disabled:opacity-30 disabled:cursor-not-allowed"
-                    >
-                      <Undo2 className="w-3 h-3" /><span className="hidden lg:inline">Undo</span>
-                    </button>
-
-                    <button
-                      title="Reset — restore to original generated state"
-                      onClick={() => { if (originalCourse) { setCourse(originalCourse); setCurrentSlideIndex(0); setQuizState({}); setFloatingImagesMap({}); setCourseBg(null); setUndoHistory([]); setSyntheticSlideOverrides({}); } }}
-                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-amber-700/50 hover:bg-amber-800/20 text-amber-300 text-[11px] font-semibold"
-                    >
-                      <RotateCw className="w-3 h-3" /><span className="hidden lg:inline">Reset</span>
-                    </button>
-
-                    <button
-                      title="Edit Text & Audio"
-                      onClick={() => { editingSlideRef.current = currentSlide; setEditingSlide(currentSlide); setEditDrawerOpen(true); setEditDrawerTab('text'); }}
-                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-indigo-700/50 hover:bg-indigo-800/20 text-indigo-300 text-[11px] font-semibold"
-                    >
-                      <Edit3 className="w-3 h-3" /><span className="hidden lg:inline">Edit Text &amp; Audio</span>
-                    </button>
-
-                    {(currentSlide?.type === 'scenario' || currentSlide?.type === 'game-template' || ['knowledge-check', 'mastery-exam'].includes(currentSlide?.type ?? '')) && (
-                      <button
-                        title="Edit via AI"
-                        onClick={() => setShowAIEditDrawer(true)}
-                        className="flex items-center gap-1 px-2 py-1 rounded-md border border-cyan-700/50 hover:bg-cyan-800/20 text-cyan-300 text-[11px] font-semibold"
-                      >
-                        <Sparkles className="w-3 h-3" /><span className="hidden lg:inline">Edit via AI</span>
-                      </button>
-                    )}
-
-                    <div className="relative" onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setShowImageDropdown(false); }} tabIndex={-1}>
-                      <button
-                        onClick={() => setShowImageDropdown(v => !v)}
-                        title="Add Image"
-                        className="flex items-center gap-1 px-2 py-1 rounded-md border border-violet-700/50 hover:bg-violet-800/20 text-violet-300 text-[11px] font-semibold"
-                      >
-                        <ImageIcon className="w-3 h-3" /><span className="hidden lg:inline">Add Image</span><ChevronDown className="w-2.5 h-2.5 ml-0.5" />
-                      </button>
-                      {showImageDropdown && (
-                        <div className="absolute top-full right-0 mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 py-1 min-w-[150px]">
-                          <button onClick={() => { setShowAppImagePicker(true); setShowImageDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-white">
-                            <ImageIcon className="w-3 h-3 text-violet-400 shrink-0" /> Image Library
-                          </button>
-                          <label htmlFor="topbar-img-upload" onClick={() => setShowImageDropdown(false)} className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-white cursor-pointer">
-                            <Upload className="w-3 h-3 text-emerald-400 shrink-0" /> Upload Image
-                            <input id="topbar-img-upload" type="file" accept="image/*" multiple className="hidden"
-                              onChange={e => {
-                                if (e.target.files?.length) {
-                                  const newImgs: FloatingImage[] = Array.from(e.target.files).map((f, i) => ({
-                                    id: `fi-${Date.now()}-${i}`,
-                                    url: URL.createObjectURL(f),
-                                    x: 40 + i * 20, y: 40 + i * 20, width: 320, height: 240,
-                                  }));
-                                  pushUndo(); setFloatingImagesMap(prev => ({ ...prev, [currentSlide?.id]: [...(prev[currentSlide?.id] || []), ...newImgs] }));
-                                  e.target.value = '';
-                                }
-                              }}
-                            />
-                          </label>
-                          <button onClick={() => { setShowImageGalleryForSlide(currentSlide?.id || null); setShowImageDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-white">
-                            <Layers className="w-3 h-3 text-teal-400 shrink-0" /> Source Image
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    <button
-                      title="Player Properties"
-                      onClick={() => setShowPlayerProperties(true)}
-                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-orange-700/50 hover:bg-orange-800/20 text-orange-300 text-[11px] font-semibold"
-                    >
-                      <Settings2 className="w-3 h-3" /><span className="hidden lg:inline">Player Props</span>
-                    </button>
-
-                    <button
-                      title="Discard — exit preview"
-                      onClick={() => { setCourse(null); setStep('home'); }}
-                      className="p-1.5 rounded-md border border-red-800/50 hover:bg-red-900/20 text-red-400"
-                    >
-                      <X className="w-3.5 h-3.5"/>
-                    </button>
                   </div>
                 </div>
               </div>}
