@@ -10,7 +10,8 @@ export interface SavedCourseSettings {
   voiceOverEnabled: boolean;
   ttsVoice: string;
   includeModuleTitleSlides: boolean;
-  includeObjectiveSlides: boolean;
+  /** Auto-injected per-module overview (objectives accordion) after the Module Title slide. */
+  includeModuleOverviewSlides: boolean;
   includeSummarySlides: boolean;
   slideCount: number;
 }

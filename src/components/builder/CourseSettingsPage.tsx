@@ -79,8 +79,8 @@ export interface CourseSettingsPageProps {
   setSlideCount: (n: number) => void;
   includeModuleTitleSlides: boolean;
   setIncludeModuleTitleSlides: (v: boolean) => void;
-  includeObjectiveSlides: boolean;
-  setIncludeObjectiveSlides: (v: boolean) => void;
+  includeModuleOverviewSlides: boolean;
+  setIncludeModuleOverviewSlides: (v: boolean) => void;
   includeSummarySlides: boolean;
   setIncludeSummarySlides: (v: boolean) => void;
   interactionTypes: string[];
@@ -517,7 +517,7 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                 <div className="space-y-4">
                   {[
                     { label: 'Module Title Slides', state: props.includeModuleTitleSlides, set: props.setIncludeModuleTitleSlides },
-                    { label: 'Objectives Slides', state: props.includeObjectiveSlides, set: props.setIncludeObjectiveSlides },
+                    { label: 'Module Overview Slides', state: props.includeModuleOverviewSlides, set: props.setIncludeModuleOverviewSlides },
                     { label: 'Knowledge Checks', state: true, set: () => {}, locked: true },
                     { label: 'Summary/Recap Slides', state: props.includeSummarySlides, set: props.setIncludeSummarySlides },
                   ].map((opt, i) => (

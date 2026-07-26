@@ -783,11 +783,9 @@ export default function App() {
     }
   };
   const [soundEffectsEnabled, setSoundEffectsEnabled] = useState(true);
-  // Default OFF: the auto-injected "Module X — Overview" slide already shows this
-  // module's objective (and sub-objectives) straight from the canonical
-  // learningObjectives list. A separate AI-authored objectives slide per module
-  // duplicated that with different, disconnected wording -- confusing for learners.
-  const [includeObjectiveSlides, setIncludeObjectiveSlides] = useState(false);
+  // Module Overview (1.1, 2.1, …): synthetic objectives accordion after Module Title.
+  // On by default — Course Settings → Objectives → Structure Components.
+  const [includeModuleOverviewSlides, setIncludeModuleOverviewSlides] = useState(true);
   const [includeSummarySlides, setIncludeSummarySlides] = useState(true);
   const [includeModuleTitleSlides, setIncludeModuleTitleSlides] = useState(true);
   const [generatedCourseTitle, setGeneratedCourseTitle] = useState('');
@@ -823,48 +821,47 @@ export default function App() {
   const player = usePlayer();
   const { progress: ttsProgress, generateTTS, resetTTS } = useTTSGeneration();
 
-  // Virtual exam slides appended after all content slides
-  // Inject module-cover slides: one before the first slide of each module
+  // Virtual exam slides appended after all content slides.
+  // Module Title (module-cover) and Module Overview are injected per Course Settings.
   const contentSlides: Slide[] = course
     ? course.modules.flatMap((m: any, moduleIdx: number) => {
         const moduleObj = (learningObjectives as any)?.[moduleIdx] ?? null;
         const modNum = moduleIdx + 1;
-        return [
-          // Full-bleed animated module cover (stays as-is) — this is where the
-          // module NAME is announced. The overview slide right after it must
-          // NOT repeat the name (see its voiceOverText below).
-          {
+        const cleanTitle = (m.title || `Module ${modNum}`).replace(/^Module\s+\d+\s*[—\-]\s*/i, '').trim();
+        const synthetics: Slide[] = [];
+
+        if (includeModuleTitleSlides) {
+          // Full-bleed Module Title — announces module number + name.
+          synthetics.push({
             id: `__module-cover-${modNum}__`,
             title: m.title || `Module ${modNum}`,
             type: 'module-cover' as any,
             content: m.description || '',
-            voiceOverText: (() => {
-              const ct = (m.title || `Module ${modNum}`).replace(/^Module\s+\d+\s*[—\-]\s*/i, '').trim();
-              return `Module ${modNum}: ${ct}.${m.description ? ' ' + m.description : ''}`.trim();
-            })(),
+            voiceOverText: `Module ${modNum}: ${cleanTitle}.${m.description ? ' ' + m.description : ''}`.trim(),
             _moduleNumber: modNum,
-            _moduleTitle:  m.title || `Module ${modNum}`,
-          } as Slide,
-          // Synthetic Module Overview slide: objectives accordion, full-bleed.
-          // Narration picks up right where the module-cover slide left off --
-          // the module name was already announced there, so this slide flows
-          // straight into the overview content instead of re-announcing it.
-          {
+            _moduleTitle: m.title || `Module ${modNum}`,
+          } as Slide);
+        }
+
+        if (includeModuleOverviewSlides) {
+          // Module Overview (e.g. 1.1, 2.1): objectives accordion after the title slide.
+          // If the title slide is present, narration continues without re-announcing the name.
+          const overviewVo = includeModuleTitleSlides
+            ? (m.description ? `Here's what you'll cover: ${m.description}` : "Let's look at the learning objectives for this module.")
+            : `Module ${modNum}: ${cleanTitle}. ${m.description ? `Here's what you'll cover: ${m.description}` : "Let's look at the learning objectives for this module."}`.trim();
+          synthetics.push({
             id: `__module-overview-${modNum}__`,
             title: `Module ${modNum} — Overview`,
             type: 'module-overview' as any,
-            // Merge any user edits stored in syntheticSlideOverrides
             content: syntheticSlideOverrides[`__module-overview-${modNum}__`]?.content ?? (m.description || ''),
-            voiceOverText: syntheticSlideOverrides[`__module-overview-${modNum}__`]?.voiceOverText
-              ?? (m.description ? `Here's what you'll cover: ${m.description}` : "Let's look at the learning objectives for this module."),
-
+            voiceOverText: syntheticSlideOverrides[`__module-overview-${modNum}__`]?.voiceOverText ?? overviewVo,
             _moduleNumber: modNum,
-            _moduleTitle:  m.title || `Module ${modNum}`,
+            _moduleTitle: m.title || `Module ${modNum}`,
             _objectives: moduleObj ? [moduleObj] : [],
-          } as Slide,
-          // Real module slides (no _moduleObjectives tagging needed any more)
-          ...m.slides,
-        ];
+          } as Slide);
+        }
+
+        return [...synthetics, ...m.slides];
       })
     : [];
   // Item 12: Inject a synthetic cover slide at position 0
@@ -898,7 +895,7 @@ export default function App() {
     for (let i = 0; i <= currentSlideIndex; i++) {
       const s = allSlides[i];
       if (s && typeof (s as any).id === 'string') {
-        const m = (s as any).id.match(/__module-overview-(\d+)__/);
+        const m = (s as any).id.match(/__module-(?:overview|cover)-(\d+)__/);
         if (m) mod = parseInt(m[1]);
       }
     }
@@ -1114,8 +1111,14 @@ export default function App() {
     setGameTemplateIds(saved.gameTemplateIds);
     setVoiceOverEnabled(saved.voiceOverEnabled);
     setTtsVoice(saved.ttsVoice);
-    setIncludeModuleTitleSlides(saved.includeModuleTitleSlides);
-    setIncludeObjectiveSlides(saved.includeObjectiveSlides);
+    setIncludeModuleTitleSlides(saved.includeModuleTitleSlides ?? true);
+    // New key (default ON). Do not inherit legacy includeObjectiveSlides — that
+    // flag meant "AI-authored objectives slide" and was false by default.
+    setIncludeModuleOverviewSlides(
+      typeof saved.includeModuleOverviewSlides === 'boolean'
+        ? saved.includeModuleOverviewSlides
+        : true
+    );
     setIncludeSummarySlides(saved.includeSummarySlides ?? true);
     setSlideCount(saved.slideCount);
   };
@@ -1130,7 +1133,7 @@ export default function App() {
     voiceOverEnabled,
     ttsVoice,
     includeModuleTitleSlides,
-    includeObjectiveSlides,
+    includeModuleOverviewSlides,
     includeSummarySlides,
     slideCount,
   });
@@ -1158,7 +1161,7 @@ export default function App() {
         interactionTypes,
         slideCount,
         includeModuleTitleSlides,
-        includeObjectiveSlides,
+        includeModuleOverviewSlides,
         gameTemplateIds: gameTemplateIds.length > 0 ? gameTemplateIds : undefined,
       }
     );
@@ -1212,7 +1215,7 @@ export default function App() {
       let outlineInteractions = settingsOverride?.interactionTypes ?? interactionTypes;
       let outlineSlideCount = settingsOverride?.slideCount ?? slideCount;
       let outlineIncludeModuleTitles = settingsOverride?.includeModuleTitleSlides ?? includeModuleTitleSlides;
-      let outlineIncludeObjectives = settingsOverride?.includeObjectiveSlides ?? includeObjectiveSlides;
+      let outlineIncludeModuleOverviews = settingsOverride?.includeModuleOverviewSlides ?? includeModuleOverviewSlides;
       let outlineGameIds = settingsOverride?.gameTemplateIds ?? gameTemplateIds;
 
       // Quick build: keep user-saved defaults. Customize: allow AI preset recommendations.
@@ -1248,7 +1251,7 @@ export default function App() {
               interactionTypes: outlineInteractions,
               slideCount: outlineSlideCount,
               includeModuleTitleSlides: outlineIncludeModuleTitles,
-              includeObjectiveSlides: outlineIncludeObjectives,
+              includeModuleOverviewSlides: outlineIncludeModuleOverviews,
               gameTemplateIds: outlineGameIds.length > 0 ? outlineGameIds : undefined,
             }
           );
@@ -1297,7 +1300,7 @@ export default function App() {
             interactionTypes: outlineInteractions,
             slideCount: outlineSlideCount,
             includeModuleTitleSlides: outlineIncludeModuleTitles,
-            includeObjectiveSlides: outlineIncludeObjectives,
+            includeModuleOverviewSlides: outlineIncludeModuleOverviews,
             gameTemplateIds: outlineGameIds.length > 0 ? outlineGameIds : undefined,
           }
         );
@@ -1584,6 +1587,9 @@ export default function App() {
     setPreset(newPreset);
     setSlideCount(config.slideCountTarget);
     setInteractionTypes(mapToGridIds(config.interactions));
+    setIncludeModuleTitleSlides(config.includeModuleTitleSlides);
+    setIncludeModuleOverviewSlides(config.includeModuleOverviewSlides);
+    setIncludeSummarySlides(config.includeSummarySlides);
     const newFmt = config.objectiveFormat;
     setObjectiveFormat(newFmt);
     // Immediate client-side reformat so the user sees results instantly
@@ -1654,7 +1660,7 @@ export default function App() {
           interactionTypes, 
           slideCount,
           includeModuleTitleSlides,
-          includeObjectiveSlides,
+          includeModuleOverviewSlides,
           // A1 FIX: Pass the full array of selected game template IDs
           gameTemplateIds: gameTemplateIds.length > 0 ? gameTemplateIds : undefined,
         }
@@ -1729,15 +1735,24 @@ export default function App() {
             (m: any, idx: number) => {
               const modNum = idx + 1;
               const ct = (m.title || `Module ${modNum}`).replace(/^Module\s+\d+\s*[\u2014\-]\s*/i, '').trim();
-              return [
-                { id: `__module-cover-${modNum}__`, text: `Module ${modNum}: ${ct}.${m.description ? ' ' + m.description : ''}`.trim() },
-                {
+              const items: Array<{ id: string; text: string }> = [];
+              if (includeModuleTitleSlides) {
+                items.push({
+                  id: `__module-cover-${modNum}__`,
+                  text: `Module ${modNum}: ${ct}.${m.description ? ' ' + m.description : ''}`.trim(),
+                });
+              }
+              if (includeModuleOverviewSlides) {
+                items.push({
                   id: `__module-overview-${modNum}__`,
-                  text: m.description
-                    ? `Here's what you'll cover: ${m.description}`
-                    : "Let's look at the learning objectives for this module.",
-                },
-              ];
+                  text: includeModuleTitleSlides
+                    ? (m.description
+                      ? `Here's what you'll cover: ${m.description}`
+                      : "Let's look at the learning objectives for this module.")
+                    : `Module ${modNum}: ${ct}. ${m.description ? `Here's what you'll cover: ${m.description}` : "Let's look at the learning objectives for this module."}`.trim(),
+                });
+              }
+              return items;
             }
           );
           for (const { id, text } of moduleSynthetics) {
@@ -2857,8 +2872,8 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                 setSlideCount={setSlideCount}
                 includeModuleTitleSlides={includeModuleTitleSlides}
                 setIncludeModuleTitleSlides={setIncludeModuleTitleSlides}
-                includeObjectiveSlides={includeObjectiveSlides}
-                setIncludeObjectiveSlides={setIncludeObjectiveSlides}
+                includeModuleOverviewSlides={includeModuleOverviewSlides}
+                setIncludeModuleOverviewSlides={setIncludeModuleOverviewSlides}
                 includeSummarySlides={includeSummarySlides}
                 setIncludeSummarySlides={setIncludeSummarySlides}
                 interactionTypes={interactionTypes}

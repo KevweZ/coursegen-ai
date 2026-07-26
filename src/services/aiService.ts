@@ -331,7 +331,8 @@ export async function generateCourseOutline(
     /** @deprecated use gameTemplateIds */ gameTemplateId?: string | null;
     /** Array of game template IDs selected by the user */
     gameTemplateIds?: string[];
-    includeObjectiveSlides?: boolean;
+    /** When true, the player injects a Module Overview slide after each Module Title. */
+    includeModuleOverviewSlides?: boolean;
     includeSummarySlides?: boolean;
     includeModuleTitleSlides?: boolean;
     includeKnowledgeChecks?: boolean;
@@ -354,8 +355,11 @@ export async function generateCourseOutline(
   COURSE STRUCTURE REQUIREMENTS:
   You must create EXACTLY ONE module per provided Learning Objective/Target.
   Every module MUST follow this exact sequence of slides:
-  1. NO title slide — The course player now automatically injects a styled "Module X — Overview" slide as the FIRST slide of EVERY module. This slide displays the module description and its learning objectives. Do NOT generate a title, intro, overview, or objectives slide for any module. Each module must start directly with its first content or interaction slide.
-  2. ${configParams.includeObjectiveSlides !== false ? "Objectives Slide (type: content)" : "NO objectives slide — FORBIDDEN. Do NOT create any slide titled \"Learning Objectives\", \"Module Objectives\", \"Objectives\", or similar. Do NOT use click-reveal (or any other type) to restate objectives. The auto-injected Module Overview already shows this module's objective and sub-objectives from the canonical Learning Objectives list."}
+  1. NO title / overview / objectives slides — The course player auto-injects structural slides based on Course Settings:
+     ${configParams.includeModuleTitleSlides !== false ? '- Module Title slide (full-bleed "Module N: Title") before each module\'s content' : '- Module Title slides are OFF — do NOT create module title/cover slides'}
+     ${configParams.includeModuleOverviewSlides !== false ? '- Module Overview slide (objectives accordion) immediately after each Module Title' : '- Module Overview slides are OFF — do NOT create overview or objectives slides'}
+     Do NOT generate title, intro, overview, or objectives slides for any module. Each module must start directly with its first content or interaction slide.
+  2. NO objectives slide — FORBIDDEN. Do NOT create any slide titled "Learning Objectives", "Module Objectives", "Objectives", or similar. Do NOT use click-reveal (or any other type) to restate objectives.${configParams.includeModuleOverviewSlides !== false ? ' The auto-injected Module Overview already shows this module\'s objective and sub-objectives from the canonical Learning Objectives list.' : ''}
   3. Content & Interaction Slides -- use the SPECIFIC allowed interaction type as the slide type. Allowed interaction types: ${configParams.interactionTypes.join(", ")}. Map them to slide types like this:
      - accordion, flashcards, timeline, sorting, matching -> use the exact string as the slide 'type'
      - tabbed-horizontal, tabbed-vertical, folder-explorer, carousel-panel, click-reveal -> use the exact string as the slide 'type'
@@ -364,7 +368,7 @@ export async function generateCourseOutline(
   4. ${configParams.includeKnowledgeChecks !== false ? 'Knowledge Check Slides (type: quiz)' : 'NO knowledge check slides'}
   5. ${configParams.includeSummarySlides !== false ? "Summary Slide (type: content)" : "NO summary slide"}
   
-  CRITICAL: The course player automatically injects (1) a Cover/Introduction slide before all modules, and (2) a "Module X — Overview" slide as the FIRST slide of EVERY module (showing that module's objective + sub-objectives). Do NOT create any intro, overview, title, welcome, OR objectives/learning-objectives slide for ANY module. All modules must start directly with their first content or interaction slide.
+  CRITICAL: The course player automatically injects a Cover/Introduction slide before all modules${configParams.includeModuleTitleSlides !== false || configParams.includeModuleOverviewSlides !== false ? `, plus per-module structural slides (${[configParams.includeModuleTitleSlides !== false ? 'Module Title' : null, configParams.includeModuleOverviewSlides !== false ? 'Module Overview' : null].filter(Boolean).join(' + ')})` : ''}. Do NOT create any intro, overview, title, welcome, OR objectives/learning-objectives slide for ANY module. All modules must start directly with their first content or interaction slide.
   
   GAME TEMPLATE INTEGRATION:
   ${gameIds.length === 0
@@ -419,11 +423,10 @@ Each game slide must have a unique title like "[Game Name] Knowledge Challenge".
   const parsedOutline = parseJsonSafely(rawText) as CourseOutlineDraft;
   if (!parsedOutline) throw new Error("Critical Data Failure: Outline could not be parsed.");
 
-  // Safety net: strip any AI-authored objectives / learning-objectives slides.
-  // The Module Overview slide already surfaces each module's objective from the
-  // canonical learningObjectives list, so a separate objectives slide is
-  // redundant and often invents disconnected wording (Bug #4 / item 3).
-  if (configParams.includeObjectiveSlides === false && Array.isArray(parsedOutline.modules)) {
+  // Always strip AI-authored objectives / learning-objectives slides.
+  // Module Overview (when enabled) surfaces objectives from the canonical list;
+  // a separate AI objectives slide is redundant and often invents disconnected wording.
+  if (Array.isArray(parsedOutline.modules)) {
     const OBJECTIVES_TITLE = /^(learning\s+)?objectives?$|module\s+objectives?/i;
     parsedOutline.modules = parsedOutline.modules.map(mod => ({
       ...mod,
