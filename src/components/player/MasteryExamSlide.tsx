@@ -69,7 +69,7 @@ const QuestionCard: React.FC<{
 
       {/* Options */}
       <div className="space-y-2">
-        {q.options.map((opt, oIdx) => {
+        {(q.options || []).map((opt, oIdx) => {
           const state = optionState(oIdx);
           const isSelected = Array.isArray(answer) ? answer.includes(oIdx) : answer === oIdx;
           return (

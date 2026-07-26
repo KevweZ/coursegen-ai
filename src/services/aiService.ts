@@ -630,9 +630,12 @@ export async function hydrateCourseContent(
     RIGHT: "- **Risk management**: identify, assess, mitigate threats early"
   - SUMMARY SLIDES: pick ONLY the 4-6 most important takeaways from the WHOLE module — never one bullet per topic/slide
     covered. MAXIMUM 6 short bullets (5-8 words), PAST TENSE: "- Explored the three phishing types", "- Defined escalation steps"
-  - KEY-TAKEAWAY SLIDES: MAXIMUM 5-6 short bullets (5-8 words each), each an ACTION-VERB phrase, not a full sentence:
+  - KEY-TAKEAWAY SLIDES (type: "key-takeaways"): REQUIRED fields — content (markdown bullets) AND data.objectives
+    array with 4-6 items [{ id, label, content }]. NEVER leave data.objectives empty or omit it.
+    MAXIMUM 5-6 short bullets (5-8 words each), each an ACTION-VERB phrase, not a full sentence:
     "- Spot suspicious email patterns early"
     "- Report incidents to IT within 24 hours"
+    Example data: { "objectives": [{ "id": "1", "label": "Spot phishing cues early", "content": "" }] }
   - BOLD USAGE: Do NOT bold words inside bullet lists on content/summary/key-takeaway slides.
     The slide title already carries visual hierarchy; partial bold mid-bullet looks noisy and
     competes with the header. Write plain bullets with no ** markers. Reserve bold for rare
@@ -719,7 +722,10 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
    * falling back to real, title-derived text (never a "content unavailable" placeholder).
    */
   async function ensureSlideHasContent(slide: any, moduleTitle: string, attempts = 2): Promise<any> {
-    if (slide.content?.trim() && slide.voiceOverText?.trim()) return slide;
+    const takeawayEmpty = slide.type === 'key-takeaways'
+      && !(slide.data?.objectives?.length || slide.interactions?.length)
+      && !String(slide.content || '').replace(/^#{1,6}.*/gm, '').replace(/[-*•]/g, '').trim();
+    if (slide.content?.trim() && slide.voiceOverText?.trim() && !takeawayEmpty) return slide;
     for (let i = 0; i < attempts; i++) {
       try {
         const retried = await hydrateSingleSlide(slide, moduleTitle);
@@ -757,6 +763,39 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
       slide.content = slide.content || `Process diagram for: ${slide.title}`;
     }
     // Scenario slides — data will be populated async; skip sync validation here
+
+    // Key-takeaways: normalize markdown bullets into data.objectives so the
+    // LearningObjectivesSlide renderer never receives an empty list.
+    if (slide.type === 'key-takeaways') {
+      const existing = slide.data?.objectives || slide.interactions;
+      if (!existing?.length) {
+        const lines = String(slide.content || '')
+          .split(/\n+/)
+          .map((l: string) => l.replace(/^#{1,6}\s+/, '').replace(/^[-*•]\s+/, '').trim())
+          .filter((l: string) => l.length > 2 && !/^key\s*takeaways?/i.test(l));
+        if (lines.length) {
+          slide.data = {
+            ...(slide.data || {}),
+            objectives: lines.slice(0, 6).map((label: string, i: number) => ({
+              id: String(i + 1),
+              label,
+              content: '',
+            })),
+          };
+        } else if (slide.title) {
+          // Last resort so the slide is never blank in the player
+          slide.content = slide.content?.trim() || `## Key Takeaways\n\n- Review ${slide.title}\n- Apply the core practices\n- Confirm understanding before moving on`;
+          slide.data = {
+            ...(slide.data || {}),
+            objectives: [
+              { id: '1', label: `Review ${slide.title}`, content: '' },
+              { id: '2', label: 'Apply the core practices', content: '' },
+              { id: '3', label: 'Confirm understanding before moving on', content: '' },
+            ],
+          };
+        }
+      }
+    }
 
     // Density auto-splitter — skip Summary/Key-Takeaway slides entirely. Those are
     // now capped to 5-6 short bullets by the system prompt, so they should never
@@ -909,22 +948,46 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
 function generateFallbackQuestions(course, config) {
   var questions = [];
   var qIdx = 0;
-  var totalNeeded = config.questionMode === 'total' ? config.questionCount : config.questionCount * course.modules.length;
-  var questionsPerModule = Math.ceil(totalNeeded / Math.max(course.modules.length, 1));
+  var modules = (course && course.modules) ? course.modules : [];
+  var types = (config && config.questionTypes && config.questionTypes.length)
+    ? config.questionTypes
+    : ['mc', 'ma', 'tf'];
+  var totalNeeded = config.questionMode === 'total'
+    ? (config.questionCount || 5)
+    : (config.questionCount || 2) * Math.max(modules.length, 1);
+  var questionsPerModule = Math.ceil(totalNeeded / Math.max(modules.length, 1));
 
-  for (var mIdx = 0; mIdx < course.modules.length; mIdx++) {
-    var mod = course.modules[mIdx];
-    var moduleQ = config.questionMode === 'total' ? (mIdx === course.modules.length - 1 ? totalNeeded - questions.length : questionsPerModule) : config.questionCount;
+  if (!modules.length) {
+    for (var n = 0; n < totalNeeded; n++) {
+      questions.push({
+        id: 'q-' + (n + 1),
+        type: 'mc',
+        question: '[Draft] What is a key learning point from this course?',
+        options: ['A core concept from the course', 'An unrelated topic', 'A concept from another domain', 'None of the above'],
+        correctAnswer: 0,
+        explanation: 'Draft placeholder generated when course content was unavailable.',
+        moduleIndex: 0,
+      });
+    }
+    return questions;
+  }
+
+  for (var mIdx = 0; mIdx < modules.length; mIdx++) {
+    var mod = modules[mIdx];
+    var slides = (mod && mod.slides && mod.slides.length) ? mod.slides : [{ title: mod.title || ('Module ' + (mIdx + 1)) }];
+    var moduleQ = config.questionMode === 'total'
+      ? (mIdx === modules.length - 1 ? totalNeeded - questions.length : questionsPerModule)
+      : (config.questionCount || 2);
     for (var i = 0; i < moduleQ && questions.length < totalNeeded; i++) {
-      var slide = mod.slides[i % mod.slides.length];
-      var type = config.questionTypes[qIdx % config.questionTypes.length];
+      var slide = slides[i % slides.length] || { title: 'Topic ' + (i + 1) };
+      var type = types[qIdx % types.length];
       qIdx++;
       if (type === 'tf') {
-        questions.push({ id: 'q-' + (questions.length + 1), type: 'tf', question: '[Draft] "' + slide.title + '" is a key topic in this course.', options: ['True', 'False'], correctAnswer: 0, explanation: '"' + slide.title + '" is covered in Module ' + (mIdx + 1) + '.', moduleIndex: mIdx });
+        questions.push({ id: 'q-' + (questions.length + 1), type: 'tf', question: '[Draft] "' + (slide.title || 'This topic') + '" is a key topic in this course.', options: ['True', 'False'], correctAnswer: 0, explanation: '"' + (slide.title || 'This topic') + '" is covered in Module ' + (mIdx + 1) + '.', moduleIndex: mIdx });
       } else if (type === 'ma') {
-        questions.push({ id: 'q-' + (questions.length + 1), type: 'ma', question: '[Draft] Which are discussed in "' + mod.title + '"? (Select all that apply)', options: [mod.slides[0]?.title || 'Topic A', mod.slides[1]?.title || 'Topic B', 'An unrelated concept', mod.slides[2]?.title || 'Topic C'], correctAnswer: [0, 1, 3], explanation: 'Draft question — replace with AI content when API key is renewed.', moduleIndex: mIdx });
+        questions.push({ id: 'q-' + (questions.length + 1), type: 'ma', question: '[Draft] Which are discussed in "' + (mod.title || 'this module') + '"? (Select all that apply)', options: [slides[0]?.title || 'Topic A', slides[1]?.title || 'Topic B', 'An unrelated concept', slides[2]?.title || 'Topic C'], correctAnswer: [0, 1, 3], explanation: 'Draft question — replace with AI content when available.', moduleIndex: mIdx });
       } else {
-        questions.push({ id: 'q-' + (questions.length + 1), type: 'mc', question: '[Draft] What is the primary focus of "' + slide.title + '"?', options: [slide.title, 'An unrelated topic', 'A concept from another module', 'None of the above'], correctAnswer: 0, explanation: 'Draft placeholder. Real questions are AI-generated from course content.', moduleIndex: mIdx });
+        questions.push({ id: 'q-' + (questions.length + 1), type: 'mc', question: '[Draft] What is the primary focus of "' + (slide.title || 'this topic') + '"?', options: [slide.title || 'Core topic', 'An unrelated topic', 'A concept from another module', 'None of the above'], correctAnswer: 0, explanation: 'Draft placeholder. Real questions are AI-generated from course content.', moduleIndex: mIdx });
       }
     }
   }
@@ -972,10 +1035,11 @@ RULES:
 5. Each question must have a 1-sentence explanation.
 OUTPUT: Return ONLY valid JSON: { "questions": [{ "id": "q1", "type": "mc", "question": "...", "options": [...], "correctAnswer": 0, "explanation": "...", "moduleIndex": 0 }] }`;
 
-  const userPrompt = `Course: "${course.title}"
-Objectives: ${JSON.stringify(course.learningObjectives).slice(0, 400)}
+  const objectivesJson = JSON.stringify(course.learningObjectives ?? []);
+  const userPrompt = `Course: "${course.title ?? 'Untitled Course'}"
+Objectives: ${(objectivesJson || '[]').slice(0, 400)}
 Content:
-${courseSummary.slice(0, 8000)}
+${(courseSummary || '').slice(0, 8000)}
 Generate ${totalNeeded} questions.`;
 
   try {
@@ -992,7 +1056,8 @@ Generate ${totalNeeded} questions.`;
       return (parsed.questions as ExamQuestion[]).slice(0, totalNeeded);
     }
     return generateFallbackQuestions(course as any, config);
-  } catch {
+  } catch (err) {
+    console.warn('[generateMasteryExam] Falling back to draft questions:', err);
     return generateFallbackQuestions(course as any, config);
   }
 }

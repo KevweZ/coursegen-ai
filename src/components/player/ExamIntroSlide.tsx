@@ -71,7 +71,7 @@ export const ExamIntroSlide: React.FC<Props> = ({
         <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
           <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Question Types</p>
           <div className="flex flex-wrap gap-2">
-            {examConfig.questionTypes.map(t => (
+            {(examConfig.questionTypes || ['mc', 'ma', 'tf']).map(t => (
               <span key={t} className="flex items-center gap-1.5 text-xs font-bold text-slate-700 bg-slate-100 border border-slate-300 px-3 py-1 rounded-full">
                 {t === 'mc' && <List className="w-3 h-3" />}
                 {t === 'ma' && <CheckSquare className="w-3 h-3" />}

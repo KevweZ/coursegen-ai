@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import {
-  ArrowRight, Loader2, FileUp, Target, Layers, Lock, LayoutTemplate, Grid3X3,
+  ArrowRight, Loader2, FileUp, Target, Layers, Lock, Grid3X3,
   Gamepad2, Volume2, Eye, Plus, Trash2, Wand2, AlertCircle, Ear, CheckCircle2,
   BookOpen, ListChecks, Navigation, SlidersHorizontal, Save, Settings2,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { getPresetOptions } from '../../lib/presetEngine';
 import { getRecommendedGames } from '../../lib/gameEngine';
 import { ScenarioBuilderPanel } from '../ScenarioBuilderPanel';
 import { OutlinePreview } from './OutlinePreview';
@@ -505,6 +504,35 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                   </div>
                 </>
               )}
+
+              {/* Structure Components — lives under Objectives (not Interactions) */}
+              <div className="border-t border-slate-800 p-6">
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-10 h-10 rounded-lg bg-pink-500/20 flex items-center justify-center"><Grid3X3 className="w-5 h-5 text-pink-400" /></div>
+                  <div>
+                    <h3 className="text-lg font-bold text-white">Structure Components</h3>
+                    <p className="text-slate-400 text-sm">Choose which automated slides to include in each module.</p>
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  {[
+                    { label: 'Module Title Slides', state: props.includeModuleTitleSlides, set: props.setIncludeModuleTitleSlides },
+                    { label: 'Objectives Slides', state: props.includeObjectiveSlides, set: props.setIncludeObjectiveSlides },
+                    { label: 'Knowledge Checks', state: true, set: () => {}, locked: true },
+                    { label: 'Summary/Recap Slides', state: props.includeSummarySlides, set: props.setIncludeSummarySlides },
+                  ].map((opt, i) => (
+                    <label key={i} className={`flex items-center justify-between cursor-pointer group ${opt.locked ? 'opacity-80' : ''}`}>
+                      <span className="text-slate-300 font-medium group-hover:text-white">{opt.label}</span>
+                      <div
+                        className={`w-12 h-6 rounded-full relative ${opt.state ? 'bg-pink-500' : 'bg-slate-700'}`}
+                        onClick={() => !opt.locked && opt.set(!opt.state)}
+                      >
+                        <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${opt.state ? 'translate-x-6' : ''}`} />
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
 
@@ -653,74 +681,6 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
 
           {activeTab === 'interactions' && (
             <div className="space-y-6">
-              <div className="bg-slate-900/80 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
-                <div className="p-6 border-b border-slate-800 bg-slate-900">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-teal-500/20 flex items-center justify-center"><Layers className="w-5 h-5 text-teal-400" /></div>
-                    <div>
-                      <h3 className="text-xl font-bold text-white">Complexity Level</h3>
-                      <p className="text-slate-400 text-sm">Auto-configure the depth, slides, and interactivity.</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {getPresetOptions('corporate').map(p => (
-                    <div
-                      key={p.id}
-                      onClick={() => props.onPresetChange(p.id as any)}
-                      className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${props.preset === p.id ? 'border-indigo-500 bg-indigo-500/10' : 'border-slate-800 bg-slate-950 hover:border-slate-700'} ${isSuggesting && props.preset !== p.id ? 'opacity-50 pointer-events-none' : ''}`}
-                    >
-                      <h4 className="text-white font-bold text-lg mb-1">{p.label}</h4>
-                      <p className="text-slate-400 text-xs mb-3">{p.description}</p>
-                      <div className="text-xs font-mono text-indigo-400">{p.slideCountTarget} slides • {p.interactions.length} types</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-6">
-                  <div className="flex items-center gap-3 mb-6">
-                    <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center"><LayoutTemplate className="w-5 h-5 text-emerald-400" /></div>
-                    <h3 className="text-xl font-bold text-white">Course Length</h3>
-                  </div>
-                  <div className="flex justify-between items-end mb-2">
-                    <span className="text-white font-bold">{props.slideCount} Slides</span>
-                    <span className="text-slate-500 text-xs font-bold uppercase">~{Math.round(props.slideCount * 1.5)} Mins</span>
-                  </div>
-                  <input
-                    type="range" min="3" max="100"
-                    value={props.slideCount}
-                    onChange={(e) => props.setSlideCount(Number(e.target.value))}
-                    className="w-full accent-emerald-500 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer"
-                  />
-                </div>
-                <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-6">
-                  <div className="flex items-center gap-3 mb-6">
-                    <div className="w-10 h-10 rounded-lg bg-pink-500/20 flex items-center justify-center"><Grid3X3 className="w-5 h-5 text-pink-400" /></div>
-                    <h3 className="text-xl font-bold text-white">Structure Components</h3>
-                  </div>
-                  <div className="space-y-4">
-                    {[
-                      { label: 'Module Title Slides', state: props.includeModuleTitleSlides, set: props.setIncludeModuleTitleSlides },
-                      { label: 'Objectives Slides', state: props.includeObjectiveSlides, set: props.setIncludeObjectiveSlides },
-                      { label: 'Knowledge Checks', state: true, set: () => {}, locked: true },
-                      { label: 'Summary/Recap Slides', state: props.includeSummarySlides, set: props.setIncludeSummarySlides },
-                    ].map((opt, i) => (
-                      <label key={i} className={`flex items-center justify-between cursor-pointer group ${opt.locked ? 'opacity-80' : ''}`}>
-                        <span className="text-slate-300 font-medium group-hover:text-white">{opt.label}</span>
-                        <div
-                          className={`w-12 h-6 rounded-full relative ${opt.state ? 'bg-pink-500' : 'bg-slate-700'}`}
-                          onClick={() => !opt.locked && opt.set(!opt.state)}
-                        >
-                          <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${opt.state ? 'translate-x-6' : ''}`} />
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
               <div className="bg-slate-900/80 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
                 <div className="p-6 border-b border-slate-800 bg-slate-900">
                   <div className="flex items-center gap-3">

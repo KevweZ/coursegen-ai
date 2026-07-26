@@ -281,17 +281,67 @@ function autoFormatAsBullets(raw: string): string {
   return raw;
 }
 
+/** Count markdown/HTML list items for multi-column layout decisions */
+function countListItems(raw: string): number {
+  if (!raw) return 0;
+  if (/<[uo]l[\s>]/i.test(raw)) {
+    return (raw.match(/<li[\s>]/gi) || []).length;
+  }
+  return raw.split('\n').filter(l => /^\s*([-*+]|\d+\.)\s+/.test(l)).length;
+}
+
+const EmptySlideRegenerate = ({
+  title,
+  onRegenerate,
+  isRegenerating,
+  compact = false,
+}: {
+  title: string;
+  onRegenerate: () => void;
+  isRegenerating: boolean;
+  compact?: boolean;
+}) => (
+  <div className={cn(
+    'flex flex-col items-center justify-center text-center gap-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50',
+    compact ? 'py-10 px-6' : 'h-full min-h-[280px] px-8'
+  )}>
+    <AlertCircle className="w-8 h-8 text-amber-500" />
+    <div>
+      <p className="text-slate-800 font-bold text-lg">{title || 'This slide'}</p>
+      <p className="text-slate-500 text-sm mt-1 max-w-md">
+        Content didn’t generate for this slide. Regenerate to fill it from the course topic.
+      </p>
+    </div>
+    <button
+      type="button"
+      onClick={onRegenerate}
+      disabled={isRegenerating}
+      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold disabled:opacity-60"
+    >
+      {isRegenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+      {isRegenerating ? 'Regenerating…' : 'Regenerate Slide Content'}
+    </button>
+  </div>
+);
+
 const SlideContent = ({ content, theme, accentColor }: { content: string; theme: string; accentColor?: string }) => {
   // Bullet markers: use the module accent when provided so lists match the
   // module chrome (header / divider). Fall back to near-black so we never
   // leave the old hardcoded indigo/light-blue markers that clashed with
   // non-indigo modules (e.g. teal Module 2 headers with blue bullets).
   const markerColor = accentColor || (theme === 'light' ? '#0f172a' : '#94a3b8');
+  const bulletCount = countListItems(content);
+  // 7–9 bullets: two columns so dense lists don't stretch into a long single stack
+  const multiCol = bulletCount >= 7 && bulletCount <= 12;
 
   if (isHTML(content)) {
     return (
       <div
-        className={cn('prose max-w-none text-lg lg:text-xl leading-relaxed rich-slide-content', theme !== 'light' ? 'prose-invert text-gray-200' : 'text-gray-800')}
+        className={cn(
+          'prose max-w-none text-lg lg:text-xl leading-relaxed rich-slide-content',
+          theme !== 'light' ? 'prose-invert text-gray-200' : 'text-gray-800',
+          multiCol && '[&_ul]:columns-2 [&_ul]:gap-x-8 [&_ol]:columns-2 [&_ol]:gap-x-8 [&_li]:break-inside-avoid'
+        )}
         style={{ ['--slide-marker' as any]: markerColor }}
         dangerouslySetInnerHTML={{ __html: stripBulletBold(content) }}
       />
@@ -310,7 +360,7 @@ const SlideContent = ({ content, theme, accentColor }: { content: string; theme:
           const instructional = renderInstructionalText(children, theme, true);
           if (instructional) {
             return (
-              <li {...props} className="marker:[color:var(--slide-marker,#0f172a)]">
+              <li {...props} className="marker:[color:var(--slide-marker,#0f172a)] break-inside-avoid">
                 {instructional}
               </li>
             );
@@ -319,7 +369,7 @@ const SlideContent = ({ content, theme, accentColor }: { content: string; theme:
             <li
               {...props}
               className={cn(
-                'marker:[color:var(--slide-marker,#0f172a)]',
+                'marker:[color:var(--slide-marker,#0f172a)] break-inside-avoid',
                 theme === 'light' ? 'text-gray-800' : 'text-gray-200'
               )}
             >
@@ -330,7 +380,10 @@ const SlideContent = ({ content, theme, accentColor }: { content: string; theme:
         ul: ({ node, children, ...props }) => (
           <ul
             {...props}
-            className="pl-6 space-y-2 list-disc border-l-0 mb-4"
+            className={cn(
+              'pl-6 space-y-2 list-disc border-l-0 mb-4',
+              multiCol && 'columns-2 gap-x-8 [column-fill:balance]'
+            )}
             style={{ ['--slide-marker' as any]: markerColor }}
           >
             {children}
@@ -339,7 +392,10 @@ const SlideContent = ({ content, theme, accentColor }: { content: string; theme:
         ol: ({ node, children, ...props }) => (
           <ol
             {...props}
-            className="pl-6 space-y-2 list-decimal pb-4 marker:[color:var(--slide-marker,#0f172a)]"
+            className={cn(
+              'pl-6 space-y-2 list-decimal pb-4 marker:[color:var(--slide-marker,#0f172a)]',
+              multiCol && 'columns-2 gap-x-8 [column-fill:balance]'
+            )}
             style={{ ['--slide-marker' as any]: markerColor }}
           >
             {children}
@@ -549,6 +605,9 @@ export default function App() {
   const [isGeneratingOutline, setIsGeneratingOutline] = useState(false);
   const [settingsSavedFlash, setSettingsSavedFlash] = useState(false);
   const [lastUploadPath, setLastUploadPath] = useState<UploadPathChoice | null>(null);
+  const [regeneratingSlideId, setRegeneratingSlideId] = useState<string | null>(null);
+  /** Ref so runAnalysis (defined earlier) can call finalize after hydrate */
+  const finalizeGeneratedCourseRef = useRef<(course: any) => void>(() => {});
   
   const [isGenerating, setIsGenerating] = useState(false);
   const [isHydrating, setIsHydrating] = useState(false);
@@ -1157,15 +1216,14 @@ export default function App() {
             },
             (pct) => setProgress(45 + Math.round(pct * 0.5))
           );
-          setCourse(finalCourse);
-          setOriginalCourse(finalCourse);
-          setSyntheticAudioMap({});
           setProgress(100);
-          setStep('preview');
-          setIsGeneratingImages(true);
-          generateModuleImages(finalCourse, (slideId, imageDataUrl) => {
-            setCourse((prev: any) => prev ? applyCoverImageToCourse(prev, slideId, imageDataUrl) : prev);
-          }).finally(() => setIsGeneratingImages(false));
+          // Apply Course Settings (voice-over, exam, nav) + kick off TTS — same as customize path
+          finalizeGeneratedCourseRef.current({
+            ...finalCourse,
+            learningObjectives: result.objectives || learningObjectives,
+            title: result.title || finalCourse.title,
+            description: result.summary || finalCourse.description,
+          });
         } catch (e: any) {
           setError(e?.message || 'Quick build failed.');
           setSettingsMode('session');
@@ -1576,6 +1634,171 @@ export default function App() {
     }
   };
 
+  /** Apply saved Course Settings onto a hydrated course + kick off TTS/images/QC. */
+  const finalizeGeneratedCourse = (finalCourse: any) => {
+    const stamped = {
+      ...finalCourse,
+      examConfig,
+      navigationMode,
+      settings: {
+        ...(finalCourse.settings || {}),
+        voiceOverEnabled,
+        soundEffectsEnabled,
+        theme: finalCourse.settings?.theme || 'light',
+      },
+      learningObjectives: finalCourse.learningObjectives?.length
+        ? finalCourse.learningObjectives
+        : learningObjectives,
+    };
+    setCourse(stamped);
+    setOriginalCourse(stamped);
+    setSyntheticAudioMap({});
+    setStep('preview');
+
+    setIsGeneratingImages(true);
+    generateModuleImages(stamped, (slideId, imageDataUrl) => {
+      setCourse((prev: any) => prev ? applyCoverImageToCourse(prev, slideId, imageDataUrl) : prev);
+    }).finally(() => setIsGeneratingImages(false));
+
+    if (voiceOverEnabled) {
+      generateTTS(stamped, setCourse, ttsVoice);
+      ;(async () => {
+        try {
+          const { generateSlideTTS: genSlideTTS } = await import('./services/ttsService');
+          for (const { id, text } of [
+            { id: '__cover__', text: `Welcome to ${stamped.title}. ${stamped.description || ''}`.trim() },
+            { id: '__player-tour__', text: 'Before we begin, take a moment to explore the player controls. Hover over each card to see the corresponding element highlighted in the player preview.' },
+          ]) {
+            if (!text.trim()) continue;
+            try {
+              const url = await genSlideTTS(text, { voice: ttsVoice as any });
+              setSyntheticAudioMap(prev => ({ ...prev, [id]: url }));
+            } catch { /* non-fatal */ }
+          }
+          const moduleSynthetics: Array<{ id: string; text: string }> = (stamped.modules || []).flatMap(
+            (m: any, idx: number) => {
+              const modNum = idx + 1;
+              const ct = (m.title || `Module ${modNum}`).replace(/^Module\s+\d+\s*[\u2014\-]\s*/i, '').trim();
+              return [
+                { id: `__module-cover-${modNum}__`, text: `Module ${modNum}: ${ct}.${m.description ? ' ' + m.description : ''}`.trim() },
+                {
+                  id: `__module-overview-${modNum}__`,
+                  text: m.description
+                    ? `Here's what you'll cover: ${m.description}`
+                    : "Let's look at the learning objectives for this module.",
+                },
+              ];
+            }
+          );
+          for (const { id, text } of moduleSynthetics) {
+            if (!text.trim()) continue;
+            try {
+              const url = await genSlideTTS(text, { voice: ttsVoice as any });
+              setSyntheticAudioMap(prev => ({ ...prev, [id]: url }));
+            } catch { /* non-fatal */ }
+            await new Promise(r => setTimeout(r, 300));
+          }
+        } catch { /* silently ignore */ }
+      })();
+    }
+
+    ;(async () => {
+      try {
+        setIsRunningQC(true);
+        setQcPhase('structural');
+        const report = await runFullQC(stamped, voiceOverEnabled, (phase) => setQcPhase(phase));
+        setQcReport(report);
+        if (report.issues.some(i => i.autoFixable)) {
+          const { course: fixedCourse } = autoFixCourse(stamped, report);
+          setCourse(fixedCourse);
+          setOriginalCourse(fixedCourse);
+        }
+      } catch {
+        // QC failure is non-fatal
+      } finally {
+        setIsRunningQC(false);
+        setQcPhase(null);
+      }
+    })();
+  };
+  finalizeGeneratedCourseRef.current = finalizeGeneratedCourse;
+
+  /** Regenerate a blank/empty slide in-place from the course topic. */
+  const regenerateBlankSlide = async (slide: Slide) => {
+    if (!course || !slide?.id) return;
+    setRegeneratingSlideId(slide.id);
+    try {
+      const modIdx = course.modules.findIndex(m => m.slides.some(s => s.id === slide.id));
+      const moduleTitle = modIdx >= 0 ? course.modules[modIdx].title : course.title;
+      const isTakeaway = slide.type === 'key-takeaways' || /key\s*takeaway/i.test(slide.title || '');
+      const promptText = isTakeaway
+        ? `Regenerate a key-takeaways slide titled "${slide.title}" for the module "${moduleTitle}" in the course "${course.title}".
+Return ONLY JSON: { "content": "## Key Takeaways\\n\\n- bullet1\\n- bullet2...", "voiceOverText": "2-3 sentences", "data": { "objectives": [{ "id": "1", "label": "short takeaway", "content": "" }] } }
+Rules: 4-6 short action-verb bullets (5-8 words), no mid-bullet bold, data.objectives required.`
+        : `Regenerate a ${slide.type} slide titled "${slide.title}" for the module "${moduleTitle}" in the course "${course.title}".
+Return ONLY JSON: { "content": "markdown with short bullets", "voiceOverText": "2-4 spoken sentences" }
+Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold** in bullets).`;
+
+      let parsed: any = null;
+      try {
+        const apiBase = (import.meta as any).env?.VITE_SERVER_URL || '';
+        const res = await fetch(`${apiBase}/api/ai`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: promptText, complexity: 'simple' }),
+        });
+        if (!res.ok) throw new Error(`API ${res.status}`);
+        const aiRes = await res.json();
+        const text: string = aiRes.content?.[0]?.text ?? aiRes.text ?? '';
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error('No JSON in AI response');
+        parsed = JSON.parse(jsonMatch[0]);
+      } catch (err) {
+        console.warn('[regenerateBlankSlide] AI failed, using title-derived fallback', err);
+        parsed = {
+          content: isTakeaway
+            ? `## Key Takeaways\n\n- Review ${slide.title}\n- Apply the core module practices\n- Confirm understanding before moving on\n- Follow up with next steps`
+            : `## ${slide.title}\n\n- Key point related to ${slide.title}\n- Practical application for learners\n- Common pitfall to avoid\n- Next step to take`,
+          voiceOverText: `Let's review the key points for ${slide.title}.`,
+          data: isTakeaway
+            ? {
+                objectives: [
+                  { id: '1', label: `Review ${slide.title}`, content: '' },
+                  { id: '2', label: 'Apply the core module practices', content: '' },
+                  { id: '3', label: 'Confirm understanding before moving on', content: '' },
+                  { id: '4', label: 'Follow up with next steps', content: '' },
+                ],
+              }
+            : undefined,
+        };
+      }
+
+      pushUndo();
+      setCourse(prev => {
+        if (!prev) return prev;
+        const cloned = JSON.parse(JSON.stringify(prev));
+        for (const mod of cloned.modules) {
+          const idx = mod.slides.findIndex((s: any) => s.id === slide.id);
+          if (idx >= 0) {
+            mod.slides[idx] = {
+              ...mod.slides[idx],
+              content: parsed.content || mod.slides[idx].content,
+              voiceOverText: parsed.voiceOverText || mod.slides[idx].voiceOverText,
+              narration: parsed.voiceOverText || mod.slides[idx].narration,
+              data: parsed.data
+                ? { ...(mod.slides[idx].data || {}), ...parsed.data }
+                : mod.slides[idx].data,
+            };
+            break;
+          }
+        }
+        return cloned;
+      });
+    } finally {
+      setRegeneratingSlideId(null);
+    }
+  };
+
   const hydrateCourse = async () => {
     setIsHydrating(true);
     setProgress(10);
@@ -1586,97 +1809,7 @@ export default function App() {
       );
       setProgress(100);
       await new Promise(r => setTimeout(r, 200));
-      setCourse(finalCourse);
-      setOriginalCourse(finalCourse);
-
-      // Show preview immediately - AI audio generated in background, arrives within ~2s
-      setSyntheticAudioMap({});
-
-      // -- Show the preview --
-      setStep('preview');
-
-      // —— Kick off module image generation in background (non-blocking) ——
-      setIsGeneratingImages(true);
-      generateModuleImages(finalCourse, (slideId, imageDataUrl) => {
-        setCourse((prev: any) => prev ? applyCoverImageToCourse(prev, slideId, imageDataUrl) : prev);
-      }).finally(() => setIsGeneratingImages(false));
-
-      // —— Kick off main TTS in background (module content slides) ——
-      if (voiceOverEnabled) {
-        generateTTS(finalCourse, setCourse, ttsVoice);
-
-        // Background: generate TTS for module covers + overviews (NOT cover/player-tour — already done)
-        ;(async () => {
-          try {
-            const { generateSlideTTS: genSlideTTS } = await import('./services/ttsService');
-
-            // Cover + Player Tour FIRST (shown immediately when preview opens)
-            for (const { id, text } of [
-              { id: '__cover__', text: `Welcome to ${finalCourse.title}. ${finalCourse.description || ''}`.trim() },
-              { id: '__player-tour__', text: 'Before we begin, take a moment to explore the player controls. Hover over each card to see the corresponding element highlighted in the player preview.' },
-            ]) {
-              if (!text.trim()) continue;
-              try {
-                const url = await genSlideTTS(text, { voice: ttsVoice as any });
-                setSyntheticAudioMap(prev => ({ ...prev, [id]: url }));
-              } catch { /* non-fatal */ }
-            }
-
-            const moduleSynthetics: Array<{ id: string; text: string }> = (finalCourse.modules || []).flatMap(
-              (m: any, idx: number) => {
-                const modNum = idx + 1;
-                const ct = (m.title || `Module ${modNum}`)
-                  .replace(/^Module\s+\d+\s*[\u2014\-]\s*/i, '')
-                  .trim();
-                return [
-                  {
-                    id: `__module-cover-${modNum}__`,
-                    text: `Module ${modNum}: ${ct}.${m.description ? ' ' + m.description : ''}`.trim(),
-                  },
-                  {
-                    // No "Welcome to Module N: <title>" here -- the module-cover
-                    // slide right before this one already announced the name.
-                    // Repeating it made the narration feel redundant, so this
-                    // slide transitions straight into the overview content.
-                    id: `__module-overview-${modNum}__`,
-                    text: m.description
-                      ? `Here's what you'll cover: ${m.description}`
-                      : "Let's look at the learning objectives for this module.",
-                  },
-                ];
-              }
-            );
-            for (const { id, text } of moduleSynthetics) {
-              if (!text.trim()) continue;
-              try {
-                const url = await genSlideTTS(text, { voice: ttsVoice as any });
-                setSyntheticAudioMap(prev => ({ ...prev, [id]: url }));
-              } catch { /* non-fatal */ }
-              await new Promise(r => setTimeout(r, 300));
-            }
-          } catch { /* silently ignore */ }
-        })();
-
-      } // end if (voiceOverEnabled)
-
-      // ── Auto QC runs silently in background — preview is already visible ──
-      try {
-        setIsRunningQC(true);
-        setQcPhase('structural');
-        const report = await runFullQC(finalCourse, voiceOverEnabled, (phase) => setQcPhase(phase));
-        setQcReport(report);
-        // Apply auto-fixable issues silently
-        if (report.issues.some(i => i.autoFixable)) {
-          const { course: fixedCourse } = autoFixCourse(finalCourse, report);
-          setCourse(fixedCourse);
-          setOriginalCourse(fixedCourse);
-        }
-      } catch {
-        // QC failure is non-fatal — proceed with original course
-      } finally {
-        setIsRunningQC(false);
-        setQcPhase(null);
-      }
+      finalizeGeneratedCourse(finalCourse);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -2744,21 +2877,8 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* Right: view mode + theme + divider + export + discard */}
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    {/* Desktop / Mobile toggle */}
-                    <button
-                      title="Toggle Desktop / Mobile preview"
-                      onClick={() => setViewMode(viewMode === 'desktop' ? 'mobile' : 'desktop')}
-                      className="flex items-center gap-1.5 px-2 py-1 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-medium"
-                    >
-                      {viewMode === 'desktop' ? <Monitor className="w-3.5 h-3.5"/> : <Smartphone className="w-3.5 h-3.5"/>}
-                      <span className="hidden lg:inline">{viewMode === 'desktop' ? 'Desktop' : 'Mobile'}</span>
-                    </button>
-
-                    {/* Theme dropdown removed — Dark mode only */}
-
-                    {/* QC Check — context-aware: reopen existing report if pending, or start new scan */}
+                  {/* Single unified toolbar row — outlined aesthetic */}
+                  <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
                     {(() => {
                       const pendingCount = qcReport
                         ? qcReport.issues.filter(i => !qcConfirmed.has(i.id) && !qcDeclined.has(i.id)).length
@@ -2768,15 +2888,13 @@ export default function App() {
                         <button
                           id="qc-check-button"
                           title={hasPending
-                            ? `QC Report — ${pendingCount} item${pendingCount !== 1 ? 's' : ''} pending review (click to reopen)`
-                            : 'Quality Check — scan for spelling, grammar, and formatting issues'}
+                            ? `Quality — ${pendingCount} item${pendingCount !== 1 ? 's' : ''} pending review`
+                            : 'Quality — scan for spelling, grammar, and formatting issues'}
                           onClick={async () => {
-                            // If a report exists with pending items, just reopen. Don't re-scan.
                             if (qcReport && hasPending) {
                               setQcModalOpen(true);
                               return;
                             }
-                            // Fresh scan
                             setQcConfirmed(new Set());
                             setQcDeclined(new Set());
                             setQcReport(null);
@@ -2792,14 +2910,14 @@ export default function App() {
                               setQcPhase(null);
                             }
                           }}
-                          className={`relative flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-bold text-xs transition-colors shadow-lg ${
+                          className={`relative flex items-center gap-1 px-2 py-1 rounded-md border text-[11px] font-semibold transition-colors ${
                             hasPending
-                              ? 'bg-amber-600/80 hover:bg-amber-500 text-white shadow-amber-500/10'
-                              : 'bg-emerald-700/80 hover:bg-emerald-600 text-white shadow-emerald-500/10'
+                              ? 'border-amber-700/50 hover:bg-amber-800/20 text-amber-300'
+                              : 'border-emerald-700/50 hover:bg-emerald-800/20 text-emerald-300'
                           }`}
                         >
-                          <Shield className="w-3.5 h-3.5" />
-                          <span className="hidden lg:inline">{hasPending ? 'QC Pending' : 'QC Check'}</span>
+                          <Shield className="w-3 h-3" />
+                          <span className="hidden lg:inline">Quality</span>
                           {hasPending && (
                             <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-black flex items-center justify-center">
                               {pendingCount > 9 ? '9+' : pendingCount}
@@ -2809,15 +2927,12 @@ export default function App() {
                       );
                     })()}
 
-                    <div className="w-px h-4 bg-slate-700 mx-0.5" />
-
-                    {/* Save Drafts (Pro) */}
                     <button
                       title={`Save Draft (${draftManager.slotsUsed}/${draftManager.slotsTotal} slots used)`}
                       onClick={() => setShowDraftsPanel(true)}
-                      className="relative flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-bold text-xs transition-colors text-slate-300 hover:bg-slate-700/60 border border-slate-700/50"
+                      className="relative flex items-center gap-1 px-2 py-1 rounded-md border border-slate-600/60 hover:bg-slate-700/30 text-slate-300 text-[11px] font-semibold"
                     >
-                      <Save className="w-3.5 h-3.5" />
+                      <Save className="w-3 h-3" />
                       <span className="hidden lg:inline">Save</span>
                       {draftManager.slotsUsed > 0 && (
                         <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-indigo-500 text-white text-[10px] font-black rounded-full flex items-center justify-center">
@@ -2826,187 +2941,139 @@ export default function App() {
                       )}
                     </button>
 
-
-                    {/* Export SCORM — blocked for trial users */}
                     {isTrial ? (
                       <button
-                        title="Export SCORM — not available in trial"
+                        title="Publish Course — not available in trial"
                         onClick={() => setShowTrialExportModal(true)}
-                        className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-700 text-slate-400 rounded-lg font-bold text-xs cursor-pointer border border-slate-600"
+                        className="flex items-center gap-1 px-2 py-1 rounded-md border border-slate-600/60 text-slate-500 text-[11px] font-semibold"
                       >
-                        <Download className="w-3.5 h-3.5" /> <span className="hidden lg:inline">Export SCORM</span>
+                        <Download className="w-3 h-3" /> <span className="hidden lg:inline">Publish Course</span>
                       </button>
                     ) : (
-                      <div className="flex items-center rounded-lg overflow-hidden border border-indigo-500/40 shadow-lg shadow-indigo-500/20">
-                        {/* Version toggle */}
+                      <div className="flex items-center rounded-md overflow-hidden border border-violet-700/50">
                         <button
-                          title={`Switch SCORM version (current: ${scormVersion})`}
+                          title={`SCORM version (current: ${scormVersion})`}
                           onClick={() => setScormVersion(v => v === '1.2' ? '2004' : '1.2')}
-                          className="px-2 py-1 bg-indigo-700/60 hover:bg-indigo-600/70 text-indigo-200 text-[10px] font-black tracking-wide transition-colors border-r border-indigo-500/30"
+                          className="px-1.5 py-1 text-violet-300 text-[10px] font-black tracking-wide hover:bg-violet-800/20 border-r border-violet-700/40"
                         >
                           {scormVersion}
                         </button>
-                        {/* Export button */}
                         <button
-                          title={`Export SCORM ${scormVersion} — download a SCORM zip package`}
+                          title={`Publish Course as SCORM ${scormVersion}`}
                           disabled={isExporting}
                           onClick={() => {
                             const pendingCount = qcReport
                               ? qcReport.issues.filter(i => !qcConfirmed.has(i.id) && !qcDeclined.has(i.id)).length
                               : 0;
-                            if (pendingCount > 0) {
-                              setShowQcPublishWarning(true);
-                            } else {
-                              exportScorm();
-                            }
+                            if (pendingCount > 0) setShowQcPublishWarning(true);
+                            else exportScorm();
                           }}
-                          className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-bold text-xs transition-colors"
+                          className="flex items-center gap-1 px-2 py-1 text-violet-300 text-[11px] font-semibold hover:bg-violet-800/20 disabled:opacity-60"
                         >
                           {isExporting ? (
                             <>
-                              <div className="w-3 h-3 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                              <span className="hidden lg:inline">{exportProgress < 100 ? `${exportProgress}%` : 'Packaging…'}</span>
+                              <div className="w-3 h-3 rounded-full border-2 border-violet-300/30 border-t-violet-300 animate-spin" />
+                              <span className="hidden lg:inline">{exportProgress < 100 ? `${exportProgress}%` : '…'}</span>
                             </>
                           ) : (
                             <>
-                              <Download className="w-3.5 h-3.5" />
-                              <span className="hidden lg:inline">Export SCORM</span>
+                              <Download className="w-3 h-3" />
+                              <span className="hidden lg:inline">Publish Course</span>
                             </>
                           )}
                         </button>
                       </div>
                     )}
 
+                    <div className="w-px h-4 bg-slate-700 mx-0.5" />
 
-                    {/* Discard */}
                     <button
-                      title="Discard — exit preview and return to the home screen"
+                      title={undoHistory.length > 0 ? `Undo (${undoHistory.length})` : 'Nothing to undo'}
+                      onClick={handleUndo}
+                      disabled={undoHistory.length === 0}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-slate-600/60 hover:bg-slate-700/30 text-slate-300 text-[11px] font-semibold disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <Undo2 className="w-3 h-3" /><span className="hidden lg:inline">Undo</span>
+                    </button>
+
+                    <button
+                      title="Reset — restore to original generated state"
+                      onClick={() => { if (originalCourse) { setCourse(originalCourse); setCurrentSlideIndex(0); setQuizState({}); setFloatingImagesMap({}); setCourseBg(null); setUndoHistory([]); setSyntheticSlideOverrides({}); } }}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-amber-700/50 hover:bg-amber-800/20 text-amber-300 text-[11px] font-semibold"
+                    >
+                      <RotateCw className="w-3 h-3" /><span className="hidden lg:inline">Reset</span>
+                    </button>
+
+                    <button
+                      title="Edit Text & Audio"
+                      onClick={() => { editingSlideRef.current = currentSlide; setEditingSlide(currentSlide); setEditDrawerOpen(true); setEditDrawerTab('text'); }}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-indigo-700/50 hover:bg-indigo-800/20 text-indigo-300 text-[11px] font-semibold"
+                    >
+                      <Edit3 className="w-3 h-3" /><span className="hidden lg:inline">Edit Text &amp; Audio</span>
+                    </button>
+
+                    {(currentSlide?.type === 'scenario' || currentSlide?.type === 'game-template' || ['knowledge-check', 'mastery-exam'].includes(currentSlide?.type ?? '')) && (
+                      <button
+                        title="Edit via AI"
+                        onClick={() => setShowAIEditDrawer(true)}
+                        className="flex items-center gap-1 px-2 py-1 rounded-md border border-cyan-700/50 hover:bg-cyan-800/20 text-cyan-300 text-[11px] font-semibold"
+                      >
+                        <Sparkles className="w-3 h-3" /><span className="hidden lg:inline">Edit via AI</span>
+                      </button>
+                    )}
+
+                    <div className="relative" onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setShowImageDropdown(false); }} tabIndex={-1}>
+                      <button
+                        onClick={() => setShowImageDropdown(v => !v)}
+                        title="Add Image"
+                        className="flex items-center gap-1 px-2 py-1 rounded-md border border-violet-700/50 hover:bg-violet-800/20 text-violet-300 text-[11px] font-semibold"
+                      >
+                        <ImageIcon className="w-3 h-3" /><span className="hidden lg:inline">Add Image</span><ChevronDown className="w-2.5 h-2.5 ml-0.5" />
+                      </button>
+                      {showImageDropdown && (
+                        <div className="absolute top-full right-0 mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 py-1 min-w-[150px]">
+                          <button onClick={() => { setShowAppImagePicker(true); setShowImageDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-white">
+                            <ImageIcon className="w-3 h-3 text-violet-400 shrink-0" /> Image Library
+                          </button>
+                          <label htmlFor="topbar-img-upload" onClick={() => setShowImageDropdown(false)} className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-white cursor-pointer">
+                            <Upload className="w-3 h-3 text-emerald-400 shrink-0" /> Upload Image
+                            <input id="topbar-img-upload" type="file" accept="image/*" multiple className="hidden"
+                              onChange={e => {
+                                if (e.target.files?.length) {
+                                  const newImgs: FloatingImage[] = Array.from(e.target.files).map((f, i) => ({
+                                    id: `fi-${Date.now()}-${i}`,
+                                    url: URL.createObjectURL(f),
+                                    x: 40 + i * 20, y: 40 + i * 20, width: 320, height: 240,
+                                  }));
+                                  pushUndo(); setFloatingImagesMap(prev => ({ ...prev, [currentSlide?.id]: [...(prev[currentSlide?.id] || []), ...newImgs] }));
+                                  e.target.value = '';
+                                }
+                              }}
+                            />
+                          </label>
+                          <button onClick={() => { setShowImageGalleryForSlide(currentSlide?.id || null); setShowImageDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-white">
+                            <Layers className="w-3 h-3 text-teal-400 shrink-0" /> Source Image
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      title="Player Properties"
+                      onClick={() => setShowPlayerProperties(true)}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-orange-700/50 hover:bg-orange-800/20 text-orange-300 text-[11px] font-semibold"
+                    >
+                      <Settings2 className="w-3 h-3" /><span className="hidden lg:inline">Player Props</span>
+                    </button>
+
+                    <button
+                      title="Discard — exit preview"
                       onClick={() => { setCourse(null); setStep('home'); }}
-                      className="p-1.5 rounded-lg border border-red-800/50 hover:bg-red-900/20 text-red-400 transition-colors"
+                      className="p-1.5 rounded-md border border-red-800/50 hover:bg-red-900/20 text-red-400"
                     >
                       <X className="w-3.5 h-3.5"/>
                     </button>
                   </div>
-                </div>
-
-                {/* ── Row 2: Editing tools strip ──
-                     flex-wrap (instead of a fixed h-9 single line) guarantees no button is ever
-                     silently clipped off the right edge on narrower viewports -- it wraps to a
-                     second line instead of overflowing invisibly past the header's overflow-hidden
-                     boundary. */}
-                <div className="min-h-9 hidden md:flex items-center justify-end flex-wrap gap-1 pb-1">
-                  {/* Undo */}
-                  <button
-                    title={undoHistory.length > 0 ? `Undo (${undoHistory.length} step${undoHistory.length !== 1 ? 's' : ''} available)` : 'Nothing to undo'}
-                    onClick={handleUndo}
-                    disabled={undoHistory.length === 0}
-                    className="flex items-center gap-1 px-2 py-1 rounded-md border border-slate-600/60 hover:bg-slate-700/30 text-slate-300 text-[11px] font-semibold disabled:opacity-30 disabled:cursor-not-allowed transition-opacity"
-                  >
-                    <Undo2 className="w-3 h-3" /><span>Undo</span>
-                  </button>
-
-                  {/* Reset */}
-                  <button
-                    title="Reset — restore to original generated state"
-                    onClick={() => { if (originalCourse) { setCourse(originalCourse); setCurrentSlideIndex(0); setQuizState({}); setFloatingImagesMap({}); setCourseBg(null); setUndoHistory([]); setSyntheticSlideOverrides({}); } }}
-                    className="flex items-center gap-1 px-2 py-1 rounded-md border border-amber-700/50 hover:bg-amber-800/20 text-amber-300 text-[11px] font-semibold"
-                  >
-                    <RotateCw className="w-3 h-3" /><span>Reset</span>
-                  </button>
-
-                  <div className="w-px h-4 bg-slate-700 mx-0.5" />
-
-                  {/* Edit Text & Audio */}
-                  <button
-                    title="Edit Text & Audio — open the rich-text and narration editor for this slide"
-                    onClick={() => { editingSlideRef.current = currentSlide; setEditingSlide(currentSlide); setEditDrawerOpen(true); setEditDrawerTab('text'); }}
-                    className="flex items-center gap-1 px-2 py-1 rounded-md border border-indigo-700/50 hover:bg-indigo-800/20 text-indigo-300 text-[11px] font-semibold"
-                  >
-                    <Edit3 className="w-3 h-3" /><span>Edit Text &amp; Audio</span>
-                  </button>
-
-                  {/* Edit via AI — scenario and game-template slides only */}
-                  {(currentSlide?.type === 'scenario' || currentSlide?.type === 'game-template') && (
-                    <button
-                      title="Edit via AI — make targeted changes to this interaction using plain language"
-                      onClick={() => setShowAIEditDrawer(true)}
-                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-cyan-700/50 hover:bg-cyan-800/20 text-cyan-300 text-[11px] font-semibold"
-                    >
-                      <Sparkles className="w-3 h-3" /><span>Edit via AI</span>
-                    </button>
-                  )}
-
-                  {/* Edit via AI — quiz, exam, knowledge-check slides */}
-                  {(['knowledge-check', 'mastery-exam'].includes(currentSlide?.type ?? '')) && (
-                    <button
-                      title="Edit via AI — make targeted changes to this interaction using plain language"
-                      onClick={() => setShowAIEditDrawer(true)}
-                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-cyan-700/50 hover:bg-cyan-800/20 text-cyan-300 text-[11px] font-semibold"
-                    >
-                      <Sparkles className="w-3 h-3" /><span>Edit via AI</span>
-                    </button>
-                  )}
-
-                  {/* Images dropdown — consolidates Slide Images, Upload, Source Image */}
-                  <div className="relative" onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setShowImageDropdown(false); }} tabIndex={-1}>
-                    <button
-                      onClick={() => setShowImageDropdown(v => !v)}
-                      title="Images — add or manage images on this slide"
-                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-violet-700/50 hover:bg-violet-800/20 text-violet-300 text-[11px] font-semibold"
-                    >
-                      <ImageIcon className="w-3 h-3" /><span>Add Image</span><ChevronDown className="w-2.5 h-2.5 ml-0.5" />
-                    </button>
-                    {showImageDropdown && (
-                      <div className="absolute top-full left-0 mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 py-1 min-w-[150px]">
-                        {/* Slide Images */}
-                        <button
-                          onClick={() => { setShowAppImagePicker(true); setShowImageDropdown(false); }}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
-                        >
-                          <ImageIcon className="w-3 h-3 text-violet-400 shrink-0" /> Image Library
-                        </button>
-                        {/* Upload Image */}
-                        <label
-                          htmlFor="topbar-img-upload"
-                          onClick={() => setShowImageDropdown(false)}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-white transition-colors cursor-pointer"
-                        >
-                          <Upload className="w-3 h-3 text-emerald-400 shrink-0" /> Upload Image
-                          <input id="topbar-img-upload" type="file" accept="image/*" multiple className="hidden"
-                            onChange={e => {
-                              if (e.target.files?.length) {
-                                const newImgs: FloatingImage[] = Array.from(e.target.files).map((f, i) => ({
-                                  id: `fi-${Date.now()}-${i}`,
-                                  url: URL.createObjectURL(f),
-                                  x: 40 + i * 20, y: 40 + i * 20, width: 320, height: 240,
-                                }));
-                                pushUndo(); setFloatingImagesMap(prev => ({ ...prev, [currentSlide?.id]: [...(prev[currentSlide?.id] || []), ...newImgs] }));
-                                e.target.value = '';
-                              }
-                            }}
-                          />
-                        </label>
-                        {/* Source Image */}
-                        <button
-                          onClick={() => { setShowImageGalleryForSlide(currentSlide?.id || null); setShowImageDropdown(false); }}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
-                        >
-                          <Layers className="w-3 h-3 text-teal-400 shrink-0" /> Source Image
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="w-px h-4 bg-slate-700 mx-0.5" />
-
-                  {/* Player Properties */}
-                  <button
-                    title="Player Properties — configure controls, TOC, aspect ratio, branding"
-                    onClick={() => setShowPlayerProperties(true)}
-                    className="flex items-center gap-1 px-2 py-1 rounded-md border border-orange-700/50 hover:bg-orange-800/20 text-orange-300 text-[11px] font-semibold"
-                  >
-                    <Settings2 className="w-3 h-3" /><span>Player Props</span>
-                  </button>
                 </div>
               </div>}
 
@@ -3158,35 +3225,56 @@ export default function App() {
                                {/* CONTENT / KEY-TAKEAWAYS / SUMMARY */}
                                {currentSlide?.type === 'key-takeaways' && (() => {
                                   const raw: any[] = (currentSlide as any).interactions || (currentSlide as any).data?.objectives || [];
-                                  const objectives = raw.length > 0 ? raw : (currentSlide.content || '')
-                                    .split(/\n+/).filter(Boolean)
-                                    .map((line: string, i: number) => ({ id: String(i), label: line, content: '' }));
-                                  // Derive module number for this slide
+                                  const fromContent = (currentSlide.content || '')
+                                    .split(/\n+/)
+                                    .map((line: string) => line.replace(/^#{1,6}\s+/, '').replace(/^[-*•]\s+/, '').trim())
+                                    .filter((line: string) => line.length > 2 && !/^key\s*takeaways?/i.test(line));
+                                  const objectives = raw.length > 0
+                                    ? raw
+                                    : fromContent.map((line: string, i: number) => ({ id: String(i), label: line, content: '' }));
                                   const modIdx = course?.modules.findIndex((m: any) => m.slides.some((s: any) => s.id === currentSlide.id)) ?? -1;
                                   const slideModuleNumber = modIdx >= 0 ? modIdx + 1 : undefined;
+                                  const isEmpty = objectives.length === 0;
                                   return (
                                     <div className="w-full h-full absolute inset-0">
-                                      <LearningObjectivesSlide
-                                        title={currentSlide.title}
-                                        objectives={objectives}
-                                        theme={theme}
-                                        moduleNumber={slideModuleNumber}
-                                      />
+                                      {isEmpty ? (
+                                        <EmptySlideRegenerate
+                                          title={currentSlide.title || 'Key Takeaways'}
+                                          isRegenerating={regeneratingSlideId === currentSlide.id}
+                                          onRegenerate={() => regenerateBlankSlide(currentSlide)}
+                                        />
+                                      ) : (
+                                        <LearningObjectivesSlide
+                                          title={currentSlide.title}
+                                          objectives={objectives}
+                                          theme={theme}
+                                          moduleNumber={slideModuleNumber}
+                                        />
+                                      )}
                                     </div>
                                   );
                                })()}
 
                                {(currentSlide?.type === 'content' || currentSlide?.type === 'summary') && (() => {
                                  const typeLabel = currentSlide.type === 'summary' ? 'Summary' : 'Overview';
+                                 const body = (currentSlide.content || '').trim();
+                                 const isEmpty = body.length < 8;
                                  return (
                                    <div className="w-full space-y-4">
-                                     {/* Section label */}
                                      <p className="text-[10px] font-black uppercase tracking-[0.25em]" style={{ color: slideAccentColor }}>
                                        {typeLabel}
                                      </p>
-                                       <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                     {/* Body content */}
-                                     {currentSlide.content && <SlideContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} />}
+                                     <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
+                                     {isEmpty ? (
+                                       <EmptySlideRegenerate
+                                         title={currentSlide.title}
+                                         isRegenerating={regeneratingSlideId === currentSlide.id}
+                                         onRegenerate={() => regenerateBlankSlide(currentSlide)}
+                                         compact
+                                       />
+                                     ) : (
+                                       <SlideContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} />
+                                     )}
                                    </div>
                                  );
                                })()}
