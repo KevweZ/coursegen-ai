@@ -111,7 +111,7 @@ export const ExamIntroSlide: React.FC<Props> = ({
           {isGenerating ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
-              Generating quiz questions…
+              Preparing quiz…
             </>
           ) : (
             <>

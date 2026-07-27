@@ -35,11 +35,32 @@ export function JeopardyGame({ payload }: Props) {
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [evaluated, setEvaluated] = useState<{ isCorrect: boolean; feedback: string } | null>(null);
 
-  // Shuffle options once per active question
-  const shuffledOptions = useMemo(() => {
-    if (!activeQuestion?.options) return [];
-    return [...activeQuestion.options].sort(() => Math.random() - 0.5);
+  // Shuffle options once per active question — always MC (with fallback options if AI omitted them)
+  const effectiveOptions = useMemo(() => {
+    if (!activeQuestion) return [] as string[];
+    const existing = Array.isArray(activeQuestion.options) ? activeQuestion.options.filter(Boolean) : [];
+    const correct = String(activeQuestion.correctAnswer || '').trim();
+    if (existing.length >= 2) {
+      const withCorrect = existing.includes(correct) || !correct
+        ? existing
+        : [correct, ...existing].slice(0, 4);
+      return withCorrect;
+    }
+    // Fallback distractors so free-text spelling never fails the learner
+    const base = correct || 'Correct answer';
+    const stripped = base.replace(/^what\s+is\s+/i, '').replace(/\?$/, '').trim() || base;
+    return [
+      base.startsWith('What') || base.startsWith('what') ? base : `What is ${stripped}?`,
+      `What is ${stripped} valve?`,
+      `What is a ${stripped} assembly?`,
+      'What is none of these?',
+    ].slice(0, 4);
   }, [activeQuestion]);
+
+  const shuffledOptions = useMemo(() => {
+    if (!effectiveOptions.length) return [];
+    return [...effectiveOptions].sort(() => Math.random() - 0.5);
+  }, [effectiveOptions]);
 
   const handleCellClick = (question: any) => {
     if (answeredIds.has(question.id)) return;
@@ -50,14 +71,14 @@ export function JeopardyGame({ payload }: Props) {
   };
 
   const handleSubmit = () => {
-    const answer = activeQuestion.options ? (selectedOption ?? '') : userAnswer;
-    const isCorrect = answer.toLowerCase().trim() === activeQuestion.correctAnswer.toLowerCase().trim();
+    const answer = selectedOption ?? '';
+    const isCorrect = answer.toLowerCase().trim() === String(activeQuestion.correctAnswer).toLowerCase().trim();
     if (isCorrect) {
       setEvaluated({ isCorrect: true, feedback: `✓ Correct! +$${activeQuestion.value}` });
       setScore(prev => prev + activeQuestion.value);
     } else {
       setEvaluated({ isCorrect: false, feedback: `✗ Incorrect. The answer was: "${activeQuestion.correctAnswer}"` });
-      if (payload.gamePayload.deductPointsOnWrong) setScore(prev => prev - activeQuestion.value);
+      if (payload.gamePayload?.deductPointsOnWrong) setScore(prev => prev - activeQuestion.value);
     }
   };
 
@@ -69,8 +90,8 @@ export function JeopardyGame({ payload }: Props) {
     setEvaluated(null);
   };
 
-  const isMultiChoice = !!activeQuestion?.options?.length;
-  const canSubmit = isMultiChoice ? !!selectedOption : !!userAnswer.trim();
+  const isMultiChoice = true;
+  const canSubmit = !!selectedOption;
 
   // Progress toward target
   const progressPct = Math.min(100, Math.round((score / targetScore) * 100));
@@ -200,11 +221,11 @@ export function JeopardyGame({ payload }: Props) {
       {activeQuestion && (() => {
         const diff = getDifficulty(activeQuestion.value, maxValue);
         return (
-          <div className="absolute inset-0 bg-indigo-950/95 backdrop-blur-md z-50 flex items-center justify-center p-4 md:p-8 rounded-2xl border-4 border-indigo-500 shadow-[0_0_50px_rgba(99,102,241,0.3)] animate-in zoom-in-95 duration-200">
-            <div className="max-w-3xl w-full flex flex-col items-center gap-5 text-center bg-indigo-900/40 p-6 md:p-10 rounded-3xl border border-indigo-500/20 max-h-[90%] overflow-y-auto">
+          <div className="absolute inset-0 bg-indigo-950/95 backdrop-blur-md z-50 flex items-center justify-center p-3 md:p-5 rounded-2xl border-4 border-indigo-500 shadow-[0_0_50px_rgba(99,102,241,0.3)] animate-in zoom-in-95 duration-200">
+            <div className="max-w-3xl w-full flex flex-col items-center gap-3 text-center bg-indigo-900/40 p-4 md:p-6 rounded-3xl border border-indigo-500/20 max-h-full overflow-y-auto">
               
               {activeQuestion.isDailyDouble && (
-                <h2 className="text-xl md:text-3xl font-black text-yellow-400 uppercase tracking-widest animate-pulse drop-shadow-[0_0_10px_rgba(250,204,21,0.8)]">
+                <h2 className="text-lg md:text-2xl font-black text-yellow-400 uppercase tracking-widest animate-pulse drop-shadow-[0_0_10px_rgba(250,204,21,0.8)]">
                   Daily Double
                 </h2>
               )}
@@ -220,13 +241,12 @@ export function JeopardyGame({ payload }: Props) {
                 </div>
               </div>
 
-              <h1 className="text-xl md:text-2xl font-bold text-white leading-relaxed drop-shadow-lg break-words w-full">
+              <h1 className="text-lg md:text-xl font-bold text-white leading-snug drop-shadow-lg break-words w-full">
                 {activeQuestion.prompt}
               </h1>
 
-              {/* Multiple choice or free-text */}
-              {isMultiChoice ? (
-                <div className="w-full grid grid-cols-1 gap-3 mt-2">
+              {/* Multiple choice only — avoids free-text spelling false negatives */}
+              <div className="w-full grid grid-cols-1 gap-2 mt-1">
                   {shuffledOptions.map((opt: string) => {
                     let cls = 'border-slate-600 bg-slate-800/60 text-gray-200 hover:bg-slate-700 hover:border-indigo-400';
                     if (evaluated) {
@@ -241,7 +261,7 @@ export function JeopardyGame({ payload }: Props) {
                         key={opt}
                         disabled={!!evaluated}
                         onClick={() => setSelectedOption(opt)}
-                        className={cn('w-full text-left px-5 py-4 rounded-xl border-2 font-semibold text-sm md:text-base transition-all flex items-center gap-3', cls)}
+                        className={cn('w-full text-left px-4 py-3 rounded-xl border-2 font-semibold text-sm transition-all flex items-center gap-3', cls)}
                       >
                         {evaluated && opt === activeQuestion.correctAnswer && <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />}
                         {evaluated && opt === selectedOption && opt !== activeQuestion.correctAnswer && <XCircle className="w-5 h-5 text-red-400 shrink-0" />}
@@ -249,20 +269,7 @@ export function JeopardyGame({ payload }: Props) {
                       </button>
                     );
                   })}
-                </div>
-              ) : (
-                <div className="w-full max-w-lg mt-2">
-                  <input
-                    type="text"
-                    placeholder="Type your answer..."
-                    value={userAnswer}
-                    onChange={e => setUserAnswer(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && !evaluated && canSubmit && handleSubmit()}
-                    disabled={!!evaluated}
-                    className="w-full bg-indigo-950/50 border-2 border-indigo-500/50 rounded-xl px-4 py-3 md:py-4 text-white text-base focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/20 transition-all text-center disabled:opacity-50"
-                  />
-                </div>
-              )}
+              </div>
 
               {/* Feedback */}
               {evaluated && (

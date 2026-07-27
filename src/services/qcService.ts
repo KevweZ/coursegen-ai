@@ -116,6 +116,7 @@ function aiIssuesToQCIssues(
         moduleTitle: modTitle,
         moduleIndex: modIdx,
         slideIndex: slideIdx,
+        slideRef: `${modIdx + 1}.${slideIdx + 1}`,
         field: raw.field,
         type: raw.type,
         severity: raw.severity,

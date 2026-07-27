@@ -25,6 +25,7 @@ interface Props {
   events?: TimelineEvent[];
   theme?: 'light' | 'dark' | 'unified';
   accentColor?: string;
+  onStepOpen?: (id: string) => void;
 }
 
 // Hex → RGB helper for color interpolation
@@ -43,6 +44,7 @@ export const VerticalTimeline: React.FC<Props> = ({
   events = [],
   theme = 'light',
   accentColor = '#4f46e5',
+  onStepOpen,
 }) => {
   const [activeId, setActiveId]   = useState<string | null>(null);
   const [visited,  setVisited]    = useState<Set<string>>(new Set());
@@ -59,7 +61,10 @@ export const VerticalTimeline: React.FC<Props> = ({
   const toggle = (id: string) => {
     const next = activeId === id ? null : id;
     setActiveId(next);
-    if (next) setVisited(v => new Set([...v, next]));
+    if (next) {
+      setVisited(v => new Set([...v, next]));
+      onStepOpen?.(next);
+    }
   };
 
   const progress = events.length > 0 ? (visited.size / events.length) * 100 : 0;
@@ -251,9 +256,9 @@ export const VerticalTimeline: React.FC<Props> = ({
                           boxShadow: `0 4px 24px ${color}18`,
                         }}
                       >
-                        <p
-                          className="text-sm leading-relaxed"
-                          style={{ color: textSub }}
+                        <div
+                          className="text-sm leading-relaxed timeline-panel-content [&_ul]:my-1 [&_ul]:pl-4 [&_ul]:list-disc [&_li]:my-1 [&_li]:pl-0.5 [&_ul_ul]:pl-5 [&_ul_ul]:list-[circle] [&_strong]:font-bold"
+                          style={{ color: textSub, ['--tw-prose-bullets' as any]: color }}
                           dangerouslySetInnerHTML={{ __html: ev.content }}
                         />
                       </motion.div>

@@ -136,11 +136,11 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
           )}
         </motion.div>
 
-        {/* Descriptor */}
-        {description && (
+        {/* Short on-screen blurb only — narration carries the longer description */}
+        {description && description.trim() && (
           <motion.p
-            className="mt-5 text-sm font-medium tracking-widest uppercase"
-            style={{ color: descColor }}
+            className="mt-5 text-sm font-medium leading-relaxed normal-case tracking-normal"
+            style={{ color: descColor, maxWidth: '36rem' }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.4, delay: 0.3 }}

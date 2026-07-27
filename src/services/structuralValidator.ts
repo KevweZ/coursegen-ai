@@ -28,6 +28,8 @@ export interface QCIssue {
   moduleTitle: string;
   moduleIndex: number;
   slideIndex: number;
+  /** Learner-facing TOC number e.g. "2.3" when available */
+  slideRef?: string;
   field: string;       // e.g. 'content', 'title', 'data.items.2.content'
   type: IssueType;
   severity: IssueSeverity;
@@ -127,6 +129,7 @@ function baseIssue(
     moduleTitle: modTitle,
     moduleIndex: modIdx,
     slideIndex: slideIdx,
+    slideRef: `${modIdx + 1}.${slideIdx + 1}`,
     field: '',
     type: 'empty_field',
     severity: 'warning',

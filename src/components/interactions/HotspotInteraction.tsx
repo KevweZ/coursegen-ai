@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, Move, ChevronDown } from 'lucide-react';
 import { markdownToHtml } from '../../lib/markdownInline';
@@ -16,6 +16,7 @@ interface HotspotInteractionProps {
   points?: HotspotPoint[];
   theme?: string;
   editable?: boolean;
+  onPinOpen?: (pinId: string) => void;
 }
 
 const PIN_COLORS = [
@@ -25,15 +26,34 @@ const PIN_COLORS = [
 
 function cn(...c: (string | false | undefined | null)[]) { return c.filter(Boolean).join(' '); }
 
+/** Ensure every pin has a stable unique id — missing/duplicate ids open all panels at once. */
+function normalizePoints(points: HotspotPoint[]): HotspotPoint[] {
+  const seen = new Set<string>();
+  return (points || []).map((pt, i) => {
+    let id = (pt?.id != null && String(pt.id).trim()) ? String(pt.id) : `hs-${i}`;
+    if (seen.has(id)) id = `${id}-${i}`;
+    seen.add(id);
+    return {
+      id,
+      x: typeof pt.x === 'number' ? pt.x : 20 + (i % 4) * 20,
+      y: typeof pt.y === 'number' ? pt.y : 25 + Math.floor(i / 4) * 25,
+      label: pt.label || `Point ${i + 1}`,
+      content: pt.content || '',
+    };
+  });
+}
+
 export const HotspotInteraction: React.FC<HotspotInteractionProps> = ({
   imageUrl,
   points = [],
   theme = 'light',
   editable = true,
+  onPinOpen,
 }) => {
+  const normalized = useMemo(() => normalizePoints(points), [points]);
   const [active, setActive]               = useState<string | null>(null);
   const [localImageUrl, setLocalImageUrl] = useState<string | undefined>(imageUrl);
-  const [localPoints, setLocalPoints]     = useState<HotspotPoint[]>([...points]);
+  const [localPoints, setLocalPoints]     = useState<HotspotPoint[]>(normalized);
   const [draggingPinId, setDraggingPinId] = useState<string | null>(null);
   const [imgOffset, setImgOffset]         = useState({ x: 50, y: 50 });
   const [isPanningImg, setIsPanningImg]   = useState(false);
@@ -41,26 +61,25 @@ export const HotspotInteraction: React.FC<HotspotInteractionProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    setLocalPoints(normalizePoints(points));
+  }, [points]);
+
   const panelBg    = theme === 'light' ? '#f8fafc' : '#1e293b';
   const panelText  = theme === 'light' ? '#1e293b' : '#e2e8f0';
   const borderClr  = theme === 'light' ? '#e2e8f0' : 'rgba(255,255,255,0.12)';
-  // The pin canvas is its own bounded area (it needs a background even
-  // without an uploaded image), so it always needs a theme-matched fill —
-  // never a hardcoded dark one.
   const canvasBg   = theme === 'light' ? '#f1f5f9' : '#0f172a';
   const uploadIconClr  = theme === 'light' ? '#4f46e5' : '#818cf8';
   const uploadTextClr  = theme === 'light' ? '#334155' : '#cbd5e1';
   const uploadSubClr   = theme === 'light' ? '#64748b' : '#64748b';
   const uploadHoverClr = theme === 'light' ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.05)';
 
-  // ── Image upload ──────────────────────────────────────────────────────────
   const handleUploadClick = () => { if (editable) fileInputRef.current?.click(); };
   const handleFileChange  = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) setLocalImageUrl(URL.createObjectURL(file));
   };
 
-  // ── Pin drag ──────────────────────────────────────────────────────────────
   const handlePinMouseDown = (pinId: string, e: React.MouseEvent) => {
     if (!editable) return;
     e.stopPropagation(); e.preventDefault();
@@ -68,7 +87,6 @@ export const HotspotInteraction: React.FC<HotspotInteractionProps> = ({
     setActive(null);
   };
 
-  // ── Image pan ─────────────────────────────────────────────────────────────
   const handleImageMouseDown = (e: React.MouseEvent) => {
     if (!editable || draggingPinId || !localImageUrl) return;
     setIsPanningImg(true);
@@ -104,12 +122,10 @@ export const HotspotInteraction: React.FC<HotspotInteractionProps> = ({
     <div className="w-full h-full flex gap-5 items-stretch">
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
 
-      {/* ── Left: image canvas ─────────────────────────────────────────────── */}
       <div
         ref={containerRef}
         className="relative rounded-xl overflow-hidden border shrink-0 select-none"
         style={{
-          /* Responsive image area: larger to give image more space */
           width: 'clamp(280px, 60%, 600px)',
           minHeight: '420px',
           height: '100%',
@@ -168,7 +184,6 @@ export const HotspotInteraction: React.FC<HotspotInteractionProps> = ({
           </div>
         )}
 
-        {/* Pins */}
         {localPoints.map((pt, i) => {
           const color          = PIN_COLORS[i % PIN_COLORS.length];
           const isActive       = active === pt.id;
@@ -198,7 +213,12 @@ export const HotspotInteraction: React.FC<HotspotInteractionProps> = ({
               transition={{ duration: 0.12 }}
               onMouseDown={(e) => editable && handlePinMouseDown(pt.id, e)}
               onClick={(e) => {
-                if (!draggingPinId) { e.stopPropagation(); setActive(isActive ? null : pt.id); }
+                if (!draggingPinId) {
+                  e.stopPropagation();
+                  const next = isActive ? null : pt.id;
+                  setActive(next);
+                  if (next) onPinOpen?.(next);
+                }
               }}
               title={editable ? `${pt.label} — drag to reposition` : pt.label}
             >
@@ -208,20 +228,21 @@ export const HotspotInteraction: React.FC<HotspotInteractionProps> = ({
         })}
       </div>
 
-      {/* ── Right: inline accordion pin list — scales to any number of pins ─ */}
       <div className="flex-1 flex flex-col min-w-0 gap-2">
         <p className="text-xs font-bold uppercase tracking-widest opacity-50 shrink-0">Click a pin</p>
 
-        {/* Scrollable pin list — handles many hotspots gracefully */}
         <div className="space-y-1.5 overflow-y-auto" style={{ maxHeight: '65vh' }}>
           {localPoints.map((pt, i) => {
             const color    = PIN_COLORS[i % PIN_COLORS.length];
             const isActive = active === pt.id;
             return (
               <div key={pt.id} className="rounded-lg overflow-hidden">
-                {/* Pin row — acts as accordion trigger */}
                 <button
-                  onClick={() => setActive(isActive ? null : pt.id)}
+                  onClick={() => {
+                    const next = isActive ? null : pt.id;
+                    setActive(next);
+                    if (next) onPinOpen?.(next);
+                  }}
                   className="w-full flex items-center gap-2.5 px-3 py-2.5 border-2 text-left transition-all text-sm"
                   style={{
                     backgroundColor: isActive ? `${color}22` : 'transparent',
@@ -248,11 +269,10 @@ export const HotspotInteraction: React.FC<HotspotInteractionProps> = ({
                   </motion.span>
                 </button>
 
-                {/* Inline content panel — expands below the pin row */}
                 <AnimatePresence initial={false}>
                   {isActive && (
                     <motion.div
-                      key="content"
+                      key={`panel-${pt.id}`}
                       initial={{ height: 0, opacity: 0 }}
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
@@ -260,7 +280,7 @@ export const HotspotInteraction: React.FC<HotspotInteractionProps> = ({
                       className="overflow-hidden"
                     >
                       <div
-                        className="px-4 py-3 text-sm leading-relaxed border-x-2 border-b-2"
+                        className="px-4 py-3 text-sm leading-relaxed border-x-2 border-b-2 hotspot-panel-content"
                         style={{
                           borderColor:     color,
                           backgroundColor: panelBg,

@@ -5,6 +5,8 @@ export interface SavedCourseSettings {
   objectiveFormat: string;
   examConfig: ExamConfig;
   navigationMode: NavigationMode;
+  /** When true (and nav is linear/restricted), Next stays locked until interactions on the slide are explored */
+  requireInteractionsComplete: boolean;
   interactionTypes: string[];
   gameTemplateIds: string[];
   voiceOverEnabled: boolean;

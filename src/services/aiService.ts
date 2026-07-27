@@ -366,7 +366,7 @@ export async function generateCourseOutline(
      - choice -> use type: "quiz" with interactions array
      - For PROCESS FLOWS, DECISION TREES, WORKFLOWS, or MULTI-STEP PROCEDURES: use type: "diagram" (generates a Mermaid.js flowchart)
   4. ${configParams.includeKnowledgeChecks !== false ? 'Knowledge Check Slides (type: quiz)' : 'NO knowledge check slides'}
-  5. ${configParams.includeSummarySlides !== false ? "Summary Slide (type: content)" : "NO summary slide"}
+  5. ${configParams.includeSummarySlides !== false ? 'Module Summary / Key Takeaways slide (type: "key-takeaways") — REQUIRED at end of each module. Use type key-takeaways with data.objectives array of {id,label,content}. Do NOT use plain content/summary markdown bullets for module summaries.' : 'NO summary slide'}
   
   CRITICAL: The course player automatically injects a Cover/Introduction slide before all modules${configParams.includeModuleTitleSlides !== false || configParams.includeModuleOverviewSlides !== false ? `, plus per-module structural slides (${[configParams.includeModuleTitleSlides !== false ? 'Module Title' : null, configParams.includeModuleOverviewSlides !== false ? 'Module Overview' : null].filter(Boolean).join(' + ')})` : ''}. Do NOT create any intro, overview, title, welcome, OR objectives/learning-objectives slide for ANY module. All modules must start directly with their first content or interaction slide.
   
@@ -767,6 +767,11 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     }
     // Scenario slides — data will be populated async; skip sync validation here
 
+    // Key-takeaways / module summaries: always use the numbered-card LearningObjectivesSlide format
+    if (slide.type === 'summary' || /module\s+summary|key\s*takeaways?/i.test(slide.title || '')) {
+      slide.type = 'key-takeaways';
+    }
+
     // Key-takeaways: normalize markdown bullets into data.objectives so the
     // LearningObjectivesSlide renderer never receives an empty list.
     if (slide.type === 'key-takeaways') {
@@ -953,8 +958,9 @@ function generateFallbackQuestions(course, config) {
   var qIdx = 0;
   var modules = (course && course.modules) ? course.modules : [];
   var types = (config && config.questionTypes && config.questionTypes.length)
-    ? config.questionTypes
+    ? config.questionTypes.filter(function (t) { return t === 'mc' || t === 'ma' || t === 'tf'; })
     : ['mc', 'ma', 'tf'];
+  if (!types.length) types = ['mc', 'ma', 'tf'];
   var totalNeeded = config.questionMode === 'total'
     ? (config.questionCount || 5)
     : (config.questionCount || 2) * Math.max(modules.length, 1);
@@ -1001,6 +1007,12 @@ export async function generateMasteryExam(
   course: CourseOutline,
   config: ExamConfig
 ): Promise<ExamQuestion[]> {
+  const examTypes = (config.questionTypes || []).filter(
+    (t): t is 'mc' | 'ma' | 'tf' => t === 'mc' || t === 'ma' || t === 'tf'
+  );
+  const masteryTypes = examTypes.length ? examTypes : (['mc', 'ma', 'tf'] as const);
+  const examConfigForGen = { ...config, questionTypes: [...masteryTypes] };
+
   const totalNeeded = config.questionMode === 'total'
     ? config.questionCount
     : config.questionCount * course.modules.length;
@@ -1028,7 +1040,7 @@ export async function generateMasteryExam(
   const systemInstruction = `You are an expert eLearning assessment designer.
 Generate ${totalNeeded} Mastery Quiz questions based on the course content below.
 RULES:
-1. Types to use: ${config.questionTypes.join(', ')}. Distribute evenly.
+1. Types to use: ${masteryTypes.join(', ')}. Distribute evenly.
    - mc: 4 options, 1 correct (correctAnswer = integer index 0-3)
    - ma: 4-5 options, 2+ correct (correctAnswer = array of integer indices)
    - tf: options = ["True","False"], correctAnswer = 0 (True) or 1 (False)
@@ -1058,10 +1070,10 @@ Generate ${totalNeeded} questions.`;
     if (parsed?.questions && Array.isArray(parsed.questions) && parsed.questions.length > 0) {
       return (parsed.questions as ExamQuestion[]).slice(0, totalNeeded);
     }
-    return generateFallbackQuestions(course as any, config);
+    return generateFallbackQuestions(course as any, examConfigForGen);
   } catch (err) {
     console.warn('[generateMasteryExam] Falling back to draft questions:', err);
-    return generateFallbackQuestions(course as any, config);
+    return generateFallbackQuestions(course as any, examConfigForGen);
   }
 }
 

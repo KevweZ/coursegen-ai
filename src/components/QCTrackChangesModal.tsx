@@ -73,6 +73,14 @@ function IssueCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className={`text-[10px] font-black uppercase tracking-widest ${cfg.color}`}>{cfg.label}</span>
+            {(issue as any).slideRef && (
+              <>
+                <span className="text-[10px] text-slate-500">·</span>
+                <span className="text-[10px] font-black text-indigo-300 bg-indigo-500/15 border border-indigo-500/30 px-1.5 py-0.5 rounded">
+                  {(issue as any).slideRef}
+                </span>
+              </>
+            )}
             <span className="text-[10px] text-slate-500">·</span>
             <span className="text-[10px] text-slate-400 truncate">{issue.moduleTitle}</span>
             <span className="text-[10px] text-slate-500">·</span>

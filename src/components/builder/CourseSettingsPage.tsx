@@ -71,6 +71,8 @@ export interface CourseSettingsPageProps {
   // Navigation
   navigationMode: NavigationMode;
   setNavigationMode: (m: NavigationMode) => void;
+  requireInteractionsComplete: boolean;
+  setRequireInteractionsComplete: (v: boolean) => void;
 
   // Interactions
   preset: 'quick' | 'standard' | 'comprehensive';
@@ -593,9 +595,17 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                     </div>
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-slate-300 mb-2">Question Types</p>
+                    <p className="text-sm font-bold text-slate-300 mb-1">Question Types</p>
+                    <p className="text-xs text-slate-500 mb-2">Used for the Mastery Quiz and in-module Knowledge Checks. Assessment activities (sorting, matching) appear only as quiz/check slides.</p>
                     <div className="flex gap-2 flex-wrap">
-                      {([['mc', 'Multiple Choice'], ['ma', 'Multiple Answer'], ['tf', 'True / False']] as [string, string][]).map(([type, label]) => {
+                      {([
+                        ['mc', 'Multiple Choice'],
+                        ['ma', 'Multiple Answer'],
+                        ['tf', 'True / False'],
+                        ['sorting', 'Sorting'],
+                        ['matching', 'Matching'],
+                        ['drop-targets', 'Drop Targets'],
+                      ] as [string, string][]).map(([type, label]) => {
                         const active = props.examConfig.questionTypes.includes(type as any);
                         return (
                           <button
@@ -604,7 +614,7 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                             onClick={() => props.setExamConfig(c => ({
                               ...c,
                               questionTypes: active
-                                ? c.questionTypes.filter(t => t !== type)
+                                ? (c.questionTypes.filter(t => t !== type) as any)
                                 : [...c.questionTypes, type as any],
                             }))}
                             className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${active ? 'bg-indigo-600/30 border-indigo-500/40 text-indigo-300' : 'bg-slate-800 border-slate-700 text-slate-500'}`}
@@ -676,6 +686,33 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                   </button>
                 ))}
               </div>
+
+              {(() => {
+                const gated = props.navigationMode === 'linear' || props.navigationMode === 'restricted';
+                return (
+                  <label
+                    className={`mt-4 flex items-start gap-3 rounded-xl border px-4 py-3 transition-all ${
+                      gated
+                        ? 'border-amber-500/25 bg-amber-500/5 cursor-pointer'
+                        : 'border-slate-800 bg-slate-950/50 opacity-50 cursor-not-allowed'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-1 accent-amber-500"
+                      disabled={!gated}
+                      checked={gated && props.requireInteractionsComplete}
+                      onChange={(e) => gated && props.setRequireInteractionsComplete(e.target.checked)}
+                    />
+                    <div>
+                      <p className="text-sm font-bold text-slate-200">Require interactions before Next</p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        When Linear or Restricted is selected, prevent learners from advancing until every interactive element on the current slide has been opened or completed.
+                      </p>
+                    </div>
+                  </label>
+                );
+              })()}
             </div>
           )}
 
@@ -695,15 +732,10 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                   <p className="text-xs text-blue-400 font-bold tracking-widest uppercase mb-6">CLICK TO SELECT • EYE ICON TO PREVIEW</p>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     {[
-                      { id: 'multiple-choice', label: 'Multiple Choice' },
-                      { id: 'multiple-answers', label: 'Multiple Answers' },
                       { id: 'hotspot', label: 'Hotspot' },
                       { id: 'accordion', label: 'Accordion' },
                       { id: 'flashcards', label: 'Flashcards' },
                       { id: 'timeline', label: 'Timeline' },
-                      { id: 'sorting', label: 'Sorting' },
-                      { id: 'matching', label: 'Matching' },
-                      { id: 'drop-targets', label: 'Drop Targets' },
                       { id: 'scenario', label: 'Scenario' },
                       { id: 'tabbed-horizontal', label: 'Tabs (Horizontal)' },
                       { id: 'tabbed-vertical', label: 'Tabs (Vertical)' },

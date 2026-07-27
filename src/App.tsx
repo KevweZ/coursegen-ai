@@ -797,7 +797,7 @@ export default function App() {
     questionMode: 'total',
     questionCount: 10,
     allowRetake: true,
-    questionTypes: ['mc', 'ma', 'tf'],
+    questionTypes: ['mc', 'ma', 'tf', 'sorting', 'matching'],
     presentationMode: 'one-at-a-time',
   });
   const [examQuestions, setExamQuestions] = useState<ExamQuestion[]>([]);
@@ -815,7 +815,42 @@ export default function App() {
 
   // Navigation restriction state
   const [navigationMode, setNavigationMode] = useState<NavigationMode>('free');
+  const [requireInteractionsComplete, setRequireInteractionsComplete] = useState(false);
   const [highestVisitedIndex, setHighestVisitedIndex] = useState(0);
+  /** Per-slide set of explored interaction item ids (for requireInteractionsComplete) */
+  const [exploredBySlide, setExploredBySlide] = useState<Record<string, string[]>>({});
+
+  const markInteractionExplored = (slideId: string | undefined, itemId: string) => {
+    if (!slideId || !itemId) return;
+    setExploredBySlide(prev => {
+      const cur = prev[slideId] || [];
+      if (cur.includes(itemId)) return prev;
+      return { ...prev, [slideId]: [...cur, itemId] };
+    });
+  };
+
+  const expectedInteractionIds = (slide: any): string[] => {
+    if (!slide) return [];
+    const d = slide.data || slide.interactions?.[0] || {};
+    switch (slide.type) {
+      case 'hotspot':
+        return (d.points || d.hotspots || []).map((p: any, i: number) => String(p.id || `hs-${i}`));
+      case 'accordion':
+      case 'click-reveal':
+        return (d.items || []).map((it: any, i: number) => String(it.id || `acc-${i}`));
+      case 'timeline':
+        return (d.events || []).map((ev: any, i: number) => String(ev.id || `ev-${i}`));
+      case 'tabbed-horizontal':
+      case 'tabbed-vertical':
+        return (d.tabs || d.items || []).map((t: any, i: number) => String(t.id || `tab-${i}`));
+      case 'carousel-panel':
+        return (d.cards || []).map((c: any, i: number) => String(c.id || `card-${i}`));
+      case 'flashcards':
+        return (d.cards || []).map((c: any, i: number) => String(c.id || `fc-${i}`));
+      default:
+        return [];
+    }
+  };
 
   // Player Audio/Refs
   const player = usePlayer();
@@ -864,12 +899,17 @@ export default function App() {
         return [...synthetics, ...m.slides];
       })
     : [];
-  // Item 12: Inject a synthetic cover slide at position 0
+  // Item 12: Inject a synthetic cover slide at position 0 — short blurb only (narration carries detail)
   const coverSlide: Slide = course ? {
     id: '__cover__',
     title: course.title,
     type: 'cover' as any,
-    content: course.description || '',
+    content: (() => {
+      const raw = (course.description || '').trim();
+      if (!raw) return '';
+      const sentences = raw.match(/[^.!?]+[.!?]+/g) || [raw];
+      return sentences.slice(0, 2).join(' ').trim().slice(0, 200);
+    })(),
     narration: `Welcome to ${course.title}. ${course.description || ''}`.trim(),
   } as Slide : null as any;
   const closingVirtualSlide: Slide = {
@@ -916,6 +956,16 @@ export default function App() {
   const FULL_BLEED_TYPES = ['cover', 'title', 'module-cover', 'closing', 'key-takeaways', 'player-tour', 'course-objectives', 'module-overview'];
   const isFullBleed = FULL_BLEED_TYPES.includes(currentSlide?.type as string);
 
+  const isCurrentSlideInteractionsComplete = (): boolean => {
+    if (!requireInteractionsComplete) return true;
+    if (navigationMode === 'free') return true;
+    if (!currentSlide) return true;
+    const expected = expectedInteractionIds(currentSlide);
+    if (expected.length === 0) return true;
+    const explored = new Set(exploredBySlide[currentSlide.id] || []);
+    return expected.every(id => explored.has(id));
+  };
+
   const canNavigateTo = (targetIdx: number): boolean => {
     const isExamIntro    = targetIdx === examIntroIndex;
     const isExamQuestion = targetIdx === examQIndex;
@@ -933,6 +983,7 @@ export default function App() {
   };
 
   const handleNext = () => {
+    if (!isCurrentSlideInteractionsComplete()) return;
     const next = Math.min(allSlides.length - 1, currentSlideIndex + 1);
     setHighestVisitedIndex(prev => Math.max(prev, next));
     setCurrentSlideIndex(next);
@@ -1107,7 +1158,10 @@ export default function App() {
     setObjectiveFormat(saved.objectiveFormat);
     setExamConfig(saved.examConfig);
     setNavigationMode(saved.navigationMode);
-    setInteractionTypes(saved.interactionTypes);
+    setRequireInteractionsComplete(!!saved.requireInteractionsComplete);
+    // Assessment types moved to Quizzes tab — strip from interactive elements
+    const QUIZ_ONLY = new Set(['multiple-choice', 'multiple-answers', 'sorting', 'matching', 'drop-targets']);
+    setInteractionTypes((saved.interactionTypes || []).filter(t => !QUIZ_ONLY.has(t)));
     setGameTemplateIds(saved.gameTemplateIds);
     setVoiceOverEnabled(saved.voiceOverEnabled);
     setTtsVoice(saved.ttsVoice);
@@ -1128,6 +1182,7 @@ export default function App() {
     objectiveFormat,
     examConfig,
     navigationMode,
+    requireInteractionsComplete,
     interactionTypes,
     gameTemplateIds,
     voiceOverEnabled,
@@ -1153,15 +1208,21 @@ export default function App() {
   }, [authLoading, user?.id]);
 
   const buildOutlineFromCurrentSettings = async (): Promise<CourseOutlineDraft> => {
+    const assessmentTypes = (examConfig.questionTypes || []).flatMap((t) => {
+      if (t === 'mc' || t === 'ma' || t === 'tf') return ['quiz'];
+      return [t];
+    });
+    const mergedInteractions = [...new Set([...interactionTypes, ...assessmentTypes])];
     return generateCourseOutline(
       prompt,
       learningObjectives,
       {
         courseType,
-        interactionTypes,
+        interactionTypes: mergedInteractions,
         slideCount,
         includeModuleTitleSlides,
         includeModuleOverviewSlides,
+        includeSummarySlides,
         gameTemplateIds: gameTemplateIds.length > 0 ? gameTemplateIds : undefined,
       }
     );
@@ -1217,6 +1278,12 @@ export default function App() {
       let outlineIncludeModuleTitles = settingsOverride?.includeModuleTitleSlides ?? includeModuleTitleSlides;
       let outlineIncludeModuleOverviews = settingsOverride?.includeModuleOverviewSlides ?? includeModuleOverviewSlides;
       let outlineGameIds = settingsOverride?.gameTemplateIds ?? gameTemplateIds;
+      const outlineExamTypes = settingsOverride?.examConfig?.questionTypes ?? examConfig.questionTypes;
+      const assessmentTypes = (outlineExamTypes || []).flatMap((t) => {
+        if (t === 'mc' || t === 'ma' || t === 'tf') return ['quiz'];
+        return [t];
+      });
+      outlineInteractions = [...new Set([...(outlineInteractions || []), ...assessmentTypes])];
 
       // Quick build: keep user-saved defaults. Customize: allow AI preset recommendations.
       if (effectivePath !== 'quick') {
@@ -1652,15 +1719,21 @@ export default function App() {
     setIsGenerating(true);
     setProgress(15);
     try {
+      const assessmentTypes = (examConfig.questionTypes || []).flatMap((t) => {
+        if (t === 'mc' || t === 'ma' || t === 'tf') return ['quiz'];
+        return [t];
+      });
+      const mergedInteractions = [...new Set([...interactionTypes, ...assessmentTypes])];
       const draft = await generateCourseOutline(
         prompt, 
         learningObjectives, 
         { 
           courseType, 
-          interactionTypes, 
+          interactionTypes: mergedInteractions, 
           slideCount,
           includeModuleTitleSlides,
           includeModuleOverviewSlides,
+          includeSummarySlides,
           // A1 FIX: Pass the full array of selected game template IDs
           gameTemplateIds: gameTemplateIds.length > 0 ? gameTemplateIds : undefined,
         }
@@ -1709,7 +1782,26 @@ export default function App() {
     setCourse(stamped);
     setOriginalCourse(stamped);
     setSyntheticAudioMap({});
+    setExploredBySlide({});
     setStep('preview');
+
+    // Pre-generate mastery quiz so Begin is instant when the learner reaches it
+    if (examConfig.enabled) {
+      setIsGeneratingExam(true);
+      setExamError(null);
+      generateMasteryExam(stamped, examConfig)
+        .then((questions) => {
+          if (questions?.length) setExamQuestions(questions);
+          else setExamError('No quiz questions could be generated. You can retry from the Mastery Quiz intro.');
+        })
+        .catch((err: any) => {
+          console.error('[Mastery Quiz] Pre-generation failed:', err);
+          setExamError(err?.message || 'Quiz generation failed.');
+        })
+        .finally(() => setIsGeneratingExam(false));
+    } else {
+      setExamQuestions([]);
+    }
 
     setIsGeneratingImages(true);
     generateModuleImages(stamped, (slideId, imageDataUrl) => {
@@ -2467,13 +2559,25 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
             }}
             onClose={() => setQcModalOpen(false)}
             onGoToSlide={(moduleIndex, slideIndex) => {
+              const slideId = course?.modules?.[moduleIndex]?.slides?.[slideIndex]?.id;
+              if (slideId) {
+                const idx = allSlides.findIndex(s => s.id === slideId);
+                if (idx >= 0) {
+                  setCurrentSlideIndex(idx);
+                  setQcModalOpen(false);
+                  return;
+                }
+              }
+              // Fallback: account for pre-content synthetics + per-module title/overview
               if (course?.modules) {
-                let globalIdx = 0;
+                let globalIdx = PRE_CONTENT;
                 for (let m = 0; m < moduleIndex; m++) {
+                  globalIdx += (includeModuleTitleSlides ? 1 : 0) + (includeModuleOverviewSlides ? 1 : 0);
                   globalIdx += course.modules[m]?.slides?.length ?? 0;
                 }
+                globalIdx += (includeModuleTitleSlides ? 1 : 0) + (includeModuleOverviewSlides ? 1 : 0);
                 globalIdx += slideIndex;
-                setCurrentSlideIndex(globalIdx);
+                setCurrentSlideIndex(Math.min(globalIdx, allSlides.length - 1));
               }
               setQcModalOpen(false);
             }}
@@ -2866,6 +2970,8 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                 setExamConfig={setExamConfig}
                 navigationMode={navigationMode}
                 setNavigationMode={setNavigationMode}
+                requireInteractionsComplete={requireInteractionsComplete}
+                setRequireInteractionsComplete={setRequireInteractionsComplete}
                 preset={preset}
                 onPresetChange={handlePresetChange}
                 slideCount={slideCount}
@@ -3198,6 +3304,24 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                   examIntroIndex={examIntroIndex}
                   highestVisitedIndex={highestVisitedIndex}
                   defaultCollapsed={typeof window !== 'undefined' && window.innerWidth < 768}
+                  qcPendingSlideIds={
+                    qcReport
+                      ? new Set(
+                          qcReport.issues
+                            .filter(i => !qcConfirmed.has(i.id) && !qcDeclined.has(i.id))
+                            .map(i => i.slideId)
+                        )
+                      : undefined
+                  }
+                  qcResolvedSlideIds={
+                    qcReport
+                      ? new Set(
+                          qcReport.issues
+                            .filter(i => qcConfirmed.has(i.id) || qcDeclined.has(i.id))
+                            .map(i => i.slideId)
+                        )
+                      : undefined
+                  }
                 />
 
                 {/* Main slide area — swipe left/right on mobile to navigate slides */}
@@ -3282,10 +3406,43 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                         )}>
                           <div className={cn(
                             isFullBleed
-                              ? "w-full h-full"
-                              : "flex-1 w-full max-w-4xl flex flex-col justify-start"
+                              ? "w-full h-full relative"
+                              : "flex-1 w-full max-w-6xl flex flex-col justify-start relative"
                           )}>
-                               <SlideErrorBoundary slideId={currentSlide?.id}>
+                               <SlideErrorBoundary
+                                 slideId={currentSlide?.id}
+                                 regenerating={regeneratingSlideId === currentSlide?.id}
+                                 onRegenerate={
+                                   currentSlide && !['cover', 'player-tour', 'course-objectives', 'module-cover', 'module-overview', 'exam-intro', 'mastery-exam', 'exam-results', 'closing'].includes(currentSlide.type as string)
+                                     ? () => regenerateBlankSlide(currentSlide)
+                                     : undefined
+                                 }
+                               >
+                               {/* QA marker for current slide */}
+                               {currentSlide?.id && qcReport && (() => {
+                                 const pending = qcReport.issues.filter(
+                                   i => i.slideId === currentSlide.id && !qcConfirmed.has(i.id) && !qcDeclined.has(i.id)
+                                 );
+                                 const resolved = qcReport.issues.filter(
+                                   i => i.slideId === currentSlide.id && (qcConfirmed.has(i.id) || qcDeclined.has(i.id))
+                                 );
+                                 if (!pending.length && !resolved.length) return null;
+                                 return (
+                                   <button
+                                     type="button"
+                                     onClick={() => setQcModalOpen(true)}
+                                     className={`absolute top-3 right-3 z-40 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg border ${
+                                       pending.length
+                                         ? 'bg-red-500/90 border-red-300 text-white'
+                                         : 'bg-emerald-500/90 border-emerald-300 text-white'
+                                     }`}
+                                     title={pending.length ? `${pending.length} QA issue(s)` : 'QA issues resolved'}
+                                   >
+                                     <Shield className="w-3 h-3" />
+                                     {pending.length ? `QA ${pending.length}` : 'QA OK'}
+                                   </button>
+                                 );
+                               })()}
                                {/* ── Universal accent label + underline — all interactive/quiz slides ── */}
                                {!isFullBleed && !['content','summary','title','cover','key-takeaways'].includes(currentSlide?.type as string) && (() => {
                                  const TYPE_LABELS: Record<string,string> = {
@@ -3595,13 +3752,14 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                    <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                      <VerticalTimeline
                                        events={((currentSlide.data || currentSlide.interactions?.[0] || {}).items || []).map((item: any, idx: number) => ({
-                                         id: 'acc-' + idx,
+                                         id: item.id || ('acc-' + idx),
                                          year: item.subtitle || item.category || undefined,
                                          title: item.title || item.label || '',
                                          content: markdownToHtml(item.content || item.description || ''),
                                        }))}
                                        theme={theme}
                                        accentColor={slideAccentColor}
+                                       onStepOpen={(id) => markInteractionExplored(currentSlide.id, id)}
                                      />
                                    </div>
                                  </div>
@@ -3769,6 +3927,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
 
                                      let questions = examQuestions;
                                      if (!questions || questions.length === 0) {
+                                       // Fallback only if pre-generation failed or was skipped
                                        setIsGeneratingExam(true);
                                        try {
                                          questions = await generateMasteryExam(course, examConfig);
@@ -3865,7 +4024,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
 
                                {/* GAME TEMPLATES */}
                                {currentSlide?.type === 'game-template' && (
-                                 <div className="w-full min-h-[600px] flex items-center justify-center mt-8">
+                                 <div className="w-full h-full min-h-0 flex-1 flex items-stretch justify-center">
                                    <GameContainer payload={currentSlide.data} />
                                  </div>
                                )}
@@ -3882,6 +4041,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                           imageUrl={hd.imageUrl || hd.image || hd.backgroundImage}
                                           points={hd.points || hd.hotspots || []}
                                           theme={theme}
+                                          onPinOpen={(pinId) => markInteractionExplored(currentSlide.id, pinId)}
                                         />
                                       </div>
                                     </div>
@@ -4043,7 +4203,13 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                         onPrev={handlePrev}
                         onNext={handleNext}
                         theme={theme}
-                        disableNext={currentSlide?.type === 'exam-intro' || currentSlide?.type === 'mastery-exam' || currentSlide?.type === 'exam-results' || (currentSlide?.type === 'scenario' && !scenarioCompleted)}
+                        disableNext={
+                          currentSlide?.type === 'exam-intro' ||
+                          currentSlide?.type === 'mastery-exam' ||
+                          currentSlide?.type === 'exam-results' ||
+                          (currentSlide?.type === 'scenario' && !scenarioCompleted) ||
+                          !isCurrentSlideInteractionsComplete()
+                        }
                         disablePrev={currentSlide?.type === 'mastery-exam'}
                         volume={player.volume}
                         onVolumeChange={player.setVolume}
@@ -4388,8 +4554,16 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
         <AnimatePresence>
           {showPlayerProperties && (
             <PlayerPropertiesModal
-              config={playerConfig}
-              onChange={(cfg) => setPlayerConfig(cfg)}
+              config={{
+                ...playerConfig,
+                navigationMode,
+                examPresentationMode: examConfig.presentationMode,
+              }}
+              onChange={(cfg) => {
+                setPlayerConfig(cfg);
+                setNavigationMode(cfg.navigationMode);
+                setExamConfig(c => ({ ...c, presentationMode: cfg.examPresentationMode }));
+              }}
               onClose={() => setShowPlayerProperties(false)}
             />
           )}

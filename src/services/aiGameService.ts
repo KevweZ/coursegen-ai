@@ -64,10 +64,11 @@ RULES:
    - 400 pts → Analysis (Bloom's: Analyze)
    - 500 pts → Evaluation/Synthesis (Bloom's: Evaluate/Create)
 4. Questions must be written as clues (like real Jeopardy — statement form, not question form).
-5. correctAnswer must be a specific, precise answer (no ambiguity).
-6. Mark 1-2 questions as isDailyDouble: true (preferably in the 300-400 value range).
-7. Categories should use real workplace scenario headings (e.g., "Handling Escalations" not "Customer Service").
-8. hint: optional, but should be genuinely useful without giving away the answer.
+5. correctAnswer must be a specific, precise answer (no ambiguity). Prefer the classic Jeopardy phrasing in correctAnswer, e.g. "What is a draft tube?" — but ALWAYS also provide multiple-choice options.
+6. MULTIPLE CHOICE IS REQUIRED for every question. Include an "options" array of EXACTLY 4 strings. One option MUST equal correctAnswer exactly. The other three must be plausible distractors (wrong but related). Learners select an option — they do NOT type free text (avoids spelling false negatives).
+7. Mark 1-2 questions as isDailyDouble: true (preferably in the 300-400 value range).
+8. Categories should use real workplace scenario headings (e.g., "Handling Escalations" not "Customer Service").
+9. hint: optional, but should be genuinely useful without giving away the answer.
 
 REQUIRED JSON SCHEMA:
 {
@@ -84,11 +85,11 @@ REQUIRED JSON SCHEMA:
         "id": "cat-1",
         "name": "Category Name",
         "questions": [
-          { "id": "q-1-1", "value": 100, "prompt": "This is the clue text...", "correctAnswer": "The answer", "hint": "Optional hint", "isDailyDouble": false },
-          { "id": "q-1-2", "value": 200, "prompt": "...", "correctAnswer": "...", "hint": null, "isDailyDouble": false },
-          { "id": "q-1-3", "value": 300, "prompt": "...", "correctAnswer": "...", "hint": "...", "isDailyDouble": true },
-          { "id": "q-1-4", "value": 400, "prompt": "...", "correctAnswer": "...", "hint": null, "isDailyDouble": false },
-          { "id": "q-1-5", "value": 500, "prompt": "...", "correctAnswer": "...", "hint": null, "isDailyDouble": false }
+          { "id": "q-1-1", "value": 100, "prompt": "This is the clue text...", "correctAnswer": "What is X?", "options": ["What is X?", "What is Y?", "What is Z?", "What is W?"], "hint": "Optional hint", "isDailyDouble": false },
+          { "id": "q-1-2", "value": 200, "prompt": "...", "correctAnswer": "...", "options": ["...", "...", "...", "..."], "hint": null, "isDailyDouble": false },
+          { "id": "q-1-3", "value": 300, "prompt": "...", "correctAnswer": "...", "options": ["...", "...", "...", "..."], "hint": "...", "isDailyDouble": true },
+          { "id": "q-1-4", "value": 400, "prompt": "...", "correctAnswer": "...", "options": ["...", "...", "...", "..."], "hint": null, "isDailyDouble": false },
+          { "id": "q-1-5", "value": 500, "prompt": "...", "correctAnswer": "...", "options": ["...", "...", "...", "..."], "hint": null, "isDailyDouble": false }
         ]
       }
     ]

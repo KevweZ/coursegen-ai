@@ -24,6 +24,10 @@ interface Props {
   examIntroIndex?: number;
   highestVisitedIndex?: number;
   defaultCollapsed?: boolean;
+  /** Slide ids with unresolved QC issues */
+  qcPendingSlideIds?: Set<string>;
+  /** Slide ids that had QC issues which were confirmed/declined */
+  qcResolvedSlideIds?: Set<string>;
 }
 
 const SLIDE_TYPE_ICON: Record<string, string> = {
@@ -43,6 +47,8 @@ export function CourseNavSidebar({
   examIntroIndex,
   highestVisitedIndex = 0,
   defaultCollapsed = false,
+  qcPendingSlideIds,
+  qcResolvedSlideIds,
 }: Props) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [expandedModules, setExpandedModules] = useState<Set<string>>(() => new Set(modules.map(m => m.id)));
@@ -252,7 +258,13 @@ export function CourseNavSidebar({
                       ? <Lock className="w-3 h-3 shrink-0 opacity-50" />
                       : <span className="text-base shrink-0">{SLIDE_TYPE_ICON[slide.type] || '📄'}</span>
                     }
-                    <span className="text-sm leading-snug line-clamp-2 font-medium">{stripSlideTypePrefix(slide.title)}</span>
+                    <span className="text-sm leading-snug line-clamp-2 font-medium flex-1">{stripSlideTypePrefix(slide.title)}</span>
+                    {qcPendingSlideIds?.has(slide.id) && (
+                      <span className="shrink-0 w-2 h-2 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.8)]" title="Has QA issues" />
+                    )}
+                    {!qcPendingSlideIds?.has(slide.id) && qcResolvedSlideIds?.has(slide.id) && (
+                      <span className="shrink-0 w-2 h-2 rounded-full bg-emerald-500" title="QA issues resolved" />
+                    )}
                   </button>
                 );
               });

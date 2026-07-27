@@ -170,15 +170,21 @@ export interface ExamQuestion {
   moduleIndex?: number;
 }
 
+export type ExamQuestionType = 'mc' | 'ma' | 'tf' | 'sorting' | 'matching' | 'drop-targets';
+
 export interface ExamConfig {
   enabled: boolean;
   passingScore: number;                     // 0-100, default 80
   questionMode: 'total' | 'per-module';
   questionCount: number;
   allowRetake: boolean;
-  questionTypes: ('mc' | 'ma' | 'tf')[];
+  /** Mastery quiz + knowledge-check question/activity types */
+  questionTypes: ExamQuestionType[];
   presentationMode: ExamPresentationMode;   // default 'one-at-a-time'
 }
+
+/** When Linear/Restricted: require exploring interactions before Next */
+export type RequireInteractionsComplete = boolean;
 
 export interface ExamSessionState {
   questions: ExamQuestion[];

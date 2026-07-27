@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 
 export interface CarouselCard {
   id: string;
@@ -16,7 +16,6 @@ interface Props {
 }
 
 const DEFAULT_COLORS = ['#fbbf24', '#f87171', '#38bdf8', '#c084fc', '#4ade80'];
-const DARK_COLORS = ['#b45309', '#991b1b', '#0369a1', '#6b21a8', '#166534'];
 
 export default function CarouselPanel({ cards = [], title }: Props) {
   const [activeIndex, setActiveIndex] = useState(0);
@@ -33,137 +32,158 @@ export default function CarouselPanel({ cards = [], title }: Props) {
   };
 
   return (
-    <div className="w-full flex flex-col items-center gap-4 select-none bg-slate-900 py-6 rounded-2xl border border-slate-800 shadow-xl">
+    <div className="w-full flex flex-col items-center gap-3 select-none bg-slate-900 py-5 px-2 rounded-2xl border border-slate-800 shadow-xl">
       {title && (
-        <div className="w-full px-8 text-left">
+        <div className="w-full px-6 text-left">
           <p className="text-white text-lg font-bold bg-slate-800 inline-block px-4 py-2 border border-slate-700 rounded-md">
             {title}
           </p>
         </div>
       )}
 
-      {/* Main card stage — height grows when expanded to prevent nav-dot overlap */}
+      {/* Stage — expanded card grows over the dots (higher z-index) */}
       <div
-        className="relative w-full flex items-start justify-center pt-8 transition-all duration-500"
-        style={{ minHeight: expanded ? 420 : 300 }}
+        className="relative w-full flex items-start justify-center pt-6 pb-2"
+        style={{ minHeight: expanded ? 460 : 280 }}
       >
-        <AnimatePresence>
-          {cards.map((card, i) => {
-            const pos = getPosition(i);
-            const isCenter = pos === 0;
-            const cardColor = card.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length];
-            if (pos < -1 || pos > 1) return null;
+        {cards.map((card, i) => {
+          const pos = getPosition(i);
+          const isCenter = pos === 0;
+          const cardColor = card.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length];
+          if (pos < -1 || pos > 1) return null;
 
-            return (
-              <motion.div
-                key={card.id}
-                layout
-                initial={{ opacity: 0, x: pos * 300, scale: 0.8 }}
-                animate={{ 
-                  opacity: 1, 
-                  x: pos * 240, 
-                  scale: isCenter ? 1 : 0.85,
-                  zIndex: isCenter ? 30 : 10,
-                  filter: isCenter ? 'brightness(1)' : 'brightness(0.6)'
-                }}
-                exit={{ opacity: 0, scale: 0.5, transition: { duration: 0.2 } }}
-                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                className={`absolute w-[400px] rounded-2xl shadow-2xl border border-white/20 flex flex-col ${isCenter ? 'cursor-default' : 'cursor-pointer'} ${isCenter && expanded ? '' : 'overflow-hidden'}`}
-                style={{ background: cardColor, minHeight: 180 }}
-                onClick={() => {
-                  if (!isCenter) {
-                    setActiveIndex(i);
-                    setExpanded(false);
-                  }
-                }}
-              >
-                <motion.div layout="position" className="p-6 flex-1 flex flex-col">
-                  {/* Inner bordered label */}
-                  <div className="border border-white/50 px-4 py-2 w-max mb-4 inline-block shadow-sm" style={{ borderColor: 'rgba(255,255,255,0.6)' }}>
-                    <h3 className="text-white font-bold text-xl drop-shadow-md">{card.label}</h3>
-                  </div>
-                  
-                  {card.description && (
-                     <div className="bg-white/10 border border-white/20 p-3 flex-1 mb-4">
-                       <p className="text-white/90 text-sm">{card.description}</p>
-                     </div>
-                  )}
+          return (
+            <motion.div
+              key={card.id}
+              initial={false}
+              animate={{
+                opacity: 1,
+                x: pos * 260,
+                scale: isCenter ? 1 : 0.88,
+                zIndex: isCenter ? (expanded ? 50 : 30) : 10,
+                filter: isCenter ? 'brightness(1)' : 'brightness(0.65)',
+              }}
+              transition={{ duration: 0.28, ease: [0.25, 0.1, 0.25, 1] }}
+              className={`absolute w-[min(440px,70%)] rounded-2xl shadow-2xl border border-white/20 flex flex-col ${
+                isCenter ? 'cursor-default' : 'cursor-pointer'
+              }`}
+              style={{
+                background: cardColor,
+                minHeight: isCenter && expanded ? 320 : 180,
+                boxShadow: isCenter && expanded ? '0 20px 50px rgba(0,0,0,0.45)' : undefined,
+              }}
+              onClick={() => {
+                if (!isCenter) {
+                  setActiveIndex(i);
+                  setExpanded(false);
+                }
+              }}
+            >
+              <div className="p-6 flex-1 flex flex-col relative">
+                {isCenter && expanded && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setExpanded(false); }}
+                    className="absolute top-3 right-3 z-20 w-8 h-8 rounded-full bg-black/40 hover:bg-black/60 text-white flex items-center justify-center transition-colors"
+                    title="Close"
+                    aria-label="Close expanded card"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
 
-                  {isCenter && card.expandedContent && !expanded && (
-                    <motion.button
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      onClick={(e) => { e.stopPropagation(); setExpanded(true); }}
-                      className="self-center bg-white hover:bg-slate-100 text-slate-900 font-extrabold text-xs px-6 py-2 shadow-lg transition-colors"
-                    >
-                      MORE...
-                    </motion.button>
-                  )}
-
-                  {/* Expanded chunk */}
-                  <AnimatePresence>
-                     {isCenter && expanded && card.expandedContent && (
-                       <motion.div
-                         initial={{ opacity: 0, height: 0 }}
-                         animate={{ opacity: 1, height: 'auto' }}
-                         exit={{ opacity: 0, height: 0 }}
-                         className="mt-2 border-t border-white/30 pt-4 overflow-hidden"
-                       >
-                         <p className="text-white font-bold mb-2">Details:</p>
-                         <p className="text-white/80 text-sm whitespace-pre-wrap">{card.expandedContent}</p>
-                         <button onClick={() => setExpanded(false)} className="mt-4 text-white text-xs underline font-bold opacity-80 hover:opacity-100">Collapse ↑</button>
-                       </motion.div>
-                     )}
-                  </AnimatePresence>
-
-                </motion.div>
-                
-                {/* Visual generic diagram icon in corner */}
-                <div className="absolute -bottom-6 -right-6 opacity-30 text-white transform -rotate-12 pointer-events-none">
-                  <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                    <line x1="3" y1="9" x2="21" y2="9"/>
-                    <line x1="9" y1="21" x2="9" y2="9"/>
-                  </svg>
+                <div className="border border-white/50 px-4 py-2 w-max mb-4 inline-block shadow-sm">
+                  <h3 className="text-white font-bold text-xl drop-shadow-md pr-6">{card.label}</h3>
                 </div>
-              </motion.div>
-            );
-          })}
-        </AnimatePresence>
 
-        {/* Outer navigation arrows */}
-        <div className="absolute inset-x-4 top-[90px] flex items-center justify-between pointer-events-none z-40">
-           {activeIndex > 0 ? (
-             <button onClick={() => { setActiveIndex(activeIndex - 1); setExpanded(false); }} className="w-12 h-12 bg-black/60 rounded-full flex items-center justify-center text-white pointer-events-auto hover:bg-black/80 transition-colors shadow-2xl backdrop-blur-md">
-               <ChevronLeft className="w-6 h-6" />
-             </button>
-           ) : <div/>}
-           {activeIndex < cards.length - 1 ? (
-             <button onClick={() => { setActiveIndex(activeIndex + 1); setExpanded(false); }} className="w-12 h-12 bg-black/60 rounded-full flex items-center justify-center text-white pointer-events-auto hover:bg-black/80 transition-colors shadow-2xl backdrop-blur-md">
-               <ChevronRight className="w-6 h-6" />
-             </button>
-           ) : <div/>}
-        </div>
+                {card.description && (
+                  <div className="bg-white/10 border border-white/20 p-3 flex-1 mb-4">
+                    <p className="text-white/90 text-sm">{card.description}</p>
+                  </div>
+                )}
 
+                {isCenter && card.expandedContent && !expanded && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setExpanded(true); }}
+                    className="self-center bg-white hover:bg-slate-100 text-slate-900 font-extrabold text-xs px-6 py-2 shadow-lg transition-colors"
+                  >
+                    MORE...
+                  </button>
+                )}
+
+                <AnimatePresence>
+                  {isCenter && expanded && card.expandedContent && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.22 }}
+                      className="mt-2 border-t border-white/30 pt-4 overflow-hidden"
+                    >
+                      <p className="text-white font-bold mb-2">Details:</p>
+                      <p className="text-white/90 text-sm whitespace-pre-wrap leading-relaxed pb-2">
+                        {card.expandedContent}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setExpanded(false); }}
+                        className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-black/30 hover:bg-black/45 text-white text-xs font-bold transition-colors"
+                      >
+                        <X className="w-3 h-3" /> Close
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </motion.div>
+          );
+        })}
+
+        {!expanded && (
+          <div className="absolute inset-x-4 top-[90px] flex items-center justify-between pointer-events-none z-40">
+            {activeIndex > 0 ? (
+              <button
+                type="button"
+                onClick={() => { setActiveIndex(activeIndex - 1); setExpanded(false); }}
+                className="w-12 h-12 bg-black/60 rounded-full flex items-center justify-center text-white pointer-events-auto hover:bg-black/80 transition-colors shadow-2xl backdrop-blur-md"
+              >
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+            ) : <div />}
+            {activeIndex < cards.length - 1 ? (
+              <button
+                type="button"
+                onClick={() => { setActiveIndex(activeIndex + 1); setExpanded(false); }}
+                className="w-12 h-12 bg-black/60 rounded-full flex items-center justify-center text-white pointer-events-auto hover:bg-black/80 transition-colors shadow-2xl backdrop-blur-md"
+              >
+                <ChevronRight className="w-6 h-6" />
+              </button>
+            ) : <div />}
+          </div>
+        )}
       </div>
 
-      {/* Navigation Circles — always below the stage, never overlapping */}
-      <div className="flex items-center gap-6 z-50 relative">
+      {/* Dots sit below the stage; expanded center card paints above them via z-index */}
+      <div
+        className="flex items-center gap-5 relative"
+        style={{ zIndex: expanded ? 5 : 20, opacity: expanded ? 0.35 : 1, pointerEvents: expanded ? 'none' : 'auto' }}
+      >
         {cards.map((card, i) => {
           const isActive = i === activeIndex;
           const bg = card.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length];
           return (
             <button
-              key={i}
+              key={card.id || i}
+              type="button"
               onClick={() => { setActiveIndex(i); setExpanded(false); }}
-              className={`w-10 h-10 rounded-full border-[3px] ${isActive ? 'border-white scale-125' : 'border-transparent'} shadow-xl transition-all hover:scale-110`}
+              className={`w-9 h-9 rounded-full border-[3px] ${isActive ? 'border-white scale-110' : 'border-transparent'} shadow-xl transition-transform hover:scale-105`}
               style={{ background: isActive ? bg : '#1e293b' }}
+              aria-label={`Go to ${card.label}`}
             />
           );
         })}
       </div>
-      
     </div>
   );
 }
-

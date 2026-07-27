@@ -47,25 +47,28 @@ export function GameContainer({ payload }: GameContainerProps) {
   };
 
   return (
-    <div className="w-full relative min-h-[500px] flex flex-col bg-slate-900 rounded-2xl overflow-hidden shadow-2xl border border-slate-700">
-      {/* Header */}
-      <div className="bg-slate-800 p-4 border-b border-slate-700 flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-white">{payload.title}</h2>
-          <p className="text-sm text-gray-400">{payload.instructions}</p>
+    <div className="w-full h-full max-h-full relative flex flex-col bg-slate-900 rounded-2xl overflow-hidden shadow-2xl border border-slate-700 min-h-0">
+      <div className="bg-slate-800 px-4 py-2.5 border-b border-slate-700 flex items-center justify-between shrink-0 gap-3">
+        <div className="min-w-0">
+          <h2 className="text-base font-bold text-white truncate">{payload.title}</h2>
+          {payload.instructions && (
+            <p className="text-xs text-gray-400 line-clamp-1">{payload.instructions}</p>
+          )}
         </div>
-        <div className="flex flex-col items-end gap-1">
-          <div className="px-3 py-1 bg-indigo-500/20 text-indigo-300 text-xs font-bold rounded uppercase tracking-wider">
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <div className="px-2.5 py-0.5 bg-indigo-500/20 text-indigo-300 text-[10px] font-bold rounded uppercase tracking-wider">
             Game Mode
           </div>
-          <div className="px-2 py-0.5 bg-slate-700 text-slate-400 text-xs rounded">
+          <div className="px-2 py-0.5 bg-slate-700 text-slate-400 text-[10px] rounded">
             {templateLabels[payload.templateType] || payload.templateType}
           </div>
         </div>
       </div>
 
-      <div className="flex-1 p-6 relative z-10 overflow-y-auto">
-        {renderTemplate()}
+      <div className="flex-1 min-h-0 p-3 md:p-4 relative z-10 overflow-hidden flex flex-col">
+        <div className="flex-1 min-h-0 overflow-auto">
+          {renderTemplate()}
+        </div>
       </div>
     </div>
   );
