@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState, useEffect, useMemo } from 'react';
 import { markdownToHtml } from '../../lib/markdownInline';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight } from 'lucide-react';
@@ -16,6 +16,7 @@ interface Props {
   tabs: VerticalTab[];
   title?: string;
   theme?: TVTheme;
+  onTabView?: (tabId: string) => void;
 }
 
 const ACCENT_COLORS = [
@@ -27,14 +28,33 @@ const ACCENT_COLORS = [
   { bg: 'bg-rose-600', ring: 'ring-rose-500/50', text: 'text-rose-300', textLight: 'text-rose-600', dot: '#f43f5e' },
 ];
 
-export default function TabbedContentVertical({ tabs = [], title, theme = 'light' }: Props) {
+function cn(...classes: (string | false | undefined | null)[]): string {
+  return classes.filter(Boolean).join(' ');
+}
+
+export default function TabbedContentVertical({ tabs = [], title, theme = 'light', onTabView }: Props) {
+  const normalized = useMemo(
+    () => (tabs || []).map((t, i) => ({ ...t, id: (t?.id != null && String(t.id).trim()) ? String(t.id) : `tab-${i}` })),
+    [tabs]
+  );
   const [activeIndex, setActiveIndex] = useState(0);
 
-  if (!tabs.length) return null;
+  useEffect(() => {
+    if (normalized[0]?.id) onTabView?.(normalized[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [normalized.map(t => t.id).join('|')]);
+
+  if (!normalized.length) return null;
 
   const isLight = theme === 'light';
-  const activeTab = tabs[activeIndex];
+  const activeTab = normalized[Math.min(activeIndex, normalized.length - 1)];
   const accent = ACCENT_COLORS[activeIndex % ACCENT_COLORS.length];
+
+  const selectTab = (i: number) => {
+    setActiveIndex(i);
+    const id = normalized[i]?.id;
+    if (id) onTabView?.(id);
+  };
 
   return (
     <div className="w-full flex flex-col gap-3 select-none">
@@ -42,19 +62,16 @@ export default function TabbedContentVertical({ tabs = [], title, theme = 'light
         <p className={cn('text-sm font-bold text-center uppercase tracking-widest mb-1', isLight ? 'text-slate-500' : 'text-slate-400')}>{title}</p>
       )}
 
-      {/* Wider/taller content panel so learners rarely need to scroll.
-          Left tabs stay compact; the right panel takes the remaining width
-          and grows to ~55vh so short bullet lists fit without a scrollbar. */}
       <div className="flex gap-3 w-full" style={{ minHeight: 'min(55vh, 460px)' }}>
-        {/* Vertical Tab List — compact so content panel gets the width */}
         <div className="flex flex-col gap-2 w-[150px] sm:w-[170px] shrink-0 overflow-y-auto custom-scrollbar">
-          {tabs.map((tab, i) => {
+          {normalized.map((tab, i) => {
             const isActive = i === activeIndex;
             const color = ACCENT_COLORS[i % ACCENT_COLORS.length];
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveIndex(i)}
+                type="button"
+                onClick={() => selectTab(i)}
                 className={cn(
                   'flex items-center gap-2 w-full text-left px-3 py-2.5 rounded-xl font-bold text-sm transition-all border',
                   isActive
@@ -72,7 +89,6 @@ export default function TabbedContentVertical({ tabs = [], title, theme = 'light
           })}
         </div>
 
-        {/* Content Panel — flex-1 fills remaining width; taller min height reduces scroll */}
         <div className={cn('flex-1 min-w-0 relative overflow-hidden rounded-2xl border', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-800/60 border-slate-700')}>
           <AnimatePresence mode="wait">
             <motion.div
@@ -83,13 +99,10 @@ export default function TabbedContentVertical({ tabs = [], title, theme = 'light
               transition={{ duration: 0.25, ease: 'easeOut' }}
               className="absolute inset-0 p-6 overflow-y-auto custom-scrollbar"
             >
-              {/* Tab heading */}
-              <div className={`flex items-center gap-2 mb-4`}>
+              <div className="flex items-center gap-2 mb-4">
                 <div className={`w-1 h-8 rounded-full ${accent.bg}`} />
                 <h3 className={cn('font-extrabold text-lg', isLight ? accent.textLight : accent.text)} dangerouslySetInnerHTML={{ __html: markdownToHtml(activeTab.label) }} />
               </div>
-
-              {/* Tab body */}
               <div className={cn('text-sm leading-relaxed', isLight ? 'text-slate-700' : 'text-slate-200')} dangerouslySetInnerHTML={{ __html: markdownToHtml(activeTab.content) }} />
             </motion.div>
           </AnimatePresence>
@@ -97,8 +110,4 @@ export default function TabbedContentVertical({ tabs = [], title, theme = 'light
       </div>
     </div>
   );
-}
-
-function cn(...classes: (string | false | undefined | null)[]): string {
-  return classes.filter(Boolean).join(' ');
 }

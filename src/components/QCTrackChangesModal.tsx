@@ -28,6 +28,8 @@ interface Props {
   onSimplify:   (moduleIndex: number, slideIndex: number) => void;
   /** AI regeneration of a single slide's interaction data */
   onRegenerate: (moduleIndex: number, slideIndex: number, slideId: string) => Promise<void>;
+  /** When opened from a slide QA badge, highlight/scroll to that slide's issues */
+  focusSlideId?: string | null;
 }
 
 const SEVERITY_CONFIG = {
@@ -48,7 +50,7 @@ function ScoreBadge({ score }: { score: number }) {
 }
 
 function IssueCard({
-  issue, confirmed, declined, onConfirm, onDecline, onGoToSlide, onSimplify, onRegenerate,
+  issue, confirmed, declined, onConfirm, onDecline, onGoToSlide, onSimplify, onRegenerate, highlighted,
 }: {
   issue: QCIssue;
   confirmed: boolean;
@@ -58,6 +60,7 @@ function IssueCard({
   onGoToSlide:  () => void;
   onSimplify:   () => void;
   onRegenerate: () => Promise<void>;
+  highlighted?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
@@ -66,7 +69,14 @@ function IssueCard({
   const isEmptyInteraction = issue.type === 'interaction_empty';
 
   return (
-    <div className={`rounded-xl border ${cfg.border} ${cfg.bg} overflow-hidden transition-all ${declined ? 'opacity-40' : ''}`}>
+    <div
+      data-slide-id={issue.slideId}
+      className={`rounded-xl border overflow-hidden transition-all ${declined ? 'opacity-40' : ''} ${
+        highlighted
+          ? 'border-indigo-400 bg-indigo-500/15 ring-2 ring-indigo-400/60 shadow-lg shadow-indigo-500/10'
+          : `${cfg.border} ${cfg.bg}`
+      }`}
+    >
       {/* Header */}
       <div className="flex items-start gap-3 px-4 py-3">
         <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${cfg.color}`} />
@@ -201,8 +211,10 @@ export function QCTrackChangesModal({
   onConfirm, onDecline, onConfirmAll, onDeclineAll,
   onClose, onApply, onRunScan, onGoToSlide,
   onSimplify, onRegenerate,
+  focusSlideId = null,
 }: Props) {
   const [filter, setFilter] = useState<FilterTab>('all');
+  const listRef = React.useRef<HTMLDivElement>(null);
 
   const pendingCount = useMemo(() =>
     report ? report.issues.filter(i => !confirmed.has(i.id) && !declined.has(i.id)).length : 0,
@@ -211,13 +223,29 @@ export function QCTrackChangesModal({
 
   const filteredIssues = useMemo(() => {
     if (!report) return [];
-    return report.issues.filter(i => filter === 'all' || i.severity === filter);
-  }, [report, filter]);
+    const list = report.issues.filter(i => filter === 'all' || i.severity === filter);
+    if (!focusSlideId) return list;
+    // Focused slide's issues first so the learner sees them immediately
+    return [...list].sort((a, b) => {
+      const aF = a.slideId === focusSlideId ? 0 : 1;
+      const bF = b.slideId === focusSlideId ? 0 : 1;
+      return aF - bF;
+    });
+  }, [report, filter, focusSlideId]);
 
   const confirmable = useMemo(() =>
     filteredIssues.filter(i => i.suggestion && i.suggestion !== i.originalText && !confirmed.has(i.id)),
     [filteredIssues, confirmed]
   );
+
+  React.useEffect(() => {
+    if (!open || !focusSlideId || !listRef.current) return;
+    const t = window.setTimeout(() => {
+      const el = listRef.current?.querySelector(`[data-slide-id="${CSS.escape(focusSlideId)}"]`);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 120);
+    return () => window.clearTimeout(t);
+  }, [open, focusSlideId, filteredIssues]);
 
   if (!open) return null;
 
@@ -364,7 +392,16 @@ export function QCTrackChangesModal({
               )}
 
               {/* Issue list */}
-              <div className="flex-1 overflow-y-auto px-6 py-3 space-y-2">
+              <div ref={listRef} className="flex-1 overflow-y-auto px-6 py-3 space-y-2">
+                {focusSlideId && filteredIssues.some(i => i.slideId === focusSlideId) && (
+                  <div className="mb-2 px-3 py-2 rounded-lg border border-indigo-500/40 bg-indigo-500/10 text-xs text-indigo-200 font-semibold">
+                    Highlighted rows are for the slide you were viewing
+                    {filteredIssues.find(i => i.slideId === focusSlideId)?.slideRef
+                      ? ` (${filteredIssues.find(i => i.slideId === focusSlideId)!.slideRef})`
+                      : ''}
+                    .
+                  </div>
+                )}
                 {filteredIssues.length === 0 ? (
                   <div className="text-center py-12 text-slate-500">
                     <CheckCircle2 className="w-10 h-10 mx-auto mb-3 text-emerald-600/50" />
@@ -377,6 +414,7 @@ export function QCTrackChangesModal({
                       issue={issue}
                       confirmed={confirmed.has(issue.id)}
                       declined={declined.has(issue.id)}
+                      highlighted={!!focusSlideId && issue.slideId === focusSlideId}
                       onConfirm={() => onConfirm(issue.id)}
                       onDecline={() => onDecline(issue.id)}
                       onGoToSlide={() => onGoToSlide(issue.moduleIndex, issue.slideIndex)}

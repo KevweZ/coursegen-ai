@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 
 export interface Flashcard {
+  id?: string;
   front: string;
   back: string;
 }
@@ -9,9 +10,16 @@ export interface Flashcard {
 export interface FlashcardGridProps {
   cards: Flashcard[];
   theme?: string;
+  onCardView?: (cardId: string) => void;
 }
 
-const FlashcardItem: React.FC<{ card: Flashcard; index: number; theme?: string }> = ({ card, index, theme }) => {
+const FlashcardItem: React.FC<{
+  card: Flashcard;
+  index: number;
+  theme?: string;
+  cardId: string;
+  onCardView?: (cardId: string) => void;
+}> = ({ card, index, theme, cardId, onCardView }) => {
   const [isFlipped, setIsFlipped] = useState(false);
   const isDark = theme !== 'light';
 
@@ -19,7 +27,10 @@ const FlashcardItem: React.FC<{ card: Flashcard; index: number; theme?: string }
     <motion.div
       key={index}
       className="relative w-full h-64 cursor-pointer [perspective:1000px] group"
-      onClick={() => setIsFlipped(!isFlipped)}
+      onClick={() => {
+        setIsFlipped(!isFlipped);
+        onCardView?.(cardId);
+      }}
     >
       <motion.div
         className="w-full h-full relative [transform-style:preserve-3d]"
@@ -55,14 +66,24 @@ const FlashcardItem: React.FC<{ card: Flashcard; index: number; theme?: string }
   );
 };
 
-export const FlashcardGrid: React.FC<FlashcardGridProps> = ({ cards, theme }) => {
+export const FlashcardGrid: React.FC<FlashcardGridProps> = ({ cards, theme, onCardView }) => {
   if (!cards || cards.length === 0) return null;
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 w-full">
-      {cards.map((card, idx) => (
-        <FlashcardItem key={idx} card={card} index={idx} theme={theme} />
-      ))}
+      {cards.map((card, idx) => {
+        const cardId = (card?.id != null && String(card.id).trim()) ? String(card.id) : `fc-${idx}`;
+        return (
+          <FlashcardItem
+            key={cardId}
+            card={card}
+            index={idx}
+            theme={theme}
+            cardId={cardId}
+            onCardView={onCardView}
+          />
+        );
+      })}
     </div>
   );
 };

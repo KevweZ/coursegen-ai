@@ -1,23 +1,14 @@
-/**
+﻿/**
  * imageService.ts — AI Module Image Generation
  *
- * Generates professional banner images for each course module via the
- * /api/generate-image server endpoint (OpenRouter → Gemini Flash Image Preview).
- *
- * Design decisions:
- * - Sequential generation (not parallel) to avoid OpenRouter rate limits
- * - 2-second gap between requests
- * - Silent failures: if a module image fails, course still works fine
- * - Images stored as data URLs on the slide.coverImage field
+ * Generates professional banner images via /api/generate-image
+ * (OpenRouter → Gemini Flash Image Preview).
  */
 
 const DEFAULT_IMAGE_MODEL = 'google/gemini-3.1-flash-image-preview';
 
-/**
- * Build a detailed banner-image prompt for a given module.
- * The prompt is crafted to produce professional, wide-format educational images
- * that complement eLearning course slides without being distracting.
- */
+export type CourseImageMode = 'none' | 'ai-title' | 'source' | 'ai-title-and-source';
+
 function buildModuleBannerPrompt(moduleTitle: string, courseTitle: string): string {
   return (
     `Professional eLearning course module banner image. ` +
@@ -30,10 +21,18 @@ function buildModuleBannerPrompt(moduleTitle: string, courseTitle: string): stri
   );
 }
 
-/**
- * Call the server-side /api/generate-image endpoint for a single prompt.
- * Returns a data URL string, or throws on failure.
- */
+function buildCourseCoverPrompt(courseTitle: string, description?: string): string {
+  const topic = description?.trim()
+    ? description.trim().slice(0, 180)
+    : `a course about ${courseTitle}`;
+  return (
+    `Create a simple, high-quality educational cover illustration for an eLearning course titled "${courseTitle}". ` +
+    `Topic context: ${topic}. ` +
+    `Style: clean modern corporate illustration, wide 16:9 landscape, soft professional colors, ` +
+    `clear visual metaphor for the subject, minimal detail, no text, no logos, no watermarks, no people faces.`
+  );
+}
+
 async function callImageEndpoint(prompt: string, model = DEFAULT_IMAGE_MODEL): Promise<string> {
   const response = await fetch('/api/generate-image', {
     method: 'POST',
@@ -51,13 +50,16 @@ async function callImageEndpoint(prompt: string, model = DEFAULT_IMAGE_MODEL): P
   return data.imageDataUrl;
 }
 
+/** Generate a single AI cover image for the course title slide. */
+export async function generateCourseCoverImage(
+  courseTitle: string,
+  description?: string
+): Promise<string> {
+  return callImageEndpoint(buildCourseCoverPrompt(courseTitle || 'Course', description));
+}
+
 /**
  * Generate banner images for every module in the course, sequentially.
- *
- * @param course        The fully-hydrated course object
- * @param onImageReady  Callback invoked as each image is generated.
- *                      Receives the slide ID and the data URL — caller
- *                      should update the slide's coverImage field.
  */
 export async function generateModuleImages(
   course: any,
@@ -66,7 +68,6 @@ export async function generateModuleImages(
   if (!course?.modules?.length) return;
 
   for (const module of course.modules) {
-    // Only generate for modules that have a title slide and a meaningful title
     const titleSlide = module.slides?.find(
       (s: any) => s.type === 'title' || s.type === 'cover'
     );
@@ -78,24 +79,47 @@ export async function generateModuleImages(
       onImageReady(titleSlide.id, imageDataUrl);
       console.log(`[ImageService] ✓ Image ready for module: "${module.title}"`);
     } catch (err) {
-      // Silent failure — course still works without images
       console.warn(`[ImageService] Failed image for module "${module.title}":`, err);
     }
 
-    // Stagger requests to respect OpenRouter rate limits
     await new Promise(r => setTimeout(r, 2000));
   }
 }
 
 /**
- * Apply a generated image to the correct slide in the course state.
- * Returns a new course object (immutable update) with the coverImage set.
+ * Attach extracted source images (from PPTX/PDF) onto content slides as coverImage.
  */
+export function attachSourceImagesToCourse(
+  course: any,
+  images: Array<{ dataUrl: string; width: number; height: number }>
+): any {
+  if (!course?.modules?.length || !images?.length) return course;
+  const pool = [...images];
+  let imgIdx = 0;
+  return {
+    ...course,
+    modules: course.modules.map((m: any) => ({
+      ...m,
+      slides: (m.slides || []).map((s: any) => {
+        if (!['content', 'summary', 'key-takeaways', 'hotspot'].includes(s.type)) return s;
+        if (s.coverImage || s.imageUrl) return s;
+        const img = pool[imgIdx % pool.length];
+        imgIdx++;
+        if (!img) return s;
+        return { ...s, coverImage: img.dataUrl, imageUrl: img.dataUrl };
+      }),
+    })),
+  };
+}
+
 export function applyCoverImageToCourse(
   course: any,
   slideId: string,
   imageDataUrl: string
 ): any {
+  if (slideId === '__cover__') {
+    return { ...course, coverImage: imageDataUrl };
+  }
   return {
     ...course,
     modules: course.modules.map((m: any) => ({

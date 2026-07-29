@@ -12,6 +12,7 @@ interface ClickRevealProps {
   items?: RevealItem[];
   title?: string;
   theme?: 'light' | 'dark' | 'unified';
+  onItemReveal?: (itemId: string) => void;
 }
 
 const CARD_COLORS = [
@@ -35,7 +36,14 @@ const CARD_COLORS_DARK = [
   { border: '#ec4899', bg: 'rgba(236,72,153,0.12)', glow: 'rgba(236,72,153,0.3)' },
 ];
 
-const ClickRevealInteraction: React.FC<ClickRevealProps> = ({ items = [], theme = 'light' }) => {
+const ClickRevealInteraction: React.FC<ClickRevealProps> = ({ items = [], theme = 'light', onItemReveal }) => {
+  const normalized = React.useMemo(
+    () => (items || []).map((it, i) => ({
+      ...it,
+      id: (it?.id != null && String(it.id).trim()) ? String(it.id) : `cr-${i}`,
+    })),
+    [items]
+  );
   const [openId, setOpenId] = useState<string | null>(null);
   const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set());
 
@@ -62,17 +70,20 @@ const ClickRevealInteraction: React.FC<ClickRevealProps> = ({ items = [], theme 
     progressText: isLight ? '#64748b' : '#64748b',
   };
 
-  if (!items.length) return null;
+  if (!normalized.length) return null;
 
   const handleToggle = (id: string) => {
     const next = openId === id ? null : id;
     setOpenId(next);
-    if (next) setRevealedIds(prev => new Set([...prev, id]));
+    if (next) {
+      setRevealedIds(prev => new Set([...prev, id]));
+      onItemReveal?.(id);
+    }
   };
 
   return (
     <div className="w-full space-y-2.5">
-      {items.map((item, idx) => {
+      {normalized.map((item, idx) => {
         const palette = isLight ? CARD_COLORS : CARD_COLORS_DARK;
         const color = palette[idx % palette.length];
         const isOpen = openId === item.id;
@@ -169,9 +180,9 @@ const ClickRevealInteraction: React.FC<ClickRevealProps> = ({ items = [], theme 
       })}
 
       {/* Progress indicator */}
-      {items.length > 1 && (
+      {normalized.length > 1 && (
         <p className="text-xs text-right pt-1" style={{ color: T.progressText }}>
-          {revealedIds.size}/{items.length} revealed
+          {revealedIds.size}/{normalized.length} revealed
         </p>
       )}
     </div>

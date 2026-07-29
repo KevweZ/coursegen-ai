@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { markdownToHtml } from '../../lib/markdownInline';
 
 export interface HorizontalTab {
@@ -12,16 +12,36 @@ export interface HorizontalTab {
 interface Props {
   tabs: HorizontalTab[];
   title?: string;
+  onTabView?: (tabId: string) => void;
 }
 
 const ACCENT_COLORS = [
   '#6366f1', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#f43f5e',
 ];
 
-export default function TabbedContentHorizontal({ tabs = [], title }: Props) {
+function normalizeTabs(tabs: HorizontalTab[]): HorizontalTab[] {
+  return (tabs || []).map((t, i) => ({
+    ...t,
+    id: (t?.id != null && String(t.id).trim()) ? String(t.id) : `tab-${i}`,
+  }));
+}
+
+export default function TabbedContentHorizontal({ tabs = [], title, onTabView }: Props) {
+  const normalized = normalizeTabs(tabs);
   const [activeIndex, setActiveIndex] = useState(0);
 
-  if (!tabs.length) return null;
+  useEffect(() => {
+    if (normalized[0]?.id) onTabView?.(normalized[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [normalized.map(t => t.id).join('|')]);
+
+  if (!normalized.length) return null;
+
+  const selectTab = (i: number) => {
+    setActiveIndex(i);
+    const id = normalized[i]?.id;
+    if (id) onTabView?.(id);
+  };
 
   return (
     <div className="w-full flex flex-col gap-0 select-none">
@@ -29,12 +49,11 @@ export default function TabbedContentHorizontal({ tabs = [], title }: Props) {
         <p className="text-slate-400 text-sm font-bold text-center uppercase tracking-widest mb-3">{title}</p>
       )}
 
-      {/* ── Content Panel (top) — CSS transitions, no AnimatePresence to avoid freeze ── */}
       <div
         className="relative overflow-hidden rounded-t-2xl bg-slate-800/60 border border-b-0 border-slate-700"
         style={{ minHeight: 220 }}
       >
-        {tabs.map((tab, i) => {
+        {normalized.map((tab, i) => {
           const isActive = i === activeIndex;
           const color = tab.color || ACCENT_COLORS[i % ACCENT_COLORS.length];
           return (
@@ -61,21 +80,20 @@ export default function TabbedContentHorizontal({ tabs = [], title }: Props) {
         })}
       </div>
 
-      {/* ── Horizontal Tab Bar (bottom) ── */}
       <div className="flex border border-t-0 border-slate-700 rounded-b-2xl overflow-hidden bg-slate-900/80">
-        {tabs.map((tab, i) => {
+        {normalized.map((tab, i) => {
           const isActive = i === activeIndex;
           const color = tab.color || ACCENT_COLORS[i % ACCENT_COLORS.length];
           return (
             <button
               key={tab.id}
-              onClick={() => setActiveIndex(i)}
+              type="button"
+              onClick={() => selectTab(i)}
               className={`flex-1 relative px-3 py-3 text-xs font-bold transition-all text-center border-r border-slate-700/60 last:border-r-0 ${
                 isActive ? 'text-white' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
               }`}
               style={isActive ? { background: `${color}22` } : {}}
             >
-              {/* Indicator — CSS only, no layoutId/Framer motion */}
               <div
                 className="absolute top-0 left-0 right-0 h-0.5"
                 style={{ background: color, opacity: isActive ? 1 : 0, transition: 'opacity 0.2s' }}

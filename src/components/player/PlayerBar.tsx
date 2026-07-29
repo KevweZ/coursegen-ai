@@ -61,6 +61,8 @@ interface PlayerBarProps {
   disablePrev?: boolean;
   /** Force-disable the Next button (e.g. on exam-intro / quiz slides) */
   disableNext?: boolean;
+  /** Shown as tooltip / hint when Next is blocked by incomplete interactions */
+  disableNextReason?: string | null;
   /** Current volume 0–1 */
   volume?: number;
   /** Callback when user adjusts the volume slider */
@@ -83,6 +85,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   editorActions,
   disablePrev = false,
   disableNext = false,
+  disableNextReason = null,
   volume = 1,
   onVolumeChange,
   showCC = false,
@@ -154,7 +157,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   return (
     <div
       ref={barRef}
-      className={cn('sticky bottom-0 z-[100] border-t flex-shrink-0 flex flex-col shadow-[0_-10px_30px_-15px_rgba(0,0,0,0.3)]', barBg)}
+      className={cn('relative sticky bottom-0 z-[100] border-t flex-shrink-0 flex flex-col shadow-[0_-10px_30px_-15px_rgba(0,0,0,0.3)]', barBg)}
       tabIndex={0}
       onKeyDown={handleKeyDown}
       aria-label="Learner player controls"
@@ -329,12 +332,20 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           onClick={onNext}
           aria-label="Next slide"
           className={btnPrimary}
-          title={disableNext ? 'Complete the interaction to continue' : undefined}
+          title={disableNext ? (disableNextReason || 'Complete the interaction to continue') : undefined}
         >
           Next
           <ChevronRight className="w-3.5 h-3.5" />
         </button>
       </div>
+      {disableNext && disableNextReason && (
+        <div className={cn(
+          'absolute -top-8 right-4 px-2.5 py-1 rounded-md text-[10px] font-bold shadow-lg border',
+          isLight ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-amber-950 text-amber-200 border-amber-700/50'
+        )}>
+          {disableNextReason}
+        </div>
+      )}
 
       {/* ── SLIDE EDITOR TAB ROW ── */}
       {editorActions && (

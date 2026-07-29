@@ -1,4 +1,5 @@
 import { ExamConfig, NavigationMode } from '../types/course';
+import type { CourseImageMode } from '../services/imageService';
 
 export interface SavedCourseSettings {
   preset: 'quick' | 'standard' | 'comprehensive';
@@ -16,6 +17,8 @@ export interface SavedCourseSettings {
   includeModuleOverviewSlides: boolean;
   includeSummarySlides: boolean;
   slideCount: number;
+  /** Course imagery: none | AI title cover | source-file images | both */
+  imageMode: CourseImageMode;
 }
 
 const STORAGE_KEY = 'nexcourse.courseSettings.v1';

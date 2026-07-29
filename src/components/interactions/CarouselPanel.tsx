@@ -13,22 +13,38 @@ export interface CarouselCard {
 interface Props {
   cards: CarouselCard[];
   title?: string;
+  onCardView?: (cardId: string) => void;
 }
 
 const DEFAULT_COLORS = ['#fbbf24', '#f87171', '#38bdf8', '#c084fc', '#4ade80'];
 
-export default function CarouselPanel({ cards = [], title }: Props) {
+export default function CarouselPanel({ cards = [], title, onCardView }: Props) {
+  const normalized = React.useMemo(
+    () => (cards || []).map((c, i) => ({ ...c, id: (c?.id != null && String(c.id).trim()) ? String(c.id) : `card-${i}` })),
+    [cards]
+  );
   const [activeIndex, setActiveIndex] = useState(0);
   const [expanded, setExpanded] = useState(false);
 
-  if (!cards.length) return null;
-  const activeCard = cards[activeIndex];
+  React.useEffect(() => {
+    if (normalized[0]?.id) onCardView?.(normalized[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [normalized.map(c => c.id).join('|')]);
+
+  if (!normalized.length) return null;
 
   const getPosition = (index: number) => {
     let diff = index - activeIndex;
     if (diff < -1) return -2;
     if (diff > 1) return 2;
     return diff;
+  };
+
+  const goTo = (i: number) => {
+    setActiveIndex(i);
+    setExpanded(false);
+    const id = normalized[i]?.id;
+    if (id) onCardView?.(id);
   };
 
   return (
@@ -46,7 +62,7 @@ export default function CarouselPanel({ cards = [], title }: Props) {
         className="relative w-full flex items-start justify-center pt-6 pb-2"
         style={{ minHeight: expanded ? 460 : 280 }}
       >
-        {cards.map((card, i) => {
+        {normalized.map((card, i) => {
           const pos = getPosition(i);
           const isCenter = pos === 0;
           const cardColor = card.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length];
@@ -73,10 +89,7 @@ export default function CarouselPanel({ cards = [], title }: Props) {
                 boxShadow: isCenter && expanded ? '0 20px 50px rgba(0,0,0,0.45)' : undefined,
               }}
               onClick={() => {
-                if (!isCenter) {
-                  setActiveIndex(i);
-                  setExpanded(false);
-                }
+                if (!isCenter) goTo(i);
               }}
             >
               <div className="p-6 flex-1 flex flex-col relative">
@@ -145,16 +158,16 @@ export default function CarouselPanel({ cards = [], title }: Props) {
             {activeIndex > 0 ? (
               <button
                 type="button"
-                onClick={() => { setActiveIndex(activeIndex - 1); setExpanded(false); }}
+                onClick={() => goTo(activeIndex - 1)}
                 className="w-12 h-12 bg-black/60 rounded-full flex items-center justify-center text-white pointer-events-auto hover:bg-black/80 transition-colors shadow-2xl backdrop-blur-md"
               >
                 <ChevronLeft className="w-6 h-6" />
               </button>
             ) : <div />}
-            {activeIndex < cards.length - 1 ? (
+            {activeIndex < normalized.length - 1 ? (
               <button
                 type="button"
-                onClick={() => { setActiveIndex(activeIndex + 1); setExpanded(false); }}
+                onClick={() => goTo(activeIndex + 1)}
                 className="w-12 h-12 bg-black/60 rounded-full flex items-center justify-center text-white pointer-events-auto hover:bg-black/80 transition-colors shadow-2xl backdrop-blur-md"
               >
                 <ChevronRight className="w-6 h-6" />
@@ -164,19 +177,18 @@ export default function CarouselPanel({ cards = [], title }: Props) {
         )}
       </div>
 
-      {/* Dots sit below the stage; expanded center card paints above them via z-index */}
       <div
         className="flex items-center gap-5 relative"
         style={{ zIndex: expanded ? 5 : 20, opacity: expanded ? 0.35 : 1, pointerEvents: expanded ? 'none' : 'auto' }}
       >
-        {cards.map((card, i) => {
+        {normalized.map((card, i) => {
           const isActive = i === activeIndex;
           const bg = card.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length];
           return (
             <button
               key={card.id || i}
               type="button"
-              onClick={() => { setActiveIndex(i); setExpanded(false); }}
+              onClick={() => goTo(i)}
               className={`w-9 h-9 rounded-full border-[3px] ${isActive ? 'border-white scale-110' : 'border-transparent'} shadow-xl transition-transform hover:scale-105`}
               style={{ background: isActive ? bg : '#1e293b' }}
               aria-label={`Go to ${card.label}`}

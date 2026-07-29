@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   ArrowRight, Loader2, FileUp, Target, Layers, Lock, Grid3X3,
   Gamepad2, Volume2, Eye, Plus, Trash2, Wand2, AlertCircle, Ear, CheckCircle2,
-  BookOpen, ListChecks, Navigation, SlidersHorizontal, Save, Settings2,
+  BookOpen, ListChecks, Navigation, SlidersHorizontal, Save, Settings2, ImageIcon,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { getRecommendedGames } from '../../lib/gameEngine';
@@ -11,6 +11,7 @@ import { OutlinePreview } from './OutlinePreview';
 import type { ScenarioConfig } from '../../types/scenario';
 import type { CourseOutlineDraft } from '../../services/aiService';
 import type { ExamConfig, NavigationMode, TerminalObjectiveGroup } from '../../types/course';
+import type { CourseImageMode } from '../../services/imageService';
 
 export type SettingsMode = 'defaults' | 'session';
 export type SettingsTab =
@@ -100,6 +101,8 @@ export interface CourseSettingsPageProps {
   setVoiceOverEnabled: (v: boolean) => void;
   ttsVoice: string;
   setTtsVoice: (v: string) => void;
+  imageMode: CourseImageMode;
+  setImageMode: (m: CourseImageMode) => void;
   previewingVoice: string | null;
   onPreviewVoice: (id: string) => void;
 
@@ -134,7 +137,7 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
   const showTopic = !isDefaults;
   const showDesign = !isDefaults;
 
-  const tabs: { id: SettingsTab; label: string; icon: React.ReactNode; hidden?: boolean }[] = [
+  const allTabs: { id: SettingsTab; label: string; icon: React.ReactNode; hidden?: boolean }[] = [
     { id: 'topic', label: 'Topic', icon: <BookOpen className="w-3.5 h-3.5" />, hidden: !showTopic },
     { id: 'objectives', label: 'Objectives', icon: <Target className="w-3.5 h-3.5" /> },
     { id: 'quizzes', label: 'Quizzes', icon: <ListChecks className="w-3.5 h-3.5" /> },
@@ -143,7 +146,8 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
     { id: 'games', label: 'Game Modes', icon: <Gamepad2 className="w-3.5 h-3.5" /> },
     { id: 'audio', label: 'Audio & Accessibility', icon: <Volume2 className="w-3.5 h-3.5" /> },
     { id: 'design', label: 'Design', icon: <Layers className="w-3.5 h-3.5" />, hidden: !showDesign },
-  ].filter(t => !t.hidden);
+  ];
+  const tabs = allTabs.filter(t => !t.hidden);
 
   const [activeTab, setActiveTab] = useState<SettingsTab>(showTopic ? 'topic' : 'objectives');
 
@@ -772,13 +776,13 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                 <ScenarioBuilderPanel config={props.scenarioConfig} onChange={props.setScenarioConfig} />
               )}
 
-              {(props.interactionTypes.length + props.gameTemplateIds.length) > 5 && (
+              {props.interactionTypes.length > 4 && (
                 <div className="flex items-start gap-3 p-4 rounded-xl border border-amber-500/30 bg-amber-500/10">
                   <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-sm font-bold text-amber-300">Large selection detected</p>
+                    <p className="text-sm font-bold text-amber-300">Many interaction types selected</p>
                     <p className="text-xs text-amber-400/80 mt-0.5">
-                      {`You've selected ${props.interactionTypes.length + props.gameTemplateIds.length} interaction/game types. Consider narrowing to 3–5 for best results.`}
+                      {`You've selected ${props.interactionTypes.length} interactive elements. More than 4 types increases outline complexity and the chance of empty or malformed interactions. Prefer 3–4 for more reliable generation.`}
                     </p>
                   </div>
                 </div>
@@ -839,11 +843,23 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                     );
                   })}
                 </div>
+                {props.gameTemplateIds.length > 1 && (
+                  <div className="mt-5 flex items-start gap-3 p-4 rounded-xl border border-amber-500/30 bg-amber-500/10">
+                    <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-bold text-amber-300">Multiple game modes selected</p>
+                      <p className="text-xs text-amber-400/80 mt-0.5">
+                        {`You've selected ${props.gameTemplateIds.length} games. Each adds a separate game-template slide and AI payload — more than one raises the chance of incomplete game data. One game mode is most reliable.`}
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
 
           {activeTab === 'audio' && (
+            <div className="space-y-6">
             <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-6 shadow-xl">
               <div className="flex items-center gap-3 mb-5">
                 <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center">
@@ -915,6 +931,52 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                   </div>
                 </div>
               )}
+            </div>
+
+            <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-6 shadow-xl">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-10 h-10 rounded-lg bg-sky-500/20 flex items-center justify-center">
+                  <ImageIcon className="w-5 h-5 text-sky-400" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-white">Course Images</h3>
+                  <p className="text-slate-400 text-sm">Choose how imagery is added when a course is generated.</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-2">
+                {([
+                  { id: 'none' as CourseImageMode, label: 'No images', desc: 'Title uses archive placeholder only; content slides stay text-first' },
+                  { id: 'ai-title' as CourseImageMode, label: 'AI title cover', desc: 'Generate one simple cover image that matches the course topic' },
+                  { id: 'source' as CourseImageMode, label: 'Images from uploaded file', desc: 'Pull images from PPTX/PDF and place them on content slides' },
+                  { id: 'ai-title-and-source' as CourseImageMode, label: 'AI title + source images', desc: 'AI cover for the title slide, plus images extracted from your upload' },
+                ]).map(opt => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => props.setImageMode(opt.id)}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all ${
+                      props.imageMode === opt.id
+                        ? 'bg-sky-500/10 border-sky-500/40 text-white'
+                        : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <div className="flex-1">
+                      <p className="text-sm font-bold">{opt.label}</p>
+                      <p className="text-xs text-slate-500">{opt.desc}</p>
+                    </div>
+                    {props.imageMode === opt.id && <CheckCircle2 className="w-4 h-4 text-sky-400 shrink-0" />}
+                  </button>
+                ))}
+              </div>
+              {(props.imageMode === 'ai-title' || props.imageMode === 'ai-title-and-source') && (
+                <div className="mt-4 flex items-start gap-3 p-3 rounded-xl border border-amber-500/30 bg-amber-500/10">
+                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-300/90 leading-relaxed">
+                    AI-generated images can misrepresent technical details. Prefer source-file images for diagrams and labeled equipment; use AI covers for atmosphere only.
+                  </p>
+                </div>
+              )}
+            </div>
             </div>
           )}
 

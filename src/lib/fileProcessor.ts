@@ -173,7 +173,25 @@ export async function extractImagesFromFile(file: File): Promise<SourceImage[]> 
         
         const imgProps = await new Promise<{width: number, height: number, src: string}>((resolve) => {
            const img = new Image();
-           img.onload = () => resolve({ width: img.width, height: img.height, src: dataUrl });
+           img.onload = () => {
+             // Flatten transparent PNGs onto white so slides don't show checkerboard/hollow edges
+             if ((ext === 'png' || ext === 'svg') && img.width > 0 && img.height > 0) {
+               try {
+                 const canvas = document.createElement('canvas');
+                 canvas.width = img.width;
+                 canvas.height = img.height;
+                 const ctx = canvas.getContext('2d');
+                 if (ctx) {
+                   ctx.fillStyle = '#ffffff';
+                   ctx.fillRect(0, 0, canvas.width, canvas.height);
+                   ctx.drawImage(img, 0, 0);
+                   resolve({ width: img.width, height: img.height, src: canvas.toDataURL('image/jpeg', 0.92) });
+                   return;
+                 }
+               } catch { /* fall through */ }
+             }
+             resolve({ width: img.width, height: img.height, src: dataUrl });
+           };
            img.onerror = () => resolve({ width: 0, height: 0, src: '' }); 
            img.src = dataUrl;
         });

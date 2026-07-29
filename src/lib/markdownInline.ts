@@ -4,6 +4,7 @@
  *
  * Supports: **bold**, nested bullet lists (2-space or tab indent), inline code.
  * Nested items under a bold heading are indented as sub-bullets.
+ * Lists use neutral markers; parent components may restyle via CSS.
  */
 
 const isHTML = (str: string): boolean => /<[a-z][\s\S]*>/i.test(str);
@@ -26,7 +27,9 @@ function inlineFormat(text: string): string {
 }
 
 /**
- * Convert markdown (including nested lists) to HTML with theme-friendly list styles.
+ * Convert markdown (including nested lists) to HTML.
+ * Avoid putting left padding on <ul> that fights parent CSS — markers are
+ * drawn by the host component (e.g. VerticalTimeline accent squares).
  */
 export function markdownToHtml(text: string): string {
   if (!text) return '';
@@ -34,7 +37,6 @@ export function markdownToHtml(text: string): string {
 
   const lines = text.replace(/\r\n/g, '\n').split('\n');
   const out: string[] = [];
-  let inList = false;
   let listDepth = 0;
 
   const closeLists = (toDepth: number) => {
@@ -42,17 +44,12 @@ export function markdownToHtml(text: string): string {
       out.push('</ul>');
       listDepth--;
     }
-    if (listDepth === 0) inList = false;
   };
 
   const openList = (depth: number) => {
     while (listDepth < depth) {
-      const pad = listDepth === 0 ? '1.1rem' : '1.35rem';
-      out.push(
-        `<ul class="md-list" style="padding-left:${pad};margin:0.35rem 0;list-style:disc;list-style-position:outside;">`
-      );
+      out.push('<ul class="md-list">');
       listDepth++;
-      inList = true;
     }
   };
 
@@ -62,15 +59,12 @@ export function markdownToHtml(text: string): string {
       const indent = bulletMatch[1].replace(/\t/g, '  ').length;
       const depth = Math.min(3, Math.floor(indent / 2) + 1);
       const body = bulletMatch[3];
-
-      // "Bold heading: rest" → treat rest as sibling content under same li when nested content follows
       openList(depth);
       closeLists(depth);
-      out.push(`<li style="margin:0.28rem 0;padding-left:0.15rem;line-height:1.45;">${inlineFormat(body)}</li>`);
+      out.push(`<li>${inlineFormat(body)}</li>`);
       continue;
     }
 
-    // Non-bullet line
     closeLists(0);
     const trimmed = raw.trim();
     if (!trimmed) {

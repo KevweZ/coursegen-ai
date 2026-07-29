@@ -95,7 +95,7 @@ import { GameContainer } from './components/game-templates/core/GameContainer';
 import { getRandomBackgroundForTheme } from './lib/backgrounds';
 import { getPresetOptions, getPresetConfig } from './lib/presetEngine';
 import { GameTemplateType } from './types/game';
-import { generateModuleImages, applyCoverImageToCourse } from './services/imageService';
+import { generateModuleImages, applyCoverImageToCourse, generateCourseCoverImage, attachSourceImagesToCourse, type CourseImageMode } from './services/imageService';
 import { usePlayer } from './lib/usePlayer';
 import { PlayerBar } from './components/player/PlayerBar';
 import { ClosedCaptionOverlay } from './components/player/ClosedCaptionOverlay';
@@ -788,7 +788,9 @@ export default function App() {
   const [includeModuleOverviewSlides, setIncludeModuleOverviewSlides] = useState(true);
   const [includeSummarySlides, setIncludeSummarySlides] = useState(true);
   const [includeModuleTitleSlides, setIncludeModuleTitleSlides] = useState(true);
+  const [imageMode, setImageMode] = useState<CourseImageMode>('ai-title');
   const [generatedCourseTitle, setGeneratedCourseTitle] = useState('');
+  const [qcFocusSlideId, setQcFocusSlideId] = useState<string | null>(null);
 
   // Mastery Quiz state
   const [examConfig, setExamConfig] = useState<ExamConfig>({
@@ -829,24 +831,42 @@ export default function App() {
     });
   };
 
+  const normItemId = (raw: any, fallback: string) => {
+    const s = raw != null ? String(raw).trim() : '';
+    return s || fallback;
+  };
+
   const expectedInteractionIds = (slide: any): string[] => {
     if (!slide) return [];
-    const d = slide.data || slide.interactions?.[0] || {};
+    const d = slide.data || {};
+    const ix = slide.interactions?.[0] || {};
     switch (slide.type) {
       case 'hotspot':
-        return (d.points || d.hotspots || []).map((p: any, i: number) => String(p.id || `hs-${i}`));
+        return (d.points || d.hotspots || ix.points || ix.hotspots || []).map((p: any, i: number) =>
+          normItemId(p.id, `hs-${i}`)
+        );
       case 'accordion':
       case 'click-reveal':
-        return (d.items || []).map((it: any, i: number) => String(it.id || `acc-${i}`));
+        return (d.items || ix.items || []).map((it: any, i: number) =>
+          normItemId(it.id, slide.type === 'click-reveal' ? `cr-${i}` : `acc-${i}`)
+        );
       case 'timeline':
-        return (d.events || []).map((ev: any, i: number) => String(ev.id || `ev-${i}`));
+        return (d.events || ix.events || []).map((ev: any, i: number) =>
+          normItemId(ev.id, `ev-${i}`)
+        );
       case 'tabbed-horizontal':
       case 'tabbed-vertical':
-        return (d.tabs || d.items || []).map((t: any, i: number) => String(t.id || `tab-${i}`));
+        return (d.tabs || d.items || ix.tabs || ix.items || []).map((t: any, i: number) =>
+          normItemId(t.id, `tab-${i}`)
+        );
       case 'carousel-panel':
-        return (d.cards || []).map((c: any, i: number) => String(c.id || `card-${i}`));
+        return (d.cards || d.items || ix.cards || ix.items || []).map((c: any, i: number) =>
+          normItemId(c.id, `card-${i}`)
+        );
       case 'flashcards':
-        return (d.cards || []).map((c: any, i: number) => String(c.id || `fc-${i}`));
+        return (d.cards || ix.cards || []).map((c: any, i: number) =>
+          normItemId(c.id, `fc-${i}`)
+        );
       default:
         return [];
     }
@@ -911,6 +931,7 @@ export default function App() {
       return sentences.slice(0, 2).join(' ').trim().slice(0, 200);
     })(),
     narration: `Welcome to ${course.title}. ${course.description || ''}`.trim(),
+    coverImage: (course as any).coverImage || courseBg || undefined,
   } as Slide : null as any;
   const closingVirtualSlide: Slide = {
     id: '__closing__',
@@ -965,6 +986,43 @@ export default function App() {
     const explored = new Set(exploredBySlide[currentSlide.id] || []);
     return expected.every(id => explored.has(id));
   };
+
+  const interactionProgressLabel = (() => {
+    if (!requireInteractionsComplete || navigationMode === 'free' || !currentSlide) return null;
+    const expected = expectedInteractionIds(currentSlide);
+    if (expected.length === 0) return null;
+    const explored = new Set(exploredBySlide[currentSlide.id] || []);
+    const done = expected.filter(id => explored.has(id)).length;
+    if (done >= expected.length) return null;
+    return `Explore all parts to continue (${done}/${expected.length})`;
+  })();
+
+  /** TOC-aligned slide refs (1.1 = overview when enabled, then content slides) */
+  const tocRefBySlideId = React.useMemo(() => {
+    const map = new Map<string, string>();
+    if (!course?.modules) return map;
+    course.modules.forEach((mod: any, mi: number) => {
+      let n = 1;
+      if (includeModuleOverviewSlides) {
+        map.set(`__module-overview-${mi + 1}__`, `${mi + 1}.${n++}`);
+      }
+      (mod.slides || []).forEach((s: any) => {
+        if (s?.id) map.set(s.id, `${mi + 1}.${n++}`);
+      });
+    });
+    return map;
+  }, [course, includeModuleOverviewSlides]);
+
+  const qcReportWithTocRefs = React.useMemo(() => {
+    if (!qcReport) return null;
+    return {
+      ...qcReport,
+      issues: qcReport.issues.map(i => ({
+        ...i,
+        slideRef: tocRefBySlideId.get(i.slideId) || i.slideRef,
+      })),
+    };
+  }, [qcReport, tocRefBySlideId]);
 
   const canNavigateTo = (targetIdx: number): boolean => {
     const isExamIntro    = targetIdx === examIntroIndex;
@@ -1175,6 +1233,7 @@ export default function App() {
     );
     setIncludeSummarySlides(saved.includeSummarySlides ?? true);
     setSlideCount(saved.slideCount);
+    setImageMode(saved.imageMode ?? 'ai-title');
   };
 
   const collectCurrentSettings = (): SavedCourseSettings => ({
@@ -1191,6 +1250,7 @@ export default function App() {
     includeModuleOverviewSlides,
     includeSummarySlides,
     slideCount,
+    imageMode,
   });
 
   const persistCourseSettings = () => {
@@ -1803,10 +1863,34 @@ export default function App() {
       setExamQuestions([]);
     }
 
-    setIsGeneratingImages(true);
-    generateModuleImages(stamped, (slideId, imageDataUrl) => {
-      setCourse((prev: any) => prev ? applyCoverImageToCourse(prev, slideId, imageDataUrl) : prev);
-    }).finally(() => setIsGeneratingImages(false));
+    // Imagery per Course Settings
+    const wantsAiTitle = imageMode === 'ai-title' || imageMode === 'ai-title-and-source';
+    const wantsSource = imageMode === 'source' || imageMode === 'ai-title-and-source';
+
+    if (wantsSource && sourceImages.length > 0) {
+      const withSource = attachSourceImagesToCourse(stamped, sourceImages);
+      setCourse(withSource);
+      setOriginalCourse(withSource);
+    }
+
+    if (wantsAiTitle) {
+      setIsGeneratingImages(true);
+      generateCourseCoverImage(stamped.title || 'Course', stamped.description)
+        .then((url) => {
+          setCourse((prev: any) => prev ? { ...prev, coverImage: url } : prev);
+          setOriginalCourse((prev: any) => prev ? { ...prev, coverImage: url } : prev);
+          setCourseBg(url);
+        })
+        .catch((err) => console.warn('[ImageService] Cover generation failed:', err))
+        .finally(() => setIsGeneratingImages(false));
+    } else if (imageMode === 'none') {
+      setIsGeneratingImages(false);
+    } else {
+      setIsGeneratingImages(true);
+      generateModuleImages(stamped, (slideId, imageDataUrl) => {
+        setCourse((prev: any) => prev ? applyCoverImageToCourse(prev, slideId, imageDataUrl) : prev);
+      }).finally(() => setIsGeneratingImages(false));
+    }
 
     if (voiceOverEnabled) {
       generateTTS(stamped, setCourse, ttsVoice);
@@ -2453,7 +2537,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                 </div>
                 <div className="flex gap-3 mt-6 justify-end">
                   <button
-                    onClick={() => { setShowQcPublishWarning(false); setQcModalOpen(true); }}
+                    onClick={() => { setShowQcPublishWarning(false); setQcFocusSlideId(null); setQcModalOpen(true); }}
                     className="px-4 py-2 rounded-xl border border-slate-700 text-slate-300 hover:text-white text-sm font-bold transition-all hover:bg-slate-800"
                   >
                     Review QC Items
@@ -2536,11 +2620,12 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
           {/* QC Track Changes Modal — overlays preview, persists across open/close */}
           <QCTrackChangesModal
             open={qcModalOpen}
-            report={qcReport}
+            report={qcReportWithTocRefs}
             loading={qcLoading}
             loadingPhase={qcPhase}
             confirmed={qcConfirmed}
             declined={qcDeclined}
+            focusSlideId={qcFocusSlideId}
             onConfirm={(id) => {
               setQcConfirmed(prev => new Set([...prev, id]));
               setQcDeclined(prev => { const n = new Set(prev); n.delete(id); return n; });
@@ -2557,7 +2642,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
               setQcDeclined(prev => new Set([...prev, ...ids]));
               setQcConfirmed(prev => { const n = new Set(prev); ids.forEach(id => n.delete(id)); return n; });
             }}
-            onClose={() => setQcModalOpen(false)}
+            onClose={() => { setQcModalOpen(false); setQcFocusSlideId(null); }}
             onGoToSlide={(moduleIndex, slideIndex) => {
               const slideId = course?.modules?.[moduleIndex]?.slides?.[slideIndex]?.id;
               if (slideId) {
@@ -2993,6 +3078,8 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                 setVoiceOverEnabled={setVoiceOverEnabled}
                 ttsVoice={ttsVoice}
                 setTtsVoice={setTtsVoice}
+                imageMode={imageMode}
+                setImageMode={setImageMode}
                 previewingVoice={previewingVoice}
                 onPreviewVoice={previewVoice}
                 outlineDraft={outlineDraft}
@@ -3114,6 +3201,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                             ? `Quality — ${pendingCount} item${pendingCount !== 1 ? 's' : ''} pending review`
                             : 'Quality — scan for spelling, grammar, and formatting issues'}
                           onClick={async () => {
+                            setQcFocusSlideId(null);
                             if (qcReport && hasPending) {
                               setQcModalOpen(true);
                               return;
@@ -3430,7 +3518,10 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                  return (
                                    <button
                                      type="button"
-                                     onClick={() => setQcModalOpen(true)}
+                                     onClick={() => {
+                                       setQcFocusSlideId(currentSlide.id);
+                                       setQcModalOpen(true);
+                                     }}
                                      className={`absolute top-3 right-3 z-40 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg border ${
                                        pending.length
                                          ? 'bg-red-500/90 border-red-300 text-white'
@@ -3768,7 +3859,11 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                  <div className="space-y-6 w-full">
                                    <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
                                    <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
-                                   <FlashcardGrid cards={currentSlide.data?.cards || currentSlide.interactions?.[0]?.cards || []} theme={theme} />
+                                   <FlashcardGrid
+                                     cards={currentSlide.data?.cards || currentSlide.interactions?.[0]?.cards || []}
+                                     theme={theme}
+                                     onCardView={(id) => markInteractionExplored(currentSlide.id, id)}
+                                   />
                                  </div>
                                )}
                                {currentSlide?.type === 'timeline' && (
@@ -3778,12 +3873,14 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                        <SlideContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} />
                                      )}
                                      <HorizontalTimeline
-                                       events={((currentSlide.data || currentSlide.interactions?.[0] || {}).events || []).map((ev: any) => ({
+                                       events={((currentSlide.data || currentSlide.interactions?.[0] || {}).events || []).map((ev: any, idx: number) => ({
                                         ...ev,
+                                        id: (ev?.id != null && String(ev.id).trim()) ? String(ev.id) : `ev-${idx}`,
                                         content: markdownToHtml(ev.content || ''),
                                       }))}
                                        theme={theme}
                                        accentColor={slideAccentColor}
+                                       onEventOpen={(id) => markInteractionExplored(currentSlide.id, id)}
                                      />
                                    </div>
                                  )}
@@ -3861,7 +3958,10 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                    <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
                                    <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                    <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
-                                     <TabbedHorizontal tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []} />
+                                     <TabbedHorizontal
+                                       tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []}
+                                       onTabView={(id) => markInteractionExplored(currentSlide.id, id)}
+                                     />
                                    </div>
                                  </div>
                                )}
@@ -3869,7 +3969,11 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                  <div className="space-y-6 w-full">
                                    <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
                                    <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
-                                   <TabbedVertical tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []} theme={theme} />
+                                   <TabbedVertical
+                                     tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []}
+                                     theme={theme}
+                                     onTabView={(id) => markInteractionExplored(currentSlide.id, id)}
+                                   />
                                  </div>
                                )}
                                {currentSlide?.type === 'folder-explorer' && (
@@ -3886,7 +3990,10 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                    <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
                                    <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                    <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
-                                     <CarouselPanel cards={currentSlide.data?.cards || currentSlide.data?.items || currentSlide.interactions?.[0]?.cards || currentSlide.interactions?.[0]?.items || []} />
+                                     <CarouselPanel
+                                       cards={currentSlide.data?.cards || currentSlide.data?.items || currentSlide.interactions?.[0]?.cards || currentSlide.interactions?.[0]?.items || []}
+                                       onCardView={(id) => markInteractionExplored(currentSlide.id, id)}
+                                     />
                                    </div>
                                  </div>
                                )}
@@ -3898,7 +4005,11 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                    <div className="space-y-6 w-full">
                                      <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
                                      {currentSlide.content && <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />}
-                                     <ClickRevealInteraction items={crItems} theme={theme as any} />
+                                     <ClickRevealInteraction
+                                       items={crItems}
+                                       theme={theme as any}
+                                       onItemReveal={(id) => markInteractionExplored(currentSlide.id, id)}
+                                     />
                                    </div>
                                  );
                                })()}
@@ -4210,6 +4321,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                           (currentSlide?.type === 'scenario' && !scenarioCompleted) ||
                           !isCurrentSlideInteractionsComplete()
                         }
+                        disableNextReason={interactionProgressLabel}
                         disablePrev={currentSlide?.type === 'mastery-exam'}
                         volume={player.volume}
                         onVolumeChange={player.setVolume}

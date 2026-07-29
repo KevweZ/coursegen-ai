@@ -86,6 +86,55 @@ export const VerticalTimeline: React.FC<Props> = ({
 
   return (
     <div className="w-full select-none" style={{ color: textMain }}>
+      <style>{`
+        .timeline-panel-content ul,
+        .timeline-panel-content ol {
+          list-style: none !important;
+          list-style-type: none !important;
+          padding: 0 !important;
+          margin: 0.4rem 0 !important;
+        }
+        .timeline-panel-content ul ul,
+        .timeline-panel-content ol ol,
+        .timeline-panel-content ul ol,
+        .timeline-panel-content ol ul {
+          padding-left: 1rem !important;
+          margin: 0.15rem 0 !important;
+        }
+        .timeline-panel-content li {
+          position: relative;
+          display: block;
+          list-style: none !important;
+          padding-left: 1.1rem !important;
+          margin: 0.32rem 0 !important;
+          margin-left: 0 !important;
+          line-height: 1.45;
+          text-indent: 0 !important;
+        }
+        .timeline-panel-content li::marker {
+          content: '' !important;
+          font-size: 0 !important;
+        }
+        .timeline-panel-content li::before {
+          content: '' !important;
+          position: absolute;
+          left: 0;
+          top: 0.42em;
+          width: 0.42rem;
+          height: 0.42rem;
+          border-radius: 2px;
+          background: var(--accent, #0ea5e9);
+          opacity: 0.95;
+          box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent, #0ea5e9) 35%, transparent);
+        }
+        .timeline-panel-content ul ul li::before,
+        .timeline-panel-content ol ol li::before {
+          border-radius: 50%;
+          width: 0.34rem;
+          height: 0.34rem;
+          opacity: 0.75;
+        }
+      `}</style>
 
       {/* Progress bar */}
       <div className="flex items-center gap-3 mb-5">
@@ -257,8 +306,11 @@ export const VerticalTimeline: React.FC<Props> = ({
                         }}
                       >
                         <div
-                          className="text-sm leading-relaxed timeline-panel-content [&_ul]:my-1 [&_ul]:pl-4 [&_ul]:list-disc [&_li]:my-1 [&_li]:pl-0.5 [&_ul_ul]:pl-5 [&_ul_ul]:list-[circle] [&_strong]:font-bold"
-                          style={{ color: textSub, ['--tw-prose-bullets' as any]: color }}
+                          className="text-sm leading-relaxed timeline-panel-content"
+                          style={{
+                            color: textSub,
+                            ['--accent' as string]: color,
+                          }}
                           dangerouslySetInnerHTML={{ __html: ev.content }}
                         />
                       </motion.div>

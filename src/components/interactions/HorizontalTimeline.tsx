@@ -27,6 +27,7 @@ interface Props {
   events?: HorizontalTimelineEvent[];
   theme?: 'light' | 'dark' | 'unified';
   accentColor?: string;
+  onEventOpen?: (eventId: string) => void;
 }
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -44,6 +45,7 @@ export const HorizontalTimeline: React.FC<Props> = ({
   events = [],
   theme = 'light',
   accentColor = '#4f46e5',
+  onEventOpen,
 }) => {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [visited, setVisited]   = useState<Set<string>>(new Set());
@@ -97,7 +99,10 @@ export const HorizontalTimeline: React.FC<Props> = ({
   const select = (id: string) => {
     const next = activeId === id ? null : id;
     setActiveId(next);
-    if (next) setVisited(v => new Set([...v, next]));
+    if (next) {
+      setVisited(v => new Set([...v, next]));
+      onEventOpen?.(next);
+    }
   };
 
   const activeEvent = events.find(e => e.id === activeId);
