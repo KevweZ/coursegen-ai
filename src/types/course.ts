@@ -178,12 +178,14 @@ export interface ExamConfig {
   questionMode: 'total' | 'per-module';
   questionCount: number;
   allowRetake: boolean;
-  /** Mastery quiz + knowledge-check question/activity types */
+  /** Mastery Quiz question/activity types */
   questionTypes: ExamQuestionType[];
   presentationMode: ExamPresentationMode;   // default 'one-at-a-time'
   /** How many in-module Knowledge Checks to generate */
   knowledgeCheckMode?: 'total' | 'per-module';
   knowledgeCheckCount?: number;
+  /** In-module Knowledge Check question/activity types */
+  knowledgeCheckQuestionTypes?: ExamQuestionType[];
 }
 
 /** When Linear/Restricted: require exploring interactions before Next */

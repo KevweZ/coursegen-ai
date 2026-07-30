@@ -796,10 +796,11 @@ export default function App() {
     questionMode: 'total',
     questionCount: 10,
     allowRetake: true,
-    questionTypes: ['mc', 'ma', 'tf', 'sorting', 'matching'],
+    questionTypes: ['mc', 'ma', 'tf'],
     presentationMode: 'one-at-a-time',
     knowledgeCheckMode: 'per-module',
     knowledgeCheckCount: 1,
+    knowledgeCheckQuestionTypes: ['mc', 'ma', 'tf', 'sorting', 'matching'],
   });
   const [examQuestions, setExamQuestions] = useState<ExamQuestion[]>([]);
   const [examPhase, setExamPhase] = useState<'idle' | 'active' | 'complete'>('idle');
@@ -1287,7 +1288,7 @@ export default function App() {
         includeKnowledgeChecks: true,
         knowledgeCheckMode: examConfig.knowledgeCheckMode || 'per-module',
         knowledgeCheckCount: examConfig.knowledgeCheckCount ?? 1,
-        quizActivityTypes: (examConfig.questionTypes || []).filter(t =>
+        quizActivityTypes: (examConfig.knowledgeCheckQuestionTypes || examConfig.questionTypes || []).filter(t =>
           ['sorting', 'matching', 'drop-targets', 'mc', 'ma', 'tf'].includes(t)
         ),
       }
@@ -1389,7 +1390,7 @@ export default function App() {
               includeKnowledgeChecks: true,
               knowledgeCheckMode: outlineExamCfg.knowledgeCheckMode || 'per-module',
               knowledgeCheckCount: outlineExamCfg.knowledgeCheckCount ?? 1,
-              quizActivityTypes: outlineExamCfg.questionTypes,
+              quizActivityTypes: outlineExamCfg.knowledgeCheckQuestionTypes || outlineExamCfg.questionTypes,
             }
           );
           setOutlineDraft(draft);
@@ -1442,7 +1443,7 @@ export default function App() {
             includeKnowledgeChecks: true,
             knowledgeCheckMode: outlineExamCfg.knowledgeCheckMode || 'per-module',
             knowledgeCheckCount: outlineExamCfg.knowledgeCheckCount ?? 1,
-            quizActivityTypes: outlineExamCfg.questionTypes,
+            quizActivityTypes: outlineExamCfg.knowledgeCheckQuestionTypes || outlineExamCfg.questionTypes,
           }
         );
         setOutlineDraft(draft);
@@ -1812,7 +1813,7 @@ export default function App() {
           includeKnowledgeChecks: true,
           knowledgeCheckMode: examConfig.knowledgeCheckMode || 'per-module',
           knowledgeCheckCount: examConfig.knowledgeCheckCount ?? 1,
-          quizActivityTypes: examConfig.questionTypes,
+          quizActivityTypes: examConfig.knowledgeCheckQuestionTypes || examConfig.questionTypes,
         }
       );
       setOutlineDraft(draft);

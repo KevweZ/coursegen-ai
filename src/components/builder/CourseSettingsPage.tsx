@@ -65,7 +65,7 @@ export interface CourseSettingsPageProps {
   onFormatChange: (fmt: string) => void;
   onSuggestObjectives: () => void;
 
-  // Quizzes
+  // Assessments (Mastery Quiz + Knowledge Checks)
   examConfig: ExamConfig;
   setExamConfig: React.Dispatch<React.SetStateAction<ExamConfig>>;
 
@@ -140,7 +140,7 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
   const allTabs: { id: SettingsTab; label: string; icon: React.ReactNode; hidden?: boolean }[] = [
     { id: 'topic', label: 'Topic', icon: <BookOpen className="w-3.5 h-3.5" />, hidden: !showTopic },
     { id: 'objectives', label: 'Objectives', icon: <Target className="w-3.5 h-3.5" /> },
-    { id: 'quizzes', label: 'Quizzes', icon: <ListChecks className="w-3.5 h-3.5" /> },
+    { id: 'quizzes', label: 'Assessments', icon: <ListChecks className="w-3.5 h-3.5" /> },
     { id: 'navigation', label: 'Navigation', icon: <Navigation className="w-3.5 h-3.5" /> },
     { id: 'interactions', label: 'Interactions', icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
     { id: 'games', label: 'Game Modes', icon: <Gamepad2 className="w-3.5 h-3.5" /> },
@@ -544,102 +544,143 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
           )}
 
           {activeTab === 'quizzes' && (
-            <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-6 w-full space-y-5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-indigo-500/20 flex items-center justify-center"><Target className="w-5 h-5 text-indigo-400" /></div>
-                  <div>
-                    <h3 className="text-xl font-bold text-white">Mastery Quiz</h3>
-                    <p className="text-xs text-slate-500">Final assessment appended after course content</p>
+            <div className="space-y-6">
+              <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-6 w-full space-y-5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-indigo-500/20 flex items-center justify-center"><Target className="w-5 h-5 text-indigo-400" /></div>
+                    <div>
+                      <h3 className="text-xl font-bold text-white">Mastery Quiz</h3>
+                      <p className="text-xs text-slate-500">Final assessment appended after course content</p>
+                    </div>
+                  </div>
+                  <div
+                    onClick={() => props.setExamConfig(c => ({ ...c, enabled: !c.enabled }))}
+                    className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${props.examConfig.enabled ? 'bg-indigo-500' : 'bg-slate-700'}`}
+                  >
+                    <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${props.examConfig.enabled ? 'translate-x-6' : ''}`} />
                   </div>
                 </div>
-                <div
-                  onClick={() => props.setExamConfig(c => ({ ...c, enabled: !c.enabled }))}
-                  className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${props.examConfig.enabled ? 'bg-indigo-500' : 'bg-slate-700'}`}
-                >
-                  <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${props.examConfig.enabled ? 'translate-x-6' : ''}`} />
-                </div>
-              </div>
-              {props.examConfig.enabled && (
-                <div className="space-y-5 pt-3 border-t border-slate-800">
-                  <div>
-                    <div className="flex justify-between mb-2">
-                      <span className="text-sm font-bold text-slate-300">Passing Score</span>
-                      <span className="text-indigo-400 font-extrabold">{props.examConfig.passingScore}%</span>
+                {props.examConfig.enabled && (
+                  <div className="space-y-5 pt-3 border-t border-slate-800">
+                    <div>
+                      <div className="flex justify-between mb-2">
+                        <span className="text-sm font-bold text-slate-300">Passing Score</span>
+                        <span className="text-indigo-400 font-extrabold">{props.examConfig.passingScore}%</span>
+                      </div>
+                      <input
+                        type="range" min="50" max="100"
+                        value={props.examConfig.passingScore}
+                        onChange={e => props.setExamConfig(c => ({ ...c, passingScore: Number(e.target.value) }))}
+                        className="w-full accent-indigo-500 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                      />
                     </div>
-                    <input
-                      type="range" min="50" max="100"
-                      value={props.examConfig.passingScore}
-                      onChange={e => props.setExamConfig(c => ({ ...c, passingScore: Number(e.target.value) }))}
-                      className="w-full accent-indigo-500 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer"
-                    />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-slate-300 mb-2">Question Count Mode</p>
-                    <div className="flex gap-2">
-                      {(['total', 'per-module'] as const).map(m => (
-                        <button
-                          key={m}
-                          type="button"
-                          onClick={() => props.setExamConfig(c => ({ ...c, questionMode: m }))}
-                          className={`flex-1 py-2 rounded-lg text-sm font-bold border transition-all ${props.examConfig.questionMode === m ? 'bg-indigo-600/30 border-indigo-500/50 text-indigo-300' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}
-                        >
-                          {m === 'total' ? 'Total' : 'Per Module'}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-slate-300 mb-2">
-                      {props.examConfig.questionMode === 'total' ? 'Total Questions' : 'Questions per Module'}
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <button type="button" onClick={() => props.setExamConfig(c => ({ ...c, questionCount: Math.max(1, c.questionCount - 1) }))} className="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 font-extrabold text-xl">-</button>
-                      <span className="text-white font-extrabold text-xl w-8 text-center">{props.examConfig.questionCount}</span>
-                      <button type="button" onClick={() => props.setExamConfig(c => ({ ...c, questionCount: c.questionCount + 1 }))} className="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 font-extrabold text-xl">+</button>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-slate-300 mb-1">Question Types</p>
-                    <p className="text-xs text-slate-500 mb-2">Used for the Mastery Quiz and in-module Knowledge Checks. Assessment activities (sorting, matching) appear only as Knowledge Check slides — never as regular content.</p>
-                    <div className="flex gap-2 flex-wrap">
-                      {([
-                        ['mc', 'Multiple Choice'],
-                        ['ma', 'Multiple Answer'],
-                        ['tf', 'True / False'],
-                        ['sorting', 'Sorting'],
-                        ['matching', 'Matching'],
-                        ['drop-targets', 'Drop Targets'],
-                      ] as [string, string][]).map(([type, label]) => {
-                        const active = props.examConfig.questionTypes.includes(type as any);
-                        return (
+                    <div>
+                      <p className="text-sm font-bold text-slate-300 mb-2">Question Count Mode</p>
+                      <div className="flex gap-2">
+                        {(['total', 'per-module'] as const).map(m => (
                           <button
-                            key={type}
+                            key={m}
                             type="button"
-                            onClick={() => props.setExamConfig(c => ({
-                              ...c,
-                              questionTypes: active
-                                ? (c.questionTypes.filter(t => t !== type) as any)
-                                : [...c.questionTypes, type as any],
-                            }))}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${active ? 'bg-indigo-600/30 border-indigo-500/40 text-indigo-300' : 'bg-slate-800 border-slate-700 text-slate-500'}`}
+                            onClick={() => props.setExamConfig(c => ({ ...c, questionMode: m }))}
+                            className={`flex-1 py-2 rounded-lg text-sm font-bold border transition-all ${props.examConfig.questionMode === m ? 'bg-indigo-600/30 border-indigo-500/50 text-indigo-300' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}
+                          >
+                            {m === 'total' ? 'Total' : 'Per Module'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-slate-300 mb-2">
+                        {props.examConfig.questionMode === 'total' ? 'Total Questions' : 'Questions per Module'}
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <button type="button" onClick={() => props.setExamConfig(c => ({ ...c, questionCount: Math.max(1, c.questionCount - 1) }))} className="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 font-extrabold text-xl">-</button>
+                        <span className="text-white font-extrabold text-xl w-8 text-center">{props.examConfig.questionCount}</span>
+                        <button type="button" onClick={() => props.setExamConfig(c => ({ ...c, questionCount: c.questionCount + 1 }))} className="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 font-extrabold text-xl">+</button>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-slate-300 mb-1">Question Types</p>
+                      <p className="text-xs text-slate-500 mb-2">Formats used in the Mastery Quiz only.</p>
+                      <div className="flex gap-2 flex-wrap">
+                        {([
+                          ['mc', 'Multiple Choice'],
+                          ['ma', 'Multiple Answer'],
+                          ['tf', 'True / False'],
+                          ['sorting', 'Sorting'],
+                          ['matching', 'Matching'],
+                          ['drop-targets', 'Drop Targets'],
+                        ] as [string, string][]).map(([type, label]) => {
+                          const active = props.examConfig.questionTypes.includes(type as any);
+                          return (
+                            <button
+                              key={type}
+                              type="button"
+                              onClick={() => props.setExamConfig(c => ({
+                                ...c,
+                                questionTypes: active
+                                  ? (c.questionTypes.filter(t => t !== type) as any)
+                                  : [...c.questionTypes, type as any],
+                              }))}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${active ? 'bg-indigo-600/30 border-indigo-500/40 text-indigo-300' : 'bg-slate-800 border-slate-700 text-slate-500'}`}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-slate-300 mb-2">Presentation Mode</p>
+                      <div className="flex gap-2">
+                        {([['one-at-a-time', 'One at a Time'], ['scroll-all', 'All at Once']] as [string, string][]).map(([m, label]) => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => props.setExamConfig(c => ({ ...c, presentationMode: m as any }))}
+                            className={`flex-1 py-2 rounded-lg text-sm font-bold border transition-all ${props.examConfig.presentationMode === m ? 'bg-purple-600/30 border-purple-500/50 text-purple-300' : 'bg-slate-800 border-slate-700 text-slate-400'}`}
                           >
                             {label}
                           </button>
-                        );
-                      })}
+                        ))}
+                      </div>
                     </div>
+                    <label className="flex items-center justify-between cursor-pointer">
+                      <div>
+                        <p className="text-sm font-bold text-slate-300">Allow Retake on Fail</p>
+                        <p className="text-xs text-slate-600">Disabled = learner must restart full course</p>
+                      </div>
+                      <div
+                        onClick={() => props.setExamConfig(c => ({ ...c, allowRetake: !c.allowRetake }))}
+                        className={`w-12 h-6 rounded-full relative cursor-pointer ${props.examConfig.allowRetake ? 'bg-emerald-500' : 'bg-slate-700'}`}
+                      >
+                        <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${props.examConfig.allowRetake ? 'translate-x-6' : ''}`} />
+                      </div>
+                    </label>
                   </div>
+                )}
+              </div>
+
+              <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-6 w-full space-y-5">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-pink-500/20 flex items-center justify-center"><ListChecks className="w-5 h-5 text-pink-400" /></div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">Knowledge Checks</h3>
+                    <p className="text-xs text-slate-500">In-module practice assessments (separate from Mastery Quiz)</p>
+                  </div>
+                </div>
+                <div className="space-y-5 pt-3 border-t border-slate-800">
                   <div>
                     <p className="text-sm font-bold text-slate-300 mb-2">Knowledge Check Count Mode</p>
-                    <p className="text-xs text-slate-500 mb-2">How many in-module Knowledge Checks to generate (separate from Mastery Quiz question count).</p>
+                    <p className="text-xs text-slate-500 mb-2">How many Knowledge Checks to generate across the course.</p>
                     <div className="flex gap-2 mb-3">
                       {(['total', 'per-module'] as const).map(m => (
                         <button
                           key={m}
                           type="button"
                           onClick={() => props.setExamConfig(c => ({ ...c, knowledgeCheckMode: m }))}
-                          className={`flex-1 py-2 rounded-lg text-sm font-bold border transition-all ${(props.examConfig.knowledgeCheckMode || 'per-module') === m ? 'bg-indigo-600/30 border-indigo-500/50 text-indigo-300' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}
+                          className={`flex-1 py-2 rounded-lg text-sm font-bold border transition-all ${(props.examConfig.knowledgeCheckMode || 'per-module') === m ? 'bg-pink-600/30 border-pink-500/50 text-pink-300' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}
                         >
                           {m === 'total' ? 'Total' : 'Per Module'}
                         </button>
@@ -669,34 +710,44 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                     </div>
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-slate-300 mb-2">Presentation Mode</p>
-                    <div className="flex gap-2">
-                      {([['one-at-a-time', 'One at a Time'], ['scroll-all', 'All at Once']] as [string, string][]).map(([m, label]) => (
-                        <button
-                          key={m}
-                          type="button"
-                          onClick={() => props.setExamConfig(c => ({ ...c, presentationMode: m as any }))}
-                          className={`flex-1 py-2 rounded-lg text-sm font-bold border transition-all ${props.examConfig.presentationMode === m ? 'bg-purple-600/30 border-purple-500/50 text-purple-300' : 'bg-slate-800 border-slate-700 text-slate-400'}`}
-                        >
-                          {label}
-                        </button>
-                      ))}
+                    <p className="text-sm font-bold text-slate-300 mb-1">Question Types</p>
+                    <p className="text-xs text-slate-500 mb-2">Formats used for in-module Knowledge Checks only. Sorting, matching, and similar activities appear as Knowledge Check slides — never as regular content.</p>
+                    <div className="flex gap-2 flex-wrap">
+                      {([
+                        ['mc', 'Multiple Choice'],
+                        ['ma', 'Multiple Answer'],
+                        ['tf', 'True / False'],
+                        ['sorting', 'Sorting'],
+                        ['matching', 'Matching'],
+                        ['drop-targets', 'Drop Targets'],
+                      ] as [string, string][]).map(([type, label]) => {
+                        const kcTypes = props.examConfig.knowledgeCheckQuestionTypes
+                          ?? props.examConfig.questionTypes
+                          ?? ['mc', 'ma', 'tf'];
+                        const active = kcTypes.includes(type as any);
+                        return (
+                          <button
+                            key={type}
+                            type="button"
+                            onClick={() => props.setExamConfig(c => {
+                              const current = c.knowledgeCheckQuestionTypes ?? c.questionTypes ?? ['mc', 'ma', 'tf'];
+                              return {
+                                ...c,
+                                knowledgeCheckQuestionTypes: active
+                                  ? (current.filter(t => t !== type) as any)
+                                  : [...current, type as any],
+                              };
+                            })}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${active ? 'bg-pink-600/30 border-pink-500/40 text-pink-300' : 'bg-slate-800 border-slate-700 text-slate-500'}`}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
-                  <label className="flex items-center justify-between cursor-pointer">
-                    <div>
-                      <p className="text-sm font-bold text-slate-300">Allow Retake on Fail</p>
-                      <p className="text-xs text-slate-600">Disabled = learner must restart full course</p>
-                    </div>
-                    <div
-                      onClick={() => props.setExamConfig(c => ({ ...c, allowRetake: !c.allowRetake }))}
-                      className={`w-12 h-6 rounded-full relative cursor-pointer ${props.examConfig.allowRetake ? 'bg-emerald-500' : 'bg-slate-700'}`}
-                    >
-                      <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${props.examConfig.allowRetake ? 'translate-x-6' : ''}`} />
-                    </div>
-                  </label>
                 </div>
-              )}
+              </div>
             </div>
           )}
 
