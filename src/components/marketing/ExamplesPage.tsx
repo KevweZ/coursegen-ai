@@ -3,12 +3,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Zap, ArrowLeft, ArrowRight, ChevronLeft, ChevronRight,
   Sparkles, CheckCircle2,
-  Layers, Gamepad2, Globe, BookOpen, Image, Crop,
-  Target, Move
+  Layers, Globe, BookOpen, Image, Crop,
+  Move
 } from 'lucide-react';
 
-// ── Animated Accordion Preview ────────────────────────────────────────────────
-function AccordionPreview() {
+// ── Animated Click & Reveal Preview ───────────────────────────────────────────
+function ClickRevealPreview() {
   const [open, setOpen] = useState(true);
   useEffect(() => {
     const id = setInterval(() => setOpen(o => !o), 3000);
@@ -38,7 +38,7 @@ function AccordionPreview() {
             <AnimatePresence initial={false}>
               {open && (
                 <motion.div
-                  key="accordion-body"
+                  key="reveal-body"
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
@@ -138,137 +138,6 @@ function FlashcardPreview() {
   );
 }
 
-
-// ── Animated Jeopardy Preview ─────────────────────────────────────────────────
-function JeopardyPreview() {
-  const [phase, setPhase] = useState(0);
-  const durations = [2200, 900, 2200, 2200];
-  useEffect(() => {
-    const id = setTimeout(() => setPhase(p => (p + 1) % 4), durations[phase]);
-    return () => clearTimeout(id);
-  }, [phase]);
-
-  const score    = phase >= 3 ? 100 : 0;
-  const maxScore = 2500;
-  const target   = 2000;
-  const pct      = Math.round((score / target) * 100);
-  const barPct   = Math.round((score / maxScore) * 100);
-
-  const cells = [
-    { v: 100, stars: 1, col: 0 },
-    { v: 100, stars: 1, col: 1 },
-    { v: 100, stars: 1, col: 2 },
-    { v: 200, stars: 2, col: 0, daily: true },
-    { v: 200, stars: 2, col: 1 },
-    { v: 200, stars: 2, col: 2 },
-    { v: 300, stars: 3, col: 0 },
-    { v: 300, stars: 3, col: 1 },
-    { v: 300, stars: 3, col: 2 },
-  ];
-
-  return (
-    <div className="space-y-2.5">
-      <div className="flex gap-2">
-        <div className="flex-1 bg-indigo-900/60 border border-indigo-500/40 rounded-xl px-3 py-2 text-center">
-          <div className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-0.5">Your Score</div>
-          <motion.div key={score} initial={{ scale: 1.3, color: '#facc15' }} animate={{ scale: 1, color: '#ffffff' }} transition={{ duration: 0.4 }} className="text-xl font-black">
-            ${score.toLocaleString()}
-          </motion.div>
-        </div>
-        <div className="flex-1 bg-amber-900/40 border border-amber-500/40 rounded-xl px-3 py-2 text-center">
-          <div className="flex items-center justify-center gap-1 mb-0.5">
-            <Target className="w-2.5 h-2.5 text-amber-400" />
-            <div className="text-[9px] font-black text-amber-400 uppercase tracking-widest">Target</div>
-          </div>
-          <div className="text-xl font-black text-amber-300">${target.toLocaleString()}</div>
-        </div>
-        <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl px-3 py-2 text-center min-w-[56px]">
-          <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-0.5">Max</div>
-          <div className="text-base font-black text-slate-400">${maxScore.toLocaleString()}</div>
-        </div>
-      </div>
-      <div>
-        <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden border border-slate-700 mb-1">
-          <motion.div className="h-full bg-indigo-500 rounded-full" animate={{ width: `${barPct}%` }} transition={{ duration: 0.6, ease: 'easeOut' }} />
-        </div>
-        <div className="flex justify-between text-[9px] font-bold text-slate-500">
-          <span>$0</span>
-          <span className="text-amber-400">Target: ${target.toLocaleString()} ({pct}%)</span>
-          <span>${maxScore.toLocaleString()}</span>
-        </div>
-      </div>
-      <div className="flex items-center gap-2 flex-wrap text-[8px] font-bold bg-slate-800/50 border border-slate-700/40 rounded-lg px-2 py-1.5">
-        <span className="text-slate-600 uppercase tracking-wider shrink-0">⭐ Difficulty:</span>
-        <span className="text-emerald-400">★☆☆☆ Beginner</span>
-        <span className="text-yellow-400">★★☆☆ Inter.</span>
-        <span className="text-orange-400">★★★☆ Adv.</span>
-        <span className="text-red-400">★★★★ Expert</span>
-      </div>
-      <div className="relative">
-        <div className="grid grid-cols-3 gap-1.5">
-          {['Safety', 'Compliance', 'Procedures'].map(c => (
-            <div key={c} className="bg-indigo-900/80 border-2 border-indigo-500/60 text-indigo-100 text-[9px] font-black uppercase text-center py-2 px-1 rounded-t-lg">{c}</div>
-          ))}
-          {cells.map((cell, i) => {
-            const isTarget = i === 0;
-            const answered = isTarget && phase >= 3;
-            const selected = isTarget && phase === 1;
-            return (
-              <motion.div key={i}
-                animate={selected ? { scale: [1, 1.08, 1.08], boxShadow: ['0 0 0px transparent', '0 0 18px rgba(250,204,21,0.6)', '0 0 18px rgba(250,204,21,0.6)'] } : { scale: 1, boxShadow: '0 0 0px transparent' }}
-                transition={{ duration: 0.4 }}
-                className={`flex flex-col items-center justify-center py-2.5 rounded-lg text-center border-2 cursor-pointer transition-all ${
-                  answered ? 'bg-slate-800 border-slate-700 opacity-25 cursor-not-allowed'
-                  : selected ? 'bg-yellow-500/30 border-yellow-400'
-                  : 'bg-indigo-600 border-indigo-400 hover:scale-105'
-                }`}
-              >
-                {!answered && (
-                  <>
-                    <span className="text-yellow-400 text-base font-black">${cell.v}</span>
-                    {cell.daily && <span className="text-[7px] font-black text-yellow-300 uppercase tracking-widest">Daily Double</span>}
-                    <span className={`text-[8px] font-black ${['', 'text-emerald-400', 'text-yellow-400', 'text-orange-400'][cell.stars]}`}>
-                      {'★'.repeat(cell.stars)}{'☆'.repeat(3 - cell.stars)}
-                    </span>
-                  </>
-                )}
-              </motion.div>
-            );
-          })}
-        </div>
-        <AnimatePresence>
-          {phase === 2 && (
-            <motion.div key="question" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} transition={{ duration: 0.25 }}
-              className="absolute inset-0 bg-slate-950/95 rounded-xl border-2 border-yellow-500/60 p-3 flex flex-col gap-2 z-10"
-            >
-              <div className="text-[9px] font-black text-yellow-400 uppercase tracking-widest">Safety — $100</div>
-              <p className="text-white text-[10px] font-bold leading-snug">
-                What is the first step when you notice a safety hazard in the workplace?
-              </p>
-              <div className="space-y-1.5 mt-1">
-                {[
-                  { text: 'Report it to your supervisor immediately', correct: true },
-                  { text: 'Try to fix it yourself first', correct: false },
-                  { text: 'Wait until end of shift to report', correct: false },
-                ].map((opt, oi) => (
-                  <div key={oi} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border text-[9px] font-medium ${
-                    opt.correct ? 'border-emerald-500/60 bg-emerald-500/15 text-emerald-200' : 'border-slate-700 text-slate-500'
-                  }`}>
-                    <div className={`w-3 h-3 rounded-full border-2 shrink-0 flex items-center justify-center ${opt.correct ? 'border-emerald-400 bg-emerald-400' : 'border-slate-600'}`}>
-                      {opt.correct && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                    </div>
-                    {opt.text}
-                    {opt.correct && <CheckCircle2 className="w-3 h-3 text-emerald-400 ml-auto shrink-0" />}
-                  </div>
-                ))}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </div>
-  );
-}
 
 // ── Decision Simulation Preview ────────────────────────────────────────────────
 function BranchingScenarioPreview() {
@@ -523,26 +392,15 @@ function MultiImageEditorPreview() {
 // ── Slide definitions ─────────────────────────────────────────────────────────
 const SLIDES = [
   {
-    id: 'accordion',
-    label: 'Accordion',
+    id: 'click-reveal',
+    label: 'Click & Reveal',
     subtitle: 'Exploring Key Concepts',
     icon: Layers,
     accent: 'text-indigo-400',
     accentBorder: 'border-indigo-500/30',
     bg: 'from-indigo-900/20 to-slate-950',
-    component: <AccordionPreview />,
+    component: <ClickRevealPreview />,
     description: 'Present layered content in expandable sections learners control.',
-  },
-  {
-    id: 'jeopardy',
-    label: 'Jeopardy Game',
-    subtitle: 'Knowledge Check — Safety',
-    icon: Gamepad2,
-    accent: 'text-amber-400',
-    accentBorder: 'border-amber-500/30',
-    bg: 'from-amber-900/10 to-slate-950',
-    component: <JeopardyPreview />,
-    description: 'Turn assessments into competitive, score-based game show experiences.',
   },
   {
     id: 'branching',

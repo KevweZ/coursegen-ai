@@ -190,7 +190,7 @@ export function MethodologyPage({ onGetStarted, onBack }: Props) {
                 {[
                   ['Step 1', 'Enter your topic or upload your source documents (PPT, PDF, Word)'],
                   ['Step 2', 'Define learning objectives — or let AI suggest them from your content'],
-                  ['Step 3', 'Select interaction types, game modes, and assessment style'],
+                  ['Step 3', 'Select interaction types and assessment style'],
                   ['Step 4', 'AI generates full course outline with ISD-compliant structure'],
                   ['Step 5', 'AI hydrates every slide with content, narration, and interactions'],
                   ['Step 6', 'Review, edit, and export SCORM package — upload to any LMS'],
@@ -247,7 +247,7 @@ export function MethodologyPage({ onGetStarted, onBack }: Props) {
                 points: [
                   'Miller\'s 7±2 Rule — max 7 bullets per content slide',
                   'One concept per screen — no wall-of-text slides',
-                  'Progressive disclosure — accordion and tab interactions',
+                  'Progressive disclosure — click-to-reveal and tab interactions',
                   'Chunking — content grouped under ### subheadings',
                 ],
               },

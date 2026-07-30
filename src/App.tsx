@@ -63,7 +63,7 @@ import {
   DragAndDropActivity
 } from '@zomako/elearning-components/dist/elearning-components.es.js';
 import { 
-  AccordionPreview, HotspotPreview, MultipleChoicePreview, 
+  HotspotPreview, MultipleChoicePreview, 
   SortingPreview, MatchingPreview, TimelinePreview, DropTargetsPreview,
   GamePreview, ScenarioPreview
 } from './components/interactions/ExtraPreviews';
@@ -489,7 +489,7 @@ const SmartContent = ({ content, className, theme, accentColor }: { content: str
 
 // ─── Grid interaction IDs (must match the interactive-elements grid in the UI) ──
 const GRID_INTERACTION_IDS = [
-  'multiple-choice', 'multiple-answers', 'hotspot', 'accordion', 'flashcards',
+  'multiple-choice', 'multiple-answers', 'hotspot', 'flashcards',
   'timeline', 'sorting', 'matching', 'drop-targets', 'scenario',
   'tabbed-horizontal', 'tabbed-vertical', 'folder-explorer', 'carousel-panel',
   'click-reveal',
@@ -500,6 +500,7 @@ const PRESET_TO_GRID: Record<string, string> = {
   choice: 'multiple-choice',
   'drag-drop': 'drop-targets',
   'drag-drop-activity': 'drop-targets',
+  accordion: 'click-reveal', // accordion folded into click-reveal (same UX pattern)
 };
 const mapToGridIds = (ids: string[]): string[] =>
   [...new Set(ids.map(id => PRESET_TO_GRID[id] ?? id).filter(id => GRID_INTERACTION_IDS.includes(id)))];
@@ -548,6 +549,13 @@ export default function App() {
   
   const [step, setStep] = useState<AppStep>(isScormPlayer ? 'preview' : 'home');
 
+  const goHome = () => {
+    setStep('home');
+    if (typeof window !== 'undefined' && window.location.pathname !== '/upload') {
+      window.history.pushState({}, '', '/upload');
+    }
+  };
+
   // ── Handle Stripe redirect-back URLs (/payment-success, /payment-cancel)
   useEffect(() => {
     const path = window.location.pathname;
@@ -572,9 +580,32 @@ export default function App() {
     } else if (path === '/signup') {
       setPublicView('auth');
       setAuthInitialMode('signup');
+    } else if (path === '/upload') {
+      // Logged-out visitors hit auth; logged-in users land on the upload home step.
+      setPublicView('auth');
+      setAuthInitialMode('login');
+      setStep('home');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // After login, send users to /upload (marketing stays at /)
+  useEffect(() => {
+    if (!user || isScormPlayer) return;
+    const path = window.location.pathname;
+    if (path === '/' || path === '/login' || path === '/signup' || path === '') {
+      window.history.replaceState({}, '', '/upload');
+      setStep('home');
+    }
+  }, [user, isScormPlayer]);
+
+  // Keep /upload in the address bar while on the authenticated home (upload) step
+  useEffect(() => {
+    if (!user || isScormPlayer) return;
+    if (step === 'home' && window.location.pathname !== '/upload') {
+      window.history.replaceState({}, '', '/upload');
+    }
+  }, [step, user, isScormPlayer]);
 
   // ── Handle browser back / forward buttons ─────────────────────────────────
   useEffect(() => {
@@ -585,6 +616,7 @@ export default function App() {
       else if (path === '/methodology') setPublicView('methodology');
       else if (path === '/login')  { setPublicView('auth'); setAuthInitialMode('login'); }
       else if (path === '/signup') { setPublicView('auth'); setAuthInitialMode('signup'); }
+      else if (path === '/upload') { setPublicView('auth'); setAuthInitialMode('login'); setStep('home'); }
       else setPublicView('homepage');
     };
     window.addEventListener('popstate', handlePopState);
@@ -651,6 +683,7 @@ export default function App() {
 
   // Interaction Previews
   const [previewModalOption, setPreviewModalOption] = useState<string | null>(null);
+  const [previewModalViewMode, setPreviewModalViewMode] = useState<'desktop' | 'mobile'>('desktop');
   
   // Player Properties
   const [showPlayerProperties, setShowPlayerProperties] = useState(false);
@@ -1217,9 +1250,10 @@ export default function App() {
     setExamConfig(saved.examConfig);
     setNavigationMode(saved.navigationMode);
     setRequireInteractionsComplete(!!saved.requireInteractionsComplete);
-    // Assessment types moved to Assessments tab — strip from interactive elements
+    // Assessment types moved to Assessments tab — strip from interactive elements.
+    // Accordion is folded into click-reveal (same progressive-disclosure UX).
     const QUIZ_ONLY = new Set(['multiple-choice', 'multiple-answers', 'sorting', 'matching', 'drop-targets']);
-    setInteractionTypes((saved.interactionTypes || []).filter(t => !QUIZ_ONLY.has(t)));
+    setInteractionTypes(mapToGridIds((saved.interactionTypes || []).filter(t => !QUIZ_ONLY.has(t))));
     setGameTemplateIds([]); // Games temporarily disabled
     setVoiceOverEnabled(saved.voiceOverEnabled);
     setTtsVoice(saved.ttsVoice);
@@ -2341,7 +2375,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
       {step !== 'preview' && (
       <header className="relative z-[600] border-b border-slate-800/80 bg-slate-900/50 backdrop-blur-xl">
         <div className="container mx-auto px-6 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-3 relative group cursor-pointer" onClick={() => setStep('home')}>
+          <div className="flex items-center gap-3 relative group cursor-pointer" onClick={goHome}>
             <div className="w-10 h-10 bg-indigo-500/10 rounded-xl flex items-center justify-center border border-indigo-500/20 group-hover:scale-105 group-hover:bg-indigo-500/20 transition-all">
               <Zap className="w-5 h-5 text-indigo-400 group-hover:text-indigo-300 group-hover:scale-110 transition-all" />
             </div>
@@ -2410,6 +2444,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                             setLearningObjectives([{ terminalObjective: 'Given a workplace scenario, the learner will identify the communication strategy that best supports effective collaboration.', enablingObjectives: [] }]);
                             setCourseType('standard'); setPreset('standard');
                             setSettingsMode('session');
+                            setPreviewModalViewMode('desktop');
                             setIsSandboxMode(true); setShowPlayerProperties(false); setStep('details');
                           }}
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-purple-300 hover:bg-purple-500/10 text-sm font-medium transition-all text-left"
@@ -2432,6 +2467,38 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-purple-300 hover:bg-purple-500/10 text-sm font-medium transition-all text-left"
                         >
                           <Eye className="w-3.5 h-3.5" /> Demo — Course Development
+                        </button>
+                        <button
+                          onClick={() => {
+                            setAdminDropdownOpen(false);
+                            setCourse(DUMMY_COURSE); setOriginalCourse(DUMMY_COURSE);
+                            setCurrentSlideIndex(0); setQuizState({}); setTheme('light'); setViewMode('mobile');
+                            setFloatingImagesMap({}); setSyntheticSlideOverrides({}); setCourseBg(null);
+                            setIsSandboxMode(true); setShowPlayerProperties(false);
+                            setExamQuestions(DUMMY_EXAM_QUESTIONS); setExamConfig(DUMMY_COURSE.examConfig!);
+                            setExamPhase('idle'); setExamError(null); setIsGeneratingExam(false);
+                            setHighestVisitedIndex(0);
+                            setPlayerConfig(prev => ({ ...prev, playerResolution: '16:9' }));
+                            setNavigationMode(DUMMY_COURSE.navigationMode ?? 'free'); setStep('preview');
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-purple-300 hover:bg-purple-500/10 text-sm font-medium transition-all text-left"
+                        >
+                          <Smartphone className="w-3.5 h-3.5" /> Demo — Mobile (Landscape)
+                        </button>
+                        <button
+                          onClick={() => {
+                            setAdminDropdownOpen(false);
+                            setCourseTitle('Advanced Workplace Communication');
+                            setCourseDescription('A comprehensive eLearning course covering modern workplace communication strategies.');
+                            setLearningObjectives([{ terminalObjective: 'Given a workplace scenario, the learner will identify the communication strategy that best supports effective collaboration.', enablingObjectives: [] }]);
+                            setCourseType('standard'); setPreset('standard');
+                            setSettingsMode('session');
+                            setPreviewModalViewMode('mobile');
+                            setIsSandboxMode(true); setShowPlayerProperties(false); setStep('details');
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-purple-300 hover:bg-purple-500/10 text-sm font-medium transition-all text-left"
+                        >
+                          <Smartphone className="w-3.5 h-3.5" /> Demo — Design (Mobile)
                         </button>
                         {/* Game Mode demo temporarily hidden — code retained for future re-enable
                         <button
@@ -2905,10 +2972,10 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                    )}
                  </div>
               ) : (
-                <div className="relative z-10 max-w-4xl mx-auto text-center w-full px-6 py-12 bg-slate-950/40 backdrop-blur-md rounded-[3rem] border border-indigo-500/20 shadow-2xl space-y-6 my-8">
+                <div className="relative z-10 max-w-4xl mx-auto text-center w-full px-4 sm:px-6 py-8 sm:py-12 bg-slate-950/40 backdrop-blur-md rounded-[2rem] sm:rounded-[3rem] border border-indigo-500/20 shadow-2xl space-y-4 sm:space-y-6 my-4 sm:my-8 landscape:py-6 landscape:my-2">
                   {/* Title */}
                   <div>
-                    <h1 className="text-5xl md:text-7xl font-bold tracking-tight text-white mb-6">
+                    <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold tracking-tight text-white mb-4 sm:mb-6 landscape:text-3xl landscape:mb-2">
                       NexCourse <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 font-extrabold pb-2">AI</span>
                     </h1>
                     <p className="text-xl text-slate-300 font-medium max-w-2xl mx-auto">
@@ -3089,7 +3156,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                 <div className="h-11 flex items-center justify-between gap-2">
                   {/* Left: back + title */}
                   <div className="flex items-center gap-2 min-w-0">
-                    <button onClick={() => setStep('home')} className="p-1.5 -ml-0.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0">
+                    <button onClick={goHome} className="p-1.5 -ml-0.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0">
                       <ChevronLeft className="w-4 h-4" />
                     </button>
                     <div className="flex items-center gap-2 min-w-0">
@@ -3108,8 +3175,21 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                     </div>
                   )}
 
-                  {/* Single unified toolbar — L→R: Player Props, Quality, Undo, Reset, Add Image, Edit Text & Audio, Save, Publish */}
+                  {/* Single unified toolbar — L→R: View mode, Player Props, Quality, Undo, Reset, Add Image, Edit Text & Audio, Save, Publish */}
                   <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
+                    <button
+                      title={viewMode === 'desktop' ? 'Switch to mobile landscape preview' : 'Switch to desktop preview'}
+                      onClick={() => setViewMode(viewMode === 'desktop' ? 'mobile' : 'desktop')}
+                      className={`flex items-center gap-1 px-2 py-1 rounded-md border text-[11px] font-semibold transition-colors ${
+                        viewMode === 'mobile'
+                          ? 'border-cyan-600/50 bg-cyan-500/10 text-cyan-300'
+                          : 'border-slate-600/60 hover:bg-slate-700/30 text-slate-300'
+                      }`}
+                    >
+                      {viewMode === 'desktop' ? <Monitor className="w-3 h-3" /> : <Smartphone className="w-3 h-3" />}
+                      <span className="hidden lg:inline">{viewMode === 'desktop' ? 'Desktop' : 'Mobile'}</span>
+                    </button>
+
                     <button
                       title="Player Properties"
                       onClick={() => setShowPlayerProperties(true)}
@@ -3356,7 +3436,8 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                     ref={viewMode === 'desktop' ? scaler.containerRef : undefined}
                     className={cn(
                       "relative flex flex-col flex-1 overflow-hidden bg-white",
-                      viewMode === 'desktop' && playerConfig.playerResolution !== 'full' ? 'items-center justify-center' : undefined
+                      viewMode === 'desktop' && playerConfig.playerResolution !== 'full' ? 'items-center justify-center' : undefined,
+                      viewMode === 'mobile' ? 'items-center justify-center bg-slate-950' : undefined
                     )}
                   >
 
@@ -3365,12 +3446,14 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                       visually scaled to fit with CSS transform -- transform never affects layout,
                       so this can never overflow/crop its container the way the old `zoom`-based
                       approach did (which double-scaled an already-100%-wide flex box). 'full'
-                      mode intentionally skips scaling and fills the available space directly. */}
+                      mode intentionally skips scaling and fills the available space directly.
+                      Mobile preview uses a landscape phone bezel (held sideways) so the
+                      eLearning player fits the same 16:9 canvas used on desktop. */}
                   <div className={cn(`theme-${theme}`,
                     "transition-all duration-500 flex flex-col relative z-10",
                     viewMode === 'desktop'
                       ? (playerConfig.playerResolution !== 'full' ? 'overflow-hidden' : 'flex-1 overflow-hidden w-full')
-                      : 'shadow-2xl overflow-hidden w-[375px] h-[667px] my-4 rounded-[3rem] border-[8px] border-gray-800',
+                      : 'shadow-2xl overflow-hidden w-[min(92vw,720px)] h-[min(56vw,405px)] my-4 rounded-[1.75rem] border-[8px] border-gray-800',
                     theme === 'light' ? 'bg-white' : theme === 'unified' ? 'bg-indigo-950' : 'bg-slate-900'
                   )}
                   style={viewMode === 'desktop'
@@ -4642,16 +4725,36 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                        </div>
                        <h3 className="font-bold text-white text-lg">Preview: {previewModalOption}</h3>
                     </div>
-                    <button onClick={() => setPreviewModalOption(null)} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors">
-                      <X className="w-5 h-5" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        title={previewModalViewMode === 'desktop' ? 'Switch to mobile landscape' : 'Switch to desktop'}
+                        onClick={() => setPreviewModalViewMode(previewModalViewMode === 'desktop' ? 'mobile' : 'desktop')}
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
+                          previewModalViewMode === 'mobile'
+                            ? 'border-cyan-600/50 bg-cyan-500/10 text-cyan-300'
+                            : 'border-slate-700 text-slate-300 hover:bg-slate-800'
+                        }`}
+                      >
+                        {previewModalViewMode === 'desktop' ? <Monitor className="w-3.5 h-3.5" /> : <Smartphone className="w-3.5 h-3.5" />}
+                        {previewModalViewMode === 'desktop' ? 'Desktop' : 'Mobile'}
+                      </button>
+                      <button onClick={() => setPreviewModalOption(null)} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors">
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
                  </div>
-                 <div className="flex-1 overflow-y-auto p-8 bg-slate-900 custom-scrollbar theme-dark InteractionPreviewBodyWrapper">
-                     <div className="w-full min-h-[420px] flex flex-wrap items-start justify-center gap-6 py-6 px-2">
+                 <div className={cn(
+                   "flex-1 overflow-y-auto p-8 bg-slate-900 custom-scrollbar theme-dark InteractionPreviewBodyWrapper",
+                   previewModalViewMode === 'mobile' && "flex items-center justify-center bg-slate-950"
+                 )}>
+                     <div className={cn(
+                       previewModalViewMode === 'mobile'
+                         ? "w-[min(92vw,720px)] h-[min(56vw,405px)] overflow-auto rounded-[1.75rem] border-[8px] border-gray-800 bg-slate-900 shadow-2xl p-4"
+                         : "w-full min-h-[420px] flex flex-wrap items-start justify-center gap-6 py-6 px-2"
+                     )}>
                          {previewModalOption === 'Multiple Choice' && <MultipleChoicePreview />}
                          {previewModalOption === 'Multiple Answers' && <MultipleAnswersPreviewDemo />}
                          {previewModalOption === 'Hotspot' && <HotspotPreview />}
-                         {previewModalOption === 'Accordion' && <AccordionPreview />}
                          {previewModalOption === 'Flashcards' && (
                            <div className="w-full max-w-3xl">
                               <FlashcardGrid cards={[

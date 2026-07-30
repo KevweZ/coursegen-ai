@@ -827,7 +827,6 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     {[
                       { id: 'hotspot', label: 'Hotspot' },
-                      { id: 'accordion', label: 'Accordion' },
                       { id: 'flashcards', label: 'Flashcards' },
                       { id: 'timeline', label: 'Timeline' },
                       { id: 'scenario', label: 'Scenario' },

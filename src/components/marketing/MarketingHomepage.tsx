@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, useInView, AnimatePresence } from 'framer-motion';
 import {
-  Zap, ArrowRight, Sparkles, Brain, Gamepad2, Mic,
+  Zap, ArrowRight, Sparkles, Brain, Layers, Mic,
   FileOutput, GraduationCap, Building2, CheckCircle2,
-  ChevronRight, ChevronLeft, ChevronDown, Shield, Layers, BarChart3, BookOpen,
+  ChevronRight, ChevronLeft, ChevronDown, Shield, BarChart3, BookOpen,
   Award, X, Menu, Volume2, Play, Pause,
   Eye, EyeOff, Image,
   AlertCircle, Lock, MessageSquare, Send, Loader2, Mail
@@ -265,7 +265,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
 
   const features = [
     { icon: Brain,      title: 'AI Course Generation',    description: 'Paste a topic or upload a document — our AI drafts a full course outline with slides, quizzes, and narration in minutes.',       color: 'from-indigo-600/20 to-purple-600/20', delay: 0 },
-    { icon: Gamepad2,   title: 'Game-Based Learning',     description: 'Choose from Jeopardy, Millionaire, Escape Room, Family Feud, and more. Turn assessments into memorable experiences.',             color: 'from-purple-600/20 to-pink-600/20',   delay: 0.05 },
+    { icon: Layers,     title: 'Interactive Learning',    description: 'Hotspots, tabs, flashcards, timelines, click-to-reveal, and more — build engaging slides without a separate authoring tool.', color: 'from-purple-600/20 to-pink-600/20',   delay: 0.05 },
     { icon: Mic,        title: 'AI Voice-Over Narration', description: 'Every slide gets a professional AI voice-over generated automatically. Choose from 6 voices and multiple playback speeds.',        color: 'from-cyan-600/20 to-blue-600/20',     delay: 0.1 },
     { icon: FileOutput, title: 'SCORM Export',            description: 'Export SCORM 1.2 and 2004 packages ready for any LMS — Canvas, Moodle, Blackboard, Cornerstone, and more.',                      color: 'from-emerald-600/20 to-teal-600/20', delay: 0.15 },
     { icon: Image,      title: 'Built-In Image Editor',   description: 'Add, crop, resize, and reposition multiple images per slide. Drop in a background photo template or build from scratch.',         color: 'from-amber-600/20 to-orange-600/20',  delay: 0.2 },
@@ -274,7 +274,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
 
   const stats = [
     { label: 'Interaction Types',  value: 20,  suffix: '+' },
-    { label: 'Game Templates',     value: 8,   suffix: '+' },
+    { label: 'Knowledge Checks',   value: 8,   suffix: '+' },
     { label: 'LMS Compatible',     value: 100, suffix: '%' },
     { label: 'AI Voice Options',   value: 6,   suffix: ''  },
   ];
@@ -392,7 +392,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
 
           <motion.p initial={{ opacity:0, y:16 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.5, delay:0.22 }}
             className="text-slate-400 text-base md:text-lg max-w-2xl mb-10 leading-relaxed">
-            AI generates your slides, quizzes, games, and voice-over narration. Export SCORM-ready packages to any LMS. Built for{' '}
+            AI generates your slides, quizzes, interactions, and voice-over narration. Export SCORM-ready packages to any LMS. Built for{' '}
             <span className="text-indigo-300 font-semibold">corporate trainers</span> and{' '}
             <span className="text-emerald-300 font-semibold">subject matter experts</span>.
           </motion.p>
@@ -516,8 +516,8 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
                   borderColor: 'border-indigo-500/30',
                   pillColor: 'bg-indigo-500/20 text-indigo-300',
                   title: 'AI Builds Everything',
-                  description: 'Claude AI drafts your slides, quiz questions, narration scripts, interactive games, and visual diagrams — all in 30–90 seconds.',
-                  tags: ['Slides', 'Quizzes', 'Games', 'Voice-over'],
+                  description: 'Claude AI drafts your slides, quiz questions, narration scripts, interactive activities, and visual diagrams — all in 30–90 seconds.',
+                  tags: ['Slides', 'Quizzes', 'Interactions', 'Voice-over'],
                 },
                 {
                   step: '03',
@@ -613,7 +613,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
                 so you can focus on strategy, not production.
               </p>
               <ul className="space-y-2.5">
-                {['Full course outline in seconds','SCORM 1.2 & 2004 export for any LMS','Built-in mastery quiz & score reporting','Branching scenarios & gamified assessments','AI narration + voice-over generation'].map(item => (
+                {['Full course outline in seconds','SCORM 1.2 & 2004 export for any LMS','Built-in mastery quiz & score reporting','Branching scenarios & interactive assessments','AI narration + voice-over generation'].map(item => (
                   <li key={item} className="flex items-center gap-3 text-sm text-slate-300">
                     <CheckCircle2 className="w-4 h-4 text-indigo-400 shrink-0" />{item}
                   </li>

@@ -210,7 +210,7 @@ export async function analyzeUploadedFile(
      - "comprehensive": Deep technical or procedural content, 5+ modules, advanced or nuanced subject matter requiring extensive coverage.
      IMPORTANT: If the content covers multiple distinct topics, has procedures, real-world applications, or requires behavioral change, choose "standard" or "comprehensive". Do NOT downgrade to "quick" just because the source document is short.
   6. Recommend an objectiveFormat: "AB" (quick courses), "ABC" (standard), or "ABCD" (comprehensive).
-  7. Classify Content Types and Map Interactions. E.g. Concepts -> "flashcards", Processes -> "timeline", Comparisons -> "accordion", Matching -> "drag-drop-activity". Return an array of these recommended interaction strings.
+  7. Classify Content Types and Map Interactions. E.g. Concepts -> "flashcards", Processes -> "timeline", Comparisons -> "click-reveal", Matching -> "drag-drop-activity". Return an array of these recommended interaction strings.
   8. GENERATE OBJECTIVES using Bloom's Taxonomy:
      - For standard eLearning (assessments via MCQ), focus almost exclusively on the REMEMBERING and UNDERSTANDING domains.
        * Remembering verbs: recall, identify, define, list, name, recognize, state, label, match, outline, retrieve
@@ -377,7 +377,8 @@ export async function generateCourseOutline(
   2. NO objectives slide — FORBIDDEN. Do NOT create any slide titled "Learning Objectives", "Module Objectives", "Objectives", or similar. Do NOT use click-reveal (or any other type) to restate objectives.${configParams.includeModuleOverviewSlides !== false ? ' The auto-injected Module Overview already shows this module\'s objective and sub-objectives from the canonical Learning Objectives list.' : ''}
   3. Content & Interaction Slides — ONLY use these content interaction types as slide 'type': ${contentInteractions.join(', ') || 'content'}.
      Map them like this:
-     - accordion, flashcards, timeline, hotspot, scenario, tabbed-horizontal, tabbed-vertical, folder-explorer, carousel-panel, click-reveal -> use the exact string as the slide 'type'
+     - flashcards, timeline, hotspot, scenario, tabbed-horizontal, tabbed-vertical, folder-explorer, carousel-panel, click-reveal -> use the exact string as the slide 'type'
+     - Do NOT use type "accordion" — use "click-reveal" instead (same progressive-disclosure pattern)
      - For PROCESS FLOWS, DECISION TREES, WORKFLOWS, or MULTI-STEP PROCEDURES: use type: "diagram" (generates a Mermaid.js flowchart)
      - Plain teaching slides: type: "content"
      CRITICAL — QUIZ-ONLY TYPES: Never use sorting, matching, drop-targets, multiple-choice, or multiple-answers as regular content slides. Those belong ONLY under Knowledge Checks (see #4).
@@ -401,7 +402,7 @@ export async function generateCourseOutline(
         "id": "uuid",
         "title": "Module Title",
         "slides": [
-          { "id": "uuid", "type": "content|quiz|accordion|flashcards|timeline|hotspot|sorting|matching|diagram|tabbed-horizontal|tabbed-vertical|folder-explorer|carousel-panel|click-reveal|key-takeaways", "title": "Slide Title" }
+          { "id": "uuid", "type": "content|quiz|flashcards|timeline|hotspot|sorting|matching|diagram|tabbed-horizontal|tabbed-vertical|folder-explorer|carousel-panel|click-reveal|key-takeaways", "title": "Slide Title" }
         ]
       }
     ]
@@ -553,11 +554,9 @@ export async function hydrateCourseContent(
   - feedback: string explaining why the correct answer is right
   - FAIL CONDITION: missing questionText or fewer than 2 options -> regenerate
 
-  ACCORDION:
-  - Must have 4-6 items with parallel header formats (all questions OR all noun phrases)
-  - Each item.content: <= 4 bullet points, NOT a paragraph. Use "- bullet" format.
-  - Example item: { "id": "a1", "title": "How It Works", "content": "- Step 1\n- Step 2\n- Step 3" }
-  - NEVER put a long paragraph as accordion content. Split long content into multiple items.
+  ACCORDION (DEPRECATED — use click-reveal instead):
+  - If you would have used accordion, emit type "click-reveal" with items: [{ id, term, definition }]
+  - term = section header; definition = bullet content (<= 4 bullets)
 
   DRAG & DROP:
   - All drop targets MUST use accepts: ["*"] -- NEVER restrict by ID
