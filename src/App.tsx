@@ -112,7 +112,6 @@ import { ModuleOverviewSlide, MODULE_COLORS } from './components/player/ModuleOv
 import { PlayerTourSlide }       from './components/player/PlayerTourSlide';
 import { WheelDiagram } from './components/interactions/WheelDiagram';
 import { MermaidDiagram } from './components/MermaidDiagram';
-import { WorkflowInsightsPanel } from './components/WorkflowInsightsPanel';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { CustomMatchingActivity } from './components/interactions/CustomMatchingActivity';
 import { CustomSortingActivity } from './components/interactions/CustomSortingActivity';
