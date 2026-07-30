@@ -1217,7 +1217,7 @@ export default function App() {
     setExamConfig(saved.examConfig);
     setNavigationMode(saved.navigationMode);
     setRequireInteractionsComplete(!!saved.requireInteractionsComplete);
-    // Assessment types moved to Quizzes tab — strip from interactive elements
+    // Assessment types moved to Assessments tab — strip from interactive elements
     const QUIZ_ONLY = new Set(['multiple-choice', 'multiple-answers', 'sorting', 'matching', 'drop-targets']);
     setInteractionTypes((saved.interactionTypes || []).filter(t => !QUIZ_ONLY.has(t)));
     setGameTemplateIds([]); // Games temporarily disabled
