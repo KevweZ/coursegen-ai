@@ -102,14 +102,106 @@ export function attachSourceImagesToCourse(
       ...m,
       slides: (m.slides || []).map((s: any) => {
         if (!['content', 'summary', 'key-takeaways', 'hotspot'].includes(s.type)) return s;
-        if (s.coverImage || s.imageUrl) return s;
+        if (s.coverImage || s.imageUrl || s.data?.imageUrl) return s;
         const img = pool[imgIdx % pool.length];
         imgIdx++;
         if (!img) return s;
+        if (s.type === 'hotspot') {
+          return {
+            ...s,
+            imageUrl: img.dataUrl,
+            data: { ...(s.data || {}), imageUrl: img.dataUrl },
+          };
+        }
         return { ...s, coverImage: img.dataUrl, imageUrl: img.dataUrl };
       }),
     })),
   };
+}
+
+/**
+ * Fill missing hotspot backgrounds and carousel card images from source pool
+ * and/or AI generation (topic-based simple illustrations).
+ */
+export async function enrichHotspotAndCarouselImages(
+  course: any,
+  sourceImages: Array<{ dataUrl: string; width: number; height: number }>,
+  opts: { generateAi: boolean; useSource: boolean }
+): Promise<any> {
+  if (!course?.modules?.length) return course;
+  let srcIdx = 0;
+  const nextSrc = () => {
+    if (!opts.useSource || !sourceImages.length) return null;
+    const img = sourceImages[srcIdx % sourceImages.length];
+    srcIdx++;
+    return img?.dataUrl || null;
+  };
+
+  const modules = [];
+  for (const m of course.modules) {
+    const slides = [];
+    for (const s of m.slides || []) {
+      let slide = { ...s, data: s.data ? { ...s.data } : s.data };
+
+      if (slide.type === 'hotspot') {
+        const existing = slide.imageUrl || slide.data?.imageUrl || slide.coverImage;
+        if (!existing) {
+          let url = nextSrc();
+          if (!url && opts.generateAi) {
+            try {
+              url = await callImageEndpoint(
+                `Educational diagram-style illustration for: "${slide.title}". ` +
+                `Clean labeled technical cutaway or schematic, light background, no text overlay, high quality, 16:9.`
+              );
+            } catch (e) {
+              console.warn('[ImageService] Hotspot AI image failed:', e);
+            }
+          }
+          if (url) {
+            slide = {
+              ...slide,
+              imageUrl: url,
+              data: { ...(slide.data || {}), imageUrl: url },
+            };
+          }
+        }
+      }
+
+      if (slide.type === 'carousel-panel') {
+        const cards = slide.data?.cards || slide.data?.items || [];
+        if (Array.isArray(cards) && cards.length) {
+          const nextCards = [];
+          for (const c of cards) {
+            if (c.imageUrl) { nextCards.push(c); continue; }
+            let url = nextSrc();
+            if (!url && opts.generateAi) {
+              try {
+                url = await callImageEndpoint(
+                  `Simple educational illustration for carousel card "${c.label || c.title || 'topic'}" ` +
+                  `in course "${course.title || ''}". Soft colors, no text, no logos.`
+                );
+              } catch { /* non-fatal */ }
+            }
+            nextCards.push(url ? { ...c, imageUrl: url } : c);
+            if (opts.generateAi) await new Promise(r => setTimeout(r, 1200));
+          }
+          slide = {
+            ...slide,
+            data: {
+              ...(slide.data || {}),
+              cards: nextCards,
+              items: slide.data?.items ? nextCards : slide.data?.items,
+            },
+          };
+        }
+      }
+
+      slides.push(slide);
+      if (opts.generateAi && slide.type === 'hotspot') await new Promise(r => setTimeout(r, 1200));
+    }
+    modules.push({ ...m, slides });
+  }
+  return { ...course, modules };
 }
 
 export function applyCoverImageToCourse(

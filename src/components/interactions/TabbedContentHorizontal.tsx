@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { markdownToHtml } from '../../lib/markdownInline';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export interface HorizontalTab {
   id: string;
@@ -9,9 +10,12 @@ export interface HorizontalTab {
   expandedContent?: string;
 }
 
+type THTheme = 'light' | 'dark' | 'unified';
+
 interface Props {
   tabs: HorizontalTab[];
   title?: string;
+  theme?: THTheme;
   onTabView?: (tabId: string) => void;
 }
 
@@ -26,9 +30,10 @@ function normalizeTabs(tabs: HorizontalTab[]): HorizontalTab[] {
   }));
 }
 
-export default function TabbedContentHorizontal({ tabs = [], title, onTabView }: Props) {
-  const normalized = normalizeTabs(tabs);
+export default function TabbedContentHorizontal({ tabs = [], title, theme = 'light', onTabView }: Props) {
+  const normalized = useMemo(() => normalizeTabs(tabs), [tabs]);
   const [activeIndex, setActiveIndex] = useState(0);
+  const isLight = theme === 'light';
 
   useEffect(() => {
     if (normalized[0]?.id) onTabView?.(normalized[0].id);
@@ -43,44 +48,61 @@ export default function TabbedContentHorizontal({ tabs = [], title, onTabView }:
     if (id) onTabView?.(id);
   };
 
+  const activeTab = normalized[Math.min(activeIndex, normalized.length - 1)];
+  const activeColor = activeTab.color || ACCENT_COLORS[activeIndex % ACCENT_COLORS.length];
+
   return (
     <div className="w-full flex flex-col gap-0 select-none">
       {title && (
-        <p className="text-slate-400 text-sm font-bold text-center uppercase tracking-widest mb-3">{title}</p>
+        <p className={`text-sm font-bold text-center uppercase tracking-widest mb-3 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+          {title}
+        </p>
       )}
 
       <div
-        className="relative overflow-hidden rounded-t-2xl bg-slate-800/60 border border-b-0 border-slate-700"
-        style={{ minHeight: 220 }}
+        className={`relative overflow-hidden rounded-t-2xl border border-b-0 ${
+          isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-800/60 border-slate-700'
+        }`}
+        style={{ minHeight: 'min(55vh, 460px)' }}
       >
-        {normalized.map((tab, i) => {
-          const isActive = i === activeIndex;
-          const color = tab.color || ACCENT_COLORS[i % ACCENT_COLORS.length];
-          return (
-            <div
-              key={tab.id}
-              className="absolute inset-0 p-5 overflow-y-auto custom-scrollbar"
-              style={{
-                opacity: isActive ? 1 : 0,
-                transform: isActive ? 'translateY(0)' : 'translateY(14px)',
-                transition: 'opacity 0.22s ease, transform 0.22s ease',
-                pointerEvents: isActive ? 'auto' : 'none',
-              }}
-            >
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-1 h-8 rounded-full shrink-0" style={{ background: color }} />
-                <h3 className="font-extrabold text-lg" style={{ color }} dangerouslySetInnerHTML={{ __html: markdownToHtml(tab.label) }} />
-              </div>
-              <div className="text-slate-200 text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: markdownToHtml(tab.content) }} />
-              {tab.expandedContent && (
-                <div className="mt-4 pt-4 border-t border-slate-700 text-slate-300 text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: markdownToHtml(tab.expandedContent) }} />
-              )}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeTab.id}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.22 }}
+            className="absolute inset-0 p-6 sm:p-8 overflow-y-auto custom-scrollbar"
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-1 h-8 rounded-full shrink-0" style={{ background: activeColor }} />
+              <h3
+                className="font-extrabold text-lg"
+                style={{ color: activeColor }}
+                dangerouslySetInnerHTML={{ __html: markdownToHtml(activeTab.label) }}
+              />
             </div>
-          );
-        })}
+            <div
+              className={`text-sm leading-relaxed ${isLight ? 'text-slate-700' : 'text-slate-200'}`}
+              dangerouslySetInnerHTML={{ __html: markdownToHtml(activeTab.content) }}
+            />
+            {activeTab.expandedContent && (
+              <div
+                className={`mt-4 pt-4 border-t text-sm leading-relaxed ${
+                  isLight ? 'border-slate-200 text-slate-600' : 'border-slate-700 text-slate-300'
+                }`}
+                dangerouslySetInnerHTML={{ __html: markdownToHtml(activeTab.expandedContent) }}
+              />
+            )}
+          </motion.div>
+        </AnimatePresence>
       </div>
 
-      <div className="flex border border-t-0 border-slate-700 rounded-b-2xl overflow-hidden bg-slate-900/80">
+      <div
+        className={`flex border border-t-0 rounded-b-2xl overflow-hidden ${
+          isLight ? 'border-slate-200 bg-slate-50' : 'border-slate-700 bg-slate-900/80'
+        }`}
+      >
         {normalized.map((tab, i) => {
           const isActive = i === activeIndex;
           const color = tab.color || ACCENT_COLORS[i % ACCENT_COLORS.length];
@@ -89,15 +111,17 @@ export default function TabbedContentHorizontal({ tabs = [], title, onTabView }:
               key={tab.id}
               type="button"
               onClick={() => selectTab(i)}
-              className={`flex-1 relative px-3 py-3 text-xs font-bold transition-all text-center border-r border-slate-700/60 last:border-r-0 ${
-                isActive ? 'text-white' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              className={`flex-1 relative px-3 py-3.5 text-xs font-bold transition-all text-center border-r last:border-r-0 ${
+                isLight ? 'border-slate-200' : 'border-slate-700/60'
+              } ${
+                isActive
+                  ? 'text-white'
+                  : isLight
+                  ? 'text-slate-500 hover:text-slate-800 hover:bg-white'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
               }`}
-              style={isActive ? { background: `${color}22` } : {}}
+              style={isActive ? { background: color } : {}}
             >
-              <div
-                className="absolute top-0 left-0 right-0 h-0.5"
-                style={{ background: color, opacity: isActive ? 1 : 0, transition: 'opacity 0.2s' }}
-              />
               <span className="relative z-10" dangerouslySetInnerHTML={{ __html: markdownToHtml(tab.label) }} />
             </button>
           );

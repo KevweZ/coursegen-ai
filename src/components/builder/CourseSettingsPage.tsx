@@ -144,10 +144,11 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
     { id: 'navigation', label: 'Navigation', icon: <Navigation className="w-3.5 h-3.5" /> },
     { id: 'interactions', label: 'Interactions', icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
     { id: 'games', label: 'Game Modes', icon: <Gamepad2 className="w-3.5 h-3.5" /> },
-    { id: 'audio', label: 'Audio & Accessibility', icon: <Volume2 className="w-3.5 h-3.5" /> },
+    { id: 'audio', label: 'Audio & Multimedia', icon: <Volume2 className="w-3.5 h-3.5" /> },
     { id: 'design', label: 'Design', icon: <Layers className="w-3.5 h-3.5" />, hidden: !showDesign },
   ];
-  const tabs = allTabs.filter(t => !t.hidden);
+  // Game Modes tab intentionally hidden (generation unreliable); keep games UI code below for future re-enable.
+  const tabs = allTabs.filter(t => !t.hidden && t.id !== 'games');
 
   const [activeTab, setActiveTab] = useState<SettingsTab>(showTopic ? 'topic' : 'objectives');
 
@@ -600,7 +601,7 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                   </div>
                   <div>
                     <p className="text-sm font-bold text-slate-300 mb-1">Question Types</p>
-                    <p className="text-xs text-slate-500 mb-2">Used for the Mastery Quiz and in-module Knowledge Checks. Assessment activities (sorting, matching) appear only as quiz/check slides.</p>
+                    <p className="text-xs text-slate-500 mb-2">Used for the Mastery Quiz and in-module Knowledge Checks. Assessment activities (sorting, matching) appear only as Knowledge Check slides — never as regular content.</p>
                     <div className="flex gap-2 flex-wrap">
                       {([
                         ['mc', 'Multiple Choice'],
@@ -627,6 +628,44 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                           </button>
                         );
                       })}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-slate-300 mb-2">Knowledge Check Count Mode</p>
+                    <p className="text-xs text-slate-500 mb-2">How many in-module Knowledge Checks to generate (separate from Mastery Quiz question count).</p>
+                    <div className="flex gap-2 mb-3">
+                      {(['total', 'per-module'] as const).map(m => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => props.setExamConfig(c => ({ ...c, knowledgeCheckMode: m }))}
+                          className={`flex-1 py-2 rounded-lg text-sm font-bold border transition-all ${(props.examConfig.knowledgeCheckMode || 'per-module') === m ? 'bg-indigo-600/30 border-indigo-500/50 text-indigo-300' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}
+                        >
+                          {m === 'total' ? 'Total' : 'Per Module'}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-sm font-bold text-slate-300 mb-2">
+                      {(props.examConfig.knowledgeCheckMode || 'per-module') === 'total' ? 'Total Knowledge Checks' : 'Knowledge Checks per Module'}
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => props.setExamConfig(c => ({
+                          ...c,
+                          knowledgeCheckCount: Math.max(1, (c.knowledgeCheckCount ?? 1) - 1),
+                        }))}
+                        className="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 font-extrabold text-xl"
+                      >-</button>
+                      <span className="text-white font-extrabold text-xl w-8 text-center">{props.examConfig.knowledgeCheckCount ?? 1}</span>
+                      <button
+                        type="button"
+                        onClick={() => props.setExamConfig(c => ({
+                          ...c,
+                          knowledgeCheckCount: (c.knowledgeCheckCount ?? 1) + 1,
+                        }))}
+                        className="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 font-extrabold text-xl"
+                      >+</button>
                     </div>
                   </div>
                   <div>
@@ -790,7 +829,12 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
             </div>
           )}
 
-          {activeTab === 'games' && (
+          {false && activeTab === 'games' && (
+            <div className="space-y-6">
+              {/* Game Modes UI retained but hidden — generation currently unreliable */}
+            </div>
+          )}
+          {false && activeTab === 'games_RETIRED' && (
             <div className="bg-slate-900/80 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
               <div className="p-6 border-b border-slate-800 bg-slate-900">
                 <div className="flex items-center gap-3">
@@ -866,7 +910,7 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                   <Volume2 className="w-5 h-5 text-emerald-400" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-white">Audio & Accessibility</h3>
+                  <h3 className="text-xl font-bold text-white">Audio & Multimedia</h3>
                   <p className="text-slate-400 text-sm">Control narration and audio settings for the generated course.</p>
                 </div>
               </div>

@@ -267,9 +267,26 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
 
       {/* ── Score summary ──────────────────────────────────────────────────── */}
       <AnimatePresence>
-        {checked && hasCorrectAns && (() => {
+        {checked && (() => {
+          if (!hasCorrectAns) {
+            return (
+              <motion.div
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="flex items-center gap-3 px-5 py-3 rounded-xl text-sm font-semibold border"
+                style={{
+                  backgroundColor: t.scoreWarnBg,
+                  color: t.scoreWarnText,
+                  borderColor: t.scoreWarnBorder,
+                }}
+              >
+                📝 Answers submitted — no answer key was provided for this activity. Review your matches, then try again.
+              </motion.div>
+            );
+          }
           const total   = targets.length;
-          const correct = targets.filter(t => isCorrect(t.id) === true).length;
+          const correct = targets.filter(tg => isCorrect(tg.id) === true).length;
           const allOk   = correct === total;
           return (
             <motion.div
@@ -284,7 +301,7 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
               }}
             >
               {allOk ? '🎉' : '📝'} {correct} / {total} correct
-              {!allOk && <span className="font-normal opacity-70">— review the incorrect items and try again</span>}
+              {!allOk && <span className="font-normal opacity-70">— green = correct, red = incorrect</span>}
             </motion.div>
           );
         })()}

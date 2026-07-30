@@ -8,6 +8,8 @@ export interface CarouselCard {
   description?: string;
   color?: string;
   expandedContent?: string;
+  /** Optional image shown when the card is expanded */
+  imageUrl?: string;
 }
 
 interface Props {
@@ -115,7 +117,7 @@ export default function CarouselPanel({ cards = [], title, onCardView }: Props) 
                   </div>
                 )}
 
-                {isCenter && card.expandedContent && !expanded && (
+                {isCenter && (card.expandedContent || card.imageUrl) && !expanded && (
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); setExpanded(true); }}
@@ -126,7 +128,7 @@ export default function CarouselPanel({ cards = [], title, onCardView }: Props) 
                 )}
 
                 <AnimatePresence>
-                  {isCenter && expanded && card.expandedContent && (
+                  {isCenter && expanded && (card.expandedContent || card.imageUrl) && (
                     <motion.div
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: 'auto' }}
@@ -134,10 +136,23 @@ export default function CarouselPanel({ cards = [], title, onCardView }: Props) 
                       transition={{ duration: 0.22 }}
                       className="mt-2 border-t border-white/30 pt-4 overflow-hidden"
                     >
-                      <p className="text-white font-bold mb-2">Details:</p>
-                      <p className="text-white/90 text-sm whitespace-pre-wrap leading-relaxed pb-2">
-                        {card.expandedContent}
-                      </p>
+                      {card.imageUrl && (
+                        <div className="mb-3 rounded-xl overflow-hidden border border-white/25 bg-black/20">
+                          <img
+                            src={card.imageUrl}
+                            alt=""
+                            className="w-full max-h-40 object-cover"
+                          />
+                        </div>
+                      )}
+                      {card.expandedContent && (
+                        <>
+                          <p className="text-white font-bold mb-2">Details:</p>
+                          <p className="text-white/90 text-sm whitespace-pre-wrap leading-relaxed pb-2">
+                            {card.expandedContent}
+                          </p>
+                        </>
+                      )}
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); setExpanded(false); }}

@@ -336,6 +336,10 @@ export async function generateCourseOutline(
     includeSummarySlides?: boolean;
     includeModuleTitleSlides?: boolean;
     includeKnowledgeChecks?: boolean;
+    knowledgeCheckMode?: 'total' | 'per-module';
+    knowledgeCheckCount?: number;
+    /** Assessment activity types allowed ONLY on Knowledge Check slides */
+    quizActivityTypes?: string[];
     pathway?: 'corporate';
     // Source conversion mode (file upload)
     isSourceConversion?: boolean;
@@ -343,12 +347,23 @@ export async function generateCourseOutline(
     conversionPreferences?: string[];
   }
 ): Promise<CourseOutlineDraft> {
-  // Normalise: support both legacy single ID and new array
-  const gameIds: string[] = configParams.gameTemplateIds?.length
-    ? configParams.gameTemplateIds
-    : configParams.gameTemplateId
-    ? [configParams.gameTemplateId]
-    : [];
+  // Games temporarily disabled at product level — ignore any passed IDs
+  const gameIds: string[] = [];
+  const QUIZ_ONLY = new Set(['sorting', 'matching', 'drop-targets', 'multiple-choice', 'multiple-answers', 'quiz', 'mc', 'ma', 'tf']);
+  const contentInteractions = (configParams.interactionTypes || []).filter(t => !QUIZ_ONLY.has(t));
+  const quizActivities = (configParams.quizActivityTypes || []).map(t => {
+    if (t === 'mc' || t === 'ma' || t === 'tf') return 'quiz';
+    return t;
+  });
+  const uniqueQuizActivities = [...new Set(quizActivities.length ? quizActivities : ['quiz'])];
+  const kcMode = configParams.knowledgeCheckMode || 'per-module';
+  const kcCount = Math.max(1, configParams.knowledgeCheckCount ?? 1);
+  const kcDirective = configParams.includeKnowledgeChecks === false
+    ? 'NO knowledge check slides'
+    : kcMode === 'per-module'
+    ? `Exactly ${kcCount} Knowledge Check slide(s) per module (type must be one of: ${uniqueQuizActivities.join(', ')}). Title MUST start with "Knowledge Check:".`
+    : `About ${kcCount} Knowledge Check slides total across the course (type must be one of: ${uniqueQuizActivities.join(', ')}). Title MUST start with "Knowledge Check:".`;
+
   const systemInstruction = `You are an Expert Senior Corporate Instructional Designer.
   Your ONLY job right now is to draft the TABLE OF CONTENTS (Outline) for a course. Do NOT write the actual content yet.
   
@@ -360,26 +375,21 @@ export async function generateCourseOutline(
      ${configParams.includeModuleOverviewSlides !== false ? '- Module Overview slide (objectives accordion) immediately after each Module Title' : '- Module Overview slides are OFF — do NOT create overview or objectives slides'}
      Do NOT generate title, intro, overview, or objectives slides for any module. Each module must start directly with its first content or interaction slide.
   2. NO objectives slide — FORBIDDEN. Do NOT create any slide titled "Learning Objectives", "Module Objectives", "Objectives", or similar. Do NOT use click-reveal (or any other type) to restate objectives.${configParams.includeModuleOverviewSlides !== false ? ' The auto-injected Module Overview already shows this module\'s objective and sub-objectives from the canonical Learning Objectives list.' : ''}
-  3. Content & Interaction Slides -- use the SPECIFIC allowed interaction type as the slide type. Allowed interaction types: ${configParams.interactionTypes.join(", ")}. Map them to slide types like this:
-     - accordion, flashcards, timeline, sorting, matching -> use the exact string as the slide 'type'
-     - tabbed-horizontal, tabbed-vertical, folder-explorer, carousel-panel, click-reveal -> use the exact string as the slide 'type'
-     - choice -> use type: "quiz" with interactions array
+  3. Content & Interaction Slides — ONLY use these content interaction types as slide 'type': ${contentInteractions.join(', ') || 'content'}.
+     Map them like this:
+     - accordion, flashcards, timeline, hotspot, scenario, tabbed-horizontal, tabbed-vertical, folder-explorer, carousel-panel, click-reveal -> use the exact string as the slide 'type'
      - For PROCESS FLOWS, DECISION TREES, WORKFLOWS, or MULTI-STEP PROCEDURES: use type: "diagram" (generates a Mermaid.js flowchart)
-  4. ${configParams.includeKnowledgeChecks !== false ? 'Knowledge Check Slides (type: quiz)' : 'NO knowledge check slides'}
+     - Plain teaching slides: type: "content"
+     CRITICAL — QUIZ-ONLY TYPES: Never use sorting, matching, drop-targets, multiple-choice, or multiple-answers as regular content slides. Those belong ONLY under Knowledge Checks (see #4).
+  4. ${kcDirective}
+     Knowledge Check slides teach nothing new — they assess. Allowed Knowledge Check types: ${uniqueQuizActivities.join(', ')}.
+     Prefer spreading different quiz activity types (quiz MC, sorting, matching) across checks when multiple are allowed.
   5. ${configParams.includeSummarySlides !== false ? 'Module Summary / Key Takeaways slide (type: "key-takeaways") — REQUIRED at end of each module. Use type key-takeaways with data.objectives array of {id,label,content}. Do NOT use plain content/summary markdown bullets for module summaries.' : 'NO summary slide'}
   
   CRITICAL: The course player automatically injects a Cover/Introduction slide before all modules${configParams.includeModuleTitleSlides !== false || configParams.includeModuleOverviewSlides !== false ? `, plus per-module structural slides (${[configParams.includeModuleTitleSlides !== false ? 'Module Title' : null, configParams.includeModuleOverviewSlides !== false ? 'Module Overview' : null].filter(Boolean).join(' + ')})` : ''}. Do NOT create any intro, overview, title, welcome, OR objectives/learning-objectives slide for ANY module. All modules must start directly with their first content or interaction slide.
   
   GAME TEMPLATE INTEGRATION:
-  ${gameIds.length === 0
-    ? 'Do not include any game templates.'
-    : gameIds.length === 1
-    ? `The user has selected the "${gameIds[0]}" game mode. YOU MUST APPEND exactly one slide with type: "game-template" and gameType: "${gameIds[0]}" as the VERY LAST slide in the VERY LAST module. This slide represents a full interactive game covering the entire course content.`
-    : `The user has selected ${gameIds.length} game modes: ${gameIds.map(id => `"${id}"`).join(', ')}.
-Distribute one game slide per game type across the LAST ${gameIds.length} modules. Specifically:
-${gameIds.map((id, i) => `  - Append a slide with type: "game-template" and gameType: "${id}" as the LAST slide of module ${i + 1} (counting from the end — i.e. the ${gameIds.length - i} last module).`).join('\n')}
-Each game slide must have a unique title like "[Game Name] Knowledge Challenge".`
-  }
+  Do not include any game templates.
   
   OUTPUT FORMAT: You must return ONLY raw JSON matching this EXACT schema:
   {
@@ -391,7 +401,7 @@ Each game slide must have a unique title like "[Game Name] Knowledge Challenge".
         "id": "uuid",
         "title": "Module Title",
         "slides": [
-          { "id": "uuid", "type": "content|quiz|accordion|flashcards|timeline|sorting|matching|diagram|game-template", "title": "Slide Title", "gameType": "optional_string" }
+          { "id": "uuid", "type": "content|quiz|accordion|flashcards|timeline|hotspot|sorting|matching|diagram|tabbed-horizontal|tabbed-vertical|folder-explorer|carousel-panel|click-reveal|key-takeaways", "title": "Slide Title" }
         ]
       }
     ]
@@ -428,9 +438,19 @@ Each game slide must have a unique title like "[Game Name] Knowledge Challenge".
   // a separate AI objectives slide is redundant and often invents disconnected wording.
   if (Array.isArray(parsedOutline.modules)) {
     const OBJECTIVES_TITLE = /^(learning\s+)?objectives?$|module\s+objectives?/i;
+    const QUIZ_TYPES = new Set(['quiz', 'sorting', 'matching', 'drop-targets', 'multiple-choice', 'multiple-answers']);
     parsedOutline.modules = parsedOutline.modules.map(mod => ({
       ...mod,
-      slides: (mod.slides || []).filter(s => !OBJECTIVES_TITLE.test((s.title || '').trim())),
+      slides: (mod.slides || [])
+        .filter(s => !OBJECTIVES_TITLE.test((s.title || '').trim()))
+        // Games temporarily disabled — strip any game-template slides from the outline
+        .filter(s => s.type !== 'game-template')
+        .map(s => {
+          if (!QUIZ_TYPES.has(s.type as string)) return s;
+          const title = (s.title || '').trim();
+          if (/^knowledge\s*check/i.test(title)) return s;
+          return { ...s, title: `Knowledge Check: ${title || 'Practice'}` };
+        }),
     }));
   }
 
@@ -667,7 +687,7 @@ export async function hydrateCourseContent(
   - click-reveal: { items: [{ id: string, term: string, definition: string }] }
   - timeline: { events: [{ id: string, year: string, title: string, content: string }] }
   - sorting: { items: [{ id: string, content: string }], correctOrder: string[] }
-  - matching: { items: [{ id: string, content: string }], targets: [{ id: string, content: string }] } — NEVER use 'pairs', NEVER use 'term'/'definition'. Always use 'items' and 'targets' arrays. Each item must have a matching target with a unique id.
+  - matching: { items: [{ id: string, content: string }], targets: [{ id: string, content: string }], correctAnswers: { [itemId]: targetId } } — NEVER use 'pairs'. Always include correctAnswers mapping every item id to its target id.
   - quiz interactions: [{ type: 'multiple-choice', questionText: string, options: [{ id, text, isCorrect: boolean }], feedback: string }]
   - jeopardy: { templateType: 'jeopardy', instructions: string, categories: [{ id, name, questions: [{ id, value: number, prompt: string, correctAnswer: string, isDailyDouble: boolean }] }] }
   - millionaire: { templateType: 'millionaire', instructions: string, questions: [{ id, difficulty: number, prompt: string, options: string[], correctAnswer: string, isSafeHaven: boolean }] }

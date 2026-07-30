@@ -62,6 +62,10 @@ export const HotspotInteraction: React.FC<HotspotInteractionProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    setLocalImageUrl(imageUrl);
+  }, [imageUrl]);
+
+  useEffect(() => {
     setLocalPoints(normalizePoints(points));
   }, [points]);
 

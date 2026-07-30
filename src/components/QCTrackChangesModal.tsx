@@ -366,7 +366,7 @@ export function QCTrackChangesModal({
                       onClick={() => onConfirmAll(confirmable.map(i => i.id))}
                       className="text-xs text-indigo-300 hover:text-indigo-100 font-bold px-2 py-1 rounded hover:bg-indigo-500/10 transition-all flex items-center gap-1"
                     >
-                      <CheckCheck className="w-3 h-3" /> Confirm all
+                      <CheckCheck className="w-3 h-3" /> Fix All
                     </button>
                   </div>
                 )}

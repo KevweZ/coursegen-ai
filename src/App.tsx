@@ -801,6 +801,8 @@ export default function App() {
     allowRetake: true,
     questionTypes: ['mc', 'ma', 'tf', 'sorting', 'matching'],
     presentationMode: 'one-at-a-time',
+    knowledgeCheckMode: 'per-module',
+    knowledgeCheckCount: 1,
   });
   const [examQuestions, setExamQuestions] = useState<ExamQuestion[]>([]);
   const [examPhase, setExamPhase] = useState<'idle' | 'active' | 'complete'>('idle');
@@ -916,7 +918,7 @@ export default function App() {
           } as Slide);
         }
 
-        return [...synthetics, ...m.slides];
+        return [...synthetics, ...(m.slides || []).filter((s: any) => s?.type !== 'game-template')];
       })
     : [];
   // Item 12: Inject a synthetic cover slide at position 0 — short blurb only (narration carries detail)
@@ -1220,7 +1222,7 @@ export default function App() {
     // Assessment types moved to Quizzes tab — strip from interactive elements
     const QUIZ_ONLY = new Set(['multiple-choice', 'multiple-answers', 'sorting', 'matching', 'drop-targets']);
     setInteractionTypes((saved.interactionTypes || []).filter(t => !QUIZ_ONLY.has(t)));
-    setGameTemplateIds(saved.gameTemplateIds);
+    setGameTemplateIds([]); // Games temporarily disabled
     setVoiceOverEnabled(saved.voiceOverEnabled);
     setTtsVoice(saved.ttsVoice);
     setIncludeModuleTitleSlides(saved.includeModuleTitleSlides ?? true);
@@ -1243,7 +1245,7 @@ export default function App() {
     navigationMode,
     requireInteractionsComplete,
     interactionTypes,
-    gameTemplateIds,
+    gameTemplateIds: [], // Games temporarily disabled — do not persist selections
     voiceOverEnabled,
     ttsVoice,
     includeModuleTitleSlides,
@@ -1268,22 +1270,29 @@ export default function App() {
   }, [authLoading, user?.id]);
 
   const buildOutlineFromCurrentSettings = async (): Promise<CourseOutlineDraft> => {
-    const assessmentTypes = (examConfig.questionTypes || []).flatMap((t) => {
-      if (t === 'mc' || t === 'ma' || t === 'tf') return ['quiz'];
-      return [t];
-    });
-    const mergedInteractions = [...new Set([...interactionTypes, ...assessmentTypes])];
+    // Quiz activity types must NOT be merged into content interactionTypes —
+    // they only appear as Knowledge Check slides (see aiService outline prompt).
+    const contentInteractions = (interactionTypes || []).filter(
+      t => !['sorting', 'matching', 'drop-targets', 'multiple-choice', 'multiple-answers', 'quiz'].includes(t)
+    );
     return generateCourseOutline(
       prompt,
       learningObjectives,
       {
         courseType,
-        interactionTypes: mergedInteractions,
+        interactionTypes: contentInteractions,
         slideCount,
         includeModuleTitleSlides,
         includeModuleOverviewSlides,
         includeSummarySlides,
-        gameTemplateIds: gameTemplateIds.length > 0 ? gameTemplateIds : undefined,
+        // Games temporarily disabled in UI — never request game slides
+        gameTemplateIds: undefined,
+        includeKnowledgeChecks: true,
+        knowledgeCheckMode: examConfig.knowledgeCheckMode || 'per-module',
+        knowledgeCheckCount: examConfig.knowledgeCheckCount ?? 1,
+        quizActivityTypes: (examConfig.questionTypes || []).filter(t =>
+          ['sorting', 'matching', 'drop-targets', 'mc', 'ma', 'tf'].includes(t)
+        ),
       }
     );
   };
@@ -1333,17 +1342,13 @@ export default function App() {
 
       // Snapshot settings for outline/hydrate (avoid stale React state after setState)
       let outlineCourseType: 'quick' | 'standard' | 'comprehensive' = settingsOverride?.preset ?? preset;
-      let outlineInteractions = settingsOverride?.interactionTypes ?? interactionTypes;
+      let outlineInteractions = (settingsOverride?.interactionTypes ?? interactionTypes).filter(
+        t => !['sorting', 'matching', 'drop-targets', 'multiple-choice', 'multiple-answers', 'quiz'].includes(t)
+      );
       let outlineSlideCount = settingsOverride?.slideCount ?? slideCount;
       let outlineIncludeModuleTitles = settingsOverride?.includeModuleTitleSlides ?? includeModuleTitleSlides;
       let outlineIncludeModuleOverviews = settingsOverride?.includeModuleOverviewSlides ?? includeModuleOverviewSlides;
-      let outlineGameIds = settingsOverride?.gameTemplateIds ?? gameTemplateIds;
-      const outlineExamTypes = settingsOverride?.examConfig?.questionTypes ?? examConfig.questionTypes;
-      const assessmentTypes = (outlineExamTypes || []).flatMap((t) => {
-        if (t === 'mc' || t === 'ma' || t === 'tf') return ['quiz'];
-        return [t];
-      });
-      outlineInteractions = [...new Set([...(outlineInteractions || []), ...assessmentTypes])];
+      const outlineExamCfg = settingsOverride?.examConfig ?? examConfig;
 
       // Quick build: keep user-saved defaults. Customize: allow AI preset recommendations.
       if (effectivePath !== 'quick') {
@@ -1354,10 +1359,14 @@ export default function App() {
           setCourseType(rp);
           const config = getPresetConfig('corporate', rp);
           setSlideCount(config.slideCountTarget);
-          setInteractionTypes(mapToGridIds(config.interactions));
+          setInteractionTypes(mapToGridIds(config.interactions).filter(
+            t => !['sorting', 'matching', 'drop-targets', 'quiz'].includes(t)
+          ));
           if (config.objectiveFormat) setObjectiveFormat(config.objectiveFormat);
           outlineCourseType = rp;
-          outlineInteractions = mapToGridIds(config.interactions);
+          outlineInteractions = mapToGridIds(config.interactions).filter(
+            t => !['sorting', 'matching', 'drop-targets', 'quiz'].includes(t)
+          );
           outlineSlideCount = config.slideCountTarget;
         }
       }
@@ -1379,7 +1388,11 @@ export default function App() {
               slideCount: outlineSlideCount,
               includeModuleTitleSlides: outlineIncludeModuleTitles,
               includeModuleOverviewSlides: outlineIncludeModuleOverviews,
-              gameTemplateIds: outlineGameIds.length > 0 ? outlineGameIds : undefined,
+              gameTemplateIds: undefined,
+              includeKnowledgeChecks: true,
+              knowledgeCheckMode: outlineExamCfg.knowledgeCheckMode || 'per-module',
+              knowledgeCheckCount: outlineExamCfg.knowledgeCheckCount ?? 1,
+              quizActivityTypes: outlineExamCfg.questionTypes,
             }
           );
           setOutlineDraft(draft);
@@ -1428,7 +1441,11 @@ export default function App() {
             slideCount: outlineSlideCount,
             includeModuleTitleSlides: outlineIncludeModuleTitles,
             includeModuleOverviewSlides: outlineIncludeModuleOverviews,
-            gameTemplateIds: outlineGameIds.length > 0 ? outlineGameIds : undefined,
+            gameTemplateIds: undefined,
+            includeKnowledgeChecks: true,
+            knowledgeCheckMode: outlineExamCfg.knowledgeCheckMode || 'per-module',
+            knowledgeCheckCount: outlineExamCfg.knowledgeCheckCount ?? 1,
+            quizActivityTypes: outlineExamCfg.questionTypes,
           }
         );
         setOutlineDraft(draft);
@@ -1713,7 +1730,9 @@ export default function App() {
     const config = getPresetConfig('corporate', newPreset);
     setPreset(newPreset);
     setSlideCount(config.slideCountTarget);
-    setInteractionTypes(mapToGridIds(config.interactions));
+    setInteractionTypes(mapToGridIds(config.interactions).filter(
+      t => !['sorting', 'matching', 'drop-targets', 'quiz', 'multiple-choice', 'multiple-answers'].includes(t)
+    ));
     setIncludeModuleTitleSlides(config.includeModuleTitleSlides);
     setIncludeModuleOverviewSlides(config.includeModuleOverviewSlides);
     setIncludeSummarySlides(config.includeSummarySlides);
@@ -1779,23 +1798,24 @@ export default function App() {
     setIsGenerating(true);
     setProgress(15);
     try {
-      const assessmentTypes = (examConfig.questionTypes || []).flatMap((t) => {
-        if (t === 'mc' || t === 'ma' || t === 'tf') return ['quiz'];
-        return [t];
-      });
-      const mergedInteractions = [...new Set([...interactionTypes, ...assessmentTypes])];
+      const contentInteractions = (interactionTypes || []).filter(
+        t => !['sorting', 'matching', 'drop-targets', 'multiple-choice', 'multiple-answers', 'quiz'].includes(t)
+      );
       const draft = await generateCourseOutline(
         prompt, 
         learningObjectives, 
         { 
           courseType, 
-          interactionTypes: mergedInteractions, 
+          interactionTypes: contentInteractions, 
           slideCount,
           includeModuleTitleSlides,
           includeModuleOverviewSlides,
           includeSummarySlides,
-          // A1 FIX: Pass the full array of selected game template IDs
-          gameTemplateIds: gameTemplateIds.length > 0 ? gameTemplateIds : undefined,
+          gameTemplateIds: undefined,
+          includeKnowledgeChecks: true,
+          knowledgeCheckMode: examConfig.knowledgeCheckMode || 'per-module',
+          knowledgeCheckCount: examConfig.knowledgeCheckCount ?? 1,
+          quizActivityTypes: examConfig.questionTypes,
         }
       );
       setOutlineDraft(draft);
@@ -1867,30 +1887,54 @@ export default function App() {
     const wantsAiTitle = imageMode === 'ai-title' || imageMode === 'ai-title-and-source';
     const wantsSource = imageMode === 'source' || imageMode === 'ai-title-and-source';
 
-    if (wantsSource && sourceImages.length > 0) {
-      const withSource = attachSourceImagesToCourse(stamped, sourceImages);
-      setCourse(withSource);
-      setOriginalCourse(withSource);
-    }
+    void (async () => {
+      let imgs = sourceImages;
+      if (wantsSource && imgs.length === 0 && uploadedFile) {
+        try {
+          imgs = await extractImagesFromFile(uploadedFile);
+          if (imgs.length) setSourceImages(imgs);
+        } catch (e) {
+          console.warn('[ImageService] Late source extract failed:', e);
+        }
+      }
 
-    if (wantsAiTitle) {
-      setIsGeneratingImages(true);
-      generateCourseCoverImage(stamped.title || 'Course', stamped.description)
-        .then((url) => {
+      let working = stamped;
+      if (wantsSource && imgs.length > 0) {
+        working = attachSourceImagesToCourse(working, imgs);
+        setCourse(working);
+        setOriginalCourse(working);
+      }
+
+      if (wantsAiTitle) {
+        setIsGeneratingImages(true);
+        try {
+          const url = await generateCourseCoverImage(working.title || 'Course', working.description);
           setCourse((prev: any) => prev ? { ...prev, coverImage: url } : prev);
           setOriginalCourse((prev: any) => prev ? { ...prev, coverImage: url } : prev);
           setCourseBg(url);
-        })
-        .catch((err) => console.warn('[ImageService] Cover generation failed:', err))
-        .finally(() => setIsGeneratingImages(false));
-    } else if (imageMode === 'none') {
+        } catch (err) {
+          console.warn('[ImageService] Cover generation failed:', err);
+        }
+      }
+
+      // Hotspot backgrounds: prefer source images, else AI generate when AI imagery is on
+      if (wantsAiTitle || wantsSource) {
+        setIsGeneratingImages(true);
+        try {
+          const { enrichHotspotAndCarouselImages } = await import('./services/imageService');
+          const enriched = await enrichHotspotAndCarouselImages(working, imgs, {
+            generateAi: wantsAiTitle || imageMode === 'ai-title-and-source',
+            useSource: wantsSource,
+          });
+          setCourse(enriched);
+          setOriginalCourse(enriched);
+        } catch (err) {
+          console.warn('[ImageService] Hotspot/carousel enrich failed:', err);
+        }
+      }
+
       setIsGeneratingImages(false);
-    } else {
-      setIsGeneratingImages(true);
-      generateModuleImages(stamped, (slideId, imageDataUrl) => {
-        setCourse((prev: any) => prev ? applyCoverImageToCourse(prev, slideId, imageDataUrl) : prev);
-      }).finally(() => setIsGeneratingImages(false));
-    }
+    })();
 
     if (voiceOverEnabled) {
       generateTTS(stamped, setCourse, ttsVoice);
@@ -2391,6 +2435,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                         >
                           <Eye className="w-3.5 h-3.5" /> Demo — Course Development
                         </button>
+                        {/* Game Mode demo temporarily hidden — code retained for future re-enable
                         <button
                           onClick={() => {
                             setAdminDropdownOpen(false);
@@ -2406,6 +2451,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                         >
                           <Gamepad2 className="w-3.5 h-3.5" /> Demo — Game Mode
                         </button>
+                        */}
                         <div className="border-t border-slate-800 my-1" />
                         {/* Trial Invites — admin only */}
                         <button
@@ -2886,6 +2932,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                        </div>
                        <p className="text-sm text-slate-400 leading-relaxed">Full AI course with slides, quizzes &amp; narration. SCORM-ready for your LMS.</p>
                      </button>
+                     {/* Game Mode home card temporarily hidden — keep for future re-enable
                      <button
                        onClick={() => setBuildMode('game')}
                        className={`p-5 rounded-2xl border-2 text-left transition-all ${buildMode === 'game' ? 'border-purple-500 bg-purple-500/10 shadow-lg shadow-purple-500/10' : 'border-slate-700 bg-slate-900/60 hover:border-slate-600'}`}
@@ -2901,6 +2948,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                        </div>
                        <p className="text-sm text-slate-400 leading-relaxed">Standalone game from any document. Jeopardy, Millionaire, Escape Room &amp; more — in 30 sec.</p>
                      </button>
+                     */}
                      <button
                        onClick={() => setBuildMode('workflow')}
                        className={`p-5 rounded-2xl border-2 text-left transition-all ${buildMode === 'workflow' ? 'border-violet-500 bg-violet-500/10 shadow-lg shadow-violet-500/10' : 'border-slate-700 bg-slate-900/60 hover:border-slate-600'}`}
@@ -2942,8 +2990,8 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                        </div>
                      </div>
 
-                     {/* Game Mode: topic input + game type selector */}
-                     {buildMode === 'game' && (
+                     {/* Game Mode: topic input + game type selector — temporarily disabled */}
+                     {false && buildMode === 'game' && (
                       <>
                         <div className="w-full space-y-2">
                           <label className="text-xs font-bold text-slate-400 uppercase tracking-widest text-left flex">Topic (or use uploaded file above)</label>
@@ -3534,27 +3582,14 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                    </button>
                                  );
                                })()}
-                               {/* ── Universal accent label + underline — all interactive/quiz slides ── */}
-                               {!isFullBleed && !['content','summary','title','cover','key-takeaways'].includes(currentSlide?.type as string) && (() => {
-                                 const TYPE_LABELS: Record<string,string> = {
-                                   'quiz': 'Knowledge Check', 'multiple-answers': 'Knowledge Check',
-                                   'matching': 'Matching Activity', 'sorting': 'Sorting Activity',
-                                   'accordion': 'Explore', 'flashcards': 'Flashcards',
-                                   'timeline': 'Timeline', 'hotspot': 'Hotspot', 'wheel-diagram': 'Diagram',
-                                   'tabbed-horizontal': 'Tabbed Content', 'tabbed-vertical': 'Tabbed Content',
-                                   'folder-explorer': 'Explorer', 'carousel-panel': 'Carousel',
-                                   'click-reveal': 'Click & Reveal',
-                                   'game-template': 'Game',
-                                   'diagram': 'Process Diagram',
-                                 };
-                                 const label = TYPE_LABELS[currentSlide?.type as string];
-                                 if (!label) return null;
-                                 return (
-                                   <div className="mb-4">
-                                     <p className="text-[10px] font-black uppercase tracking-[0.25em] mb-2" style={{ color: slideAccentColor }}>{label}</p>
-                                   </div>
-                                 );
-                               })()}
+                               {/* Knowledge Check label only — no generic interaction type headers */}
+                               {!isFullBleed && ['quiz', 'multiple-choice', 'multiple-answers', 'sorting', 'matching', 'drop-targets'].includes(currentSlide?.type as string) && (
+                                 <div className="mb-4">
+                                   <p className="text-[10px] font-black uppercase tracking-[0.25em] mb-2" style={{ color: slideAccentColor }}>
+                                     Knowledge Check
+                                   </p>
+                                 </div>
+                               )}
 
                                {/* TITLE / COVER SLIDE — redesigned CourseTitleSlide */}
                                {(currentSlide?.type === 'title' || currentSlide?.type === 'cover') && (
@@ -3812,14 +3847,33 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                   const rawData = currentSlide.data || currentSlide.interactions?.[0] || {};
                                   const matchingProps = (() => {
                                     if (Array.isArray(rawData.pairs) && rawData.pairs.length > 0) {
-                                      const items   = rawData.pairs.map((p) => ({ id: p.id + '_item',   content: p.term }));
-                                      const targets = rawData.pairs.map((p) => ({ id: p.id + '_target', content: p.definition }));
+                                      const items   = rawData.pairs.map((p: any) => ({ id: p.id + '_item',   content: p.term || p.left || '' }));
+                                      const targets = rawData.pairs.map((p: any) => ({ id: p.id + '_target', content: p.definition || p.right || '' }));
                                       const correctAnswers = rawData.correctAnswers ||
-                                        Object.fromEntries(rawData.pairs.map((p) => [p.id + '_item', p.id + '_target']));
+                                        Object.fromEntries(rawData.pairs.map((p: any) => [p.id + '_item', p.id + '_target']));
                                       return { items, targets, correctAnswers };
                                     }
                                     if (Array.isArray(rawData.items) && rawData.items.length > 0) {
-                                      return { items: rawData.items, targets: rawData.targets || [], correctAnswers: rawData.correctAnswers || {} };
+                                      const items = rawData.items;
+                                      const targets = rawData.targets || [];
+                                      let correctAnswers = rawData.correctAnswers || {};
+                                      if (!correctAnswers || Object.keys(correctAnswers).length === 0) {
+                                        const inferred: Record<string, string> = {};
+                                        for (const it of items) {
+                                          const mid = (it as any).matchId || (it as any).targetId;
+                                          if (mid && targets.some((t: any) => t.id === mid)) inferred[it.id] = mid;
+                                        }
+                                        if (Object.keys(inferred).length === 0) {
+                                          for (const it of items) {
+                                            if (targets.some((t: any) => t.id === it.id)) inferred[it.id] = it.id;
+                                          }
+                                        }
+                                        if (Object.keys(inferred).length === 0 && items.length === targets.length) {
+                                          items.forEach((it: any, i: number) => { inferred[it.id] = targets[i].id; });
+                                        }
+                                        correctAnswers = inferred;
+                                      }
+                                      return { items, targets, correctAnswers };
                                     }
                                     return { items: [], targets: [], correctAnswers: {} };
                                   })();
@@ -3960,6 +4014,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                    <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                      <TabbedHorizontal
                                        tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []}
+                                       theme={theme as any}
                                        onTabView={(id) => markInteractionExplored(currentSlide.id, id)}
                                      />
                                    </div>
@@ -4149,7 +4204,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                       <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                       <div style={{ minHeight: '320px' }}>
                                         <HotspotInteraction
-                                          imageUrl={hd.imageUrl || hd.image || hd.backgroundImage}
+                                          imageUrl={hd.imageUrl || hd.image || hd.backgroundImage || (currentSlide as any).imageUrl || (currentSlide as any).coverImage}
                                           points={hd.points || hd.hotspots || []}
                                           theme={theme}
                                           onPinOpen={(pinId) => markInteractionExplored(currentSlide.id, pinId)}

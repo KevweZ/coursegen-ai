@@ -181,6 +181,9 @@ export interface ExamConfig {
   /** Mastery quiz + knowledge-check question/activity types */
   questionTypes: ExamQuestionType[];
   presentationMode: ExamPresentationMode;   // default 'one-at-a-time'
+  /** How many in-module Knowledge Checks to generate */
+  knowledgeCheckMode?: 'total' | 'per-module';
+  knowledgeCheckCount?: number;
 }
 
 /** When Linear/Restricted: require exploring interactions before Next */
