@@ -14,7 +14,6 @@ import {
   Smartphone,
   ChevronRight,
   ChevronLeft,
-  BookOpen,
   FileText,
   Globe,
   Plus,
@@ -54,7 +53,6 @@ import {
   Save,
   Undo2,
   Send,
-  Activity,
   SlidersHorizontal
 } from 'lucide-react';
 import { 
@@ -2907,7 +2905,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                    )}
                  </div>
               ) : (
-                <div className="relative z-10 max-w-4xl mx-auto text-center w-full px-6 py-12 bg-slate-950/40 backdrop-blur-md rounded-[3rem] border border-indigo-500/20 shadow-2xl space-y-8 my-8">
+                <div className="relative z-10 max-w-4xl mx-auto text-center w-full px-6 py-12 bg-slate-950/40 backdrop-blur-md rounded-[3rem] border border-indigo-500/20 shadow-2xl space-y-6 my-8">
                   {/* Title */}
                   <div>
                     <h1 className="text-5xl md:text-7xl font-bold tracking-tight text-white mb-6">
@@ -2918,159 +2916,42 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                     </p>
                   </div>
 
-                   {/* Mode Cards — 3-column */}
-                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto">
-                     <button
-                       onClick={() => setBuildMode('course')}
-                       className={`p-5 rounded-2xl border-2 text-left transition-all ${buildMode === 'course' ? 'border-indigo-500 bg-indigo-500/10 shadow-lg shadow-indigo-500/10' : 'border-slate-700 bg-slate-900/60 hover:border-slate-600'}`}
-                     >
-                       <div className="flex items-center gap-3 mb-2">
-                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${buildMode === 'course' ? 'bg-indigo-500/30' : 'bg-indigo-500/10'}`}>
-                           <BookOpen className="w-5 h-5 text-indigo-400" />
-                         </div>
-                         <span className="font-extrabold text-white text-base">Course Builder</span>
-                       </div>
-                       <p className="text-sm text-slate-400 leading-relaxed">Full AI course with slides, quizzes &amp; narration. SCORM-ready for your LMS.</p>
-                     </button>
-                     {/* Game Mode home card temporarily hidden — keep for future re-enable
-                     <button
-                       onClick={() => setBuildMode('game')}
-                       className={`p-5 rounded-2xl border-2 text-left transition-all ${buildMode === 'game' ? 'border-purple-500 bg-purple-500/10 shadow-lg shadow-purple-500/10' : 'border-slate-700 bg-slate-900/60 hover:border-slate-600'}`}
-                     >
-                       <div className="flex items-center gap-3 mb-2">
-                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${buildMode === 'game' ? 'bg-purple-500/30' : 'bg-purple-500/10'}`}>
-                           <Gamepad2 className="w-5 h-5 text-purple-400" />
-                         </div>
-                         <div className="flex items-center gap-2">
-                           <span className="font-extrabold text-white text-base">Game Mode</span>
-                           <span className="text-[10px] font-black bg-purple-500 text-white px-2 py-0.5 rounded-full uppercase tracking-widest">New</span>
-                         </div>
-                       </div>
-                       <p className="text-sm text-slate-400 leading-relaxed">Standalone game from any document. Jeopardy, Millionaire, Escape Room &amp; more — in 30 sec.</p>
-                     </button>
-                     */}
-                     <button
-                       onClick={() => setBuildMode('workflow')}
-                       className={`p-5 rounded-2xl border-2 text-left transition-all ${buildMode === 'workflow' ? 'border-violet-500 bg-violet-500/10 shadow-lg shadow-violet-500/10' : 'border-slate-700 bg-slate-900/60 hover:border-slate-600'}`}
-                     >
-                       <div className="flex items-center gap-3 mb-2">
-                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${buildMode === 'workflow' ? 'bg-violet-500/30' : 'bg-violet-500/10'}`}>
-                           <Activity className="w-5 h-5 text-violet-400" />
-                         </div>
-                         <div className="flex items-center gap-2">
-                           <span className="font-extrabold text-white text-base">Workflow Insights</span>
-                           <span className="text-[10px] font-black bg-violet-600 text-white px-2 py-0.5 rounded-full uppercase tracking-widest">AI</span>
-                         </div>
-                       </div>
-                       <p className="text-sm text-slate-400 leading-relaxed">Detect what you've been working on and auto-suggest relevant eLearning courses to build.</p>
-                     </button>
-                   </div>
+                  <div className="w-full flex flex-col items-center gap-4 max-w-xl mx-auto">
+                    {/* File upload */}
+                    <div className="w-full flex flex-col items-center justify-center gap-4 px-8 py-8 bg-slate-900/80 rounded-2xl border-[2px] border-dashed border-indigo-500/50 hover:border-indigo-400 hover:bg-slate-800/90 transition-all cursor-pointer relative group">
+                      <input
+                        type="file"
+                        onChange={(e) => { handleFileUpload(e); }}
+                        className="absolute inset-0 opacity-0 cursor-pointer z-10 w-full h-full"
+                        accept=".pdf,.docx,.pptx,.txt"
+                      />
+                      <div className="w-16 h-16 bg-indigo-500/20 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <FileUp className="w-8 h-8 text-indigo-400 group-hover:text-indigo-300 transition-colors" />
+                      </div>
+                      <div className="text-center">
+                        <span className="text-xl text-white font-bold block mb-1">
+                          {uploadedFile ? 'File Ready ✓' : 'Upload File to Begin'}
+                        </span>
+                        <span className="text-sm text-indigo-300/70 font-medium group-hover:text-indigo-300 transition-colors">
+                          {uploadedFile ? uploadedFile.name : 'Drop PDF, Word, or PowerPoint files here'}
+                        </span>
+                      </div>
+                    </div>
 
-                  {/* Main input area — hidden in Workflow Insights mode */}
-                  {buildMode !== 'workflow' ? (
-                   <div className="w-full flex flex-col items-center gap-4 max-w-xl mx-auto">
-                     {/* File upload */}
-                     <div className="w-full flex flex-col items-center justify-center gap-4 px-8 py-8 bg-slate-900/80 rounded-2xl border-[2px] border-dashed border-indigo-500/50 hover:border-indigo-400 hover:bg-slate-800/90 transition-all cursor-pointer relative group">
-                       <input
-                         type="file"
-                         onChange={(e) => { handleFileUpload(e); }}
-                         className="absolute inset-0 opacity-0 cursor-pointer z-10 w-full h-full"
-                         accept=".pdf,.docx,.pptx,.txt"
-                       />
-                       <div className="w-16 h-16 bg-indigo-500/20 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
-                         <FileUp className="w-8 h-8 text-indigo-400 group-hover:text-indigo-300 transition-colors" />
-                       </div>
-                       <div className="text-center">
-                         <span className="text-xl text-white font-bold block mb-1">
-                           {uploadedFile ? 'File Ready ✓' : 'Upload File to Begin'}
-                         </span>
-                         <span className="text-sm text-indigo-300/70 font-medium group-hover:text-indigo-300 transition-colors">
-                           {uploadedFile ? uploadedFile.name : 'Drop PDF, Word, or PowerPoint files here'}
-                         </span>
-                       </div>
-                     </div>
-
-                     {/* Game Mode: topic input + game type selector — temporarily disabled */}
-                     {false && buildMode === 'game' && (
-                      <>
-                        <div className="w-full space-y-2">
-                          <label className="text-xs font-bold text-slate-400 uppercase tracking-widest text-left flex">Topic (or use uploaded file above)</label>
-                          <input
-                            type="text"
-                            value={prompt}
-                            onChange={e => setPrompt(e.target.value)}
-                            placeholder="e.g. Workplace Safety, Customer Service Excellence..."
-                            className="w-full bg-slate-900/80 border border-slate-700 hover:border-slate-600 focus:border-purple-500 text-white placeholder-slate-500 rounded-xl px-4 py-3 text-sm outline-none transition-all focus:ring-2 focus:ring-purple-500/20"
-                          />
-                        </div>
-
-                        <div className="w-full">
-                          <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 text-left flex">Select Game Type</label>
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
-                            {([
-                              { id: 'jeopardy',       label: 'Jeopardy',    icon: '🎯', desc: 'Category board' },
-                              { id: 'millionaire',    label: 'Millionaire', icon: '💰', desc: '12-question climb' },
-                              { id: 'family-feud',    label: 'Family Feud', icon: '👥', desc: 'Ranked surveys' },
-                              { id: 'escape-room',    label: 'Escape Room', icon: '🔐', desc: 'Narrative stages' },
-                              { id: 'spin-wheel',     label: 'Spin Wheel',  icon: '🎡', desc: 'Random segments' },
-                              { id: 'price-is-right', label: 'Price Is Right', icon: '📊', desc: 'Estimation game' },
-                            ] as const).map(g => (
-                              <button
-                                key={g.id}
-                                onClick={() => setSelectedGameType(g.id as GameTemplateType)}
-                                className={`flex flex-col items-center gap-1 p-3 rounded-xl border-2 text-center transition-all ${selectedGameType === g.id ? 'border-purple-500 bg-purple-500/15' : 'border-slate-700 bg-slate-900/40 hover:border-slate-600 hover:bg-slate-800/60'}`}
-                              >
-                                <span className="text-2xl">{g.icon}</span>
-                                <span className={`text-xs font-bold ${selectedGameType === g.id ? 'text-purple-300' : 'text-slate-300'}`}>{g.label}</span>
-                                <span className="text-[10px] text-slate-500">{g.desc}</span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <button
-                          onClick={handleGenerateGame}
-                          disabled={isGenerating || (!prompt && !uploadedFile)}
-                          className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white px-10 py-4 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all shadow-lg hover:shadow-purple-500/25 border border-purple-500/50 text-lg"
-                        >
-                          {isGenerating
-                            ? <><Loader2 className="w-5 h-5 animate-spin" /> Generating Game...</>
-                            : <><Gamepad2 className="w-5 h-5" /> Generate Game</>}
-                        </button>
-                      </>
-                    )}
-
-                    {/* Course Builder buttons */}
-                    {buildMode === 'course' && (
-                      <>
-                        <p className="text-sm text-slate-400 font-medium">AI-powered authoring that analyzes your content and builds a complete, SCORM-compliant, interactive course — automatically.</p>
-                        <button
-                          onClick={() => handleStartDetails()}
-                          disabled={!uploadedFile}
-                          className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white px-10 py-5 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all shadow-lg hover:shadow-indigo-500/25 border border-indigo-500/50 text-xl"
-                        >
-                          Start Configuration
-                          <ArrowRight className="w-6 h-6" />
-                        </button>
-                        <div className="w-full flex items-center gap-6 opacity-60 justify-center">
-                          <span className="text-xs font-bold text-slate-300 uppercase tracking-widest flex items-center gap-2"><CheckCircle2 className="w-4 h-4"/> SCORM Compliant</span>
-                          <span className="text-xs font-bold text-slate-300 uppercase tracking-widest flex items-center gap-2"><CheckCircle2 className="w-4 h-4"/> AI Generated</span>
-                        </div>
-                      </>
-                    )}
-                   </div>
-                  ) : (
-                    /* ── Workflow Insights Panel ───────────────────────────── */
-                    <WorkflowInsightsPanel
-                      onGenerateCourse={(topic) => {
-                        // Pre-fill topic, switch to Course Builder, auto-start
-                        setBuildMode('course');
-                        setPrompt(topic);
-                        // Small delay so state settles before starting details
-                        setTimeout(() => handleStartDetails(), 50);
-                      }}
-                    />
-                  )}
+                    <p className="text-sm text-slate-400 font-medium">AI-powered authoring that analyzes your content and builds a complete, SCORM-compliant, interactive course — automatically.</p>
+                    <button
+                      onClick={() => handleStartDetails()}
+                      disabled={!uploadedFile}
+                      className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white px-10 py-5 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all shadow-lg hover:shadow-indigo-500/25 border border-indigo-500/50 text-xl"
+                    >
+                      Start Configuration
+                      <ArrowRight className="w-6 h-6" />
+                    </button>
+                    <div className="w-full flex items-center gap-6 opacity-60 justify-center">
+                      <span className="text-xs font-bold text-slate-300 uppercase tracking-widest flex items-center gap-2"><CheckCircle2 className="w-4 h-4"/> SCORM Compliant</span>
+                      <span className="text-xs font-bold text-slate-300 uppercase tracking-widest flex items-center gap-2"><CheckCircle2 className="w-4 h-4"/> AI Generated</span>
+                    </div>
+                  </div>
                 </div>
               )}
             </motion.div>
