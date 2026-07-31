@@ -8,7 +8,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, BookOpen, Trash2, FolderOpen, Clock, Layers, Save, AlertCircle, CheckCircle2, Lock } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { CourseDraft } from '../../lib/useDraftCourses';
-import { MAX_PRO_DRAFTS } from '../../lib/useDraftCourses';
 
 interface Props {
   isOpen: boolean;
@@ -123,7 +122,7 @@ export const DraftCoursesPanel: React.FC<Props> = ({
                 <div className={cn('rounded-xl border p-4 space-y-3', theme === 'light' ? 'bg-indigo-50/60 border-indigo-200' : 'bg-indigo-900/20 border-indigo-500/20')}>
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-black uppercase tracking-wider text-indigo-400">Draft Slots</span>
-                    <span className={cn('text-xs', subText)}>{MAX_PRO_DRAFTS} max · Pro plan</span>
+                    <span className={cn('text-xs', subText)}>{slotsTotal} max · shared Design + Development</span>
                   </div>
                   <SlotBar used={slotsUsed} total={slotsTotal} theme={theme} />
                 </div>
@@ -186,9 +185,16 @@ export const DraftCoursesPanel: React.FC<Props> = ({
                       <div className="space-y-1">
                         <div className="flex items-start justify-between gap-2">
                           <p className="font-bold text-sm leading-snug">{draft.courseTitle}</p>
-                          <span className={cn('shrink-0 text-[10px] px-2 py-0.5 rounded-full font-black uppercase', 'bg-indigo-500/15 text-indigo-400')}>
-                            {draft.theme}
-                          </span>
+                          <div className="flex flex-col items-end gap-1 shrink-0">
+                            <span className={cn(
+                              'text-[10px] px-2 py-0.5 rounded-full font-black uppercase',
+                              draft.phase === 'design'
+                                ? 'bg-amber-500/15 text-amber-400'
+                                : 'bg-indigo-500/15 text-indigo-400'
+                            )}>
+                              {draft.phase === 'design' ? 'Design' : 'Development'}
+                            </span>
+                          </div>
                         </div>
                         <div className={cn('flex items-center gap-3 text-xs', subText)}>
                           <span className="flex items-center gap-1"><Layers className="w-3 h-3" />{draft.moduleCount} modules</span>

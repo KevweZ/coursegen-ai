@@ -117,6 +117,9 @@ export interface CourseSettingsPageProps {
   onBack: () => void;
   onReplaceDocument?: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onSaveSettings?: () => void;
+  /** Save Design-phase draft (shared slot pool with Development drafts) */
+  onSaveDesignDraft?: () => void;
+  designDraftSavedFlash?: boolean;
   onGenerateCourse?: () => void;
   onOpenPlayerProperties?: () => void;
   settingsSavedFlash?: boolean;
@@ -243,6 +246,19 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                 >
                   <Save className={cn(compactMobile ? 'w-3.5 h-3.5' : 'w-4 h-4')} />
                   {props.settingsSavedFlash ? 'Saved!' : 'Save Settings'}
+                </button>
+              )}
+              {!isDefaults && props.onSaveDesignDraft && (
+                <button
+                  type="button"
+                  onClick={props.onSaveDesignDraft}
+                  className={cn(
+                    'flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-200 font-bold transition-all',
+                    compactMobile ? 'px-3 py-1.5 text-[11px]' : 'px-4 py-2.5 text-sm'
+                  )}
+                >
+                  <Save className={cn(compactMobile ? 'w-3.5 h-3.5' : 'w-4 h-4')} />
+                  {props.designDraftSavedFlash ? 'Draft Saved!' : 'Save Draft'}
                 </button>
               )}
               {!isDefaults && props.onGenerateCourse && (

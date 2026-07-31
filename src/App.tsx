@@ -101,6 +101,16 @@ import { ClosedCaptionOverlay } from './components/player/ClosedCaptionOverlay';
 import { SlideHeader } from './components/player/SlideHeader';
 import { SlideErrorBoundary } from './components/player/SlideErrorBoundary';
 import { useDraftCourses } from './lib/useDraftCourses';
+import type { DesignDraftSnapshot } from './lib/useDraftCourses';
+import {
+  ROUTES,
+  parseAppPath,
+  isProtectedPath,
+  navigateTo,
+  stashReturnTo,
+  consumeReturnTo,
+} from './lib/routes';
+import type { SandboxDemo } from './lib/routes';
 import { DraftCoursesPanel } from './components/player/DraftCoursesPanel';
 import { AppImagePickerModal } from './components/player/AppImagePickerModal';
 import { CourseTitleSlide } from './components/player/CourseTitleSlide';
@@ -510,38 +520,144 @@ export default function App() {
   const isScormPlayer = typeof window !== 'undefined' && !!(window as any).__COURSE_DATA__;
   const { user, session, loading: authLoading, signOut, isAdmin, isTrial, isTrialExpired } = useAuth();
 
-  // ── Draft Courses (Pro feature) ───────────────────────────────────────────
-  const draftManager = useDraftCourses(user?.id ?? null);
+  // ── Draft Courses (shared Design + Development slots) ─────────────────────
+  const userPlan = (user?.user_metadata?.plan as string | undefined) ?? null;
+  const draftManager = useDraftCourses(user?.id ?? null, userPlan);
   const [showDraftsPanel, setShowDraftsPanel] = React.useState(false);
   const [showAppImagePicker, setShowAppImagePicker] = React.useState(false);
   const [showImageDropdown, setShowImageDropdown] = React.useState(false);
   const [draftSaveMessage, setDraftSaveMessage] = React.useState<string | null>(null);
+  const [activeDraftId, setActiveDraftId] = React.useState<string | null>(null);
+  const [designDraftSavedFlash, setDesignDraftSavedFlash] = React.useState(false);
+  const pathBeforePlayerProps = React.useRef<string>(ROUTES.upload);
 
   const showDraftMessage = (msg: string) => {
     setDraftSaveMessage(msg);
     setTimeout(() => setDraftSaveMessage(null), 3500);
   };
 
+  const collectDesignSnapshot = (): Omit<DesignDraftSnapshot, 'phase'> => ({
+    courseTitle,
+    courseDescription,
+    prompt,
+    learningObjectives,
+    objectiveFormat,
+    examConfig,
+    navigationMode,
+    requireInteractionsComplete,
+    preset,
+    slideCount,
+    includeModuleTitleSlides,
+    includeModuleOverviewSlides,
+    includeSummarySlides,
+    interactionTypes,
+    scenarioConfig,
+    outlineDraft,
+    imageMode,
+    voiceOverEnabled,
+    ttsVoice,
+    settingsMode: settingsMode === 'quick' ? 'session' : settingsMode,
+  });
+
   const handleSaveDraft = () => {
     if (!course) return;
-    const result = draftManager.saveDraft(course, playerConfig, theme);
+    if (activeDraftId) {
+      const existing = draftManager.loadDraft(activeDraftId);
+      if (existing?.phase === 'preview') {
+        draftManager.replacePreviewDraft(activeDraftId, course, playerConfig, theme);
+        showDraftMessage('Draft updated ✓');
+        navigateTo(ROUTES.preview(activeDraftId), true);
+        return;
+      }
+    }
+    const result = draftManager.savePreviewDraft(course, playerConfig, theme);
     showDraftMessage(result.message);
+    if (result.success && result.id) {
+      setActiveDraftId(result.id);
+      navigateTo(ROUTES.preview(result.id));
+    }
+  };
+
+  const applyDesignSnapshot = (design: Omit<DesignDraftSnapshot, 'phase'> | DesignDraftSnapshot) => {
+    setCourseTitle(design.courseTitle || '');
+    setCourseDescription(design.courseDescription || '');
+    setPrompt(design.prompt || '');
+    setLearningObjectives(design.learningObjectives || []);
+    if (design.objectiveFormat) setObjectiveFormat(design.objectiveFormat as any);
+    if (design.examConfig) setExamConfig(design.examConfig);
+    if (design.navigationMode) setNavigationMode(design.navigationMode as any);
+    if (typeof design.requireInteractionsComplete === 'boolean') {
+      setRequireInteractionsComplete(design.requireInteractionsComplete);
+    }
+    if (design.preset) { setPreset(design.preset as any); setCourseType(design.preset as any); }
+    if (typeof design.slideCount === 'number') setSlideCount(design.slideCount);
+    if (typeof design.includeModuleTitleSlides === 'boolean') setIncludeModuleTitleSlides(design.includeModuleTitleSlides);
+    if (typeof design.includeModuleOverviewSlides === 'boolean') setIncludeModuleOverviewSlides(design.includeModuleOverviewSlides);
+    if (typeof design.includeSummarySlides === 'boolean') setIncludeSummarySlides(design.includeSummarySlides);
+    if (design.interactionTypes) setInteractionTypes(design.interactionTypes);
+    if (design.scenarioConfig) setScenarioConfig(design.scenarioConfig);
+    setOutlineDraft(design.outlineDraft ?? null);
+    if (design.imageMode) setImageMode(design.imageMode as any);
+    if (typeof design.voiceOverEnabled === 'boolean') setVoiceOverEnabled(design.voiceOverEnabled);
+    if (design.ttsVoice) setTtsVoice(design.ttsVoice);
+    setSettingsMode(design.settingsMode === 'defaults' ? 'defaults' : 'session');
+    setIsSandboxMode(false);
+    setMobileDesignDemo(false);
+    setStep('details');
+  };
+
+  const handleSaveDesignDraft = () => {
+    const design = collectDesignSnapshot();
+    if (activeDraftId) {
+      const existing = draftManager.loadDraft(activeDraftId);
+      if (existing?.phase === 'design') {
+        draftManager.replaceDesignDraft(activeDraftId, design);
+        setDesignDraftSavedFlash(true);
+        setTimeout(() => setDesignDraftSavedFlash(false), 2500);
+        showDraftMessage('Design draft updated ✓');
+        navigateTo(ROUTES.design(activeDraftId), true);
+        return;
+      }
+    }
+    const result = draftManager.saveDesignDraft(design);
+    showDraftMessage(result.message);
+    if (result.success && result.id) {
+      setActiveDraftId(result.id);
+      setDesignDraftSavedFlash(true);
+      setTimeout(() => setDesignDraftSavedFlash(false), 2500);
+      navigateTo(ROUTES.design(result.id));
+    }
   };
 
   const handleLoadDraft = (id: string) => {
     const snapshot = draftManager.loadDraft(id);
     if (!snapshot) return;
-    setCourse(snapshot.course);
-    setPlayerConfig(snapshot.playerConfig || playerConfig);
-    setCurrentSlideIndex(0);
+    setActiveDraftId(id);
     setShowDraftsPanel(false);
+    if (snapshot.phase === 'design') {
+      applyDesignSnapshot(snapshot);
+      navigateTo(ROUTES.design(id));
+      showDraftMessage('Design draft loaded ✓');
+      return;
+    }
+    setCourse(snapshot.course);
+    setOriginalCourse(snapshot.course);
+    setPlayerConfig(snapshot.playerConfig || playerConfig);
+    setTheme((snapshot.theme as any) || 'light');
+    setCurrentSlideIndex(0);
+    setIsSandboxMode(false);
+    setMobileDesignDemo(false);
+    setStep('preview');
+    navigateTo(ROUTES.preview(id));
     showDraftMessage('Draft loaded ✓');
   };
 
   const handleReplaceDraft = (id: string) => {
     if (!course) return;
-    draftManager.replaceDraft(id, course, playerConfig, theme);
+    draftManager.replacePreviewDraft(id, course, playerConfig, theme);
+    setActiveDraftId(id);
     showDraftMessage('Draft updated ✓');
+    navigateTo(ROUTES.preview(id), true);
   };
 
   // Controls which pre-auth view to show: public marketing homepage OR login/signup
@@ -553,78 +669,27 @@ export default function App() {
   const goHome = () => {
     setStep('home');
     setMobileDesignDemo(false);
-    if (typeof window !== 'undefined' && window.location.pathname !== '/upload') {
-      window.history.pushState({}, '', '/upload');
-    }
+    setActiveDraftId(null);
+    setIsSandboxMode(false);
+    navigateTo(ROUTES.upload);
   };
 
-  // ── Handle Stripe redirect-back URLs (/payment-success, /payment-cancel)
-  useEffect(() => {
-    const path = window.location.pathname;
-    if (path === '/payment-success') {
-      setStep('payment-success');
-      window.history.replaceState({}, '', '/');
-    } else if (path === '/payment-cancel') {
-      setStep('payment-cancel');
-      window.history.replaceState({}, '', '/');
-    } else if (path === '/methodology') {
-      setPublicView('methodology');
-      window.history.replaceState({}, '', '/methodology');
-    } else if (path === '/pricing') {
-      setPublicView('pricing');
-      window.history.replaceState({}, '', '/pricing');
-    } else if (path === '/examples') {
-      setPublicView('examples');
-      window.history.replaceState({}, '', '/examples');
-    } else if (path === '/login') {
-      setPublicView('auth');
-      setAuthInitialMode('login');
-    } else if (path === '/signup') {
-      setPublicView('auth');
-      setAuthInitialMode('signup');
-    } else if (path === '/upload') {
-      // Logged-out visitors hit auth; logged-in users land on the upload home step.
-      setPublicView('auth');
-      setAuthInitialMode('login');
-      setStep('home');
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const openPlayerProperties = () => {
+    pathBeforePlayerProps.current = window.location.pathname || ROUTES.upload;
+    setShowPlayerProperties(true);
+    navigateTo(ROUTES.playerProperties);
+  };
 
-  // After login, send users to /upload (marketing stays at /)
-  useEffect(() => {
-    if (!user || isScormPlayer) return;
-    const path = window.location.pathname;
-    if (path === '/' || path === '/login' || path === '/signup' || path === '') {
-      window.history.replaceState({}, '', '/upload');
-      setStep('home');
-    }
-  }, [user, isScormPlayer]);
+  const closePlayerProperties = () => {
+    setShowPlayerProperties(false);
+    const back = pathBeforePlayerProps.current || ROUTES.upload;
+    navigateTo(back, true);
+  };
 
-  // Keep /upload in the address bar while on the authenticated home (upload) step
-  useEffect(() => {
-    if (!user || isScormPlayer) return;
-    if (step === 'home' && window.location.pathname !== '/upload') {
-      window.history.replaceState({}, '', '/upload');
-    }
-  }, [step, user, isScormPlayer]);
+  /** Assigned after sandbox state hooks exist */
+  const launchSandboxDemoRef = React.useRef<(demo: SandboxDemo, pushUrl?: boolean) => void>(() => {});
+  const launchSandboxDemo = (demo: SandboxDemo, pushUrl = true) => launchSandboxDemoRef.current(demo, pushUrl);
 
-  // ── Handle browser back / forward buttons ─────────────────────────────────
-  useEffect(() => {
-    const handlePopState = () => {
-      const path = window.location.pathname;
-      if (path === '/pricing') { setPublicView('pricing'); window.scrollTo(0, 0); }
-      else if (path === '/examples') setPublicView('examples');
-      else if (path === '/methodology') setPublicView('methodology');
-      else if (path === '/login')  { setPublicView('auth'); setAuthInitialMode('login'); }
-      else if (path === '/signup') { setPublicView('auth'); setAuthInitialMode('signup'); }
-      else if (path === '/upload') { setPublicView('auth'); setAuthInitialMode('login'); setStep('home'); }
-      else setPublicView('homepage');
-    };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
   const [activeTab, setActiveTab] = useState<'topic' | 'file' | 'url'>('topic');
   const [courseTitle, setCourseTitle] = useState('');
   const [prompt, setPrompt] = useState('');
@@ -712,6 +777,250 @@ export default function App() {
   const [adminDropdownOpen, setAdminDropdownOpen] = useState(false); // kept for compat
   // Sandbox mode flag (dummy course active)
   const [isSandboxMode, setIsSandboxMode] = useState(false);
+
+  // ── Sandbox demo launcher (shared by menu + deep links) ───────────────────
+  launchSandboxDemoRef.current = (demo: SandboxDemo, pushUrl = true) => {
+    setActiveDraftId(null);
+    setShowPlayerProperties(false);
+    if (demo === 'settings') {
+      setCourseTitle('Advanced Workplace Communication');
+      setCourseDescription('A comprehensive eLearning course covering modern workplace communication strategies.');
+      setLearningObjectives([{ terminalObjective: 'Given a workplace scenario, the learner will identify the communication strategy that best supports effective collaboration.', enablingObjectives: [] }]);
+      setCourseType('standard'); setPreset('standard');
+      setSettingsMode('session');
+      setPreviewModalViewMode('desktop');
+      setMobileDesignDemo(false);
+      setViewMode('desktop');
+      setIsSandboxMode(true);
+      setStep('details');
+      if (pushUrl) navigateTo(ROUTES.sandboxSettings);
+      return;
+    }
+    if (demo === 'designMobile') {
+      setCourseTitle('Advanced Workplace Communication');
+      setCourseDescription('A comprehensive eLearning course covering modern workplace communication strategies.');
+      setLearningObjectives([{ terminalObjective: 'Given a workplace scenario, the learner will identify the communication strategy that best supports effective collaboration.', enablingObjectives: [] }]);
+      setCourseType('standard'); setPreset('standard');
+      setSettingsMode('session');
+      setPreviewModalViewMode('mobile');
+      setMobileDesignDemo(true);
+      setViewMode('mobile');
+      setIsSandboxMode(true);
+      setStep('details');
+      if (pushUrl) navigateTo(ROUTES.sandboxDesignMobile);
+      return;
+    }
+    // development | mobile
+    setCourse(DUMMY_COURSE); setOriginalCourse(DUMMY_COURSE);
+    setCurrentSlideIndex(0); setQuizState({}); setTheme('light');
+    setViewMode(demo === 'mobile' ? 'mobile' : 'desktop');
+    setFloatingImagesMap({}); setSyntheticSlideOverrides({}); setCourseBg(null);
+    setIsSandboxMode(true);
+    setMobileDesignDemo(false);
+    setImageMode('ai-title');
+    setExamQuestions(DUMMY_EXAM_QUESTIONS); setExamConfig(DUMMY_COURSE.examConfig!);
+    setExamPhase('idle'); setExamError(null); setIsGeneratingExam(false);
+    setHighestVisitedIndex(0);
+    setPlayerConfig(prev => ({ ...prev, playerResolution: '16:9' }));
+    setNavigationMode(DUMMY_COURSE.navigationMode ?? 'free');
+    setStep('preview');
+    if (pushUrl) navigateTo(demo === 'mobile' ? ROUTES.sandboxMobile : ROUTES.sandboxDevelopment);
+    setIsGeneratingImages(true);
+    generateCourseCoverImage(DUMMY_COURSE.title, DUMMY_COURSE.description)
+      .then((url) => {
+        setCourse((prev: any) => prev ? { ...prev, coverImage: url } : prev);
+        setOriginalCourse((prev: any) => prev ? { ...prev, coverImage: url } : prev);
+        setCourseBg(url);
+      })
+      .catch((err) => {
+        console.warn('[Demo] AI cover failed:', err);
+        showDraftMessage('Demo cover image generation failed.');
+      })
+      .finally(() => setIsGeneratingImages(false));
+  };
+
+  const applyAuthenticatedPath = React.useCallback((target: string) => {
+    const parsed = parseAppPath(target);
+
+    if (parsed.kind === 'auth' || target === '/' || target === '') {
+      navigateTo(ROUTES.upload, true);
+      setStep('home');
+      return;
+    }
+    if (parsed.kind === 'upload') {
+      setStep('home');
+      setActiveDraftId(null);
+      setIsSandboxMode(false);
+      setMobileDesignDemo(false);
+      setShowPlayerProperties(false);
+      return;
+    }
+    if (parsed.kind === 'courseSettings') {
+      setSettingsMode('defaults');
+      setIsSandboxMode(false);
+      setMobileDesignDemo(false);
+      setActiveDraftId(null);
+      setShowPlayerProperties(false);
+      setStep('details');
+      return;
+    }
+    if (parsed.kind === 'courseDevelopment') {
+      setShowPlayerProperties(false);
+      setIsSandboxMode(false);
+      setMobileDesignDemo(false);
+      if (course) setStep('preview');
+      else { navigateTo(ROUTES.upload, true); setStep('home'); }
+      return;
+    }
+    if (parsed.kind === 'myAccount') {
+      setShowPlayerProperties(false);
+      setStep('account');
+      return;
+    }
+    if (parsed.kind === 'pricingAuthed' || (parsed.kind === 'marketing' && parsed.view === 'pricing')) {
+      setShowPlayerProperties(false);
+      setStep('pricing');
+      return;
+    }
+    if (parsed.kind === 'playerProperties') {
+      setShowPlayerProperties(true);
+      return;
+    }
+    if (parsed.kind === 'design') {
+      const snap = draftManager.loadDraft(parsed.draftId);
+      if (snap?.phase === 'design') {
+        setActiveDraftId(parsed.draftId);
+        setShowPlayerProperties(false);
+        applyDesignSnapshot(snap);
+      } else {
+        showDraftMessage('Design draft not found.');
+        navigateTo(ROUTES.upload, true);
+        setStep('home');
+      }
+      return;
+    }
+    if (parsed.kind === 'preview') {
+      const snap = draftManager.loadDraft(parsed.draftId);
+      if (snap?.phase === 'preview') {
+        setActiveDraftId(parsed.draftId);
+        setCourse(snap.course);
+        setOriginalCourse(snap.course);
+        setPlayerConfig(snap.playerConfig || defaultPlayerConfig);
+        setTheme((snap.theme as any) || 'light');
+        setCurrentSlideIndex(0);
+        setIsSandboxMode(false);
+        setMobileDesignDemo(false);
+        setShowPlayerProperties(false);
+        setStep('preview');
+      } else {
+        showDraftMessage('Course draft not found.');
+        navigateTo(ROUTES.upload, true);
+        setStep('home');
+      }
+      return;
+    }
+    if (parsed.kind === 'sandbox') {
+      if (!isAdmin) {
+        navigateTo(ROUTES.upload, true);
+        setStep('home');
+        return;
+      }
+      launchSandboxDemo(parsed.demo, false);
+      return;
+    }
+    if (parsed.kind === 'payment') {
+      setStep(parsed.outcome === 'success' ? 'payment-success' : 'payment-cancel');
+      navigateTo(ROUTES.upload, true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftManager, isAdmin, course]);
+
+  const pathBootstrappedForUser = React.useRef<string | null>(null);
+
+  // ── Deep-link restore (auth + protected paths) ─────────────────────────────
+  useEffect(() => {
+    if (isScormPlayer || authLoading) return;
+    const path = window.location.pathname;
+
+    if (!user) {
+      pathBootstrappedForUser.current = null;
+      if (isProtectedPath(path)) {
+        stashReturnTo(path);
+        setPublicView('auth');
+        setAuthInitialMode('login');
+        navigateTo(ROUTES.login, true);
+        return;
+      }
+      const parsed = parseAppPath(path);
+      if (parsed.kind === 'marketing') setPublicView(parsed.view === 'homepage' ? 'homepage' : parsed.view);
+      else if (parsed.kind === 'auth') {
+        setPublicView('auth');
+        setAuthInitialMode(parsed.mode);
+      } else if (parsed.kind === 'payment') {
+        setStep(parsed.outcome === 'success' ? 'payment-success' : 'payment-cancel');
+        navigateTo(ROUTES.home, true);
+      }
+      return;
+    }
+
+    // Authenticated bootstrap once per user session (honor returnTo after login)
+    if (pathBootstrappedForUser.current === user.id) return;
+    pathBootstrappedForUser.current = user.id;
+    const returnTo = consumeReturnTo();
+    const target = returnTo || path;
+    if (returnTo) navigateTo(returnTo, true);
+    applyAuthenticatedPath(target);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, authLoading, isScormPlayer, isAdmin]);
+
+  // Keep URL in sync with major authenticated steps
+  useEffect(() => {
+    if (!user || isScormPlayer) return;
+    const path = window.location.pathname;
+    if (path === ROUTES.playerProperties) return;
+    if (path.startsWith('/sandbox/')) return;
+
+    if (step === 'home' && path !== ROUTES.upload) navigateTo(ROUTES.upload, true);
+    else if (step === 'details' && !isSandboxMode) {
+      if (activeDraftId && !path.startsWith('/design/')) navigateTo(ROUTES.design(activeDraftId), true);
+      else if (!activeDraftId && path !== ROUTES.courseSettings && !path.startsWith('/design/')) {
+        navigateTo(ROUTES.courseSettings, true);
+      }
+    } else if (step === 'account' && path !== ROUTES.myAccount) navigateTo(ROUTES.myAccount, true);
+    else if (step === 'pricing' && path !== ROUTES.pricing) navigateTo(ROUTES.pricing, true);
+    else if (step === 'preview' && !isSandboxMode) {
+      if (activeDraftId && !path.startsWith('/preview/')) navigateTo(ROUTES.preview(activeDraftId), true);
+      else if (!activeDraftId && path !== ROUTES.courseDevelopment && !path.startsWith('/preview/')) {
+        navigateTo(ROUTES.courseDevelopment, true);
+      }
+    }
+  }, [step, user, isScormPlayer, isSandboxMode, activeDraftId]);
+
+  // ── Browser back / forward ────────────────────────────────────────────────
+  useEffect(() => {
+    const handlePopState = () => {
+      const path = window.location.pathname;
+      if (!user) {
+        if (isProtectedPath(path)) {
+          stashReturnTo(path);
+          setPublicView('auth');
+          setAuthInitialMode('login');
+          navigateTo(ROUTES.login, true);
+          return;
+        }
+        const parsed = parseAppPath(path);
+        if (parsed.kind === 'marketing') { setPublicView(parsed.view === 'homepage' ? 'homepage' : parsed.view); window.scrollTo(0, 0); }
+        else if (parsed.kind === 'auth') { setPublicView('auth'); setAuthInitialMode(parsed.mode); }
+        else setPublicView('homepage');
+        return;
+      }
+      applyAuthenticatedPath(path);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, applyAuthenticatedPath]);
+
   // Scenario slide completion gate (unlocks Next button)
   const [scenarioCompleted, setScenarioCompleted] = useState(false);
   // Scenario builder config (feeds AI generation)
@@ -1473,7 +1782,11 @@ export default function App() {
       setSettingsMode('session');
       setIsAnalyzing(false);
       setProgress(0);
+      setActiveDraftId(null);
+      setIsSandboxMode(false);
+      setMobileDesignDemo(false);
       setStep('details');
+      navigateTo(ROUTES.courseSettings);
       setIsGeneratingOutline(true);
       try {
         const draft = await generateCourseOutline(
@@ -1821,7 +2134,11 @@ export default function App() {
       return;
     }
     setSettingsMode('session');
+    setActiveDraftId(null);
+    setIsSandboxMode(false);
+    setMobileDesignDemo(false);
     setStep('details');
+    navigateTo(ROUTES.courseSettings);
   };
 
   const handleGenerateGame = async () => {
@@ -1906,7 +2223,12 @@ export default function App() {
     setOriginalCourse(stamped);
     setSyntheticAudioMap({});
     setExploredBySlide({});
+    // Leaving Design phase — unsaved design draft id must not stick to Development
+    setActiveDraftId(null);
+    setIsSandboxMode(false);
+    setMobileDesignDemo(false);
     setStep('preview');
+    navigateTo(ROUTES.courseDevelopment);
 
     // Pre-generate mastery quiz so Begin is instant when the learner reaches it
     if (examConfig.enabled) {
@@ -2414,7 +2736,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
 
             {/* ── Pricing Button ── */}
             <button
-              onClick={() => setStep('pricing')}
+              onClick={() => { setStep('pricing'); navigateTo(ROUTES.pricing); }}
               className={`flex items-center gap-2 px-4 py-2 border rounded-lg font-bold text-sm transition-all ${
                 step === 'pricing'
                   ? 'bg-amber-500/20 border-amber-400/40 text-amber-300'
@@ -2464,15 +2786,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                         <button
                           onClick={() => {
                             setAdminDropdownOpen(false);
-                            setCourseTitle('Advanced Workplace Communication');
-                            setCourseDescription('A comprehensive eLearning course covering modern workplace communication strategies.');
-                            setLearningObjectives([{ terminalObjective: 'Given a workplace scenario, the learner will identify the communication strategy that best supports effective collaboration.', enablingObjectives: [] }]);
-                            setCourseType('standard'); setPreset('standard');
-                            setSettingsMode('session');
-                            setPreviewModalViewMode('desktop');
-                            setMobileDesignDemo(false);
-                            setViewMode('desktop');
-                            setIsSandboxMode(true); setShowPlayerProperties(false); setStep('details');
+                            launchSandboxDemo('settings');
                           }}
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-purple-300 hover:bg-purple-500/10 text-sm font-medium transition-all text-left"
                         >
@@ -2481,30 +2795,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                         <button
                           onClick={() => {
                             setAdminDropdownOpen(false);
-                            setCourse(DUMMY_COURSE); setOriginalCourse(DUMMY_COURSE);
-                            setCurrentSlideIndex(0); setQuizState({}); setTheme('light'); setViewMode('desktop');
-                            setFloatingImagesMap({}); setSyntheticSlideOverrides({}); setCourseBg(null);
-                            setIsSandboxMode(true); setShowPlayerProperties(false);
-                            setMobileDesignDemo(false);
-                            setImageMode('ai-title');
-                            setExamQuestions(DUMMY_EXAM_QUESTIONS); setExamConfig(DUMMY_COURSE.examConfig!);
-                            setExamPhase('idle'); setExamError(null); setIsGeneratingExam(false);
-                            setHighestVisitedIndex(0);
-                            setPlayerConfig(prev => ({ ...prev, playerResolution: '16:9' }));
-                            setNavigationMode(DUMMY_COURSE.navigationMode ?? 'free'); setStep('preview');
-                            // Default demo title page: generate an AI cover image
-                            setIsGeneratingImages(true);
-                            generateCourseCoverImage(DUMMY_COURSE.title, DUMMY_COURSE.description)
-                              .then((url) => {
-                                setCourse((prev: any) => prev ? { ...prev, coverImage: url } : prev);
-                                setOriginalCourse((prev: any) => prev ? { ...prev, coverImage: url } : prev);
-                                setCourseBg(url);
-                              })
-                              .catch((err) => {
-                                console.warn('[Demo] AI cover failed:', err);
-                                showDraftMessage('Demo cover image generation failed.');
-                              })
-                              .finally(() => setIsGeneratingImages(false));
+                            launchSandboxDemo('development');
                           }}
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-purple-300 hover:bg-purple-500/10 text-sm font-medium transition-all text-left"
                         >
@@ -2513,29 +2804,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                         <button
                           onClick={() => {
                             setAdminDropdownOpen(false);
-                            setCourse(DUMMY_COURSE); setOriginalCourse(DUMMY_COURSE);
-                            setCurrentSlideIndex(0); setQuizState({}); setTheme('light'); setViewMode('mobile');
-                            setFloatingImagesMap({}); setSyntheticSlideOverrides({}); setCourseBg(null);
-                            setIsSandboxMode(true); setShowPlayerProperties(false);
-                            setMobileDesignDemo(false);
-                            setImageMode('ai-title');
-                            setExamQuestions(DUMMY_EXAM_QUESTIONS); setExamConfig(DUMMY_COURSE.examConfig!);
-                            setExamPhase('idle'); setExamError(null); setIsGeneratingExam(false);
-                            setHighestVisitedIndex(0);
-                            setPlayerConfig(prev => ({ ...prev, playerResolution: '16:9' }));
-                            setNavigationMode(DUMMY_COURSE.navigationMode ?? 'free'); setStep('preview');
-                            setIsGeneratingImages(true);
-                            generateCourseCoverImage(DUMMY_COURSE.title, DUMMY_COURSE.description)
-                              .then((url) => {
-                                setCourse((prev: any) => prev ? { ...prev, coverImage: url } : prev);
-                                setOriginalCourse((prev: any) => prev ? { ...prev, coverImage: url } : prev);
-                                setCourseBg(url);
-                              })
-                              .catch((err) => {
-                                console.warn('[Demo] AI cover failed:', err);
-                                showDraftMessage('Demo cover image generation failed.');
-                              })
-                              .finally(() => setIsGeneratingImages(false));
+                            launchSandboxDemo('mobile');
                           }}
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-purple-300 hover:bg-purple-500/10 text-sm font-medium transition-all text-left"
                         >
@@ -2544,15 +2813,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                         <button
                           onClick={() => {
                             setAdminDropdownOpen(false);
-                            setCourseTitle('Advanced Workplace Communication');
-                            setCourseDescription('A comprehensive eLearning course covering modern workplace communication strategies.');
-                            setLearningObjectives([{ terminalObjective: 'Given a workplace scenario, the learner will identify the communication strategy that best supports effective collaboration.', enablingObjectives: [] }]);
-                            setCourseType('standard'); setPreset('standard');
-                            setSettingsMode('session');
-                            setPreviewModalViewMode('mobile');
-                            setMobileDesignDemo(true);
-                            setViewMode('mobile');
-                            setIsSandboxMode(true); setShowPlayerProperties(false); setStep('details');
+                            launchSandboxDemo('designMobile');
                           }}
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-purple-300 hover:bg-purple-500/10 text-sm font-medium transition-all text-left"
                         >
@@ -2598,7 +2859,10 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                         if (saved) applySavedSettings(saved);
                         setSettingsMode('defaults');
                         setIsSandboxMode(false);
+                        setMobileDesignDemo(false);
+                        setActiveDraftId(null);
                         setStep('details');
+                        navigateTo(ROUTES.courseSettings);
                       }}
                       className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800 text-sm font-medium transition-all text-left"
                     >
@@ -2608,7 +2872,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                     <button
                       onClick={() => {
                         setAdminDropdownOpen(false);
-                        setShowPlayerProperties(true);
+                        openPlayerProperties();
                       }}
                       className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800 text-sm font-medium transition-all text-left"
                     >
@@ -2616,7 +2880,11 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                       Player Properties
                     </button>
                     <button
-                      onClick={() => { setAdminDropdownOpen(false); setStep('account'); }}
+                      onClick={() => {
+                        setAdminDropdownOpen(false);
+                        setStep('account');
+                        navigateTo(ROUTES.myAccount);
+                      }}
                       className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800 text-sm font-medium transition-all text-left"
                     >
                       <CreditCard className="w-3.5 h-3.5 text-indigo-400" />
@@ -3176,7 +3444,9 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                         onReplaceDocument={(e) => { if (e.target.files?.[0]) handleFileUpload(e); }}
                         onSaveSettings={persistCourseSettings}
                         onGenerateCourse={handleGenerateCourseFromSettings}
-                        onOpenPlayerProperties={() => setShowPlayerProperties(true)}
+                        onOpenPlayerProperties={openPlayerProperties}
+                        onSaveDesignDraft={handleSaveDesignDraft}
+                        designDraftSavedFlash={designDraftSavedFlash}
                         settingsSavedFlash={settingsSavedFlash}
                       />
                     </LandscapePhoneFrame>
@@ -3238,11 +3508,13 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                 outlineDraft={outlineDraft}
                 onOutlineChange={setOutlineDraft}
                 onRegenerateOutline={regenerateOutlineForSettings}
-                onBack={() => { setIsSandboxMode(false); setMobileDesignDemo(false); setStep('home'); }}
+                onBack={goHome}
                 onReplaceDocument={(e) => { if (e.target.files?.[0]) handleFileUpload(e); }}
                 onSaveSettings={persistCourseSettings}
                 onGenerateCourse={handleGenerateCourseFromSettings}
-                onOpenPlayerProperties={() => setShowPlayerProperties(true)}
+                onOpenPlayerProperties={openPlayerProperties}
+                onSaveDesignDraft={handleSaveDesignDraft}
+                designDraftSavedFlash={designDraftSavedFlash}
                 settingsSavedFlash={settingsSavedFlash}
               />
               )}
@@ -4901,7 +5173,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                 setNavigationMode(cfg.navigationMode);
                 setExamConfig(c => ({ ...c, presentationMode: cfg.examPresentationMode }));
               }}
-              onClose={() => setShowPlayerProperties(false)}
+              onClose={closePlayerProperties}
             />
           )}
         </AnimatePresence>
