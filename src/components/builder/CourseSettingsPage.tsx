@@ -11,7 +11,7 @@ import { OutlinePreview } from './OutlinePreview';
 import type { ScenarioConfig } from '../../types/scenario';
 import type { CourseOutlineDraft } from '../../services/aiService';
 import type { ExamConfig, NavigationMode, TerminalObjectiveGroup } from '../../types/course';
-import type { CourseImageMode } from '../../services/imageService';
+import { imageModeFlags, imageModeFromFlags, type CourseImageMode } from '../../services/imageService';
 
 export type SettingsMode = 'defaults' | 'session';
 export type SettingsTab =
@@ -990,7 +990,12 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
             </div>
           )}
 
-          {activeTab === 'audio' && (
+          {activeTab === 'audio' && (() => {
+            const { ai: aiImagesOn, source: sourceImagesOn } = imageModeFlags(props.imageMode);
+            const setMultimediaFlags = (ai: boolean, source: boolean) => {
+              props.setImageMode(imageModeFromFlags(ai, source));
+            };
+            return (
             <div className="space-y-6">
             <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-6 shadow-xl">
               <div className="flex items-center gap-3 mb-5">
@@ -998,8 +1003,8 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                   <Volume2 className="w-5 h-5 text-emerald-400" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-white">Audio & Multimedia</h3>
-                  <p className="text-slate-400 text-sm">Control narration and audio settings for the generated course.</p>
+                  <h3 className="text-xl font-bold text-white">Audio</h3>
+                  <p className="text-slate-400 text-sm">Voice-over narration for the generated course.</p>
                 </div>
               </div>
               <div className="flex items-center justify-between p-4 bg-slate-950 rounded-xl border border-slate-800">
@@ -1071,46 +1076,73 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                   <ImageIcon className="w-5 h-5 text-sky-400" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-white">Course Images</h3>
-                  <p className="text-slate-400 text-sm">Choose how imagery is added when a course is generated.</p>
+                  <h3 className="text-xl font-bold text-white">Multimedia</h3>
+                  <p className="text-slate-400 text-sm">
+                    Images for the Course Introduction slide and content slides (not quizzes or objectives).
+                  </p>
                 </div>
               </div>
-              <div className="grid grid-cols-1 gap-2">
-                {([
-                  { id: 'none' as CourseImageMode, label: 'No images', desc: 'Title uses archive placeholder only; content slides stay text-first' },
-                  { id: 'ai-title' as CourseImageMode, label: 'AI title cover', desc: 'Generate one simple cover image that matches the course topic' },
-                  { id: 'source' as CourseImageMode, label: 'Images from uploaded file', desc: 'Pull images from PPTX/PDF and place them on content slides' },
-                  { id: 'ai-title-and-source' as CourseImageMode, label: 'AI title + source images', desc: 'AI cover for the title slide, plus images extracted from your upload' },
-                ]).map(opt => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => props.setImageMode(opt.id)}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all ${
-                      props.imageMode === opt.id
-                        ? 'bg-sky-500/10 border-sky-500/40 text-white'
-                        : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <div className="flex-1">
-                      <p className="text-sm font-bold">{opt.label}</p>
-                      <p className="text-xs text-slate-500">{opt.desc}</p>
-                    </div>
-                    {props.imageMode === opt.id && <CheckCircle2 className="w-4 h-4 text-sky-400 shrink-0" />}
-                  </button>
-                ))}
+
+              <div className="space-y-2">
+                <label className={cn(
+                  'flex items-start gap-3 px-4 py-3.5 rounded-xl border cursor-pointer transition-all',
+                  aiImagesOn ? 'bg-sky-500/10 border-sky-500/40' : 'bg-slate-950 border-slate-800 hover:border-slate-600'
+                )}>
+                  <input
+                    type="checkbox"
+                    checked={aiImagesOn}
+                    onChange={(e) => setMultimediaFlags(e.target.checked, sourceImagesOn)}
+                    className="mt-1 w-4 h-4 rounded border-slate-600 text-sky-500 focus:ring-sky-500/40 bg-slate-900"
+                  />
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-white">AI-generated images</p>
+                    <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+                      Topic cover on Course Introduction, plus simple visuals on content slides and tabs when a picture adds value (e.g. a stop sign under “Red Signs”).
+                    </p>
+                  </div>
+                </label>
+
+                <label className={cn(
+                  'flex items-start gap-3 px-4 py-3.5 rounded-xl border cursor-pointer transition-all',
+                  sourceImagesOn ? 'bg-sky-500/10 border-sky-500/40' : 'bg-slate-950 border-slate-800 hover:border-slate-600'
+                )}>
+                  <input
+                    type="checkbox"
+                    checked={sourceImagesOn}
+                    onChange={(e) => setMultimediaFlags(aiImagesOn, e.target.checked)}
+                    className="mt-1 w-4 h-4 rounded border-slate-600 text-sky-500 focus:ring-sky-500/40 bg-slate-900"
+                  />
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-white">Images from uploaded file</p>
+                    <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+                      Extract embedded photos/diagrams from your PPTX or PDF and place them on content slides.
+                    </p>
+                  </div>
+                </label>
               </div>
-              {(props.imageMode === 'ai-title' || props.imageMode === 'ai-title-and-source') && (
+
+              {!aiImagesOn && !sourceImagesOn && (
+                <p className="mt-3 text-xs text-slate-500">
+                  Both unchecked = no images (Course Introduction stays text/gradient until you upload one).
+                </p>
+              )}
+              {aiImagesOn && sourceImagesOn && (
+                <p className="mt-3 text-xs text-sky-300/80 leading-relaxed">
+                  Source images are used first where available; AI fills gaps on content slides and tabs that still need a visual.
+                </p>
+              )}
+              {aiImagesOn && (
                 <div className="mt-4 flex items-start gap-3 p-3 rounded-xl border border-amber-500/30 bg-amber-500/10">
                   <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                   <p className="text-xs text-amber-300/90 leading-relaxed">
-                    AI-generated images can misrepresent technical details. Prefer source-file images for diagrams and labeled equipment; use AI covers for atmosphere only.
+                    AI images can misrepresent technical details. Prefer source-file images for labeled diagrams and equipment; use AI for recognizable real-world subjects.
                   </p>
                 </div>
               )}
             </div>
             </div>
-          )}
+            );
+          })()}
 
           {activeTab === 'design' && showDesign && (
             <div className="space-y-4">

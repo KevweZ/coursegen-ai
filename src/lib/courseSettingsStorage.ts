@@ -1,5 +1,5 @@
 import { ExamConfig, NavigationMode } from '../types/course';
-import type { CourseImageMode } from '../services/imageService';
+import { normalizeImageMode, type CourseImageMode } from '../services/imageService';
 
 export interface SavedCourseSettings {
   preset: 'quick' | 'standard' | 'comprehensive';
@@ -17,7 +17,7 @@ export interface SavedCourseSettings {
   includeModuleOverviewSlides: boolean;
   includeSummarySlides: boolean;
   slideCount: number;
-  /** Course imagery: none | AI title cover | source-file images | both */
+  /** Multimedia: none | ai | source | ai-and-source (legacy ai-title* accepted) */
   imageMode: CourseImageMode;
 }
 
@@ -34,10 +34,12 @@ export function loadCourseSettings(userId?: string | null): SavedCourseSettings 
       // Fall back to anonymous key if user-specific missing
       const fallback = localStorage.getItem(STORAGE_KEY);
       if (!fallback) return null;
-      return JSON.parse(fallback) as SavedCourseSettings;
+      const parsed = JSON.parse(fallback) as SavedCourseSettings;
+      return { ...parsed, imageMode: normalizeImageMode(parsed.imageMode) };
     }
     if (!raw) return null;
-    return JSON.parse(raw) as SavedCourseSettings;
+    const parsed = JSON.parse(raw) as SavedCourseSettings;
+    return { ...parsed, imageMode: normalizeImageMode(parsed.imageMode) };
   } catch {
     return null;
   }

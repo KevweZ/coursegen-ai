@@ -8,6 +8,8 @@ export interface HorizontalTab {
   color?: string;
   content: string;
   expandedContent?: string;
+  /** Optional AI/source image shown below tab text (does not cover copy) */
+  imageUrl?: string;
 }
 
 type THTheme = 'light' | 'dark' | 'unified';
@@ -93,6 +95,15 @@ export default function TabbedContentHorizontal({ tabs = [], title, theme = 'lig
                 }`}
                 dangerouslySetInnerHTML={{ __html: markdownToHtml(activeTab.expandedContent) }}
               />
+            )}
+            {activeTab.imageUrl && (
+              <div className="mt-5 rounded-xl overflow-hidden border border-slate-200/80 shadow-sm max-w-md">
+                <img
+                  src={activeTab.imageUrl}
+                  alt=""
+                  className="w-full h-auto max-h-48 object-cover"
+                />
+              </div>
             )}
           </motion.div>
         </AnimatePresence>

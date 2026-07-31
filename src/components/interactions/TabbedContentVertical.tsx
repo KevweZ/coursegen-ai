@@ -8,6 +8,8 @@ export interface VerticalTab {
   label: string;
   icon?: string;
   content: string;
+  /** Optional AI/source image shown below tab text (does not cover copy) */
+  imageUrl?: string;
 }
 
 type TVTheme = 'light' | 'dark' | 'unified';
@@ -104,6 +106,15 @@ export default function TabbedContentVertical({ tabs = [], title, theme = 'light
                 <h3 className={cn('font-extrabold text-lg', isLight ? accent.textLight : accent.text)} dangerouslySetInnerHTML={{ __html: markdownToHtml(activeTab.label) }} />
               </div>
               <div className={cn('text-sm leading-relaxed', isLight ? 'text-slate-700' : 'text-slate-200')} dangerouslySetInnerHTML={{ __html: markdownToHtml(activeTab.content) }} />
+              {activeTab.imageUrl && (
+                <div className="mt-5 rounded-xl overflow-hidden border border-slate-200/80 shadow-sm max-w-md">
+                  <img
+                    src={activeTab.imageUrl}
+                    alt=""
+                    className="w-full h-auto max-h-48 object-cover"
+                  />
+                </div>
+              )}
             </motion.div>
           </AnimatePresence>
         </div>

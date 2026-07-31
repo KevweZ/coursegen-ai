@@ -7,7 +7,37 @@
 
 const DEFAULT_IMAGE_MODEL = 'google/gemini-3.1-flash-image-preview';
 
-export type CourseImageMode = 'none' | 'ai-title' | 'source' | 'ai-title-and-source';
+/** Canonical multimedia image modes (legacy ai-title* still accepted via normalizeImageMode). */
+export type CourseImageMode =
+  | 'none'
+  | 'ai'
+  | 'source'
+  | 'ai-and-source'
+  | 'ai-title'            // legacy → ai
+  | 'ai-title-and-source'; // legacy → ai-and-source
+
+export function normalizeImageMode(mode?: string | null): 'none' | 'ai' | 'source' | 'ai-and-source' {
+  if (mode === 'ai-title' || mode === 'ai') return 'ai';
+  if (mode === 'ai-title-and-source' || mode === 'ai-and-source') return 'ai-and-source';
+  if (mode === 'source') return 'source';
+  if (mode === 'none') return 'none';
+  return 'ai';
+}
+
+export function imageModeFlags(mode?: string | null): { ai: boolean; source: boolean } {
+  const m = normalizeImageMode(mode);
+  return {
+    ai: m === 'ai' || m === 'ai-and-source',
+    source: m === 'source' || m === 'ai-and-source',
+  };
+}
+
+export function imageModeFromFlags(ai: boolean, source: boolean): CourseImageMode {
+  if (ai && source) return 'ai-and-source';
+  if (ai) return 'ai';
+  if (source) return 'source';
+  return 'none';
+}
 
 function buildModuleBannerPrompt(moduleTitle: string, courseTitle: string): string {
   return (
@@ -247,4 +277,171 @@ export function applyCoverImageToCourse(
       ),
     })),
   };
+}
+
+/** Skip AI imagery on assessment / structural slides. */
+const AI_CONTENT_SKIP_TYPES = new Set([
+  'title', 'cover', 'module-cover', 'module-overview', 'course-objectives',
+  'learning-objectives', 'objectives', 'player-tour', 'knowledge-check', 'quiz',
+  'multiple-choice', 'multiple-answers', 'true-false', 'mastery-exam', 'exam-intro',
+  'exam-results', 'closing', 'scenario', 'game-template', 'matching', 'sorting',
+  'drop-targets',
+]);
+
+/**
+ * Heuristic: only spend an AI image when the topic can be shown as a concrete visual
+ * (signs, equipment, zones, vehicles…) — skip pure ideas / calculations / policy prose.
+ */
+export function topicBenefitsFromVisual(label: string, content?: string): boolean {
+  const text = `${label || ''} ${content || ''}`.replace(/<[^>]+>/g, ' ').trim();
+  if (text.length < 2) return false;
+  const lower = text.toLowerCase();
+
+  if (/\b(calculat|equation|formula|algebra|percentage|budget|policy language|terms and conditions|learning objective)\b/i.test(lower)
+    && !/\b(sign|signal|vehicle|equipment|machine|zone|highway|school|traffic|pump|hvac|valve)\b/i.test(lower)) {
+    return false;
+  }
+
+  // Strong concrete visual cues
+  if (/\b(sign|signal|stop|yield|light|traffic|vehicle|car|truck|bus|highway|school zone|residential|equipment|pump|valve|hvac|duct|motor|engine|pipe|panel|meter|gauge|tool|device|machine|intersection|crosswalk|lane|brake|steering|airbag|helmet|ppe)\b/i.test(lower)) {
+    return true;
+  }
+
+  // Short concrete tab/slide labels (e.g. "Red Signs", "School Zones")
+  const words = (label || '').trim().split(/\s+/).filter(Boolean);
+  if (words.length > 0 && words.length <= 4 && !/^(how|why|what|when|overview|introduction|summary|tips|notes)\b/i.test(label)) {
+    return true;
+  }
+
+  return false;
+}
+
+function buildSlideVisualPrompt(courseTitle: string, slideTitle: string, subject: string): string {
+  return (
+    `Simple clear educational photo or illustration of: ${subject}. ` +
+    `Context: course "${courseTitle}", slide "${slideTitle}". ` +
+    `Show the real-world subject so a learner recognizes it instantly. ` +
+    `Wide landscape composition, clean professional look, soft background. ` +
+    `No text, no logos, no watermarks, no UI, no people faces.`
+  );
+}
+
+const MAX_CONTENT_AI_IMAGES = 14;
+
+/**
+ * Generate AI images for content slides and tab panels when they benefit from a visual.
+ * Skips quizzes, knowledge checks, objectives/overview, and slides that already have an image.
+ * Prefer leaving source-extracted imageUrl untouched.
+ */
+export async function generateContentSlideImages(
+  course: any,
+  onProgress?: (done: number, total: number) => void
+): Promise<any> {
+  if (!course?.modules?.length) return course;
+
+  type Job = { kind: 'slide' | 'tab'; mi: number; si: number; tabIndex?: number; subject: string; slideTitle: string };
+  const jobs: Job[] = [];
+
+  course.modules.forEach((m: any, mi: number) => {
+    (m.slides || []).forEach((s: any, si: number) => {
+      if (AI_CONTENT_SKIP_TYPES.has(s.type)) return;
+
+      if (s.type === 'content' || s.type === 'summary' || s.type === 'key-takeaways') {
+        if (s.imageUrl || s.coverImage) return;
+        if (!topicBenefitsFromVisual(s.title || '', s.content || '')) return;
+        jobs.push({ kind: 'slide', mi, si, subject: s.title || 'course topic', slideTitle: s.title || '' });
+        return;
+      }
+
+      if (s.type === 'tabbed-horizontal' || s.type === 'tabbed-vertical') {
+        const tabs = s.data?.tabs || s.data?.items || [];
+        if (!Array.isArray(tabs)) return;
+        tabs.forEach((tab: any, tabIndex: number) => {
+          if (tab?.imageUrl) return;
+          const label = tab?.label || tab?.title || `Tab ${tabIndex + 1}`;
+          if (!topicBenefitsFromVisual(label, tab?.content || '')) return;
+          jobs.push({
+            kind: 'tab',
+            mi,
+            si,
+            tabIndex,
+            subject: label,
+            slideTitle: s.title || label,
+          });
+        });
+      }
+
+      if (s.type === 'click-reveal' || s.type === 'accordion') {
+        const items = s.data?.items || [];
+        if (!Array.isArray(items)) return;
+        items.forEach((item: any, tabIndex: number) => {
+          if (item?.imageUrl) return;
+          const label = item?.title || item?.label || `Item ${tabIndex + 1}`;
+          if (!topicBenefitsFromVisual(label, item?.content || '')) return;
+          jobs.push({
+            kind: 'tab',
+            mi,
+            si,
+            tabIndex,
+            subject: label,
+            slideTitle: s.title || label,
+          });
+        });
+      }
+    });
+  });
+
+  const selected = jobs.slice(0, MAX_CONTENT_AI_IMAGES);
+  if (!selected.length) return course;
+
+  // Deep-clone modules we will mutate
+  const modules = course.modules.map((m: any) => ({
+    ...m,
+    slides: (m.slides || []).map((s: any) => ({
+      ...s,
+      data: s.data ? { ...s.data } : s.data,
+    })),
+  }));
+
+  let done = 0;
+  for (const job of selected) {
+    try {
+      const url = await callImageEndpoint(
+        buildSlideVisualPrompt(course.title || 'Course', job.slideTitle, job.subject)
+      );
+      const slide = modules[job.mi].slides[job.si];
+      if (job.kind === 'slide') {
+        modules[job.mi].slides[job.si] = { ...slide, imageUrl: url };
+      } else if (typeof job.tabIndex === 'number') {
+        if (slide.type === 'tabbed-horizontal' || slide.type === 'tabbed-vertical') {
+          const key = slide.data?.tabs ? 'tabs' : 'items';
+          const list = [...(slide.data?.[key] || [])];
+          if (list[job.tabIndex]) {
+            list[job.tabIndex] = { ...list[job.tabIndex], imageUrl: url };
+            modules[job.mi].slides[job.si] = {
+              ...slide,
+              data: { ...(slide.data || {}), [key]: list },
+            };
+          }
+        } else if (slide.type === 'click-reveal' || slide.type === 'accordion') {
+          const list = [...(slide.data?.items || [])];
+          if (list[job.tabIndex]) {
+            list[job.tabIndex] = { ...list[job.tabIndex], imageUrl: url };
+            modules[job.mi].slides[job.si] = {
+              ...slide,
+              data: { ...(slide.data || {}), items: list },
+            };
+          }
+        }
+      }
+      console.log(`[ImageService] ✓ Content visual for "${job.subject}"`);
+    } catch (err) {
+      console.warn(`[ImageService] Content visual failed for "${job.subject}":`, err);
+    }
+    done++;
+    onProgress?.(done, selected.length);
+    if (done < selected.length) await new Promise(r => setTimeout(r, 1400));
+  }
+
+  return { ...course, modules };
 }

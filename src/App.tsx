@@ -94,7 +94,14 @@ import { GameContainer } from './components/game-templates/core/GameContainer';
 import { getRandomBackgroundForTheme } from './lib/backgrounds';
 import { getPresetOptions, getPresetConfig } from './lib/presetEngine';
 import { GameTemplateType } from './types/game';
-import { generateCourseCoverImage, attachSourceImagesToCourse, type CourseImageMode } from './services/imageService';
+import {
+  generateCourseCoverImage,
+  attachSourceImagesToCourse,
+  generateContentSlideImages,
+  imageModeFlags,
+  normalizeImageMode,
+  type CourseImageMode,
+} from './services/imageService';
 import { usePlayer } from './lib/usePlayer';
 import { PlayerBar } from './components/player/PlayerBar';
 import { ClosedCaptionOverlay } from './components/player/ClosedCaptionOverlay';
@@ -598,7 +605,7 @@ export default function App() {
     if (design.interactionTypes) setInteractionTypes(design.interactionTypes);
     if (design.scenarioConfig) setScenarioConfig(design.scenarioConfig);
     setOutlineDraft(design.outlineDraft ?? null);
-    if (design.imageMode) setImageMode(design.imageMode as any);
+    if (design.imageMode) setImageMode(normalizeImageMode(design.imageMode));
     if (typeof design.voiceOverEnabled === 'boolean') setVoiceOverEnabled(design.voiceOverEnabled);
     if (design.ttsVoice) setTtsVoice(design.ttsVoice);
     setSettingsMode(design.settingsMode === 'defaults' ? 'defaults' : 'session');
@@ -831,7 +838,7 @@ export default function App() {
     setFloatingImagesMap({}); setSyntheticSlideOverrides({}); setCourseBg(null);
     setIsSandboxMode(true);
     setMobileDesignDemo(false);
-    setImageMode('ai-title');
+    setImageMode('ai');
     setExamQuestions(DUMMY_EXAM_QUESTIONS); setExamConfig(DUMMY_COURSE.examConfig!);
     setExamPhase('idle'); setExamError(null); setIsGeneratingExam(false);
     setHighestVisitedIndex(0);
@@ -1159,7 +1166,7 @@ export default function App() {
   const [includeModuleOverviewSlides, setIncludeModuleOverviewSlides] = useState(true);
   const [includeSummarySlides, setIncludeSummarySlides] = useState(true);
   const [includeModuleTitleSlides, setIncludeModuleTitleSlides] = useState(true);
-  const [imageMode, setImageMode] = useState<CourseImageMode>('ai-title');
+  const [imageMode, setImageMode] = useState<CourseImageMode>('ai');
   const [generatedCourseTitle, setGeneratedCourseTitle] = useState('');
   const [qcFocusSlideId, setQcFocusSlideId] = useState<string | null>(null);
 
@@ -1627,7 +1634,7 @@ export default function App() {
     );
     setIncludeSummarySlides(saved.includeSummarySlides ?? true);
     setSlideCount(saved.slideCount);
-    setImageMode(saved.imageMode ?? 'ai-title');
+    setImageMode(normalizeImageMode(saved.imageMode));
   };
 
   const collectCurrentSettings = (): SavedCourseSettings => ({
@@ -2293,8 +2300,7 @@ export default function App() {
     const sourceSnapshot = sourceImages;
     const voiceSnapshot = voiceOverEnabled;
     const voiceIdSnapshot = ttsVoice;
-    const wantsAiTitle = modeSnapshot === 'ai-title' || modeSnapshot === 'ai-title-and-source';
-    const wantsSource = modeSnapshot === 'source' || modeSnapshot === 'ai-title-and-source';
+    const { ai: wantsAi, source: wantsSource } = imageModeFlags(modeSnapshot);
 
     const seedFloatingFromCourse = (c: any) => {
       const map: Record<string, FloatingImage[]> = {};
@@ -2326,14 +2332,34 @@ export default function App() {
           slides: (m.slides || []).map((s: any) => {
             const src = byId[s.id];
             if (!src) return s;
+            // Prefer imagery-enriched data (tab/item imageUrls) when present
+            const mergedData = (() => {
+              if (!src.data) return s.data;
+              if (!s.data) return src.data;
+              const out = { ...s.data };
+              if (src.data.imageUrl && !out.imageUrl) out.imageUrl = src.data.imageUrl;
+              for (const key of ['tabs', 'items'] as const) {
+                const srcList = src.data[key];
+                const baseList = out[key];
+                if (!Array.isArray(srcList)) continue;
+                if (!Array.isArray(baseList)) {
+                  out[key] = srcList;
+                  continue;
+                }
+                out[key] = baseList.map((item: any, i: number) => {
+                  const fromSrc = srcList[i];
+                  if (!fromSrc?.imageUrl || item?.imageUrl) return item;
+                  return { ...item, imageUrl: fromSrc.imageUrl };
+                });
+              }
+              return out;
+            })();
             return {
               ...s,
               coverImage: s.coverImage || src.coverImage,
               imageUrl: s.imageUrl || src.imageUrl,
               floatingMedia: (s.floatingMedia?.length ? s.floatingMedia : src.floatingMedia) || s.floatingMedia,
-              data: src.data?.imageUrl && !s.data?.imageUrl
-                ? { ...(s.data || {}), imageUrl: src.data.imageUrl }
-                : s.data,
+              data: mergedData,
             };
           }),
         })),
@@ -2346,7 +2372,7 @@ export default function App() {
       let working: any = stamped;
       let coverUrl: string | null = null;
 
-      if (wantsAiTitle || wantsSource) setIsGeneratingImages(true);
+      if (wantsAi || wantsSource) setIsGeneratingImages(true);
 
       try {
         if (wantsSource && imgs.length === 0 && fileSnapshot) {
@@ -2372,7 +2398,7 @@ export default function App() {
           setOriginalCourse(working);
         }
 
-        if (wantsAiTitle) {
+        if (wantsAi) {
           try {
             coverUrl = await generateCourseCoverImage(working.title || 'Course', working.description);
             working = { ...working, coverImage: coverUrl };
@@ -2386,11 +2412,11 @@ export default function App() {
           }
         }
 
-        if (wantsAiTitle || wantsSource) {
+        if (wantsAi || wantsSource) {
           try {
             const { enrichHotspotAndCarouselImages } = await import('./services/imageService');
             working = await enrichHotspotAndCarouselImages(working, imgs, {
-              generateAi: wantsAiTitle,
+              generateAi: wantsAi,
               useSource: wantsSource,
             });
             if (coverUrl) working = { ...working, coverImage: coverUrl };
@@ -2399,6 +2425,22 @@ export default function App() {
             setOriginalCourse(working);
           } catch (err) {
             console.warn('[ImageService] Hotspot/carousel enrich failed:', err);
+          }
+        }
+
+        // AI visuals for content slides + tab panels (skips quizzes/objectives; only when useful)
+        if (wantsAi) {
+          try {
+            showDraftMessage('Generating content visuals…');
+            working = await generateContentSlideImages(working, (done, total) => {
+              if (done === total) showDraftMessage(`Content visuals ready (${total}) ✓`);
+            });
+            if (coverUrl) working = { ...working, coverImage: coverUrl };
+            seedFloatingFromCourse(working);
+            setCourse(working);
+            setOriginalCourse(working);
+          } catch (err) {
+            console.warn('[ImageService] Content slide images failed:', err);
           }
         }
       } finally {
