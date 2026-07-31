@@ -389,32 +389,60 @@ app.post('/api/parse-document',
 );
 
 // ─── 5c. Image Generation Endpoint ──────────────────────────────────────────
-/** OpenAI DALL·E fallback — used when OPENROUTER_API_KEY is not set (common on Render). */
+/** OpenAI image fallback — used when OPENROUTER_API_KEY is not set (common on Render). */
 async function generateImageViaOpenAI(prompt) {
   if (!OPENAI_API_KEY) return null;
-  const orResponse = await fetch('https://api.openai.com/v1/images/generations', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${OPENAI_API_KEY}`,
-      'Content-Type':  'application/json',
+  // Prefer gpt-image-1 when available; fall back to dall-e-3 URL response.
+  const attempts = [
+    {
+      model: 'gpt-image-1',
+      body: {
+        model: 'gpt-image-1',
+        prompt: String(prompt).slice(0, 3900),
+        size: '1536x1024',
+      },
     },
-    body: JSON.stringify({
+    {
       model: 'dall-e-3',
-      prompt: String(prompt).slice(0, 3900),
-      n: 1,
-      size: '1792x1024',
-      quality: 'standard',
-      response_format: 'b64_json',
-    }),
-  });
-  if (!orResponse.ok) {
-    const errText = await orResponse.text().catch(() => orResponse.statusText);
-    throw new Error(`OpenAI image error ${orResponse.status}: ${errText.slice(0, 200)}`);
+      body: {
+        model: 'dall-e-3',
+        prompt: String(prompt).slice(0, 3900),
+        n: 1,
+        size: '1792x1024',
+        quality: 'standard',
+      },
+    },
+  ];
+
+  let lastErr = 'No image returned from OpenAI.';
+  for (const attempt of attempts) {
+    const orResponse = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type':  'application/json',
+      },
+      body: JSON.stringify(attempt.body),
+    });
+    if (!orResponse.ok) {
+      const errText = await orResponse.text().catch(() => orResponse.statusText);
+      lastErr = `${attempt.model} ${orResponse.status}: ${errText.slice(0, 180)}`;
+      console.warn('[ImageGen] OpenAI attempt failed:', lastErr);
+      continue;
+    }
+    const data = await orResponse.json();
+    const item = data?.data?.[0];
+    if (item?.b64_json) return `data:image/png;base64,${item.b64_json}`;
+    if (item?.url) {
+      const imgRes = await fetch(item.url);
+      if (!imgRes.ok) { lastErr = `Failed to download image URL (${imgRes.status})`; continue; }
+      const buf = Buffer.from(await imgRes.arrayBuffer());
+      const ctype = imgRes.headers.get('content-type') || 'image/png';
+      return `data:${ctype};base64,${buf.toString('base64')}`;
+    }
+    lastErr = `Unexpected ${attempt.model} response shape`;
   }
-  const data = await orResponse.json();
-  const b64 = data?.data?.[0]?.b64_json;
-  if (!b64) throw new Error('No image returned from OpenAI.');
-  return `data:image/png;base64,${b64}`;
+  throw new Error(`OpenAI image error: ${lastErr}`);
 }
 
 async function generateImageViaOpenRouter(prompt, model) {
