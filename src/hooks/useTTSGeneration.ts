@@ -3,10 +3,10 @@
  * React hook that drives the background TTS generation job.
  *
  * - Loops through all slides sequentially after course hydration
- * - Updates each slide's voiceOverUrl in-place on the course object
+ * - Patches each slide's voiceOverUrl via functional setCourse (does not wipe cover/source images)
  * - Exposes fine-grained progress state for the UI toast
  * - Skips slides with no narration text gracefully
- * - Does NOT block the UI thread — all work is async/await in an effect
+ * - Does NOT block the UI thread — all work is async/await
  */
 
 import { useState, useCallback, useRef } from 'react';
@@ -32,12 +32,14 @@ const DEFAULT_PROGRESS: TTSProgress = {
   skipped: 0,
 };
 
+type SetCourse = (updater: any) => void;
+
 /**
  * Returns { progress, generateTTS }
  *
  * Call generateTTS(course, setCourse) after hydrateCourse() resolves.
- * The hook mutates slide.voiceOverUrl on each slide as audio is generated,
- * then calls setCourse with the updated course so React re-renders pick it up.
+ * Prefer calling AFTER imagery so narration text is stable; updates merge into
+ * whatever the latest course state is (covers/source images are preserved).
  */
 export function useTTSGeneration() {
   const [progress, setProgress] = useState<TTSProgress>(DEFAULT_PROGRESS);
@@ -45,12 +47,11 @@ export function useTTSGeneration() {
 
   const generateTTS = useCallback(async (
     course: any,
-    setCourse: (c: any) => void,
+    setCourse: SetCourse,
     voice: string = 'alloy',
   ) => {
     if (!course?.modules) return;
 
-    // Flatten all slides into a list, keeping reference to module for logging
     const allSlides: Array<{ slide: any; moduleTitle: string }> = [];
     for (const mod of course.modules) {
       for (const slide of (mod.slides ?? [])) {
@@ -58,7 +59,6 @@ export function useTTSGeneration() {
       }
     }
 
-    // Only process slides that have actual narration text
     const narratableSlides = allSlides.filter(({ slide }) =>
       !!(slide.voiceOverText || slide.narration || slide.content)
     );
@@ -79,16 +79,6 @@ export function useTTSGeneration() {
       skipped: allSlides.length - narratableSlides.length,
     });
 
-    // Deep-clone the course so we can safely mutate without thrashing React state
-    const updatedCourse = JSON.parse(JSON.stringify(course));
-    // Build a quick lookup: slideId → module index + slide index
-    const slideMap: Record<string, { mi: number; si: number }> = {};
-    updatedCourse.modules.forEach((mod: any, mi: number) => {
-      (mod.slides ?? []).forEach((slide: any, si: number) => {
-        slideMap[slide.id] = { mi, si };
-      });
-    });
-
     let successCount = 0;
 
     for (let i = 0; i < narratableSlides.length; i++) {
@@ -96,6 +86,7 @@ export function useTTSGeneration() {
 
       const { slide } = narratableSlides[i];
       const narrationText = slide.voiceOverText || slide.narration || slide.content || '';
+      const slideId = slide.id;
 
       setProgress(prev => ({
         ...prev,
@@ -106,27 +97,30 @@ export function useTTSGeneration() {
 
       try {
         const blobUrl = await generateSlideTTS(narrationText, { voice: voice as any });
-        const loc = slideMap[slide.id];
-        if (loc) {
-          updatedCourse.modules[loc.mi].slides[loc.si].voiceOverUrl = blobUrl;
-        }
         successCount++;
 
-        // Push incremental update so the player can use audio as soon as it's ready
-        setCourse(JSON.parse(JSON.stringify(updatedCourse)));
-
+        // Merge into latest course — never replace with a pre-imagery clone
+        setCourse((prev: any) => {
+          if (!prev?.modules) return prev;
+          return {
+            ...prev,
+            modules: prev.modules.map((m: any) => ({
+              ...m,
+              slides: (m.slides || []).map((s: any) =>
+                s.id === slideId ? { ...s, voiceOverUrl: blobUrl } : s
+              ),
+            })),
+          };
+        });
       } catch (err: any) {
         console.warn(`[TTS] Failed for slide "${slide.title}":`, err.message);
-        // Non-fatal: log and continue to next slide
         setProgress(prev => ({
           ...prev,
           error: `Slide "${slide.title}": ${err.message}`,
         }));
-        // Small back-off before continuing after an error
         await new Promise(r => setTimeout(r, 1500));
       }
 
-      // Small delay between requests to stay within OpenAI rate limits
       if (i < narratableSlides.length - 1) {
         await new Promise(r => setTimeout(r, 300));
       }

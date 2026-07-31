@@ -168,7 +168,11 @@ export async function extractImagesFromFile(file: File): Promise<SourceImage[]> 
         if (!['png', 'jpg', 'jpeg', 'gif', 'svg'].includes(ext || '')) continue;
         
         const fileData = await zip.files[filename].async('base64');
-        const mimeType = ext === 'svg' ? 'image/svg+xml' : `image/${ext}`;
+        // Browsers require image/jpeg (not image/jpg) or Image() fails → 0×0 → filtered out
+        const mimeType =
+          ext === 'svg' ? 'image/svg+xml'
+          : (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg'
+          : `image/${ext}`;
         const dataUrl = `data:${mimeType};base64,${fileData}`;
         
         const imgProps = await new Promise<{width: number, height: number, src: string}>((resolve) => {
@@ -196,8 +200,8 @@ export async function extractImagesFromFile(file: File): Promise<SourceImage[]> 
            img.src = dataUrl;
         });
 
-        // Filter out decorative marks and tiny borders
-        if (imgProps.width > 150 && imgProps.height > 150) {
+        // Filter out decorative marks and tiny borders (keep mid-size photos/diagrams)
+        if (imgProps.width >= 80 && imgProps.height >= 80 && imgProps.src) {
           images.push({
             pageIndex: imgIndex++,
             dataUrl: imgProps.src,
@@ -206,6 +210,7 @@ export async function extractImagesFromFile(file: File): Promise<SourceImage[]> 
           });
         }
       }
+      console.log(`[extractImagesFromFile] PPTX "${file.name}": ${images.length} image(s) from ${mediaFiles.length} media file(s)`);
     } catch (err) {
       console.warn('[extractImagesFromFile] Failed to extract PPTX images:', err);
     }

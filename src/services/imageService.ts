@@ -87,7 +87,8 @@ export async function generateModuleImages(
 }
 
 /**
- * Attach extracted source images (from PPTX/PDF) onto content slides as coverImage.
+ * Attach extracted source images (from PPTX/PDF) onto content slides.
+ * Sets coverImage/imageUrl and floatingMedia so the player actually displays them.
  */
 export function attachSourceImagesToCourse(
   course: any,
@@ -102,7 +103,7 @@ export function attachSourceImagesToCourse(
       ...m,
       slides: (m.slides || []).map((s: any) => {
         if (!['content', 'summary', 'key-takeaways', 'hotspot'].includes(s.type)) return s;
-        if (s.coverImage || s.imageUrl || s.data?.imageUrl) return s;
+        if (s.coverImage || s.imageUrl || s.data?.imageUrl || (s.floatingMedia && s.floatingMedia.length)) return s;
         const img = pool[imgIdx % pool.length];
         imgIdx++;
         if (!img) return s;
@@ -113,7 +114,20 @@ export function attachSourceImagesToCourse(
             data: { ...(s.data || {}), imageUrl: img.dataUrl },
           };
         }
-        return { ...s, coverImage: img.dataUrl, imageUrl: img.dataUrl };
+        const floating = [{
+          id: `src-${s.id}-${imgIdx}`,
+          url: img.dataUrl,
+          x: 48,
+          y: 36,
+          width: 360,
+          height: 240,
+        }];
+        return {
+          ...s,
+          coverImage: img.dataUrl,
+          imageUrl: img.dataUrl,
+          floatingMedia: floating,
+        };
       }),
     })),
   };

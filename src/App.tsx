@@ -685,19 +685,6 @@ export default function App() {
     setShowPlayerProperties(false);
   };
 
-  /** Full page defaults — admin dropdown / deep link /PlayerProperties. */
-  const openPlayerPropertiesPage = () => {
-    setShowPlayerProperties(false);
-    const saved = loadPlayerProperties(user?.id);
-    if (saved) {
-      setPlayerConfig(saved);
-      setNavigationMode(saved.navigationMode);
-      setExamConfig(c => ({ ...c, presentationMode: saved.examPresentationMode }));
-    }
-    setStep('player-properties');
-    navigateTo(ROUTES.playerProperties);
-  };
-
   const dismissPlayerProperties = () => {
     setShowPlayerProperties(false);
   };
@@ -2304,10 +2291,55 @@ export default function App() {
     const fileSnapshot = uploadedFile;
     const sourceSnapshot = sourceImages;
     const voiceSnapshot = voiceOverEnabled;
+    const voiceIdSnapshot = ttsVoice;
     const wantsAiTitle = modeSnapshot === 'ai-title' || modeSnapshot === 'ai-title-and-source';
     const wantsSource = modeSnapshot === 'source' || modeSnapshot === 'ai-title-and-source';
 
-    // Run imagery first, then QC — parallel QC/autofix was wiping cover & source images
+    const seedFloatingFromCourse = (c: any) => {
+      const map: Record<string, FloatingImage[]> = {};
+      for (const m of c?.modules || []) {
+        for (const s of m.slides || []) {
+          if (Array.isArray(s.floatingMedia) && s.floatingMedia.length) {
+            map[s.id] = s.floatingMedia;
+          }
+        }
+      }
+      if (Object.keys(map).length) {
+        setFloatingImagesMap(prev => ({ ...prev, ...map }));
+      }
+    };
+
+    const mergeImageryInto = (base: any, imagery: any, coverFallback: string | null) => {
+      if (!imagery) {
+        return { ...base, coverImage: base.coverImage || coverFallback || undefined };
+      }
+      const byId: Record<string, any> = {};
+      for (const m of imagery.modules || []) {
+        for (const s of m.slides || []) byId[s.id] = s;
+      }
+      return {
+        ...base,
+        coverImage: base.coverImage || imagery.coverImage || coverFallback || undefined,
+        modules: (base.modules || []).map((m: any) => ({
+          ...m,
+          slides: (m.slides || []).map((s: any) => {
+            const src = byId[s.id];
+            if (!src) return s;
+            return {
+              ...s,
+              coverImage: s.coverImage || src.coverImage,
+              imageUrl: s.imageUrl || src.imageUrl,
+              floatingMedia: (s.floatingMedia?.length ? s.floatingMedia : src.floatingMedia) || s.floatingMedia,
+              data: src.data?.imageUrl && !s.data?.imageUrl
+                ? { ...(s.data || {}), imageUrl: src.data.imageUrl }
+                : s.data,
+            };
+          }),
+        })),
+      };
+    };
+
+    // Imagery → QC → TTS (sequential). Parallel TTS previously wiped covers/source images.
     void (async () => {
       let imgs = sourceSnapshot;
       let working: any = stamped;
@@ -2319,15 +2351,22 @@ export default function App() {
         if (wantsSource && imgs.length === 0 && fileSnapshot) {
           try {
             imgs = await extractImagesFromFile(fileSnapshot);
-            if (imgs.length) setSourceImages(imgs);
-            else console.warn('[ImageService] Source extract returned 0 images from', fileSnapshot.name);
+            if (imgs.length) {
+              setSourceImages(imgs);
+              showDraftMessage(`Extracted ${imgs.length} image(s) from ${fileSnapshot.name}`);
+            } else {
+              console.warn('[ImageService] Source extract returned 0 images from', fileSnapshot.name);
+              showDraftMessage('No extractable images found in the uploaded file (PNG/JPEG in PPTX media).');
+            }
           } catch (e) {
             console.warn('[ImageService] Late source extract failed:', e);
+            showDraftMessage('Could not extract images from the uploaded file.');
           }
         }
 
         if (wantsSource && imgs.length > 0) {
           working = attachSourceImagesToCourse(working, imgs);
+          seedFloatingFromCourse(working);
           setCourse(working);
           setOriginalCourse(working);
         }
@@ -2339,9 +2378,10 @@ export default function App() {
             setCourseBg(coverUrl);
             setCourse(working);
             setOriginalCourse(working);
-          } catch (err) {
+            showDraftMessage('AI cover image ready ✓');
+          } catch (err: any) {
             console.warn('[ImageService] Cover generation failed:', err);
-            showDraftMessage('Cover image generation failed — add one via Add Image.');
+            showDraftMessage(err?.message || 'Cover image generation failed — add one via Add Image.');
           }
         }
 
@@ -2353,6 +2393,7 @@ export default function App() {
               useSource: wantsSource,
             });
             if (coverUrl) working = { ...working, coverImage: coverUrl };
+            seedFloatingFromCourse(working);
             setCourse(working);
             setOriginalCourse(working);
           } catch (err) {
@@ -2370,12 +2411,11 @@ export default function App() {
         setQcReport(report);
         if (report.issues.some(i => i.autoFixable)) {
           const { course: fixedCourse } = autoFixCourse(working, report);
-          const merged = {
-            ...fixedCourse,
-            coverImage: fixedCourse.coverImage || working.coverImage || coverUrl || undefined,
-          };
+          const merged = mergeImageryInto(fixedCourse, working, coverUrl);
+          seedFloatingFromCourse(merged);
           setCourse(merged);
           setOriginalCourse(merged);
+          working = merged;
         }
       } catch {
         // QC failure is non-fatal
@@ -2383,58 +2423,58 @@ export default function App() {
         setIsRunningQC(false);
         setQcPhase(null);
       }
-    })();
 
-    if (voiceOverEnabled) {
-      generateTTS(stamped, setCourse, ttsVoice);
-      ;(async () => {
-        try {
-          const { generateSlideTTS: genSlideTTS } = await import('./services/ttsService');
-          for (const { id, text } of [
-            { id: '__cover__', text: `Welcome to ${stamped.title}. ${stamped.description || ''}`.trim() },
-            { id: '__player-tour__', text: 'Before we begin, take a moment to explore the player controls. Hover over each card to see the corresponding element highlighted in the player preview.' },
-          ]) {
-            if (!text.trim()) continue;
-            try {
-              const url = await genSlideTTS(text, { voice: ttsVoice as any });
-              setSyntheticAudioMap(prev => ({ ...prev, [id]: url }));
-            } catch { /* non-fatal */ }
-          }
-          const moduleSynthetics: Array<{ id: string; text: string }> = (stamped.modules || []).flatMap(
-            (m: any, idx: number) => {
-              const modNum = idx + 1;
-              const ct = (m.title || `Module ${modNum}`).replace(/^Module\s+\d+\s*[\u2014\-]\s*/i, '').trim();
-              const items: Array<{ id: string; text: string }> = [];
-              if (includeModuleTitleSlides) {
-                items.push({
-                  id: `__module-cover-${modNum}__`,
-                  text: `Module ${modNum}: ${ct}.${m.description ? ' ' + m.description : ''}`.trim(),
-                });
-              }
-              if (includeModuleOverviewSlides) {
-                items.push({
-                  id: `__module-overview-${modNum}__`,
-                  text: includeModuleTitleSlides
-                    ? (m.description
-                      ? `Here's what you'll cover: ${m.description}`
-                      : "Let's look at the learning objectives for this module.")
-                    : `Module ${modNum}: ${ct}. ${m.description ? `Here's what you'll cover: ${m.description}` : "Let's look at the learning objectives for this module."}`.trim(),
-                });
-              }
-              return items;
+      if (voiceSnapshot) {
+        generateTTS(working, setCourse, voiceIdSnapshot);
+        ;(async () => {
+          try {
+            const { generateSlideTTS: genSlideTTS } = await import('./services/ttsService');
+            for (const { id, text } of [
+              { id: '__cover__', text: `Welcome to ${working.title}. ${working.description || ''}`.trim() },
+              { id: '__player-tour__', text: 'Before we begin, take a moment to explore the player controls. Hover over each card to see the corresponding element highlighted in the player preview.' },
+            ]) {
+              if (!text.trim()) continue;
+              try {
+                const url = await genSlideTTS(text, { voice: voiceIdSnapshot as any });
+                setSyntheticAudioMap(prev => ({ ...prev, [id]: url }));
+              } catch { /* non-fatal */ }
             }
-          );
-          for (const { id, text } of moduleSynthetics) {
-            if (!text.trim()) continue;
-            try {
-              const url = await genSlideTTS(text, { voice: ttsVoice as any });
-              setSyntheticAudioMap(prev => ({ ...prev, [id]: url }));
-            } catch { /* non-fatal */ }
-            await new Promise(r => setTimeout(r, 300));
-          }
-        } catch { /* silently ignore */ }
-      })();
-    }
+            const moduleSynthetics: Array<{ id: string; text: string }> = (working.modules || []).flatMap(
+              (m: any, idx: number) => {
+                const modNum = idx + 1;
+                const ct = (m.title || `Module ${modNum}`).replace(/^Module\s+\d+\s*[\u2014\-]\s*/i, '').trim();
+                const items: Array<{ id: string; text: string }> = [];
+                if (includeModuleTitleSlides) {
+                  items.push({
+                    id: `__module-cover-${modNum}__`,
+                    text: `Module ${modNum}: ${ct}.${m.description ? ' ' + m.description : ''}`.trim(),
+                  });
+                }
+                if (includeModuleOverviewSlides) {
+                  items.push({
+                    id: `__module-overview-${modNum}__`,
+                    text: includeModuleTitleSlides
+                      ? (m.description
+                        ? `Here's what you'll cover: ${m.description}`
+                        : "Let's look at the learning objectives for this module.")
+                      : `Module ${modNum}: ${ct}. ${m.description ? `Here's what you'll cover: ${m.description}` : "Let's look at the learning objectives for this module."}`.trim(),
+                  });
+                }
+                return items;
+              }
+            );
+            for (const { id, text } of moduleSynthetics) {
+              if (!text.trim()) continue;
+              try {
+                const url = await genSlideTTS(text, { voice: voiceIdSnapshot as any });
+                setSyntheticAudioMap(prev => ({ ...prev, [id]: url }));
+              } catch { /* non-fatal */ }
+              await new Promise(r => setTimeout(r, 300));
+            }
+          } catch { /* silently ignore */ }
+        })();
+      }
+    })();
   };
   finalizeGeneratedCourseRef.current = finalizeGeneratedCourse;
 
@@ -2920,16 +2960,6 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                     >
                       <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-400" />
                       Course Settings
-                    </button>
-                    <button
-                      onClick={() => {
-                        setAdminDropdownOpen(false);
-                        openPlayerPropertiesPage();
-                      }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800 text-sm font-medium transition-all text-left"
-                    >
-                      <Settings2 className="w-3.5 h-3.5 text-indigo-400" />
-                      Player Properties
                     </button>
                     <button
                       onClick={() => {
@@ -4157,12 +4187,20 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                  const typeLabel = currentSlide.type === 'summary' ? 'Summary' : 'Overview';
                                  const body = (currentSlide.content || '').trim();
                                  const isEmpty = body.length < 8;
+                                 const slideImg = (currentSlide as any).coverImage || (currentSlide as any).imageUrl || null;
+                                 const hasFloating = (floatingImagesMap[currentSlide.id]?.length || 0) > 0
+                                   || ((currentSlide as any).floatingMedia?.length || 0) > 0;
                                  return (
                                    <div className="w-full space-y-4">
                                      <p className="text-[10px] font-black uppercase tracking-[0.25em]" style={{ color: slideAccentColor }}>
                                        {typeLabel}
                                      </p>
                                      <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
+                                     {slideImg && !hasFloating && (
+                                       <div className="rounded-xl overflow-hidden border border-slate-700/40 shadow-lg max-h-56">
+                                         <img src={slideImg} alt="" className="w-full h-full max-h-56 object-cover" />
+                                       </div>
+                                     )}
                                      {isEmpty ? (
                                        <EmptySlideRegenerate
                                          title={currentSlide.title}
