@@ -86,6 +86,7 @@ import { CourseSettingsPage } from './components/builder/CourseSettingsPage';
 import { UploadPathModal, UploadPathChoice } from './components/builder/UploadPathModal';
 import { PlayerPropertiesModal, PlayerConfig, defaultPlayerConfig } from './components/builder/PlayerPropertiesModal';
 import { loadCourseSettings, saveCourseSettings, SavedCourseSettings } from './lib/courseSettingsStorage';
+import { loadPlayerProperties, savePlayerProperties } from './lib/playerPropertiesStorage';
 import { CourseOutline, Slide, TerminalObjectiveGroup, ExamConfig, ExamQuestion, ExamSessionState, NavigationMode } from './types/course';
 import { extractTextFromFile, extractImagesFromFile, SourceImage } from './lib/fileProcessor';
 import { generateGameTemplate, generateStandaloneGame } from './services/aiGameService';
@@ -196,7 +197,7 @@ const renderInstructionalText = (children: React.ReactNode, theme: string, isLis
   );
 };
 
-type AppStep = 'home' | 'details' | 'outline' | 'preview' | 'pricing' | 'account' | 'payment-success' | 'payment-cancel';
+type AppStep = 'home' | 'details' | 'outline' | 'preview' | 'pricing' | 'account' | 'player-properties' | 'payment-success' | 'payment-cancel';
 type CourseType = 'quick' | 'standard' | 'comprehensive';
 
 /** Detects whether a string is HTML (from the rich-text editor) vs plain Markdown */
@@ -529,7 +530,7 @@ export default function App() {
   const [draftSaveMessage, setDraftSaveMessage] = React.useState<string | null>(null);
   const [activeDraftId, setActiveDraftId] = React.useState<string | null>(null);
   const [designDraftSavedFlash, setDesignDraftSavedFlash] = React.useState(false);
-  const pathBeforePlayerProps = React.useRef<string>(ROUTES.upload);
+  const playerDefaultsLoadedFor = React.useRef<string | null>(null);
 
   const showDraftMessage = (msg: string) => {
     setDraftSaveMessage(msg);
@@ -667,6 +668,7 @@ export default function App() {
   const [step, setStep] = useState<AppStep>(isScormPlayer ? 'preview' : 'home');
 
   const goHome = () => {
+    setShowPlayerProperties(false);
     setStep('home');
     setMobileDesignDemo(false);
     setActiveDraftId(null);
@@ -674,16 +676,41 @@ export default function App() {
     navigateTo(ROUTES.upload);
   };
 
-  const openPlayerProperties = () => {
-    pathBeforePlayerProps.current = window.location.pathname || ROUTES.upload;
+  /** Modal overlay — Course Development / Design only. Keeps the current course URL. */
+  const openPlayerPropertiesModal = () => {
     setShowPlayerProperties(true);
+  };
+
+  const closePlayerPropertiesModal = () => {
+    setShowPlayerProperties(false);
+  };
+
+  /** Full page defaults — admin dropdown / deep link /PlayerProperties. */
+  const openPlayerPropertiesPage = () => {
+    setShowPlayerProperties(false);
+    const saved = loadPlayerProperties(user?.id);
+    if (saved) {
+      setPlayerConfig(saved);
+      setNavigationMode(saved.navigationMode);
+      setExamConfig(c => ({ ...c, presentationMode: saved.examPresentationMode }));
+    }
+    setStep('player-properties');
     navigateTo(ROUTES.playerProperties);
   };
 
-  const closePlayerProperties = () => {
+  const dismissPlayerProperties = () => {
     setShowPlayerProperties(false);
-    const back = pathBeforePlayerProps.current || ROUTES.upload;
-    navigateTo(back, true);
+  };
+
+  const applyPlayerConfig = (cfg: PlayerConfig) => {
+    setPlayerConfig(cfg);
+    setNavigationMode(cfg.navigationMode);
+    setExamConfig(c => ({ ...c, presentationMode: cfg.examPresentationMode }));
+  };
+
+  const persistPlayerPropertyDefaults = (cfg: PlayerConfig) => {
+    applyPlayerConfig(cfg);
+    savePlayerProperties(cfg, user?.id);
   };
 
   /** Assigned after sandbox state hooks exist */
@@ -883,7 +910,14 @@ export default function App() {
       return;
     }
     if (parsed.kind === 'playerProperties') {
-      setShowPlayerProperties(true);
+      setShowPlayerProperties(false);
+      const saved = loadPlayerProperties(user?.id);
+      if (saved) {
+        setPlayerConfig(saved);
+        setNavigationMode(saved.navigationMode);
+        setExamConfig(c => ({ ...c, presentationMode: saved.examPresentationMode }));
+      }
+      setStep('player-properties');
       return;
     }
     if (parsed.kind === 'design') {
@@ -977,7 +1011,6 @@ export default function App() {
   useEffect(() => {
     if (!user || isScormPlayer) return;
     const path = window.location.pathname;
-    if (path === ROUTES.playerProperties) return;
     if (path.startsWith('/sandbox/')) return;
 
     if (step === 'home' && path !== ROUTES.upload) navigateTo(ROUTES.upload, true);
@@ -988,7 +1021,9 @@ export default function App() {
       }
     } else if (step === 'account' && path !== ROUTES.myAccount) navigateTo(ROUTES.myAccount, true);
     else if (step === 'pricing' && path !== ROUTES.pricing) navigateTo(ROUTES.pricing, true);
-    else if (step === 'preview' && !isSandboxMode) {
+    else if (step === 'player-properties' && path !== ROUTES.playerProperties) {
+      navigateTo(ROUTES.playerProperties, true);
+    } else if (step === 'preview' && !isSandboxMode) {
       if (activeDraftId && !path.startsWith('/preview/')) navigateTo(ROUTES.preview(activeDraftId), true);
       else if (!activeDraftId && path !== ROUTES.courseDevelopment && !path.startsWith('/preview/')) {
         navigateTo(ROUTES.courseDevelopment, true);
@@ -1173,6 +1208,22 @@ export default function App() {
   const [highestVisitedIndex, setHighestVisitedIndex] = useState(0);
   /** Per-slide set of explored interaction item ids (for requireInteractionsComplete) */
   const [exploredBySlide, setExploredBySlide] = useState<Record<string, string[]>>({});
+
+  // Load saved account-level player defaults once per signed-in user
+  useEffect(() => {
+    if (!user?.id) {
+      playerDefaultsLoadedFor.current = null;
+      return;
+    }
+    if (playerDefaultsLoadedFor.current === user.id) return;
+    playerDefaultsLoadedFor.current = user.id;
+    const saved = loadPlayerProperties(user.id);
+    if (saved) {
+      setPlayerConfig(saved);
+      setNavigationMode(saved.navigationMode);
+      setExamConfig(c => ({ ...c, presentationMode: saved.examPresentationMode }));
+    }
+  }, [user?.id]);
 
   const markInteractionExplored = (slideId: string | undefined, itemId: string) => {
     if (!slideId || !itemId) return;
@@ -2736,7 +2787,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
 
             {/* ── Pricing Button ── */}
             <button
-              onClick={() => { setStep('pricing'); navigateTo(ROUTES.pricing); }}
+              onClick={() => { dismissPlayerProperties(); setStep('pricing'); navigateTo(ROUTES.pricing); }}
               className={`flex items-center gap-2 px-4 py-2 border rounded-lg font-bold text-sm transition-all ${
                 step === 'pricing'
                   ? 'bg-amber-500/20 border-amber-400/40 text-amber-300'
@@ -2855,6 +2906,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                     <button
                       onClick={() => {
                         setAdminDropdownOpen(false);
+                        dismissPlayerProperties();
                         const saved = loadCourseSettings(user?.id);
                         if (saved) applySavedSettings(saved);
                         setSettingsMode('defaults');
@@ -2872,7 +2924,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                     <button
                       onClick={() => {
                         setAdminDropdownOpen(false);
-                        openPlayerProperties();
+                        openPlayerPropertiesPage();
                       }}
                       className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800 text-sm font-medium transition-all text-left"
                     >
@@ -2882,6 +2934,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                     <button
                       onClick={() => {
                         setAdminDropdownOpen(false);
+                        dismissPlayerProperties();
                         setStep('account');
                         navigateTo(ROUTES.myAccount);
                       }}
@@ -2930,7 +2983,28 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
               transition={{ duration: 0.35 }}
               className="relative z-10"
             >
-              <AccountPage onUpgrade={() => setStep('pricing')} />
+              <AccountPage onUpgrade={() => { dismissPlayerProperties(); setStep('pricing'); navigateTo(ROUTES.pricing); }} />
+            </motion.div>
+          )}
+          {step === 'player-properties' && (
+            <motion.div
+              key="player-properties"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.35 }}
+              className="relative z-10"
+            >
+              <PlayerPropertiesModal
+                variant="page"
+                config={{
+                  ...playerConfig,
+                  navigationMode,
+                  examPresentationMode: examConfig.presentationMode,
+                }}
+                onChange={persistPlayerPropertyDefaults}
+                onClose={goHome}
+              />
             </motion.div>
           )}
           {step === 'payment-success' && (
@@ -3444,7 +3518,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                         onReplaceDocument={(e) => { if (e.target.files?.[0]) handleFileUpload(e); }}
                         onSaveSettings={persistCourseSettings}
                         onGenerateCourse={handleGenerateCourseFromSettings}
-                        onOpenPlayerProperties={openPlayerProperties}
+                        onOpenPlayerProperties={openPlayerPropertiesModal}
                         onSaveDesignDraft={handleSaveDesignDraft}
                         designDraftSavedFlash={designDraftSavedFlash}
                         settingsSavedFlash={settingsSavedFlash}
@@ -3512,7 +3586,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                 onReplaceDocument={(e) => { if (e.target.files?.[0]) handleFileUpload(e); }}
                 onSaveSettings={persistCourseSettings}
                 onGenerateCourse={handleGenerateCourseFromSettings}
-                onOpenPlayerProperties={openPlayerProperties}
+                onOpenPlayerProperties={openPlayerPropertiesModal}
                 onSaveDesignDraft={handleSaveDesignDraft}
                 designDraftSavedFlash={designDraftSavedFlash}
                 settingsSavedFlash={settingsSavedFlash}
@@ -3622,7 +3696,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
 
                     <button
                       title="Player Properties"
-                      onClick={() => setShowPlayerProperties(true)}
+                      onClick={openPlayerPropertiesModal}
                       className="flex items-center gap-1 px-2 py-1 rounded-md border border-orange-700/50 hover:bg-orange-800/20 text-orange-300 text-[11px] font-semibold"
                     >
                       <Settings2 className="w-3 h-3" /><span className="hidden lg:inline">Player Props</span>
@@ -5161,19 +5235,16 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
         </AnimatePresence>
 
         <AnimatePresence>
-          {showPlayerProperties && (
+          {showPlayerProperties && step !== 'player-properties' && (
             <PlayerPropertiesModal
+              variant="modal"
               config={{
                 ...playerConfig,
                 navigationMode,
                 examPresentationMode: examConfig.presentationMode,
               }}
-              onChange={(cfg) => {
-                setPlayerConfig(cfg);
-                setNavigationMode(cfg.navigationMode);
-                setExamConfig(c => ({ ...c, presentationMode: cfg.examPresentationMode }));
-              }}
-              onClose={closePlayerProperties}
+              onChange={applyPlayerConfig}
+              onClose={closePlayerPropertiesModal}
             />
           )}
         </AnimatePresence>

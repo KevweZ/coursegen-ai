@@ -75,6 +75,11 @@ interface Props {
   config: PlayerConfig;
   onChange: (config: PlayerConfig) => void;
   onClose: () => void;
+  /** modal = overlay on Course Development; page = full /PlayerProperties defaults screen */
+  variant?: 'modal' | 'page';
+  saveLabel?: string;
+  title?: string;
+  subtitle?: string;
 }
 
 function cn(...classes: (string | false | undefined | null)[]) {
@@ -304,12 +309,30 @@ function TOCOption({
   );
 }
 
-// ─── Main Modal ───────────────────────────────────────────────────────────────
-export function PlayerPropertiesModal({ config, onChange, onClose }: Props) {
+// ─── Main Modal / Page ────────────────────────────────────────────────────────
+export function PlayerPropertiesModal({
+  config,
+  onChange,
+  onClose,
+  variant = 'modal',
+  saveLabel,
+  title,
+  subtitle,
+}: Props) {
   const [local, setLocal] = useState<PlayerConfig>({ ...config });
+  const [savedFlash, setSavedFlash] = useState(false);
+  const isPage = variant === 'page';
 
   const update = (patch: Partial<PlayerConfig>) => setLocal(prev => ({ ...prev, ...patch }));
-  const handleSave = () => { onChange(local); onClose(); };
+  const handleSave = () => {
+    onChange(local);
+    if (isPage) {
+      setSavedFlash(true);
+      setTimeout(() => setSavedFlash(false), 2200);
+    } else {
+      onClose();
+    }
+  };
 
   const SectionTitle = ({ children }: { children: React.ReactNode }) => (
     <div className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500 mb-2 mt-5 first:mt-0">{children}</div>
@@ -323,35 +346,51 @@ export function PlayerPropertiesModal({ config, onChange, onClose }: Props) {
     { value: 'hidden',          label: 'Hidden',            description: 'No navigation menu shown',    icon: <X className="w-3.5 h-3.5" /> },
   ];
 
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/70 backdrop-blur-md z-[300] flex items-start justify-center pt-16 px-4 pb-4 overflow-y-auto"
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-    >
+  const panel = (
       <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 16 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.96, y: 16 }}
+        initial={isPage ? { opacity: 0, y: 16 } : { opacity: 0, scale: 0.96, y: 16 }}
+        animate={isPage ? { opacity: 1, y: 0 } : { opacity: 1, scale: 1, y: 0 }}
+        exit={isPage ? { opacity: 0, y: -12 } : { opacity: 0, scale: 0.96, y: 16 }}
         transition={{ type: 'spring', damping: 28, stiffness: 280 }}
-        className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden"
+        className={cn(
+          'bg-slate-900 border border-slate-700 shadow-2xl w-full flex flex-col overflow-hidden',
+          isPage
+            ? 'rounded-2xl max-w-5xl mx-auto min-h-[70vh] max-h-[calc(100vh-8rem)]'
+            : 'rounded-2xl max-w-5xl max-h-[90vh]'
+        )}
       >
         {/* ── Header ── */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700 bg-slate-800/60 shrink-0">
           <div className="flex items-center gap-3">
+            {isPage && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1.5 -ml-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+                title="Back"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+            )}
             <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30">
               <Monitor className="w-4 h-4 text-indigo-400" />
             </div>
             <div>
-              <h2 className="text-white font-extrabold text-base">Player Properties</h2>
-              <p className="text-slate-400 text-xs">Customize the learner experience before generating your course</p>
+              <h2 className="text-white font-extrabold text-base">
+                {title || (isPage ? 'Default Player Properties' : 'Player Properties')}
+              </h2>
+              <p className="text-slate-400 text-xs">
+                {subtitle || (isPage
+                  ? 'Saved defaults apply to new courses you create'
+                  : 'Customize the learner experience for this course')}
+              </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors">
-            <X className="w-5 h-5" />
-          </button>
+          {!isPage && (
+            <button onClick={onClose} className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors">
+              <X className="w-5 h-5" />
+            </button>
+          )}
         </div>
 
         {/* ── Body ── */}
@@ -616,22 +655,43 @@ export function PlayerPropertiesModal({ config, onChange, onClose }: Props) {
             Reset to defaults
           </button>
           <div className="flex gap-3">
-            <button
-              onClick={onClose}
-              className="px-5 py-2.5 rounded-xl border border-slate-600 text-slate-300 hover:text-white font-bold text-sm transition-all hover:bg-slate-700"
-            >
-              Cancel
-            </button>
+            {!isPage && (
+              <button
+                onClick={onClose}
+                className="px-5 py-2.5 rounded-xl border border-slate-600 text-slate-300 hover:text-white font-bold text-sm transition-all hover:bg-slate-700"
+              >
+                Cancel
+              </button>
+            )}
             <button
               onClick={handleSave}
               className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition-all shadow-[0_0_20px_-5px_rgba(99,102,241,0.5)] flex items-center gap-2"
             >
               <Check className="w-4 h-4" />
-              Save Properties
+              {savedFlash ? 'Saved!' : (saveLabel || (isPage ? 'Save Defaults' : 'Save Properties'))}
             </button>
           </div>
         </div>
       </motion.div>
+  );
+
+  if (isPage) {
+    return (
+      <div className="min-h-screen w-full relative z-10 px-4 py-8 pb-24">
+        {panel}
+      </div>
+    );
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/70 backdrop-blur-md z-[300] flex items-start justify-center pt-16 px-4 pb-4 overflow-y-auto"
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      {panel}
     </motion.div>
   );
 }

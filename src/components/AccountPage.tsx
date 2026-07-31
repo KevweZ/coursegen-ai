@@ -65,9 +65,12 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
 
   useEffect(() => {
     if (!user) { setLoading(false); return; }
+    let cancelled = false;
+    setLoading(true);
     getPaymentStatus(user.id)
-      .then(s => { setStatus(s); setLoading(false); })
-      .catch(() => setLoading(false)); // show page even if Stripe API fails
+      .then(s => { if (!cancelled) { setStatus(s); setLoading(false); } })
+      .catch(() => { if (!cancelled) setLoading(false); }); // show page even if API fails
+    return () => { cancelled = true; };
   }, [user]);
 
   const plan = status?.subscription ?? 'free';
@@ -88,17 +91,6 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
       setPackLoading(null);
     }
   };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-10 h-10 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-slate-400 text-sm font-medium">Loading your account…</p>
-        </div>
-      </div>
-    );
-  }
 
   const daysLeft = daysUntilReset();
 
@@ -125,13 +117,17 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
                 </h1>
                 <p className="text-slate-400 text-sm mt-0.5">{user?.email}</p>
                 <div className="flex items-center gap-2 mt-1.5">
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-gradient-to-r ${meta.gradient} text-white`}>
-                    <PlanIcon className="w-3 h-3" />
-                    {meta.label}
-                  </span>
-                  <span className="text-xs text-slate-500 font-medium">
+                  {loading ? (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-800 text-slate-400 border border-slate-700">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Loading plan…
+                    </span>
+                  ) : (
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-gradient-to-r ${meta.gradient} text-white`}>
+                      <PlanIcon className="w-3 h-3" />
+                      {meta.label}
+                    </span>
+                  )}
                   <span className="text-xs text-slate-500 font-medium">Corporate Training</span>
-                  </span>
                 </div>
               </div>
             </div>
@@ -153,14 +149,19 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Current Plan</p>
-                <p className="text-2xl font-extrabold text-white mt-1">{meta.label}</p>
+                <p className="text-2xl font-extrabold text-white mt-1">{loading ? '…' : meta.label}</p>
               </div>
               <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${meta.gradient} flex items-center justify-center shadow-lg`}>
                 <PlanIcon className="w-6 h-6 text-white" />
               </div>
             </div>
 
-            {plan === 'free' ? (
+            {loading ? (
+              <div className="space-y-3 animate-pulse">
+                <div className="h-4 bg-slate-800 rounded w-3/4" />
+                <div className="h-10 bg-slate-800 rounded-xl" />
+              </div>
+            ) : plan === 'free' ? (
               <div className="space-y-3">
                 <p className="text-slate-400 text-sm">You're on the free plan. Upgrade to unlock more credits and premium features.</p>
                 <button
@@ -234,8 +235,17 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
                 <Sparkles className="w-4 h-4 text-indigo-400" />
                 <p className="text-sm font-bold text-slate-300">AI Generation Credits</p>
               </div>
-              <p className="text-3xl font-black text-white mb-3">{aiCredits.toLocaleString()}</p>
-              <CreditBar used={aiCredits} total={meta.creditsAi} color="indigo" />
+              {loading ? (
+                <div className="space-y-3 animate-pulse">
+                  <div className="h-9 bg-slate-700/60 rounded w-24" />
+                  <div className="h-2 bg-slate-700/60 rounded-full" />
+                </div>
+              ) : (
+                <>
+                  <p className="text-3xl font-black text-white mb-3">{aiCredits.toLocaleString()}</p>
+                  <CreditBar used={aiCredits} total={meta.creditsAi} color="indigo" />
+                </>
+              )}
             </div>
 
             {/* TTS Credits */}
@@ -244,7 +254,12 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
                 <BarChart3 className="w-4 h-4 text-purple-400" />
                 <p className="text-sm font-bold text-slate-300">TTS Audio Credits</p>
               </div>
-              {meta.creditsTts > 0 ? (
+              {loading ? (
+                <div className="space-y-3 animate-pulse">
+                  <div className="h-9 bg-slate-700/60 rounded w-24" />
+                  <div className="h-2 bg-slate-700/60 rounded-full" />
+                </div>
+              ) : meta.creditsTts > 0 ? (
                 <>
                   <p className="text-3xl font-black text-white mb-3">{ttsCredits.toLocaleString()}</p>
                   <CreditBar used={ttsCredits} total={meta.creditsTts} color="purple" />
