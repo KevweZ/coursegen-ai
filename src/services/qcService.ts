@@ -213,6 +213,9 @@ const SCHEMA_HINTS: Record<string, string> = {
   'multiple-answer':'{ "questionText": "string", "options": [{ "id": "string", "text": "string", "isCorrect": boolean }] }',
   jeopardy:        '{ "categories": [{ "id": "string", "title": "string", "questions": [{ "id": "string", "points": number, "question": "string", "answer": "string" }] }] }',
   matching:        '{ "pairs": [{ "id": "string", "left": "string", "right": "string" }] }',
+  diagram:         '{ "mermaidCode": "flowchart TD\\n  A[Start] --> B[Step]\\n  B --> C[End]", "caption": "optional short caption" }',
+  'carousel-panel':'{ "cards": [{ "id": "string", "label": "string", "color": "#6366f1", "description": "string", "expandedContent": "string" }] }',
+  'click-reveal':  '{ "items": [{ "id": "string", "term": "string", "definition": "string" }] }',
 };
 
 /**

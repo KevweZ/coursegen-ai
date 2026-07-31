@@ -93,7 +93,7 @@ import { GameContainer } from './components/game-templates/core/GameContainer';
 import { getRandomBackgroundForTheme } from './lib/backgrounds';
 import { getPresetOptions, getPresetConfig } from './lib/presetEngine';
 import { GameTemplateType } from './types/game';
-import { generateModuleImages, applyCoverImageToCourse, generateCourseCoverImage, attachSourceImagesToCourse, type CourseImageMode } from './services/imageService';
+import { generateCourseCoverImage, attachSourceImagesToCourse, type CourseImageMode } from './services/imageService';
 import { usePlayer } from './lib/usePlayer';
 import { PlayerBar } from './components/player/PlayerBar';
 import { ClosedCaptionOverlay } from './components/player/ClosedCaptionOverlay';
@@ -1870,13 +1870,8 @@ export default function App() {
       if (skipOutlineReview) {
         setProgress(45);
         const finalCourse = await hydrateCourseContent(draft, prompt, { courseType, scenarioConfig: interactionTypes.includes('scenario') ? scenarioConfig : undefined });
-        setCourse(finalCourse);
-        setStep('preview');
-        // Kick off module image generation in background (non-blocking)
-        setIsGeneratingImages(true);
-        generateModuleImages(finalCourse, (slideId, imageDataUrl) => {
-          setCourse((prev: any) => prev ? applyCoverImageToCourse(prev, slideId, imageDataUrl) : prev);
-        }).finally(() => setIsGeneratingImages(false));
+        // Use the same settings-aware finalize path (cover + source images + QC)
+        finalizeGeneratedCourse(finalCourse);
       } else {
         // Item 7: Jump to 100% when outline generation is done
         setProgress(100);
@@ -1931,57 +1926,90 @@ export default function App() {
       setExamQuestions([]);
     }
 
-    // Imagery per Course Settings
-    const wantsAiTitle = imageMode === 'ai-title' || imageMode === 'ai-title-and-source';
-    const wantsSource = imageMode === 'source' || imageMode === 'ai-title-and-source';
+    // Imagery per Course Settings — snapshot mode/file so async work is stable
+    const modeSnapshot = imageMode;
+    const fileSnapshot = uploadedFile;
+    const sourceSnapshot = sourceImages;
+    const voiceSnapshot = voiceOverEnabled;
+    const wantsAiTitle = modeSnapshot === 'ai-title' || modeSnapshot === 'ai-title-and-source';
+    const wantsSource = modeSnapshot === 'source' || modeSnapshot === 'ai-title-and-source';
 
+    // Run imagery first, then QC — parallel QC/autofix was wiping cover & source images
     void (async () => {
-      let imgs = sourceImages;
-      if (wantsSource && imgs.length === 0 && uploadedFile) {
-        try {
-          imgs = await extractImagesFromFile(uploadedFile);
-          if (imgs.length) setSourceImages(imgs);
-        } catch (e) {
-          console.warn('[ImageService] Late source extract failed:', e);
+      let imgs = sourceSnapshot;
+      let working: any = stamped;
+      let coverUrl: string | null = null;
+
+      if (wantsAiTitle || wantsSource) setIsGeneratingImages(true);
+
+      try {
+        if (wantsSource && imgs.length === 0 && fileSnapshot) {
+          try {
+            imgs = await extractImagesFromFile(fileSnapshot);
+            if (imgs.length) setSourceImages(imgs);
+            else console.warn('[ImageService] Source extract returned 0 images from', fileSnapshot.name);
+          } catch (e) {
+            console.warn('[ImageService] Late source extract failed:', e);
+          }
         }
-      }
 
-      let working = stamped;
-      if (wantsSource && imgs.length > 0) {
-        working = attachSourceImagesToCourse(working, imgs);
-        setCourse(working);
-        setOriginalCourse(working);
-      }
-
-      if (wantsAiTitle) {
-        setIsGeneratingImages(true);
-        try {
-          const url = await generateCourseCoverImage(working.title || 'Course', working.description);
-          setCourse((prev: any) => prev ? { ...prev, coverImage: url } : prev);
-          setOriginalCourse((prev: any) => prev ? { ...prev, coverImage: url } : prev);
-          setCourseBg(url);
-        } catch (err) {
-          console.warn('[ImageService] Cover generation failed:', err);
+        if (wantsSource && imgs.length > 0) {
+          working = attachSourceImagesToCourse(working, imgs);
+          setCourse(working);
+          setOriginalCourse(working);
         }
-      }
 
-      // Hotspot backgrounds: prefer source images, else AI generate when AI imagery is on
-      if (wantsAiTitle || wantsSource) {
-        setIsGeneratingImages(true);
-        try {
-          const { enrichHotspotAndCarouselImages } = await import('./services/imageService');
-          const enriched = await enrichHotspotAndCarouselImages(working, imgs, {
-            generateAi: wantsAiTitle || imageMode === 'ai-title-and-source',
-            useSource: wantsSource,
-          });
-          setCourse(enriched);
-          setOriginalCourse(enriched);
-        } catch (err) {
-          console.warn('[ImageService] Hotspot/carousel enrich failed:', err);
+        if (wantsAiTitle) {
+          try {
+            coverUrl = await generateCourseCoverImage(working.title || 'Course', working.description);
+            working = { ...working, coverImage: coverUrl };
+            setCourseBg(coverUrl);
+            setCourse(working);
+            setOriginalCourse(working);
+          } catch (err) {
+            console.warn('[ImageService] Cover generation failed:', err);
+            showDraftMessage('Cover image generation failed — add one via Add Image.');
+          }
         }
+
+        if (wantsAiTitle || wantsSource) {
+          try {
+            const { enrichHotspotAndCarouselImages } = await import('./services/imageService');
+            working = await enrichHotspotAndCarouselImages(working, imgs, {
+              generateAi: wantsAiTitle,
+              useSource: wantsSource,
+            });
+            if (coverUrl) working = { ...working, coverImage: coverUrl };
+            setCourse(working);
+            setOriginalCourse(working);
+          } catch (err) {
+            console.warn('[ImageService] Hotspot/carousel enrich failed:', err);
+          }
+        }
+      } finally {
+        setIsGeneratingImages(false);
       }
 
-      setIsGeneratingImages(false);
+      try {
+        setIsRunningQC(true);
+        setQcPhase('structural');
+        const report = await runFullQC(working, voiceSnapshot, (phase) => setQcPhase(phase));
+        setQcReport(report);
+        if (report.issues.some(i => i.autoFixable)) {
+          const { course: fixedCourse } = autoFixCourse(working, report);
+          const merged = {
+            ...fixedCourse,
+            coverImage: fixedCourse.coverImage || working.coverImage || coverUrl || undefined,
+          };
+          setCourse(merged);
+          setOriginalCourse(merged);
+        }
+      } catch {
+        // QC failure is non-fatal
+      } finally {
+        setIsRunningQC(false);
+        setQcPhase(null);
+      }
     })();
 
     if (voiceOverEnabled) {
@@ -2034,25 +2062,6 @@ export default function App() {
         } catch { /* silently ignore */ }
       })();
     }
-
-    ;(async () => {
-      try {
-        setIsRunningQC(true);
-        setQcPhase('structural');
-        const report = await runFullQC(stamped, voiceOverEnabled, (phase) => setQcPhase(phase));
-        setQcReport(report);
-        if (report.issues.some(i => i.autoFixable)) {
-          const { course: fixedCourse } = autoFixCourse(stamped, report);
-          setCourse(fixedCourse);
-          setOriginalCourse(fixedCourse);
-        }
-      } catch {
-        // QC failure is non-fatal
-      } finally {
-        setIsRunningQC(false);
-        setQcPhase(null);
-      }
-    })();
   };
   finalizeGeneratedCourseRef.current = finalizeGeneratedCourse;
 
@@ -2477,11 +2486,25 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                             setFloatingImagesMap({}); setSyntheticSlideOverrides({}); setCourseBg(null);
                             setIsSandboxMode(true); setShowPlayerProperties(false);
                             setMobileDesignDemo(false);
+                            setImageMode('ai-title');
                             setExamQuestions(DUMMY_EXAM_QUESTIONS); setExamConfig(DUMMY_COURSE.examConfig!);
                             setExamPhase('idle'); setExamError(null); setIsGeneratingExam(false);
                             setHighestVisitedIndex(0);
                             setPlayerConfig(prev => ({ ...prev, playerResolution: '16:9' }));
                             setNavigationMode(DUMMY_COURSE.navigationMode ?? 'free'); setStep('preview');
+                            // Default demo title page: generate an AI cover image
+                            setIsGeneratingImages(true);
+                            generateCourseCoverImage(DUMMY_COURSE.title, DUMMY_COURSE.description)
+                              .then((url) => {
+                                setCourse((prev: any) => prev ? { ...prev, coverImage: url } : prev);
+                                setOriginalCourse((prev: any) => prev ? { ...prev, coverImage: url } : prev);
+                                setCourseBg(url);
+                              })
+                              .catch((err) => {
+                                console.warn('[Demo] AI cover failed:', err);
+                                showDraftMessage('Demo cover image generation failed.');
+                              })
+                              .finally(() => setIsGeneratingImages(false));
                           }}
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-purple-300 hover:bg-purple-500/10 text-sm font-medium transition-all text-left"
                         >
@@ -2495,11 +2518,24 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                             setFloatingImagesMap({}); setSyntheticSlideOverrides({}); setCourseBg(null);
                             setIsSandboxMode(true); setShowPlayerProperties(false);
                             setMobileDesignDemo(false);
+                            setImageMode('ai-title');
                             setExamQuestions(DUMMY_EXAM_QUESTIONS); setExamConfig(DUMMY_COURSE.examConfig!);
                             setExamPhase('idle'); setExamError(null); setIsGeneratingExam(false);
                             setHighestVisitedIndex(0);
                             setPlayerConfig(prev => ({ ...prev, playerResolution: '16:9' }));
                             setNavigationMode(DUMMY_COURSE.navigationMode ?? 'free'); setStep('preview');
+                            setIsGeneratingImages(true);
+                            generateCourseCoverImage(DUMMY_COURSE.title, DUMMY_COURSE.description)
+                              .then((url) => {
+                                setCourse((prev: any) => prev ? { ...prev, coverImage: url } : prev);
+                                setOriginalCourse((prev: any) => prev ? { ...prev, coverImage: url } : prev);
+                                setCourseBg(url);
+                              })
+                              .catch((err) => {
+                                console.warn('[Demo] AI cover failed:', err);
+                                showDraftMessage('Demo cover image generation failed.');
+                              })
+                              .finally(() => setIsGeneratingImages(false));
                           }}
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-purple-300 hover:bg-purple-500/10 text-sm font-medium transition-all text-left"
                         >

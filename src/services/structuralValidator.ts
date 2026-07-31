@@ -423,12 +423,28 @@ function checkColorContrast(slide: any, modIdx: number, slideIdx: number, modTit
     if (!val) return;
     if (typeof val === 'string') {
       const key = path.split('.').pop() ?? '';
-      // Direct color property names
+      // Skip decorative UI fills (carousel/tab/card accent colors). These are
+      // backgrounds with white overlays — not body text on a white slide.
+      // Flagging them as "Apply Dark Color" destroys intentional colorful designs.
+      const isDecorativeFill =
+        key === 'color' &&
+        (
+          /\.(cards|items|tabs|hotspots|segments|options)\.\d+\.color$/i.test(path) ||
+          slide.type === 'carousel-panel' ||
+          slide.type === 'tabbed-horizontal' ||
+          slide.type === 'tabbed-vertical' ||
+          slide.type === 'folder-explorer'
+        );
+      if (isDecorativeFill) return;
+
+      // Direct color property names (real text colors)
       if (/^(text_?color|font_?color|foreground|textColor|fontColor|foregroundColor)$/i.test(key)) {
         flagColor(val, path);
       }
-      // Named "color" property — check only if it looks like a hex/rgb color
+      // Named "color" on non-decorative paths only (e.g. content color tokens)
       if (key === 'color' && (val.startsWith('#') || val.startsWith('rgb'))) {
+        // Still skip generic accent fills nested under interaction payloads
+        if (/\.(cards|items|tabs|hotspots|segments)\./i.test(path)) return;
         flagColor(val, path);
       }
       // Inline style "color: ..." (explicitly not background-color)
@@ -458,12 +474,70 @@ const INTERACTION_TYPES: Record<string, (slide: any) => boolean> = {
   branching:        s => !s.data?.nodes      || s.data.nodes.length      === 0,
   jeopardy:         s => !s.data?.categories || s.data.categories.length === 0,
   matching:         s => !s.data?.pairs      || s.data.pairs.length      === 0,
+  sorting:          s => !s.data?.items      || s.data.items.length      === 0,
+  'drop-targets':   s => !s.data?.items      || s.data.items.length      === 0,
   hotspot:          s => !s.data?.hotspots   || s.data.hotspots.length   === 0,
   scenario:         s => !s.data?.scenes     || s.data.scenes.length     === 0,
+  'carousel-panel': s => {
+    const cards = s.data?.cards || s.data?.items;
+    return !cards || cards.length === 0;
+  },
+  'click-reveal':   s => !s.data?.items || s.data.items.length === 0,
+  'tabbed-horizontal': s => !s.data?.tabs || s.data.tabs.length === 0,
+  'tabbed-vertical':   s => !s.data?.tabs || s.data.tabs.length === 0,
+  'folder-explorer':   s => !s.data?.items || s.data.items.length === 0,
   // Quiz data lives in slide.data (dummy course) OR slide.interactions[0] (AI pipeline)
   quiz:             s => { const d = s.data || s.interactions?.[0]; return !d?.questionText && !d?.options?.length; },
   'multiple-answer':s => { const d = s.data || s.interactions?.[0]; return !d?.questionText && !d?.options?.length; },
+  'multiple-choice':s => { const d = s.data || s.interactions?.[0]; return !d?.questionText && !d?.options?.length; },
+  'multiple-answers':s => { const d = s.data || s.interactions?.[0]; return !d?.questionText && !d?.options?.length; },
 };
+
+/** Diagram / Mermaid failure detection — catches blank or unusable process diagrams. */
+function checkDiagram(slide: any, modIdx: number, slideIdx: number, modTitle: string): QCIssue[] {
+  if (slide.type !== 'diagram') return [];
+  const code = String(slide.data?.mermaidCode || slide.data?.code || '').trim();
+  if (!code) {
+    return [baseIssue(slide, modIdx, slideIdx, modTitle, {
+      field: 'data.mermaidCode',
+      type: 'interaction_empty',
+      severity: 'error',
+      message: 'Diagram slide has no diagram code and will appear blank (or show a render failure) to learners.',
+      originalText: '',
+      suggestion: '',
+      autoFixable: false,
+      fixActions: ['simplify', 'regenerate'],
+    })];
+  }
+  // Markdown fences often break Mermaid renderers
+  if (/```/.test(code)) {
+    return [baseIssue(slide, modIdx, slideIdx, modTitle, {
+      field: 'data.mermaidCode',
+      type: 'interaction_incomplete',
+      severity: 'error',
+      message: 'Diagram code still contains markdown fences (```), which usually causes “Diagram rendering failed”.',
+      originalText: code.slice(0, 200),
+      suggestion: code.replace(/```(?:mermaid)?/gi, '').replace(/```/g, '').trim(),
+      autoFixable: true,
+      fixActions: [],
+    })];
+  }
+  // Must start with a recognizable Mermaid diagram keyword
+  const head = code.split(/\n/).map(l => l.trim()).find(l => l && !l.startsWith('%%')) || '';
+  if (!/^(flowchart|graph|sequenceDiagram|stateDiagram|classDiagram|erDiagram|gantt|pie|mindmap|timeline|journey|quadrantChart|sankey|block-beta|C4Context)/i.test(head)) {
+    return [baseIssue(slide, modIdx, slideIdx, modTitle, {
+      field: 'data.mermaidCode',
+      type: 'interaction_incomplete',
+      severity: 'error',
+      message: 'Diagram code does not start with a valid Mermaid diagram type — learners will see a render failure.',
+      originalText: code.slice(0, 200),
+      suggestion: '',
+      autoFixable: false,
+      fixActions: ['simplify', 'regenerate'],
+    })];
+  }
+  return [];
+}
 
 function checkEmptyInteraction(slide: any, modIdx: number, slideIdx: number, modTitle: string): QCIssue[] {
   const isEmpty = INTERACTION_TYPES[slide.type];
@@ -556,6 +630,7 @@ export function validateCourse(course: any, narrationEnabled = false): QCReport 
       issues.push(...checkFlashcards(slide, modIdx, slideIdx, modTitle));
       issues.push(...checkTimeline(slide, modIdx, slideIdx, modTitle));
       issues.push(...checkEmptyInteraction(slide, modIdx, slideIdx, modTitle));
+      issues.push(...checkDiagram(slide, modIdx, slideIdx, modTitle));
       issues.push(...checkStubContent(slide, modIdx, slideIdx, modTitle));  // A3: hotspot stubs
       issues.push(...checkColorContrast(slide, modIdx, slideIdx, modTitle));
       issues.push(...checkThemeConsistency(slide, modIdx, slideIdx, modTitle));
