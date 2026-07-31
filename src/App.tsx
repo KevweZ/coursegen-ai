@@ -3055,71 +3055,97 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
               )}
             >
               {mobileDesignDemo ? (
-                <LandscapePhoneFrame label="Design Demo — Mobile Landscape" screenClassName="bg-slate-950 overflow-y-auto custom-scrollbar">
-                  <CourseSettingsPage
-                    mode={settingsMode === 'defaults' ? 'defaults' : 'session'}
-                    isSandboxMode={isSandboxMode}
-                    compactMobile
-                    isGenerating={isGenerating}
-                    isHydrating={isHydrating}
-                    isSuggesting={isSuggesting}
-                    isGeneratingOutline={isGeneratingOutline}
-                    progress={progress}
-                    error={error}
-                    renderProgressState={renderProgressState}
-                    courseTitle={courseTitle}
-                    setCourseTitle={setCourseTitle}
-                    courseDescription={courseDescription}
-                    setCourseDescription={setCourseDescription}
-                    prompt={prompt}
-                    setPrompt={setPrompt}
-                    objectiveFormat={objectiveFormat}
-                    learningObjectives={learningObjectives}
-                    setLearningObjectives={setLearningObjectives}
-                    onFormatChange={settingsMode === 'defaults' ? (fmt) => setObjectiveFormat(fmt) : handleFormatChange}
-                    onSuggestObjectives={handleSuggestObjectives}
-                    examConfig={examConfig}
-                    setExamConfig={setExamConfig}
-                    navigationMode={navigationMode}
-                    setNavigationMode={setNavigationMode}
-                    requireInteractionsComplete={requireInteractionsComplete}
-                    setRequireInteractionsComplete={setRequireInteractionsComplete}
-                    preset={preset}
-                    onPresetChange={handlePresetChange}
-                    slideCount={slideCount}
-                    setSlideCount={setSlideCount}
-                    includeModuleTitleSlides={includeModuleTitleSlides}
-                    setIncludeModuleTitleSlides={setIncludeModuleTitleSlides}
-                    includeModuleOverviewSlides={includeModuleOverviewSlides}
-                    setIncludeModuleOverviewSlides={setIncludeModuleOverviewSlides}
-                    includeSummarySlides={includeSummarySlides}
-                    setIncludeSummarySlides={setIncludeSummarySlides}
-                    interactionTypes={interactionTypes}
-                    setInteractionTypes={setInteractionTypes}
-                    scenarioConfig={scenarioConfig}
-                    setScenarioConfig={setScenarioConfig}
-                    onPreviewOption={setPreviewModalOption}
-                    gameTemplateIds={gameTemplateIds}
-                    setGameTemplateIds={setGameTemplateIds}
-                    voiceOverEnabled={voiceOverEnabled}
-                    setVoiceOverEnabled={setVoiceOverEnabled}
-                    ttsVoice={ttsVoice}
-                    setTtsVoice={setTtsVoice}
-                    imageMode={imageMode}
-                    setImageMode={setImageMode}
-                    previewingVoice={previewingVoice}
-                    onPreviewVoice={previewVoice}
-                    outlineDraft={outlineDraft}
-                    onOutlineChange={setOutlineDraft}
-                    onRegenerateOutline={regenerateOutlineForSettings}
-                    onBack={() => { setIsSandboxMode(false); setMobileDesignDemo(false); setViewMode('desktop'); setStep('home'); }}
-                    onReplaceDocument={(e) => { if (e.target.files?.[0]) handleFileUpload(e); }}
-                    onSaveSettings={persistCourseSettings}
-                    onGenerateCourse={handleGenerateCourseFromSettings}
-                    onOpenPlayerProperties={() => setShowPlayerProperties(true)}
-                    settingsSavedFlash={settingsSavedFlash}
-                  />
-                </LandscapePhoneFrame>
+                <>
+                  <div className="px-3 bg-slate-900 border-b border-slate-800 shrink-0">
+                    <div className="h-11 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <button
+                          type="button"
+                          onClick={goHome}
+                          className="p-1.5 -ml-0.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
+                          title="Back to home"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </button>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <h1 className="text-white font-bold text-sm truncate max-w-[260px]">
+                            Design Demo
+                          </h1>
+                          <span className="hidden sm:inline px-1.5 py-0.5 rounded-md bg-slate-700 text-slate-400 text-[10px] font-bold uppercase tracking-wider shrink-0">
+                            Mobile
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    <LandscapePhoneFrame label="Design Demo — Mobile Landscape" screenClassName="bg-slate-950 overflow-y-auto custom-scrollbar">
+                      <CourseSettingsPage
+                        mode={settingsMode === 'defaults' ? 'defaults' : 'session'}
+                        isSandboxMode={isSandboxMode}
+                        compactMobile
+                        isGenerating={isGenerating}
+                        isHydrating={isHydrating}
+                        isSuggesting={isSuggesting}
+                        isGeneratingOutline={isGeneratingOutline}
+                        progress={progress}
+                        error={error}
+                        renderProgressState={renderProgressState}
+                        courseTitle={courseTitle}
+                        setCourseTitle={setCourseTitle}
+                        courseDescription={courseDescription}
+                        setCourseDescription={setCourseDescription}
+                        prompt={prompt}
+                        setPrompt={setPrompt}
+                        objectiveFormat={objectiveFormat}
+                        learningObjectives={learningObjectives}
+                        setLearningObjectives={setLearningObjectives}
+                        onFormatChange={settingsMode === 'defaults' ? (fmt) => setObjectiveFormat(fmt) : handleFormatChange}
+                        onSuggestObjectives={handleSuggestObjectives}
+                        examConfig={examConfig}
+                        setExamConfig={setExamConfig}
+                        navigationMode={navigationMode}
+                        setNavigationMode={setNavigationMode}
+                        requireInteractionsComplete={requireInteractionsComplete}
+                        setRequireInteractionsComplete={setRequireInteractionsComplete}
+                        preset={preset}
+                        onPresetChange={handlePresetChange}
+                        slideCount={slideCount}
+                        setSlideCount={setSlideCount}
+                        includeModuleTitleSlides={includeModuleTitleSlides}
+                        setIncludeModuleTitleSlides={setIncludeModuleTitleSlides}
+                        includeModuleOverviewSlides={includeModuleOverviewSlides}
+                        setIncludeModuleOverviewSlides={setIncludeModuleOverviewSlides}
+                        includeSummarySlides={includeSummarySlides}
+                        setIncludeSummarySlides={setIncludeSummarySlides}
+                        interactionTypes={interactionTypes}
+                        setInteractionTypes={setInteractionTypes}
+                        scenarioConfig={scenarioConfig}
+                        setScenarioConfig={setScenarioConfig}
+                        onPreviewOption={setPreviewModalOption}
+                        gameTemplateIds={gameTemplateIds}
+                        setGameTemplateIds={setGameTemplateIds}
+                        voiceOverEnabled={voiceOverEnabled}
+                        setVoiceOverEnabled={setVoiceOverEnabled}
+                        ttsVoice={ttsVoice}
+                        setTtsVoice={setTtsVoice}
+                        imageMode={imageMode}
+                        setImageMode={setImageMode}
+                        previewingVoice={previewingVoice}
+                        onPreviewVoice={previewVoice}
+                        outlineDraft={outlineDraft}
+                        onOutlineChange={setOutlineDraft}
+                        onRegenerateOutline={regenerateOutlineForSettings}
+                        onBack={goHome}
+                        onReplaceDocument={(e) => { if (e.target.files?.[0]) handleFileUpload(e); }}
+                        onSaveSettings={persistCourseSettings}
+                        onGenerateCourse={handleGenerateCourseFromSettings}
+                        onOpenPlayerProperties={() => setShowPlayerProperties(true)}
+                        settingsSavedFlash={settingsSavedFlash}
+                      />
+                    </LandscapePhoneFrame>
+                  </div>
+                </>
               ) : (
               <CourseSettingsPage
                 mode={settingsMode === 'defaults' ? 'defaults' : 'session'}
