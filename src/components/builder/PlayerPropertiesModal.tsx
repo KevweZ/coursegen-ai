@@ -45,7 +45,7 @@ export interface PlayerConfig {
 export const defaultPlayerConfig: PlayerConfig = {
   playerStyle: 'modern',
   theme: 'dark',
-  tocPosition: 'sidebar-left',
+  tocPosition: 'sidebar-left', // Desktop default. Mobile always uses dropdown (see App useMobileTocDropdown).
   tocStartsCollapsed: false,
   tocNumbering: 'numbered',
   showTitle: true,
@@ -375,6 +375,9 @@ export function PlayerPropertiesModal({ config, onChange, onClose }: Props) {
 
             <SectionTitle>Table of Contents</SectionTitle>
             <div className="space-y-1.5">
+              <p className="text-[10px] text-slate-500 mb-3 leading-relaxed">
+                Desktop default is a fixed left sidebar. On mobile (and Mobile preview), the player always uses a clickable Menu dropdown so the TOC never steals slide width.
+              </p>
               {tocOptions.map(opt => (
                 <TOCOption
                   key={opt.value}

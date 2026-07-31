@@ -134,6 +134,7 @@ import ReactMarkdown from 'react-markdown';
 import { cn } from './lib/utils';
 import { SlideEditorBar } from './components/player/SlideEditorBar';
 import { CourseNavSidebar } from './components/player/CourseNavSidebar';
+import { LandscapePhoneFrame } from './components/player/LandscapePhoneFrame';
 import { RichTextEditor } from './components/player/RichTextEditor';
 import { useTTSGeneration } from './hooks/useTTSGeneration';
 import { TTSProgressToast } from './components/TTSProgressToast';
@@ -551,6 +552,7 @@ export default function App() {
 
   const goHome = () => {
     setStep('home');
+    setMobileDesignDemo(false);
     if (typeof window !== 'undefined' && window.location.pathname !== '/upload') {
       window.history.pushState({}, '', '/upload');
     }
@@ -675,6 +677,12 @@ export default function App() {
   const [isPortrait, setIsPortrait] = useState(() =>
     typeof window !== 'undefined' && window.innerWidth < 768 && window.innerHeight > window.innerWidth
   );
+  // Compact / phone layouts: use dropdown TOC (not fixed left rail) for max slide space.
+  // Covers mobile preview mode, portrait phones, and landscape phones (short edge < 520).
+  const [isCompactViewport, setIsCompactViewport] = useState(() =>
+    typeof window !== 'undefined' && Math.min(window.innerWidth, window.innerHeight) < 520
+  );
+  const useMobileTocDropdown = viewMode === 'mobile' || isPortrait || isCompactViewport;
 
   const [showSettings, setShowSettings] = useState(false);
   const [editingSlide, setEditingSlide] = useState<any>(null);
@@ -684,6 +692,8 @@ export default function App() {
   // Interaction Previews
   const [previewModalOption, setPreviewModalOption] = useState<string | null>(null);
   const [previewModalViewMode, setPreviewModalViewMode] = useState<'desktop' | 'mobile'>('desktop');
+  /** Admin Demo — Design (Mobile): wrap Course Settings inside enlarged phone chrome */
+  const [mobileDesignDemo, setMobileDesignDemo] = useState(false);
   
   // Player Properties
   const [showPlayerProperties, setShowPlayerProperties] = useState(false);
@@ -1084,15 +1094,17 @@ export default function App() {
     setCurrentSlideIndex(prev => Math.max(0, prev - 1));
   };
 
-  // Orientation change listener
+  // Orientation / compact-viewport listener
   useEffect(() => {
-    const checkOrientation = () =>
+    const check = () => {
       setIsPortrait(window.innerWidth < 768 && window.innerHeight > window.innerWidth);
-    window.addEventListener('resize', checkOrientation);
-    window.addEventListener('orientationchange', checkOrientation);
+      setIsCompactViewport(Math.min(window.innerWidth, window.innerHeight) < 520);
+    };
+    window.addEventListener('resize', check);
+    window.addEventListener('orientationchange', check);
     return () => {
-      window.removeEventListener('resize', checkOrientation);
-      window.removeEventListener('orientationchange', checkOrientation);
+      window.removeEventListener('resize', check);
+      window.removeEventListener('orientationchange', check);
     };
   }, []);
 
@@ -1588,6 +1600,10 @@ export default function App() {
       setExamError(null);
       setIsGeneratingExam(false);
       setTheme('light');
+      if (mobileDesignDemo) {
+        setViewMode('mobile');
+        setMobileDesignDemo(false);
+      }
       setStep('preview');
       return;
     }
@@ -2361,7 +2377,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
   return (
     <div className="min-h-screen bg-slate-900 font-sans selection:bg-indigo-500/30 selection:text-indigo-200 overflow-x-hidden">
       {/* Help & Support floating widget — hidden during course preview to avoid covering Next button */}
-      {step !== 'preview' && <HelpWidget userEmail={user?.email ?? ''} userId={user?.id} />}
+      {step !== 'preview' && !mobileDesignDemo && <HelpWidget userEmail={user?.email ?? ''} userId={user?.id} />}
       {/* Background decoration */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-indigo-900/20 rounded-full blur-[120px] mix-blend-screen overflow-hidden transform translate-x-1/3 -translate-y-1/3" />
@@ -2372,7 +2388,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
       {/* Global marketing/nav header — hidden during course preview so the player
           gets the full viewport height (more height => bigger scale-to-fit => a
           visibly wider/larger player frame, not just taller). */}
-      {step !== 'preview' && (
+      {step !== 'preview' && !mobileDesignDemo && (
       <header className="relative z-[600] border-b border-slate-800/80 bg-slate-900/50 backdrop-blur-xl">
         <div className="container mx-auto px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3 relative group cursor-pointer" onClick={goHome}>
@@ -2445,6 +2461,8 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                             setCourseType('standard'); setPreset('standard');
                             setSettingsMode('session');
                             setPreviewModalViewMode('desktop');
+                            setMobileDesignDemo(false);
+                            setViewMode('desktop');
                             setIsSandboxMode(true); setShowPlayerProperties(false); setStep('details');
                           }}
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-purple-300 hover:bg-purple-500/10 text-sm font-medium transition-all text-left"
@@ -2458,6 +2476,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                             setCurrentSlideIndex(0); setQuizState({}); setTheme('light'); setViewMode('desktop');
                             setFloatingImagesMap({}); setSyntheticSlideOverrides({}); setCourseBg(null);
                             setIsSandboxMode(true); setShowPlayerProperties(false);
+                            setMobileDesignDemo(false);
                             setExamQuestions(DUMMY_EXAM_QUESTIONS); setExamConfig(DUMMY_COURSE.examConfig!);
                             setExamPhase('idle'); setExamError(null); setIsGeneratingExam(false);
                             setHighestVisitedIndex(0);
@@ -2475,6 +2494,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                             setCurrentSlideIndex(0); setQuizState({}); setTheme('light'); setViewMode('mobile');
                             setFloatingImagesMap({}); setSyntheticSlideOverrides({}); setCourseBg(null);
                             setIsSandboxMode(true); setShowPlayerProperties(false);
+                            setMobileDesignDemo(false);
                             setExamQuestions(DUMMY_EXAM_QUESTIONS); setExamConfig(DUMMY_COURSE.examConfig!);
                             setExamPhase('idle'); setExamError(null); setIsGeneratingExam(false);
                             setHighestVisitedIndex(0);
@@ -2494,6 +2514,8 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                             setCourseType('standard'); setPreset('standard');
                             setSettingsMode('session');
                             setPreviewModalViewMode('mobile');
+                            setMobileDesignDemo(true);
+                            setViewMode('mobile');
                             setIsSandboxMode(true); setShowPlayerProperties(false); setStep('details');
                           }}
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-purple-300 hover:bg-purple-500/10 text-sm font-medium transition-all text-left"
@@ -3025,7 +3047,80 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
           )}
 
           {step === 'details' && (
-            <motion.div key="details" className="w-full relative z-10">
+            <motion.div
+              key="details"
+              className={cn(
+                'w-full relative z-10',
+                mobileDesignDemo && 'fixed inset-0 z-50 bg-slate-950 flex flex-col'
+              )}
+            >
+              {mobileDesignDemo ? (
+                <LandscapePhoneFrame label="Design Demo — Mobile Landscape" screenClassName="bg-slate-950 overflow-y-auto custom-scrollbar">
+                  <CourseSettingsPage
+                    mode={settingsMode === 'defaults' ? 'defaults' : 'session'}
+                    isSandboxMode={isSandboxMode}
+                    compactMobile
+                    isGenerating={isGenerating}
+                    isHydrating={isHydrating}
+                    isSuggesting={isSuggesting}
+                    isGeneratingOutline={isGeneratingOutline}
+                    progress={progress}
+                    error={error}
+                    renderProgressState={renderProgressState}
+                    courseTitle={courseTitle}
+                    setCourseTitle={setCourseTitle}
+                    courseDescription={courseDescription}
+                    setCourseDescription={setCourseDescription}
+                    prompt={prompt}
+                    setPrompt={setPrompt}
+                    objectiveFormat={objectiveFormat}
+                    learningObjectives={learningObjectives}
+                    setLearningObjectives={setLearningObjectives}
+                    onFormatChange={settingsMode === 'defaults' ? (fmt) => setObjectiveFormat(fmt) : handleFormatChange}
+                    onSuggestObjectives={handleSuggestObjectives}
+                    examConfig={examConfig}
+                    setExamConfig={setExamConfig}
+                    navigationMode={navigationMode}
+                    setNavigationMode={setNavigationMode}
+                    requireInteractionsComplete={requireInteractionsComplete}
+                    setRequireInteractionsComplete={setRequireInteractionsComplete}
+                    preset={preset}
+                    onPresetChange={handlePresetChange}
+                    slideCount={slideCount}
+                    setSlideCount={setSlideCount}
+                    includeModuleTitleSlides={includeModuleTitleSlides}
+                    setIncludeModuleTitleSlides={setIncludeModuleTitleSlides}
+                    includeModuleOverviewSlides={includeModuleOverviewSlides}
+                    setIncludeModuleOverviewSlides={setIncludeModuleOverviewSlides}
+                    includeSummarySlides={includeSummarySlides}
+                    setIncludeSummarySlides={setIncludeSummarySlides}
+                    interactionTypes={interactionTypes}
+                    setInteractionTypes={setInteractionTypes}
+                    scenarioConfig={scenarioConfig}
+                    setScenarioConfig={setScenarioConfig}
+                    onPreviewOption={setPreviewModalOption}
+                    gameTemplateIds={gameTemplateIds}
+                    setGameTemplateIds={setGameTemplateIds}
+                    voiceOverEnabled={voiceOverEnabled}
+                    setVoiceOverEnabled={setVoiceOverEnabled}
+                    ttsVoice={ttsVoice}
+                    setTtsVoice={setTtsVoice}
+                    imageMode={imageMode}
+                    setImageMode={setImageMode}
+                    previewingVoice={previewingVoice}
+                    onPreviewVoice={previewVoice}
+                    outlineDraft={outlineDraft}
+                    onOutlineChange={setOutlineDraft}
+                    onRegenerateOutline={regenerateOutlineForSettings}
+                    onBack={() => { setIsSandboxMode(false); setMobileDesignDemo(false); setViewMode('desktop'); setStep('home'); }}
+                    onReplaceDocument={(e) => { if (e.target.files?.[0]) handleFileUpload(e); }}
+                    onSaveSettings={persistCourseSettings}
+                    onGenerateCourse={handleGenerateCourseFromSettings}
+                    onOpenPlayerProperties={() => setShowPlayerProperties(true)}
+                    settingsSavedFlash={settingsSavedFlash}
+                  />
+                </LandscapePhoneFrame>
+              ) : (
               <CourseSettingsPage
                 mode={settingsMode === 'defaults' ? 'defaults' : 'session'}
                 isSandboxMode={isSandboxMode}
@@ -3081,13 +3176,14 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                 outlineDraft={outlineDraft}
                 onOutlineChange={setOutlineDraft}
                 onRegenerateOutline={regenerateOutlineForSettings}
-                onBack={() => { setIsSandboxMode(false); setStep('home'); }}
+                onBack={() => { setIsSandboxMode(false); setMobileDesignDemo(false); setStep('home'); }}
                 onReplaceDocument={(e) => { if (e.target.files?.[0]) handleFileUpload(e); }}
                 onSaveSettings={persistCourseSettings}
                 onGenerateCourse={handleGenerateCourseFromSettings}
                 onOpenPlayerProperties={() => setShowPlayerProperties(true)}
                 settingsSavedFlash={settingsSavedFlash}
               />
+              )}
             </motion.div>
           )}
 
@@ -3383,7 +3479,10 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
 
               {/* ── Body: Sidebar + Main Player Area ── */}
               <div className={cn("flex flex-row flex-1 overflow-hidden", playerConfig.playerResolution === 'full' ? 'overflow-x-hidden' : 'min-h-0')}>
-                {/* Course Navigation Sidebar */}
+                {/* Course Navigation — fixed left sidebar on desktop only.
+                    Mobile / landscape-phone uses a clickable dropdown inside the
+                    player frame so the TOC never steals content width. */}
+                {!useMobileTocDropdown && (
                 <CourseNavSidebar
                   modules={course.modules}
                   currentSlideIndex={currentSlideIndex}
@@ -3400,7 +3499,8 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                   examPhase={examPhase}
                   examIntroIndex={examIntroIndex}
                   highestVisitedIndex={highestVisitedIndex}
-                  defaultCollapsed={typeof window !== 'undefined' && window.innerWidth < 768}
+                  defaultCollapsed={playerConfig.tocStartsCollapsed}
+                  variant="sidebar"
                   qcPendingSlideIds={
                     qcReport
                       ? new Set(
@@ -3420,6 +3520,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                       : undefined
                   }
                 />
+                )}
 
                 {/* Main slide area — swipe left/right on mobile to navigate slides */}
                 <div
@@ -3437,9 +3538,14 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                     className={cn(
                       "relative flex flex-col flex-1 overflow-hidden bg-white",
                       viewMode === 'desktop' && playerConfig.playerResolution !== 'full' ? 'items-center justify-center' : undefined,
-                      viewMode === 'mobile' ? 'items-center justify-center bg-slate-950' : undefined
+                      viewMode === 'mobile' ? 'items-center justify-center bg-slate-950 gap-2' : undefined
                     )}
                   >
+                  {viewMode === 'mobile' && isSandboxMode && (
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-400/80 shrink-0 pt-2">
+                      Development Demo — Mobile Landscape
+                    </p>
+                  )}
 
                   {/* Slide frame — aspect ratio driven by playerConfig.playerResolution.
                       16:9 / 4:3 modes render at a FIXED design size (scaler.frameStyle) and are
@@ -3453,7 +3559,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                     "transition-all duration-500 flex flex-col relative z-10",
                     viewMode === 'desktop'
                       ? (playerConfig.playerResolution !== 'full' ? 'overflow-hidden' : 'flex-1 overflow-hidden w-full')
-                      : 'shadow-2xl overflow-hidden w-[min(92vw,720px)] h-[min(56vw,405px)] my-4 rounded-[1.75rem] border-[8px] border-gray-800',
+                      : 'shadow-2xl overflow-hidden w-[min(96vw,calc((100vh-7rem)*16/9))] h-[min(calc(100vh-7rem),calc(96vw*9/16))] max-w-[1280px] max-h-[720px] my-2 rounded-[2rem] border-[10px] border-gray-800',
                     theme === 'light' ? 'bg-white' : theme === 'unified' ? 'bg-indigo-950' : 'bg-slate-900'
                   )}
                   style={viewMode === 'desktop'
@@ -3467,6 +3573,44 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                         : undefined)
                     : undefined
                   }>
+                    {useMobileTocDropdown && (
+                      <CourseNavSidebar
+                        modules={course.modules}
+                        currentSlideIndex={currentSlideIndex}
+                        allSlides={allSlides}
+                        onNavigate={(idx) => {
+                          if (canNavigateTo(idx)) {
+                            setHighestVisitedIndex(prev => Math.max(prev, idx));
+                            setCurrentSlideIndex(idx);
+                          }
+                        }}
+                        theme={theme}
+                        tocNumbering={playerConfig.tocNumbering}
+                        navigationMode={navigationMode}
+                        examPhase={examPhase}
+                        examIntroIndex={examIntroIndex}
+                        highestVisitedIndex={highestVisitedIndex}
+                        variant="dropdown"
+                        qcPendingSlideIds={
+                          qcReport
+                            ? new Set(
+                                qcReport.issues
+                                  .filter(i => !qcConfirmed.has(i.id) && !qcDeclined.has(i.id))
+                                  .map(i => i.slideId)
+                              )
+                            : undefined
+                        }
+                        qcResolvedSlideIds={
+                          qcReport
+                            ? new Set(
+                                qcReport.issues
+                                  .filter(i => qcConfirmed.has(i.id) || qcDeclined.has(i.id))
+                                  .map(i => i.slideId)
+                              )
+                            : undefined
+                        }
+                      />
+                    )}
                     {/* ── Content zone + accent strip ── */}
                     <div className="flex-1 flex flex-row overflow-hidden">
                     {/* Per-module accent strip — flex column, no z-index issues */}
@@ -4749,7 +4893,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                  )}>
                      <div className={cn(
                        previewModalViewMode === 'mobile'
-                         ? "w-[min(92vw,720px)] h-[min(56vw,405px)] overflow-auto rounded-[1.75rem] border-[8px] border-gray-800 bg-slate-900 shadow-2xl p-4"
+                         ? "w-[min(96vw,calc((100vh-8rem)*16/9))] h-[min(calc(100vh-8rem),calc(96vw*9/16))] max-w-[1280px] max-h-[720px] overflow-auto rounded-[2rem] border-[10px] border-gray-800 bg-slate-900 shadow-2xl p-3"
                          : "w-full min-h-[420px] flex flex-wrap items-start justify-center gap-6 py-6 px-2"
                      )}>
                          {previewModalOption === 'Multiple Choice' && <MultipleChoicePreview />}

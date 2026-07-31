@@ -42,6 +42,8 @@ const OBJECTIVE_EXAMPLES: Record<string, { label: string; example: string }> = {
 export interface CourseSettingsPageProps {
   mode: SettingsMode;
   isSandboxMode?: boolean;
+  /** Dense layout for admin Design (Mobile) demo inside landscape phone chrome */
+  compactMobile?: boolean;
   isGenerating?: boolean;
   isHydrating?: boolean;
   isSuggesting?: boolean;
@@ -124,6 +126,7 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
   const {
     mode,
     isSandboxMode,
+    compactMobile = false,
     isGenerating,
     isHydrating,
     isSuggesting,
@@ -161,8 +164,8 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
 
   if ((isGenerating || isHydrating) && renderProgressState) {
     return (
-      <div className="w-full relative z-10 min-h-[calc(100vh-80px)]">
-        <div className="max-w-4xl mx-auto space-y-8 pb-32 relative z-10 pt-16 px-6">
+      <div className={cn('w-full relative z-10', compactMobile ? 'min-h-0 h-full' : 'min-h-[calc(100vh-80px)]')}>
+        <div className={cn('mx-auto space-y-8 relative z-10', compactMobile ? 'max-w-none pb-8 pt-4 px-3' : 'max-w-4xl pb-32 pt-16 px-6')}>
           {renderProgressState()}
         </div>
       </div>
@@ -170,25 +173,31 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
   }
 
   return (
-    <div className="w-full relative z-10 min-h-[calc(100vh-80px)]">
-      <div className="max-w-5xl mx-auto space-y-6 pb-32 relative z-10 pt-12 px-6">
+    <div className={cn('w-full relative z-10', compactMobile ? 'min-h-0 h-full' : 'min-h-[calc(100vh-80px)]')}>
+      <div className={cn(
+        'mx-auto space-y-4 relative z-10',
+        compactMobile ? 'max-w-none pb-6 pt-3 px-3 text-[13px] leading-snug' : 'max-w-5xl space-y-6 pb-32 pt-12 px-6'
+      )}>
         {/* Header + primary CTA */}
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             <div
-              className="flex items-center gap-4 cursor-pointer group"
+              className="flex items-center gap-3 cursor-pointer group"
               onClick={props.onBack}
             >
-              <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center group-hover:bg-indigo-500/20 transition-colors shrink-0">
-                <ArrowRight className="w-5 h-5 text-slate-400 rotate-180 group-hover:text-indigo-400" />
+              <div className={cn(
+                'rounded-full bg-slate-800 flex items-center justify-center group-hover:bg-indigo-500/20 transition-colors shrink-0',
+                compactMobile ? 'w-8 h-8' : 'w-10 h-10'
+              )}>
+                <ArrowRight className={cn('text-slate-400 rotate-180 group-hover:text-indigo-400', compactMobile ? 'w-4 h-4' : 'w-5 h-5')} />
               </div>
               <div>
-                <h2 className="text-3xl font-extrabold text-white">Course Settings</h2>
-                <p className="text-sm text-slate-400 mt-0.5">
+                <h2 className={cn('font-extrabold text-white', compactMobile ? 'text-lg' : 'text-3xl')}>Course Settings</h2>
+                <p className={cn('text-slate-400 mt-0.5', compactMobile ? 'text-[11px]' : 'text-sm')}>
                   {isDefaults
                     ? 'Set defaults used when you choose “Build with my defaults” on upload.'
                     : isSandboxMode
-                    ? 'Sandbox — configure and preview without AI generation.'
+                    ? (compactMobile ? 'Mobile design demo — settings fit the landscape player.' : 'Sandbox — configure and preview without AI generation.')
                     : 'Review AI-filled settings, then generate your course.'}
                 </p>
               </div>
@@ -196,8 +205,11 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
 
             <div className="flex items-center gap-2 flex-wrap">
               {!isDefaults && props.onReplaceDocument && (
-                <label className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white font-bold text-sm rounded-xl cursor-pointer transition-all shrink-0">
-                  <FileUp className="w-4 h-4 text-indigo-400" />
+                <label className={cn(
+                  'flex items-center gap-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white font-bold rounded-xl cursor-pointer transition-all shrink-0',
+                  compactMobile ? 'px-2.5 py-1.5 text-[11px]' : 'px-4 py-2 text-sm'
+                )}>
+                  <FileUp className={cn('text-indigo-400', compactMobile ? 'w-3.5 h-3.5' : 'w-4 h-4')} />
                   Replace Document
                   <input
                     type="file"
@@ -211,9 +223,12 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                 <button
                   type="button"
                   onClick={props.onOpenPlayerProperties}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-700 bg-slate-900 text-slate-300 font-bold text-sm hover:border-indigo-500/50 hover:text-white transition-all"
+                  className={cn(
+                    'flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 text-slate-300 font-bold hover:border-indigo-500/50 hover:text-white transition-all',
+                    compactMobile ? 'px-2.5 py-1.5 text-[11px]' : 'px-4 py-2 text-sm'
+                  )}
                 >
-                  <Settings2 className="w-4 h-4 text-indigo-400" />
+                  <Settings2 className={cn('text-indigo-400', compactMobile ? 'w-3.5 h-3.5' : 'w-4 h-4')} />
                   Player Properties
                 </button>
               )}
@@ -221,9 +236,12 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                 <button
                   type="button"
                   onClick={props.onSaveSettings}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition-all"
+                  className={cn(
+                    'flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition-all',
+                    compactMobile ? 'px-3 py-1.5 text-[11px]' : 'px-5 py-2.5 text-sm'
+                  )}
                 >
-                  <Save className="w-4 h-4" />
+                  <Save className={cn(compactMobile ? 'w-3.5 h-3.5' : 'w-4 h-4')} />
                   {props.settingsSavedFlash ? 'Saved!' : 'Save Settings'}
                 </button>
               )}
@@ -232,12 +250,15 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                   type="button"
                   onClick={props.onGenerateCourse}
                   disabled={!props.outlineDraft || !!isGeneratingOutline || !!isHydrating}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold text-sm hover:shadow-[0_0_30px_-8px_rgba(79,70,229,0.5)] transition-all disabled:opacity-50"
+                  className={cn(
+                    'flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold hover:shadow-[0_0_30px_-8px_rgba(79,70,229,0.5)] transition-all disabled:opacity-50',
+                    compactMobile ? 'px-3 py-1.5 text-[11px]' : 'px-5 py-2.5 text-sm'
+                  )}
                 >
                   {isHydrating || isGeneratingOutline ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Loader2 className={cn('animate-spin', compactMobile ? 'w-3.5 h-3.5' : 'w-4 h-4')} />
                   ) : (
-                    <ArrowRight className="w-4 h-4" />
+                    <ArrowRight className={cn(compactMobile ? 'w-3.5 h-3.5' : 'w-4 h-4')} />
                   )}
                   {isSandboxMode ? 'Preview Course' : 'Generate Course'}
                 </button>
@@ -253,7 +274,8 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
-                  'flex items-center gap-1.5 px-3.5 py-2.5 text-sm font-bold whitespace-nowrap border-b-2 transition-all',
+                  'flex items-center gap-1.5 whitespace-nowrap border-b-2 transition-all font-bold',
+                  compactMobile ? 'px-2.5 py-2 text-[11px]' : 'px-3.5 py-2.5 text-sm',
                   activeTab === tab.id
                     ? 'border-indigo-500 text-white'
                     : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -824,7 +846,7 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                 </div>
                 <div className="p-6">
                   <p className="text-xs text-blue-400 font-bold tracking-widest uppercase mb-6">CLICK TO SELECT • EYE ICON TO PREVIEW</p>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className={cn('grid gap-3', compactMobile ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-2 md:grid-cols-4')}>
                     {[
                       { id: 'hotspot', label: 'Hotspot' },
                       { id: 'flashcards', label: 'Flashcards' },
