@@ -8,11 +8,10 @@ import PdfJsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 pdfjs.GlobalWorkerOptions.workerSrc = PdfJsWorker;
 
 export interface SourceImage {
-  /** 0-based index of the source page this image came from */
+  /** Ordinal index among extracted content images */
   pageIndex: number;
-  /** JPEG data URL of the rendered page */
+  /** JPEG/PNG data URL of the embedded image (not a full-slide screenshot) */
   dataUrl: string;
-  /** Width in pixels at the rendering scale */
   width: number;
   height: number;
 }
@@ -147,112 +146,180 @@ export async function extractTextFromFile(file: File): Promise<string> {
 }
 
 /**
- * Extract page-level images from a PDF file by rendering each page to a canvas.
- * Returns an array of SourceImages (one per page), skipping blank/tiny renders.
- * PPT files cannot be rendered client-side — this function returns [] for non-PDF inputs.
+ * True when an image looks like a full slide screenshot / slide background
+ * (wide slide aspect + large dimensions) rather than a content photo/diagram.
+ */
+function isLikelyFullSlideCapture(width: number, height: number): boolean {
+  if (width < 700 || height < 400) return false;
+  const ar = width / Math.max(1, height);
+  const is169 = ar >= 1.55 && ar <= 1.95;
+  const is43 = ar >= 1.25 && ar <= 1.45;
+  return is169 || is43;
+}
+
+function loadImageProps(dataUrl: string, flattenTransparent: boolean): Promise<{ width: number; height: number; src: string }> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      if (flattenTransparent && img.width > 0 && img.height > 0) {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0);
+            resolve({ width: img.width, height: img.height, src: canvas.toDataURL('image/jpeg', 0.92) });
+            return;
+          }
+        } catch { /* fall through */ }
+      }
+      resolve({ width: img.width, height: img.height, src: dataUrl });
+    };
+    img.onerror = () => resolve({ width: 0, height: 0, src: '' });
+    img.src = dataUrl;
+  });
+}
+
+/**
+ * Extract embedded content images from PPTX/PDF.
+ * PPTX: individual files under ppt/media/ (not full-slide screenshots).
+ * PDF: embedded XObject images (not full-page screen captures).
  */
 export async function extractImagesFromFile(file: File): Promise<SourceImage[]> {
   const extension = file.name.split('.').pop()?.toLowerCase();
-
   const images: SourceImage[] = [];
 
   if (extension === 'pptx') {
     try {
       const arrayBuffer = await file.arrayBuffer();
       const zip = await JSZip.loadAsync(arrayBuffer);
-      const mediaFiles = Object.keys(zip.files).filter(name => name.startsWith('ppt/media/') && !zip.files[name].dir);
-      
+      const mediaFiles = Object.keys(zip.files).filter(
+        name => name.startsWith('ppt/media/') && !zip.files[name].dir
+      );
+
       let imgIndex = 0;
+      let skippedSlideShots = 0;
       for (const filename of mediaFiles) {
         const ext = filename.split('.').pop()?.toLowerCase();
-        if (!['png', 'jpg', 'jpeg', 'gif', 'svg'].includes(ext || '')) continue;
-        
+        // EMF/WMF are common in corporate decks but not decodable in-browser — skip
+        if (!['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext || '')) continue;
+
         const fileData = await zip.files[filename].async('base64');
-        // Browsers require image/jpeg (not image/jpg) or Image() fails → 0×0 → filtered out
         const mimeType =
-          ext === 'svg' ? 'image/svg+xml'
-          : (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg'
+          (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg'
           : `image/${ext}`;
         const dataUrl = `data:${mimeType};base64,${fileData}`;
-        
-        const imgProps = await new Promise<{width: number, height: number, src: string}>((resolve) => {
-           const img = new Image();
-           img.onload = () => {
-             // Flatten transparent PNGs onto white so slides don't show checkerboard/hollow edges
-             if ((ext === 'png' || ext === 'svg') && img.width > 0 && img.height > 0) {
-               try {
-                 const canvas = document.createElement('canvas');
-                 canvas.width = img.width;
-                 canvas.height = img.height;
-                 const ctx = canvas.getContext('2d');
-                 if (ctx) {
-                   ctx.fillStyle = '#ffffff';
-                   ctx.fillRect(0, 0, canvas.width, canvas.height);
-                   ctx.drawImage(img, 0, 0);
-                   resolve({ width: img.width, height: img.height, src: canvas.toDataURL('image/jpeg', 0.92) });
-                   return;
-                 }
-               } catch { /* fall through */ }
-             }
-             resolve({ width: img.width, height: img.height, src: dataUrl });
-           };
-           img.onerror = () => resolve({ width: 0, height: 0, src: '' }); 
-           img.src = dataUrl;
-        });
+        const imgProps = await loadImageProps(dataUrl, ext === 'png');
 
-        // Filter out decorative marks and tiny borders (keep mid-size photos/diagrams)
-        if (imgProps.width >= 80 && imgProps.height >= 80 && imgProps.src) {
-          images.push({
-            pageIndex: imgIndex++,
-            dataUrl: imgProps.src,
-            width: imgProps.width,
-            height: imgProps.height,
-          });
+        if (!imgProps.src || imgProps.width < 120 || imgProps.height < 120) continue;
+
+        // Drop full-slide backgrounds / exported slide screenshots
+        if (isLikelyFullSlideCapture(imgProps.width, imgProps.height)) {
+          skippedSlideShots++;
+          continue;
         }
+
+        images.push({
+          pageIndex: imgIndex++,
+          dataUrl: imgProps.src,
+          width: imgProps.width,
+          height: imgProps.height,
+        });
       }
-      console.log(`[extractImagesFromFile] PPTX "${file.name}": ${images.length} image(s) from ${mediaFiles.length} media file(s)`);
+      console.log(
+        `[extractImagesFromFile] PPTX "${file.name}": ${images.length} content image(s) ` +
+        `from ${mediaFiles.length} media file(s) (skipped ${skippedSlideShots} slide-sized)`
+      );
     } catch (err) {
       console.warn('[extractImagesFromFile] Failed to extract PPTX images:', err);
     }
     return images;
   }
 
-  // Only PDFs can be rendered client-side
   if (extension !== 'pdf') return [];
 
+  // PDF: pull embedded images only — never full-page raster screenshots
   try {
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+    let imgIndex = 0;
 
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const viewport = page.getViewport({ scale: 1.2 }); // 1.2× for readable quality
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      const page = await pdf.getPage(pageNum);
+      const ops = await page.getOperatorList();
+      const names = new Set<string>();
 
-      // Skip pages smaller than 100×100 (likely blank or decorative)
-      if (viewport.width < 100 || viewport.height < 100) continue;
+      for (let i = 0; i < ops.fnArray.length; i++) {
+        const fn = ops.fnArray[i];
+        if (fn === (pdfjs as any).OPS.paintImageXObject || fn === (pdfjs as any).OPS.paintInlineImageXObject) {
+          const n = ops.argsArray[i]?.[0];
+          if (typeof n === 'string') names.add(n);
+        }
+      }
 
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.floor(viewport.width);
-      canvas.height = Math.floor(viewport.height);
-      const ctx = canvas.getContext('2d');
-      if (!ctx) continue;
+      for (const name of names) {
+        try {
+          const imgData: any = await new Promise((resolve) => {
+            let settled = false;
+            const done = (v: any) => { if (!settled) { settled = true; resolve(v); } };
+            try {
+              const existing = (page as any).objs?.get?.(name);
+              if (existing && existing.data) { done(existing); return; }
+            } catch { /* async path */ }
+            try {
+              (page as any).objs.get(name, done);
+            } catch {
+              done(null);
+            }
+            setTimeout(() => done(null), 800);
+          });
 
-      await page.render({ canvas, canvasContext: ctx, viewport }).promise;
+          if (!imgData?.width || !imgData?.height || !imgData?.data) continue;
+          if (imgData.width < 120 || imgData.height < 120) continue;
+          if (isLikelyFullSlideCapture(imgData.width, imgData.height)) continue;
 
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
-      images.push({
-        pageIndex: i - 1, // convert to 0-based
-        dataUrl,
-        width: canvas.width,
-        height: canvas.height,
-      });
+          const canvas = document.createElement('canvas');
+          canvas.width = imgData.width;
+          canvas.height = imgData.height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) continue;
 
-      // Cleanup
-      canvas.width = 0;
-      canvas.height = 0;
+          const imageData = ctx.createImageData(imgData.width, imgData.height);
+          // pdf.js image data may be RGB or RGBA
+          const src = imgData.data;
+          const channels = src.length / (imgData.width * imgData.height);
+          if (channels >= 4) {
+            imageData.data.set(src.subarray(0, imageData.data.length));
+          } else if (channels === 3) {
+            for (let p = 0, q = 0; p < src.length; p += 3, q += 4) {
+              imageData.data[q] = src[p];
+              imageData.data[q + 1] = src[p + 1];
+              imageData.data[q + 2] = src[p + 2];
+              imageData.data[q + 3] = 255;
+            }
+          } else {
+            continue;
+          }
+          ctx.putImageData(imageData, 0, 0);
+          images.push({
+            pageIndex: imgIndex++,
+            dataUrl: canvas.toDataURL('image/jpeg', 0.9),
+            width: imgData.width,
+            height: imgData.height,
+          });
+          canvas.width = 0;
+          canvas.height = 0;
+        } catch {
+          /* skip undecodable image object */
+        }
+      }
     }
+    console.log(`[extractImagesFromFile] PDF "${file.name}": ${images.length} embedded image(s)`);
   } catch (err) {
-    console.warn('[extractImagesFromFile] Failed to extract images:', err);
+    console.warn('[extractImagesFromFile] Failed to extract PDF images:', err);
   }
 
   return images;

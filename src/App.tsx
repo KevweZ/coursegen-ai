@@ -1321,7 +1321,8 @@ export default function App() {
       return sentences.slice(0, 2).join(' ').trim().slice(0, 200);
     })(),
     narration: `Welcome to ${course.title}. ${course.description || ''}`.trim(),
-    coverImage: (course as any).coverImage || courseBg || undefined,
+    // Only the AI/user cover — never stock photo archive (courseBg)
+    coverImage: (course as any).coverImage || undefined,
   } as Slide : null as any;
   const closingVirtualSlide: Slide = {
     id: '__closing__',
@@ -4137,15 +4138,20 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                  </div>
                                )}
 
-                               {/* TITLE / COVER SLIDE — redesigned CourseTitleSlide */}
+                               {/* TITLE / COVER SLIDE — Course Introduction (TOC) */}
                                {(currentSlide?.type === 'title' || currentSlide?.type === 'cover') && (
                                  <div className="w-full h-full">
                                    <CourseTitleSlide
                                      title={currentSlide.title}
                                      description={currentSlide.content || undefined}
-                                     coverImage={(currentSlide as any).coverImage || courseBg || undefined}
+                                     coverImage={(currentSlide as any).coverImage || (course as any)?.coverImage || undefined}
                                      theme={theme}
                                      isPreviewMode={true}
+                                     isGeneratingCover={isGeneratingImages && !(currentSlide as any).coverImage && !(course as any)?.coverImage}
+                                     onImageUpload={(url) => {
+                                       setCourse((prev: any) => prev ? { ...prev, coverImage: url } : prev);
+                                       setCourseBg(url);
+                                     }}
                                    />
                                  </div>
                                )}
@@ -4187,20 +4193,14 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                  const typeLabel = currentSlide.type === 'summary' ? 'Summary' : 'Overview';
                                  const body = (currentSlide.content || '').trim();
                                  const isEmpty = body.length < 8;
-                                 const slideImg = (currentSlide as any).coverImage || (currentSlide as any).imageUrl || null;
-                                 const hasFloating = (floatingImagesMap[currentSlide.id]?.length || 0) > 0
-                                   || ((currentSlide as any).floatingMedia?.length || 0) > 0;
-                                 return (
-                                   <div className="w-full space-y-4">
+                                 // Source extraction places imageUrl; keep clear of floating overlays / interactions
+                                 const slideImg = (currentSlide as any).imageUrl || null;
+                                 const textCol = (
+                                   <div className="space-y-4 min-w-0 flex-1">
                                      <p className="text-[10px] font-black uppercase tracking-[0.25em]" style={{ color: slideAccentColor }}>
                                        {typeLabel}
                                      </p>
                                      <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                     {slideImg && !hasFloating && (
-                                       <div className="rounded-xl overflow-hidden border border-slate-700/40 shadow-lg max-h-56">
-                                         <img src={slideImg} alt="" className="w-full h-full max-h-56 object-cover" />
-                                       </div>
-                                     )}
                                      {isEmpty ? (
                                        <EmptySlideRegenerate
                                          title={currentSlide.title}
@@ -4211,6 +4211,15 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                      ) : (
                                        <SlideContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} />
                                      )}
+                                   </div>
+                                 );
+                                 if (!slideImg) return <div className="w-full">{textCol}</div>;
+                                 return (
+                                   <div className="w-full flex flex-row gap-6 items-start">
+                                     {textCol}
+                                     <div className="hidden md:block w-[38%] max-w-[340px] shrink-0 rounded-xl overflow-hidden border border-slate-700/40 shadow-lg self-center">
+                                       <img src={slideImg} alt="" className="w-full h-auto max-h-72 object-contain bg-slate-900/40" />
+                                     </div>
                                    </div>
                                  );
                                })()}

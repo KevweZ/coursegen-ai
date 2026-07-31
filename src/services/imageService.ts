@@ -23,13 +23,15 @@ function buildModuleBannerPrompt(moduleTitle: string, courseTitle: string): stri
 
 function buildCourseCoverPrompt(courseTitle: string, description?: string): string {
   const topic = description?.trim()
-    ? description.trim().slice(0, 180)
-    : `a course about ${courseTitle}`;
+    ? description.trim().slice(0, 220)
+    : courseTitle;
   return (
-    `Create a simple, high-quality educational cover illustration for an eLearning course titled "${courseTitle}". ` +
-    `Topic context: ${topic}. ` +
-    `Style: clean modern corporate illustration, wide 16:9 landscape, soft professional colors, ` +
-    `clear visual metaphor for the subject, minimal detail, no text, no logos, no watermarks, no people faces.`
+    `Create a photorealistic educational cover image for an eLearning course titled "${courseTitle}". ` +
+    `The image MUST clearly depict the real-world subject of the course so a learner instantly recognizes the topic. ` +
+    `Examples: cars/vehicles for automotive; HVAC units, ductwork, or air handlers for HVAC; pumps and piping for pump courses; ` +
+    `electrical panels for electrical safety. Subject context: ${topic}. ` +
+    `Composition: wide 16:9 landscape, the subject fills most of the frame, professional lighting, clean modern look. ` +
+    `Do NOT include any text, titles, captions, logos, watermarks, UI chrome, or people faces.`
   );
 }
 
@@ -87,8 +89,9 @@ export async function generateModuleImages(
 }
 
 /**
- * Attach extracted source images (from PPTX/PDF) onto content slides.
- * Sets coverImage/imageUrl and floatingMedia so the player actually displays them.
+ * Attach extracted source images onto slides that can show them without overlapping
+ * interactive UI. Plain content/summary get a right-side imageUrl; hotspots get a
+ * background only when empty. Quiz/matching/scenario/etc. are skipped entirely.
  */
 export function attachSourceImagesToCourse(
   course: any,
@@ -97,36 +100,45 @@ export function attachSourceImagesToCourse(
   if (!course?.modules?.length || !images?.length) return course;
   const pool = [...images];
   let imgIdx = 0;
+
+  const isInteractive = (s: any) => {
+    const t = s.type;
+    return [
+      'multiple-choice', 'multiple-answers', 'true-false', 'quiz', 'knowledge-check',
+      'matching', 'sorting', 'drop-targets', 'scenario', 'flashcards', 'timeline',
+      'tabbed-horizontal', 'tabbed-vertical', 'folder-explorer', 'carousel-panel',
+      'click-reveal', 'accordion', 'game-template', 'mastery-exam', 'exam-intro',
+    ].includes(t);
+  };
+
   return {
     ...course,
     modules: course.modules.map((m: any) => ({
       ...m,
       slides: (m.slides || []).map((s: any) => {
-        if (!['content', 'summary', 'key-takeaways', 'hotspot'].includes(s.type)) return s;
-        if (s.coverImage || s.imageUrl || s.data?.imageUrl || (s.floatingMedia && s.floatingMedia.length)) return s;
-        const img = pool[imgIdx % pool.length];
-        imgIdx++;
-        if (!img) return s;
+        if (isInteractive(s)) return s;
+        if (s.coverImage || s.imageUrl || s.data?.imageUrl) return s;
+
         if (s.type === 'hotspot') {
+          const img = pool[imgIdx % pool.length];
+          if (!img) return s;
+          imgIdx++;
           return {
             ...s,
             imageUrl: img.dataUrl,
             data: { ...(s.data || {}), imageUrl: img.dataUrl },
           };
         }
-        const floating = [{
-          id: `src-${s.id}-${imgIdx}`,
-          url: img.dataUrl,
-          x: 48,
-          y: 36,
-          width: 360,
-          height: 240,
-        }];
+
+        // Text / summary only — imageUrl drives a dedicated right column (no floating overlay)
+        if (s.type !== 'content' && s.type !== 'summary') return s;
+        const img = pool[imgIdx % pool.length];
+        if (!img) return s;
+        imgIdx++;
         return {
           ...s,
-          coverImage: img.dataUrl,
           imageUrl: img.dataUrl,
-          floatingMedia: floating,
+          // Do not set floatingMedia — that can cover interaction chrome on some layouts
         };
       }),
     })),

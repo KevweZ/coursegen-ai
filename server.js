@@ -389,68 +389,115 @@ app.post('/api/parse-document',
 );
 
 // ─── 5c. Image Generation Endpoint ──────────────────────────────────────────
-app.post('/api/generate-image', imageRateLimit, async (req, res) => {
+/** OpenAI DALL·E fallback — used when OPENROUTER_API_KEY is not set (common on Render). */
+async function generateImageViaOpenAI(prompt) {
+  if (!OPENAI_API_KEY) return null;
+  const orResponse = await fetch('https://api.openai.com/v1/images/generations', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      'Content-Type':  'application/json',
+    },
+    body: JSON.stringify({
+      model: 'dall-e-3',
+      prompt: String(prompt).slice(0, 3900),
+      n: 1,
+      size: '1792x1024',
+      quality: 'standard',
+      response_format: 'b64_json',
+    }),
+  });
+  if (!orResponse.ok) {
+    const errText = await orResponse.text().catch(() => orResponse.statusText);
+    throw new Error(`OpenAI image error ${orResponse.status}: ${errText.slice(0, 200)}`);
+  }
+  const data = await orResponse.json();
+  const b64 = data?.data?.[0]?.b64_json;
+  if (!b64) throw new Error('No image returned from OpenAI.');
+  return `data:image/png;base64,${b64}`;
+}
+
+async function generateImageViaOpenRouter(prompt, model) {
   const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? '';
-  if (!OPENROUTER_API_KEY) {
-    return res.status(503).json({ error: 'Image generation not configured on this server (missing OPENROUTER_API_KEY).' });
+  if (!OPENROUTER_API_KEY) return null;
+
+  const orResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization':  `Bearer ${OPENROUTER_API_KEY}`,
+      'Content-Type':   'application/json',
+      'HTTP-Referer':   'https://nexcourse.ai',
+      'X-Title':        'NexCourse AI',
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: prompt.trim() }],
+      modalities: ['image', 'text'],
+    }),
+  });
+
+  if (!orResponse.ok) {
+    const errText = await orResponse.text().catch(() => orResponse.statusText);
+    throw new Error(`OpenRouter image error ${orResponse.status}: ${errText.slice(0, 200)}`);
   }
 
+  const data = await orResponse.json();
+  const message = data?.choices?.[0]?.message;
+  let imageDataUrl = null;
+
+  if (message?.images?.length > 0) {
+    const img = message.images[0];
+    imageDataUrl = img?.image_url?.url ?? img?.url ?? null;
+  } else if (Array.isArray(message?.content)) {
+    for (const part of message.content) {
+      if (part?.type === 'image' || part?.type === 'image_url') {
+        imageDataUrl = part?.image_url?.url ?? part?.url ?? null;
+        if (imageDataUrl) break;
+      }
+    }
+  }
+  return imageDataUrl;
+}
+
+app.post('/api/generate-image', imageRateLimit, async (req, res) => {
   const { prompt, model = 'google/gemini-3.1-flash-image-preview' } = req.body ?? {};
   if (!prompt?.trim()) {
     return res.status(400).json({ error: 'Missing required field: prompt' });
   }
 
-  try {
-    const orResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization':  `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type':   'application/json',
-        'HTTP-Referer':   'https://nexcourse.ai',
-        'X-Title':        'NexCourse AI',
-      },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: 'user', content: prompt.trim() }],
-        modalities: ['image', 'text'],
-      }),
+  const hasOpenRouter = !!(process.env.OPENROUTER_API_KEY);
+  const hasOpenAI = !!OPENAI_API_KEY;
+  if (!hasOpenRouter && !hasOpenAI) {
+    return res.status(503).json({
+      error: 'Image generation not configured (set OPENROUTER_API_KEY or OPENAI_API_KEY on the server).',
     });
+  }
 
-    if (!orResponse.ok) {
-      const errText = await orResponse.text().catch(() => orResponse.statusText);
-      console.error(`[ImageGen] OpenRouter error ${orResponse.status}:`, errText.slice(0, 300));
-      return res.status(orResponse.status).json({ error: `Image model error: ${errText.slice(0, 200)}` });
-    }
-
-    const data = await orResponse.json();
-    const message = data?.choices?.[0]?.message;
-
-    // OpenRouter returns images in one of two formats depending on the model
+  try {
     let imageDataUrl = null;
+    let provider = '';
 
-    if (message?.images?.length > 0) {
-      // Format 1: message.images array (FLUX models)
-      const img = message.images[0];
-      imageDataUrl = img?.image_url?.url ?? img?.url ?? null;
-    } else if (Array.isArray(message?.content)) {
-      // Format 2: message.content as multimodal array (Gemini models)
-      for (const part of message.content) {
-        if (part?.type === 'image' || part?.type === 'image_url') {
-          imageDataUrl = part?.image_url?.url ?? part?.url ?? null;
-          if (imageDataUrl) break;
-        }
+    // Prefer OpenRouter (Gemini Flash Image) when configured; else DALL·E via OpenAI
+    if (hasOpenRouter) {
+      try {
+        imageDataUrl = await generateImageViaOpenRouter(prompt, model);
+        provider = 'openrouter';
+      } catch (err) {
+        console.warn('[ImageGen] OpenRouter failed, trying OpenAI fallback:', err.message);
       }
     }
 
+    if (!imageDataUrl && hasOpenAI) {
+      imageDataUrl = await generateImageViaOpenAI(prompt);
+      provider = 'openai-dall-e-3';
+    }
+
     if (!imageDataUrl) {
-      const preview = JSON.stringify(message ?? {}).slice(0, 300);
-      console.warn('[ImageGen] No image in response:', preview);
       return res.status(502).json({ error: 'No image returned from AI model.' });
     }
 
-    console.log(`[ImageGen] ✓ Generated image — prompt: "${prompt.slice(0, 60)}..."`);
+    console.log(`[ImageGen] ✓ via ${provider} — prompt: "${prompt.slice(0, 60)}..."`);
     return res.json({ imageDataUrl });
-
   } catch (err) {
     console.error('[ImageGen] Error:', err.message);
     return res.status(500).json({ error: `Image generation failed: ${err.message}` });
