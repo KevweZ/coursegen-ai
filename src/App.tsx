@@ -112,6 +112,7 @@ import { SlideHeader } from './components/player/SlideHeader';
 import { SlideErrorBoundary } from './components/player/SlideErrorBoundary';
 import { useDraftCourses } from './lib/useDraftCourses';
 import type { DesignDraftSnapshot } from './lib/useDraftCourses';
+import { attachHeavyMedia, mediaRecordToMap } from './lib/draftMedia';
 import {
   ROUTES,
   parseAppPath,
@@ -745,6 +746,73 @@ export default function App() {
     }
   };
 
+  /** Mount course shell immediately; re-attach images after the preview is visible */
+  const openPreviewFromSnapshot = async (id: string, snapshot: Extract<Awaited<ReturnType<typeof draftManager.loadDraftAsync>>, object>) => {
+    if (snapshot.phase !== 'preview' || !snapshot.course?.modules?.length) {
+      showDraftMessage('This draft has no course content and cannot be opened.');
+      setStep('home');
+      navigateTo(ROUTES.upload, true);
+      return false;
+    }
+
+    const shell = snapshot.course;
+    const legacyMedia = mediaRecordToMap((snapshot as any).__legacyMedia);
+
+    setPlayerConfig(snapshot.playerConfig || defaultPlayerConfig);
+    setTheme((snapshot.theme as any) || 'light');
+    setCurrentSlideIndex(0);
+    setHighestVisitedIndex(0);
+    setQuizState({});
+    setExploredBySlide({});
+    setKcCheckedSlideIds(new Set());
+    setFloatingImagesMap({});
+    setIsSandboxMode(false);
+    setMobileDesignDemo(false);
+    setShowPlayerProperties(false);
+
+    setDraftLoadProgress(92);
+    setDraftLoadStatus('Opening course (text first)…');
+    await new Promise<void>(r => setTimeout(r, 16));
+
+    // Shell only — no giant data-URLs in this React commit
+    setCourse(shell);
+    setOriginalCourse(shell);
+    setCourseBg(null);
+    setStep('preview');
+    navigateTo(ROUTES.preview(id));
+    setDraftLoadProgress(100);
+    setDraftLoadStatus('Loading images…');
+    showDraftMessage('Draft opened — loading images…');
+
+    // Let the preview paint before we touch heavy media
+    await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+    setIsLoadingDraft(false);
+    setDraftLoadProgress(0);
+    setDraftLoadStatus('');
+
+    try {
+      const stored = await draftManager.loadDraftAssets(id);
+      const media = mediaRecordToMap(stored);
+      legacyMedia.forEach((v, k) => { if (!media.has(k)) media.set(k, v); });
+      if (!media.size) {
+        showDraftMessage('Draft loaded ✓');
+        return true;
+      }
+      attachHeavyMedia(shell, media);
+      // New reference so React re-renders with images
+      const withMedia = { ...shell, modules: shell.modules };
+      setCourse(withMedia);
+      setOriginalCourse(withMedia);
+      setCourseBg(withMedia.coverImage || null);
+      console.log(`[Drafts] Attached ${media.size} image(s) after shell open`);
+      showDraftMessage('Draft loaded ✓');
+    } catch (e) {
+      console.warn('[Drafts] Image attach after open failed:', e);
+      showDraftMessage('Draft opened (some images may be missing).');
+    }
+    return true;
+  };
+
   const handleLoadDraft = (id: string) => {
     setShowDraftsPanel(false);
     setShowViewDraftsModal(false);
@@ -773,7 +841,7 @@ export default function App() {
         setActiveDraftId(id);
         setDraftLoadProgress(88);
         setDraftLoadStatus('Opening course preview…');
-        await new Promise<void>(r => setTimeout(r, 20));
+        await new Promise<void>(r => setTimeout(r, 16));
 
         if (snapshot.phase === 'design') {
           applyDesignSnapshot(snapshot);
@@ -783,43 +851,8 @@ export default function App() {
           return;
         }
 
-        if (!snapshot.course?.modules?.length) {
-          showDraftMessage('This draft has no course content and cannot be opened.');
-          setStep('home');
-          navigateTo(ROUTES.upload, true);
-          return;
-        }
-
-        // Lightweight UI state first
-        setPlayerConfig(snapshot.playerConfig || defaultPlayerConfig);
-        setTheme((snapshot.theme as any) || 'light');
-        setCurrentSlideIndex(0);
-        setHighestVisitedIndex(0);
-        setQuizState({});
-        setExploredBySlide({});
-        setKcCheckedSlideIds(new Set());
-        setFloatingImagesMap({});
-        setIsSandboxMode(false);
-        setMobileDesignDemo(false);
-        setShowPlayerProperties(false);
-
-        setDraftLoadProgress(92);
-        setDraftLoadStatus('Restoring slides and media…');
-        await new Promise<void>(r => setTimeout(r, 20));
-
-        // Single course reference — avoid deep-cloning into originalCourse (that doubled cost)
-        setCourse(snapshot.course);
-        setOriginalCourse(snapshot.course);
-        setCourseBg(snapshot.course?.coverImage || null);
-
-        setDraftLoadProgress(97);
-        setStep('preview');
-        navigateTo(ROUTES.preview(id));
-        setDraftLoadProgress(100);
-        setDraftLoadStatus('Almost ready…');
+        await openPreviewFromSnapshot(id, snapshot);
         console.log(`[Drafts] Open complete in ${Math.round(performance.now() - t0)}ms`);
-        showDraftMessage('Draft loaded ✓');
-        await new Promise<void>(r => setTimeout(r, 280));
       } catch (err: any) {
         console.error('[Drafts] Open failed:', err);
         showDraftMessage(err?.message || 'Failed to open draft. It may be corrupted.');
@@ -1120,33 +1153,31 @@ export default function App() {
         setIsLoadingDraft(true);
         setDraftLoadProgress(5);
         setDraftLoadStatus('Fetching course draft…');
-        const snap = await draftManager.loadDraftAsync(parsed.draftId, (pct, phase) => {
-          setDraftLoadProgress(pct);
-          if (phase === 'fetch') setDraftLoadStatus('Fetching saved draft…');
-          else if (phase === 'parse') setDraftLoadStatus('Reading course data…');
-        });
-        if (snap?.phase === 'preview' && snap.course?.modules?.length) {
-          setActiveDraftId(parsed.draftId);
-          setPlayerConfig(snap.playerConfig || defaultPlayerConfig);
-          setTheme((snap.theme as any) || 'light');
-          setCurrentSlideIndex(0);
-          setIsSandboxMode(false);
-          setMobileDesignDemo(false);
-          setShowPlayerProperties(false);
-          setDraftLoadProgress(92);
-          setCourse(snap.course);
-          setOriginalCourse(snap.course);
-          setCourseBg(snap.course?.coverImage || null);
-          setStep('preview');
-          setDraftLoadProgress(100);
-        } else {
-          showDraftMessage('Course draft not found.');
+        try {
+          const snap = await draftManager.loadDraftAsync(parsed.draftId, (pct, phase) => {
+            setDraftLoadProgress(pct);
+            if (phase === 'fetch') setDraftLoadStatus('Fetching saved draft…');
+            else if (phase === 'parse') setDraftLoadStatus('Reading course data…');
+            else if (phase === 'hydrate') setDraftLoadStatus('Preparing to open…');
+          });
+          if (snap?.phase === 'preview' && snap.course?.modules?.length) {
+            setActiveDraftId(parsed.draftId);
+            await openPreviewFromSnapshot(parsed.draftId, snap);
+          } else {
+            showDraftMessage('Course draft not found.');
+            navigateTo(ROUTES.upload, true);
+            setStep('home');
+          }
+        } catch (e: any) {
+          console.error('[Drafts] Deep-link open failed:', e);
+          showDraftMessage(e?.message || 'Failed to open draft.');
           navigateTo(ROUTES.upload, true);
           setStep('home');
+        } finally {
+          setIsLoadingDraft(false);
+          setDraftLoadProgress(0);
+          setDraftLoadStatus('');
         }
-        setIsLoadingDraft(false);
-        setDraftLoadProgress(0);
-        setDraftLoadStatus('');
       })();
       return;
     }
