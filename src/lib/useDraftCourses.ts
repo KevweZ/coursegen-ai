@@ -1,16 +1,19 @@
 /**
  * useDraftCourses — course draft management (Design + Development).
  *
- * Storage (IndexedDB v2):
- *   - `draft_index`  → lightweight metadata list per user (fast to list)
- *   - `draft_payload` → one record per draft id (loaded only when opening)
+ * Storage:
+ *   - Cloud (Supabase) = source of truth for signed-in users
+ *   - IndexedDB = local cache + offline fallback
+ *     - `draft_index` / `draft_payload` / `draft_assets`
  *
- * Older v1 localStorage / single-blob IDB formats are migrated on read.
+ * Older v1 localStorage / single-blob IDB formats are migrated on read,
+ * then uploaded to cloud when available.
  *
  * Tier limits:
  *   - Free (unauthenticated): 0
  *   - Pro / trial:            3
  *   - Team / enterprise:      10
+ *   - Admin:                  100
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
@@ -18,10 +21,22 @@ import {
   detachHeavyMedia,
   mediaMapToRecord,
   approxCourseBytes,
+  cloneLeanCourse,
+  stashLegacyMedia,
 } from './draftMedia';
+import {
+  listCloudDrafts,
+  upsertCloudDraft,
+  fetchCloudDraft,
+  downloadCloudAssets,
+  deleteCloudDraft,
+  isCloudDraftsAvailable,
+  resetCloudDraftsProbe,
+} from './draftCloudService';
 
 export const MAX_PRO_DRAFTS = 3;
 export const MAX_TEAM_DRAFTS = 10;
+export const MAX_ADMIN_DRAFTS = 100;
 const STORAGE_PREFIX = 'nexcourse_drafts_v1_';
 const IDB_NAME = 'nexcourse_drafts_db';
 const IDB_VERSION = 3;
@@ -340,16 +355,33 @@ function stripEphemeralMedia(course: any): any {
   };
 }
 
-export function getDraftLimitForPlan(plan?: string | null): number {
+export function getDraftLimitForPlan(plan?: string | null, isAdmin?: boolean): number {
+  if (isAdmin) return MAX_ADMIN_DRAFTS;
   if (!plan) return MAX_PRO_DRAFTS;
   const p = plan.toLowerCase();
   if (p.includes('enterprise') || p.includes('team') || p.includes('business')) return MAX_TEAM_DRAFTS;
   return MAX_PRO_DRAFTS;
 }
 
+function mergeDraftLists(cloud: CourseDraft[], local: CourseDraft[]): CourseDraft[] {
+  const byId = new Map<string, CourseDraft>();
+  for (const d of local) byId.set(d.id, metaFromDraft(d));
+  for (const d of cloud) {
+    const prev = byId.get(d.id);
+    if (!prev || new Date(d.savedAt).getTime() >= new Date(prev.savedAt).getTime()) {
+      byId.set(d.id, metaFromDraft(d));
+    }
+  }
+  return Array.from(byId.values()).sort(
+    (a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime()
+  );
+}
+
 export interface UseDraftCoursesReturn {
   drafts: CourseDraft[];
   isReady: boolean;
+  /** True when Supabase course_drafts table is reachable */
+  cloudEnabled: boolean;
   canSave: boolean;
   slotsUsed: number;
   slotsTotal: number;
@@ -374,10 +406,12 @@ export interface UseDraftCoursesReturn {
 
 export function useDraftCourses(
   userId: string | null,
-  plan?: string | null
+  plan?: string | null,
+  isAdmin?: boolean
 ): UseDraftCoursesReturn {
   const [drafts, setDrafts] = useState<CourseDraft[]>([]);
   const [isReady, setIsReady] = useState(false);
+  const [cloudEnabled, setCloudEnabled] = useState(false);
   const draftsRef = useRef<CourseDraft[]>([]);
   draftsRef.current = drafts;
   /** Small cache of recently opened payloads (not the whole library) */
@@ -390,8 +424,49 @@ export function useDraftCourses(
       return;
     }
     try {
-      const list = await loadDraftsForUser(userId);
-      setDrafts(list);
+      const local = await loadDraftsForUser(userId);
+      resetCloudDraftsProbe();
+      const cloudOk = await isCloudDraftsAvailable();
+      setCloudEnabled(cloudOk);
+
+      let cloud: CourseDraft[] = [];
+      if (cloudOk) {
+        cloud = await listCloudDrafts(userId);
+        // Migrate local-only drafts up to the cloud (admin + all signed-in users)
+        const cloudIds = new Set(cloud.map(d => d.id));
+        for (const meta of local) {
+          if (cloudIds.has(meta.id)) continue;
+          try {
+            const raw = await idbGet<unknown>(STORE_PAYLOAD, payloadKey(userId, meta.id));
+            const snapshot = parseSnapshotRaw(raw);
+            if (!snapshot) continue;
+            let assets =
+              (await idbGet<Record<string, string>>(STORE_ASSETS, payloadKey(userId, meta.id))) || {};
+            if (snapshot.phase === 'preview' && snapshot.course) {
+              const detached = detachHeavyMedia(snapshot.course);
+              if (detached.size) {
+                assets = { ...assets, ...mediaMapToRecord(detached) };
+                await idbPut(STORE_PAYLOAD, payloadKey(userId, meta.id), snapshot);
+                await idbPut(STORE_ASSETS, payloadKey(userId, meta.id), assets);
+              }
+            }
+            const up = await upsertCloudDraft(userId, meta, snapshot, assets);
+            if (up.ok) {
+              console.log(`[DraftCourses] Migrated "${meta.courseTitle}" → cloud`);
+              cloudIds.add(meta.id);
+            } else {
+              console.warn(`[DraftCourses] Cloud migrate skipped for ${meta.id}:`, up.error);
+            }
+          } catch (e) {
+            console.warn('[DraftCourses] Cloud migrate failed for', meta.id, e);
+          }
+        }
+        cloud = await listCloudDrafts(userId);
+      }
+
+      const merged = mergeDraftLists(cloud, local);
+      await writeIndex(userId, merged);
+      setDrafts(merged);
     } catch (e) {
       console.error('[DraftCourses] refresh failed:', e);
       setDrafts([]);
@@ -405,7 +480,7 @@ export function useDraftCourses(
     void refreshDrafts();
   }, [refreshDrafts]);
 
-  const slotsTotal = userId ? getDraftLimitForPlan(plan) : 0;
+  const slotsTotal = userId ? getDraftLimitForPlan(plan, isAdmin) : 0;
   const slotsUsed = drafts.length;
   const canSave = !!userId && slotsUsed < slotsTotal;
 
@@ -450,15 +525,20 @@ export function useDraftCourses(
       const next = [...draftsRef.current, metaFromDraft(meta)];
       await writeIndex(userId, next);
       setDrafts(next);
-      // Cache shell only (assets re-applied on load) — keeps memory smaller
       payloadCacheRef.current.set(meta.id, snapshot);
+
+      let cloudNote = '';
+      const cloud = await upsertCloudDraft(userId, meta, snapshot, assets);
+      if (cloud.ok) setCloudEnabled(true);
+      else if (cloud.error) cloudNote = ` (local only — ${cloud.error})`;
+
       console.log(`[DraftCourses] Saved "${meta.courseTitle}" in ${Math.round(performance.now() - t0)}ms`);
-      return { ok: true };
+      return { ok: true, error: cloudNote || undefined };
     } catch (e: any) {
       console.error('[DraftCourses] Save failed:', e);
       return {
         ok: false,
-        error: e?.message || 'Failed to save draft to browser storage.',
+        error: e?.message || 'Failed to save draft.',
       };
     }
   };
@@ -477,13 +557,15 @@ export function useDraftCourses(
       } else {
         try { await idbDelete(STORE_ASSETS, payloadKey(userId, id)); } catch { /* ok */ }
       }
-      const next = draftsRef.current.map(d =>
-        d.id === id ? metaFromDraft({ ...d, ...metaPatch, id } as CourseDraft) : d
-      );
+      const nextMeta = metaFromDraft({ ...draftsRef.current.find(d => d.id === id), ...metaPatch, id } as CourseDraft);
+      const next = draftsRef.current.map(d => (d.id === id ? nextMeta : d));
       await writeIndex(userId, next);
       setDrafts(next);
       payloadCacheRef.current.set(id, snapshot);
-      return { ok: true };
+
+      const cloud = await upsertCloudDraft(userId, nextMeta, snapshot, assets);
+      if (cloud.ok) setCloudEnabled(true);
+      return { ok: true, error: cloud.ok ? undefined : cloud.error };
     } catch (e: any) {
       return { ok: false, error: e?.message || 'Failed to update draft.' };
     }
@@ -514,7 +596,12 @@ export function useDraftCourses(
     };
     const result = await persistNew(meta, snapshot, assets);
     if (!result.ok) return { success: false, message: result.error || 'Failed to save draft.' };
-    return { success: true, message: `Draft "${meta.courseTitle}" saved!`, id };
+    const cloudHint = result.error?.includes('local only') ? result.error : '';
+    return {
+      success: true,
+      message: `Draft "${meta.courseTitle}" saved to cloud!${cloudHint}`,
+      id,
+    };
   }, [userId, slotsTotal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveDesignDraft = useCallback(async (design: Omit<DesignDraftSnapshot, 'phase'>) => {
@@ -540,7 +627,7 @@ export function useDraftCourses(
     };
     const result = await persistNew(meta, snapshot);
     if (!result.ok) return { success: false, message: result.error || 'Failed to save draft.' };
-    return { success: true, message: `Design draft "${meta.courseTitle}" saved!`, id };
+    return { success: true, message: `Design draft "${meta.courseTitle}" saved to cloud!`, id };
   }, [userId, slotsTotal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadDraftAsync = useCallback(async (
@@ -554,18 +641,32 @@ export function useDraftCourses(
     await yieldToUi(10);
 
     try {
-      onProgress?.(20, 'fetch');
-      const raw = await idbGet<unknown>(STORE_PAYLOAD, payloadKey(userId, id));
-      onProgress?.(40, 'parse');
-      await yieldToUi(10);
+      onProgress?.(18, 'fetch');
+      // Prefer cloud (source of truth), fall back to IndexedDB cache
+      let snapshot: DraftSnapshot | null = null;
+      let cloudAssets: Record<string, string> = {};
 
-      if (raw == null) {
-        onProgress?.(0, 'error');
-        return null;
+      const cloud = await fetchCloudDraft(userId, id);
+      if (cloud?.snapshot) {
+        snapshot = parseSnapshotRaw(cloud.snapshot);
+        cloudAssets = cloud.assets || {};
+        // Refresh local cache
+        if (snapshot) {
+          try {
+            await idbPut(STORE_PAYLOAD, payloadKey(userId, id), snapshot);
+            if (Object.keys(cloudAssets).length) {
+              await idbPut(STORE_ASSETS, payloadKey(userId, id), cloudAssets);
+            }
+          } catch { /* cache best-effort */ }
+        }
+        console.log(`[DraftCourses] Loaded "${id}" from cloud`);
+      } else {
+        onProgress?.(28, 'fetch');
+        const raw = await idbGet<unknown>(STORE_PAYLOAD, payloadKey(userId, id));
+        if (raw != null) snapshot = parseSnapshotRaw(raw);
       }
 
-      onProgress?.(55, 'parse');
-      const snapshot = parseSnapshotRaw(raw);
+      onProgress?.(45, 'parse');
       await yieldToUi(10);
 
       if (!snapshot) {
@@ -573,17 +674,31 @@ export function useDraftCourses(
         return null;
       }
 
-      // Keep shell lean: do NOT re-attach heavy media here.
-      // App mounts the shell first, then loads assets in the background.
+      onProgress?.(60, 'parse');
+      await yieldToUi(10);
+
+      // Lean shell only — never keep base64 on the snapshot for setCourse
       if (snapshot.phase === 'preview' && snapshot.course) {
-        onProgress?.(70, 'hydrate');
-        // Strip any legacy inline data-URLs so setCourse never freezes the UI
+        onProgress?.(72, 'hydrate');
+        await yieldToUi(10);
         const stripped = detachHeavyMedia(snapshot.course);
         if (stripped.size) {
-          // Stash on the snapshot object for one-shot open (not persisted)
-          (snapshot as any).__legacyMedia = mediaMapToRecord(stripped);
-          console.log(`[DraftCourses] Detached ${stripped.size} legacy inline asset(s) from shell`);
+          const rec = mediaMapToRecord(stripped);
+          stashLegacyMedia(id, rec);
+          // Persist out of the hot path so reopen is lean
+          void idbPut(STORE_ASSETS, payloadKey(userId, id), {
+            ...(cloudAssets || {}),
+            ...rec,
+          }).catch(() => {});
+          console.log(`[DraftCourses] Detached ${stripped.size} inline asset(s)`);
+        } else if (Object.keys(cloudAssets).length) {
+          // Assets already separate in cloud/IDB — nothing to stash from shell
         }
+        // Clone lean course so React never shares a fat object graph
+        snapshot = {
+          ...snapshot,
+          course: cloneLeanCourse(snapshot.course),
+        };
       }
 
       payloadCacheRef.current.set(id, snapshot);
@@ -593,11 +708,11 @@ export function useDraftCourses(
       }
 
       onProgress?.(85, 'hydrate');
+      const kb =
+        snapshot.phase === 'preview' ? Math.round(approxCourseBytes(snapshot.course) / 1024) : -1;
       console.log(
-        `[DraftCourses] Loaded payload "${id}" in ${Math.round(performance.now() - t0)}ms`,
-        snapshot.phase === 'preview'
-          ? `(shell ~${Math.round(approxCourseBytes(snapshot.course) / 1024)}KB)`
-          : '(design)'
+        `[DraftCourses] Ready to open "${id}" in ${Math.round(performance.now() - t0)}ms`,
+        snapshot.phase === 'preview' ? `(lean shell ~${kb}KB)` : '(design)'
       );
       return snapshot;
     } catch (e) {
@@ -610,8 +725,18 @@ export function useDraftCourses(
   const loadDraftAssets = useCallback(async (id: string): Promise<Record<string, string>> => {
     if (!userId) return {};
     try {
-      const assetsRec = await idbGet<Record<string, string>>(STORE_ASSETS, payloadKey(userId, id));
-      return assetsRec && typeof assetsRec === 'object' ? assetsRec : {};
+      // Local cache first (fast); cloud if empty
+      const local = await idbGet<Record<string, string>>(STORE_ASSETS, payloadKey(userId, id));
+      if (local && typeof local === 'object' && Object.keys(local).length) return local;
+
+      const cloudAssets = await downloadCloudAssets(userId, id);
+      if (Object.keys(cloudAssets).length) {
+        try {
+          await idbPut(STORE_ASSETS, payloadKey(userId, id), cloudAssets);
+        } catch { /* ok */ }
+        return cloudAssets;
+      }
+      return {};
     } catch (e) {
       console.warn('[DraftCourses] loadDraftAssets failed:', e);
       return {};
@@ -631,6 +756,7 @@ export function useDraftCourses(
     try {
       await idbDelete(STORE_ASSETS, payloadKey(userId, id));
     } catch { /* continue */ }
+    void deleteCloudDraft(userId, id);
     const next = draftsRef.current.filter(d => d.id !== id);
     await writeIndex(userId, next);
     setDrafts(next);
@@ -672,6 +798,7 @@ export function useDraftCourses(
   return {
     drafts,
     isReady,
+    cloudEnabled,
     canSave,
     slotsUsed,
     slotsTotal,

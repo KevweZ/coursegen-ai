@@ -112,7 +112,7 @@ import { SlideHeader } from './components/player/SlideHeader';
 import { SlideErrorBoundary } from './components/player/SlideErrorBoundary';
 import { useDraftCourses } from './lib/useDraftCourses';
 import type { DesignDraftSnapshot } from './lib/useDraftCourses';
-import { attachHeavyMedia, mediaRecordToMap } from './lib/draftMedia';
+import { attachHeavyMedia, mediaRecordToMap, takeLegacyMedia } from './lib/draftMedia';
 import {
   ROUTES,
   parseAppPath,
@@ -616,7 +616,7 @@ export default function App() {
 
   // ── Draft Courses (shared Design + Development slots) ─────────────────────
   const userPlan = (user?.user_metadata?.plan as string | undefined) ?? null;
-  const draftManager = useDraftCourses(user?.id ?? null, userPlan);
+  const draftManager = useDraftCourses(user?.id ?? null, userPlan, isAdmin);
   const [showDraftsPanel, setShowDraftsPanel] = React.useState(false);
   const [showViewDraftsModal, setShowViewDraftsModal] = React.useState(false);
   const [isLoadingDraft, setIsLoadingDraft] = React.useState(false);
@@ -746,7 +746,7 @@ export default function App() {
     }
   };
 
-  /** Mount course shell immediately; re-attach images after the preview is visible */
+  /** Mount lean course shell; dismiss overlay BEFORE heavy React work; images later */
   const openPreviewFromSnapshot = async (id: string, snapshot: Extract<Awaited<ReturnType<typeof draftManager.loadDraftAsync>>, object>) => {
     if (snapshot.phase !== 'preview' || !snapshot.course?.modules?.length) {
       showDraftMessage('This draft has no course content and cannot be opened.');
@@ -756,7 +756,7 @@ export default function App() {
     }
 
     const shell = snapshot.course;
-    const legacyMedia = mediaRecordToMap((snapshot as any).__legacyMedia);
+    const legacyMedia = mediaRecordToMap(takeLegacyMedia(id));
 
     setPlayerConfig(snapshot.playerConfig || defaultPlayerConfig);
     setTheme((snapshot.theme as any) || 'light');
@@ -770,25 +770,23 @@ export default function App() {
     setMobileDesignDemo(false);
     setShowPlayerProperties(false);
 
-    setDraftLoadProgress(92);
+    setDraftLoadProgress(90);
     setDraftLoadStatus('Opening course (text first)…');
-    await new Promise<void>(r => setTimeout(r, 16));
+    // Paint progress, then dismiss overlay BEFORE setCourse so a slow commit can't trap the UI at 92%
+    await new Promise<void>(r => setTimeout(r, 32));
+    setDraftLoadProgress(100);
+    setIsLoadingDraft(false);
+    setDraftLoadStatus('');
+    await new Promise<void>(r => setTimeout(r, 48));
 
-    // Shell only — no giant data-URLs in this React commit
     setCourse(shell);
     setOriginalCourse(shell);
     setCourseBg(null);
     setStep('preview');
     navigateTo(ROUTES.preview(id));
-    setDraftLoadProgress(100);
-    setDraftLoadStatus('Loading images…');
     showDraftMessage('Draft opened — loading images…');
 
-    // Let the preview paint before we touch heavy media
     await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())));
-    setIsLoadingDraft(false);
-    setDraftLoadProgress(0);
-    setDraftLoadStatus('');
 
     try {
       const stored = await draftManager.loadDraftAssets(id);
@@ -798,12 +796,37 @@ export default function App() {
         showDraftMessage('Draft loaded ✓');
         return true;
       }
-      attachHeavyMedia(shell, media);
-      // New reference so React re-renders with images
-      const withMedia = { ...shell, modules: shell.modules };
-      setCourse(withMedia);
-      setOriginalCourse(withMedia);
-      setCourseBg(withMedia.coverImage || null);
+
+      // Attach cover + first slide images first so the UI stays responsive
+      const priorityKeys = [...media.keys()].filter(k =>
+        k === 'coverImage' || k.includes('[0]') || k.endsWith('.coverImage')
+      );
+      const restKeys = [...media.keys()].filter(k => !priorityKeys.includes(k));
+
+      const applyKeys = (keys: string[]) => {
+        const subset = new Map<string, string>();
+        for (const k of keys) {
+          const v = media.get(k);
+          if (v) subset.set(k, v);
+        }
+        if (!subset.size) return;
+        attachHeavyMedia(shell, subset);
+        const withMedia = { ...shell, modules: shell.modules?.map((m: any) => ({ ...m, slides: m.slides ? [...m.slides] : [] })) };
+        setCourse(withMedia);
+        setOriginalCourse(withMedia);
+        if (subset.has('coverImage') || withMedia.coverImage) {
+          setCourseBg(withMedia.coverImage || null);
+        }
+      };
+
+      applyKeys(priorityKeys);
+      await new Promise<void>(r => setTimeout(r, 32));
+      // Remaining images in small batches
+      const BATCH = 4;
+      for (let i = 0; i < restKeys.length; i += BATCH) {
+        applyKeys(restKeys.slice(i, i + BATCH));
+        await new Promise<void>(r => setTimeout(r, 16));
+      }
       console.log(`[Drafts] Attached ${media.size} image(s) after shell open`);
       showDraftMessage('Draft loaded ✓');
     } catch (e) {
@@ -820,6 +843,14 @@ export default function App() {
     setDraftLoadProgress(2);
     setDraftLoadStatus('Fetching saved draft…');
     showDraftMessage('Opening draft…');
+
+    // Watchdog: never leave the overlay stuck if the main thread stalls mid-open
+    const watchdog = window.setTimeout(() => {
+      setIsLoadingDraft(false);
+      setDraftLoadProgress(0);
+      setDraftLoadStatus('');
+      showDraftMessage('Opening is taking longer than expected — showing what we can…');
+    }, 12000);
 
     void (async () => {
       const t0 = performance.now();
@@ -859,6 +890,7 @@ export default function App() {
         setStep('home');
         navigateTo(ROUTES.upload, true);
       } finally {
+        window.clearTimeout(watchdog);
         setIsLoadingDraft(false);
         setDraftLoadProgress(0);
         setDraftLoadStatus('');
@@ -3533,6 +3565,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
             onClose={() => setShowViewDraftsModal(false)}
             drafts={draftManager.drafts}
             isReady={draftManager.isReady}
+            cloudEnabled={draftManager.cloudEnabled}
             slotsUsed={draftManager.slotsUsed}
             slotsTotal={draftManager.slotsTotal}
             onRefresh={() => draftManager.refreshDrafts()}

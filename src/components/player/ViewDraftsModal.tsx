@@ -13,6 +13,7 @@ interface Props {
   onClose: () => void;
   drafts: CourseDraft[];
   isReady?: boolean;
+  cloudEnabled?: boolean;
   slotsUsed?: number;
   slotsTotal?: number;
   onRefresh?: () => void | Promise<void>;
@@ -30,7 +31,7 @@ function formatDate(iso: string) {
 }
 
 export const ViewDraftsModal: React.FC<Props> = ({
-  isOpen, onClose, drafts, isReady = true, slotsUsed, slotsTotal,
+  isOpen, onClose, drafts, isReady = true, cloudEnabled = false, slotsUsed, slotsTotal,
   onRefresh, onLoad, onDelete,
 }) => {
   const [tab, setTab] = useState<TabId>('all');
@@ -96,6 +97,9 @@ export const ViewDraftsModal: React.FC<Props> = ({
                       {typeof slotsUsed === 'number' && typeof slotsTotal === 'number' && (
                         <span className="text-slate-500"> · {slotsUsed}/{slotsTotal} slots used</span>
                       )}
+                      <span className={cloudEnabled ? 'text-emerald-400/90' : 'text-amber-400/90'}>
+                        {' '}· {cloudEnabled ? 'Cloud synced' : 'Local only — run drafts SQL migration'}
+                      </span>
                     </p>
                   </div>
                 </div>
@@ -159,7 +163,7 @@ export const ViewDraftsModal: React.FC<Props> = ({
                     <p className="text-slate-500 text-sm max-w-md mx-auto leading-relaxed">
                       From Course Development, click <strong className="text-slate-400">Save</strong> to store a draft.
                       From Course Settings / Design, use <strong className="text-slate-400">Save Design Draft</strong>.
-                      Drafts are stored in this browser (IndexedDB).
+                      Drafts sync to your NexCourse cloud account (with a local browser cache).
                     </p>
                   </div>
                 ) : (

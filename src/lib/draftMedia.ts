@@ -93,3 +93,29 @@ export function approxCourseBytes(course: any): number {
     return -1;
   }
 }
+
+/**
+ * Deep-clone a course that has already had heavy data: URLs nulled.
+ * Safe to JSON-serialize; produces a React-friendly plain object.
+ */
+export function cloneLeanCourse(course: any): any {
+  try {
+    return JSON.parse(JSON.stringify(course));
+  } catch {
+    return course;
+  }
+}
+
+/** In-memory stash for legacy media between load and post-open attach (not on the course object). */
+const pendingLegacyMedia = new Map<string, Record<string, string>>();
+
+export function stashLegacyMedia(draftId: string, media: Record<string, string>) {
+  if (media && Object.keys(media).length) pendingLegacyMedia.set(draftId, media);
+  else pendingLegacyMedia.delete(draftId);
+}
+
+export function takeLegacyMedia(draftId: string): Record<string, string> {
+  const m = pendingLegacyMedia.get(draftId) || {};
+  pendingLegacyMedia.delete(draftId);
+  return m;
+}
