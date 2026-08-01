@@ -1,8 +1,11 @@
 /**
  * useDraftCourses — course draft management (Design + Development).
  *
- * Storage: IndexedDB (large courses with AI images exceed localStorage quota).
- * Migrates any existing localStorage drafts on first load.
+ * Storage (IndexedDB v2):
+ *   - `draft_index`  → lightweight metadata list per user (fast to list)
+ *   - `draft_payload` → one record per draft id (loaded only when opening)
+ *
+ * Older v1 localStorage / single-blob IDB formats are migrated on read.
  *
  * Tier limits:
  *   - Free (unauthenticated): 0
@@ -16,8 +19,11 @@ export const MAX_PRO_DRAFTS = 3;
 export const MAX_TEAM_DRAFTS = 10;
 const STORAGE_PREFIX = 'nexcourse_drafts_v1_';
 const IDB_NAME = 'nexcourse_drafts_db';
-const IDB_STORE = 'user_drafts';
-const IDB_VERSION = 1;
+const IDB_VERSION = 2;
+const STORE_INDEX = 'draft_index';
+const STORE_PAYLOAD = 'draft_payload';
+/** @deprecated v1 single-blob store — still read for migration */
+const STORE_LEGACY = 'user_drafts';
 
 export type DraftPhase = 'design' | 'preview';
 
@@ -54,6 +60,7 @@ export interface PreviewDraftSnapshot {
 
 export type DraftSnapshot = DesignDraftSnapshot | PreviewDraftSnapshot;
 
+/** List-row metadata — never includes the heavy course payload */
 export interface CourseDraft {
   id: string;
   savedAt: string;
@@ -62,44 +69,44 @@ export interface CourseDraft {
   moduleCount: number;
   theme: string;
   phase: DraftPhase;
-  courseSnapshot: string; // JSON.stringify(DraftSnapshot)
+  /** @deprecated kept optional for migration only — not held in React state */
+  courseSnapshot?: string;
 }
+
+export type DraftLoadProgressPhase =
+  | 'fetch'
+  | 'parse'
+  | 'hydrate'
+  | 'done'
+  | 'error';
 
 function storageKey(userId: string) {
   return `${STORAGE_PREFIX}${userId}`;
 }
 
-function inferPhase(snapshot: string): DraftPhase {
-  try {
-    const data = JSON.parse(snapshot);
-    if (data?.phase === 'design') return 'design';
-    if (data?.phase === 'preview') return 'preview';
-    if (data?.course) return 'preview';
-    return 'design';
-  } catch {
-    return 'preview';
-  }
+function payloadKey(userId: string, draftId: string) {
+  return `${userId}::${draftId}`;
 }
 
-function normalizeDraftList(parsed: any): CourseDraft[] {
-  if (!Array.isArray(parsed)) return [];
-  return parsed.map((d: any) => ({
-    ...d,
-    phase: (d.phase as DraftPhase) || inferPhase(d.courseSnapshot),
-  }));
+function inferPhaseFromSnapshot(data: any): DraftPhase {
+  if (data?.phase === 'design') return 'design';
+  if (data?.phase === 'preview') return 'preview';
+  if (data?.course) return 'preview';
+  return 'design';
 }
 
-function readDraftsFromLocalStorage(userId: string): CourseDraft[] {
-  try {
-    const raw = localStorage.getItem(storageKey(userId));
-    if (!raw) return [];
-    return normalizeDraftList(JSON.parse(raw));
-  } catch {
-    return [];
-  }
+function metaFromDraft(d: CourseDraft): CourseDraft {
+  return {
+    id: d.id,
+    savedAt: d.savedAt,
+    courseTitle: d.courseTitle,
+    slideCount: d.slideCount,
+    moduleCount: d.moduleCount,
+    theme: d.theme,
+    phase: d.phase,
+  };
 }
 
-/** Open IndexedDB (or create store). */
 function openDraftsDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     if (typeof indexedDB === 'undefined') {
@@ -109,8 +116,15 @@ function openDraftsDb(): Promise<IDBDatabase> {
     const req = indexedDB.open(IDB_NAME, IDB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
-      if (!db.objectStoreNames.contains(IDB_STORE)) {
-        db.createObjectStore(IDB_STORE);
+      if (!db.objectStoreNames.contains(STORE_INDEX)) {
+        db.createObjectStore(STORE_INDEX);
+      }
+      if (!db.objectStoreNames.contains(STORE_PAYLOAD)) {
+        db.createObjectStore(STORE_PAYLOAD);
+      }
+      // Keep legacy store readable during migration
+      if (!db.objectStoreNames.contains(STORE_LEGACY)) {
+        db.createObjectStore(STORE_LEGACY);
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -118,88 +132,47 @@ function openDraftsDb(): Promise<IDBDatabase> {
   });
 }
 
-async function idbGetDrafts(userId: string): Promise<CourseDraft[] | null> {
-  const db = await openDraftsDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(IDB_STORE, 'readonly');
-    const req = tx.objectStore(IDB_STORE).get(userId);
-    req.onsuccess = () => {
-      const val = req.result;
-      if (!val) resolve(null);
-      else resolve(normalizeDraftList(val));
-    };
-    req.onerror = () => reject(req.error);
-  });
+function idbGet<T>(store: string, key: string): Promise<T | undefined> {
+  return openDraftsDb().then(
+    db =>
+      new Promise((resolve, reject) => {
+        const tx = db.transaction(store, 'readonly');
+        const req = tx.objectStore(store).get(key);
+        req.onsuccess = () => resolve(req.result as T | undefined);
+        req.onerror = () => reject(req.error);
+      })
+  );
 }
 
-async function idbSetDrafts(userId: string, drafts: CourseDraft[]): Promise<void> {
-  const db = await openDraftsDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(IDB_STORE, 'readwrite');
-    tx.objectStore(IDB_STORE).put(drafts, userId);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error || new Error('Failed to write drafts'));
-    tx.onabort = () => reject(tx.error || new Error('Draft write aborted'));
-  });
+function idbPut(store: string, key: string, value: unknown): Promise<void> {
+  return openDraftsDb().then(
+    db =>
+      new Promise((resolve, reject) => {
+        const tx = db.transaction(store, 'readwrite');
+        tx.objectStore(store).put(value, key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error || new Error('IDB put failed'));
+        tx.onabort = () => reject(tx.error || new Error('IDB put aborted'));
+      })
+  );
 }
 
-/**
- * Persist drafts to IndexedDB. Falls back to localStorage with a clear error
- * if IDB fails (localStorage often fails for image-heavy courses).
- */
-async function persistDrafts(userId: string, drafts: CourseDraft[]): Promise<{ ok: boolean; error?: string }> {
+function idbDelete(store: string, key: string): Promise<void> {
+  return openDraftsDb().then(
+    db =>
+      new Promise((resolve, reject) => {
+        const tx = db.transaction(store, 'readwrite');
+        tx.objectStore(store).delete(key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      })
+  );
+}
+
+function parseSnapshotRaw(raw: unknown): DraftSnapshot | null {
   try {
-    await idbSetDrafts(userId, drafts);
-    // Keep a lightweight metadata mirror in localStorage (no heavy snapshots)
-    try {
-      const meta = drafts.map(({ id, savedAt, courseTitle, slideCount, moduleCount, theme, phase }) => ({
-        id, savedAt, courseTitle, slideCount, moduleCount, theme, phase,
-      }));
-      localStorage.setItem(`${STORAGE_PREFIX}meta_${userId}`, JSON.stringify(meta));
-    } catch { /* meta is optional */ }
-    return { ok: true };
-  } catch (idbErr: any) {
-    console.warn('[DraftCourses] IndexedDB write failed, trying localStorage:', idbErr);
-    try {
-      localStorage.setItem(storageKey(userId), JSON.stringify(drafts));
-      return { ok: true };
-    } catch (lsErr: any) {
-      const quota = lsErr?.name === 'QuotaExceededError' || /quota/i.test(String(lsErr?.message || ''));
-      const message = quota
-        ? 'Storage is full — this course (with images) is too large for browser storage. Delete an older draft and try again, or remove some images first.'
-        : (lsErr?.message || idbErr?.message || 'Failed to save draft to browser storage.');
-      console.error('[DraftCourses] Persist failed:', lsErr || idbErr);
-      return { ok: false, error: message };
-    }
-  }
-}
-
-async function loadDraftsForUser(userId: string): Promise<CourseDraft[]> {
-  // Prefer IndexedDB
-  try {
-    const fromIdb = await idbGetDrafts(userId);
-    if (fromIdb && fromIdb.length > 0) return fromIdb;
-
-    // Migrate from localStorage if IDB empty
-    const fromLs = readDraftsFromLocalStorage(userId);
-    if (fromLs.length > 0) {
-      await idbSetDrafts(userId, fromLs);
-      return fromLs;
-    }
-    return fromIdb || [];
-  } catch (e) {
-    console.warn('[DraftCourses] IndexedDB read failed, using localStorage:', e);
-    return readDraftsFromLocalStorage(userId);
-  }
-}
-
-function makeDraftId() {
-  return `draft_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-}
-
-function parseSnapshot(raw: string): DraftSnapshot | null {
-  try {
-    const data = JSON.parse(raw);
+    const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (!data || typeof data !== 'object') return null;
     if (data.phase === 'design' || data.phase === 'preview') return data as DraftSnapshot;
     if (data.course) {
       return {
@@ -215,7 +188,148 @@ function parseSnapshot(raw: string): DraftSnapshot | null {
   }
 }
 
-/** Draft slot limit from Supabase user_metadata.plan (or similar). */
+/** Yield so the UI (progress bar) can paint between heavy steps */
+export function yieldToUi(ms = 16): Promise<void> {
+  return new Promise(resolve => {
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => setTimeout(resolve, ms));
+    } else {
+      setTimeout(resolve, ms);
+    }
+  });
+}
+
+async function readIndex(userId: string): Promise<CourseDraft[]> {
+  try {
+    const idx = await idbGet<CourseDraft[]>(STORE_INDEX, userId);
+    if (Array.isArray(idx) && idx.length > 0) {
+      return idx.map(metaFromDraft);
+    }
+  } catch (e) {
+    console.warn('[DraftCourses] Index read failed:', e);
+  }
+  return [];
+}
+
+async function writeIndex(userId: string, drafts: CourseDraft[]): Promise<void> {
+  const meta = drafts.map(metaFromDraft);
+  await idbPut(STORE_INDEX, userId, meta);
+  try {
+    localStorage.setItem(`${STORAGE_PREFIX}meta_${userId}`, JSON.stringify(meta));
+  } catch { /* optional */ }
+}
+
+/**
+ * Migrate v1 formats (localStorage blob / single IDB array with embedded snapshots)
+ * into index + per-draft payloads.
+ */
+async function migrateLegacyIfNeeded(userId: string): Promise<CourseDraft[]> {
+  const existing = await readIndex(userId);
+  if (existing.length > 0) return existing;
+
+  let legacy: any[] = [];
+
+  try {
+    const fromLegacyStore = await idbGet<any[]>(STORE_LEGACY, userId);
+    if (Array.isArray(fromLegacyStore) && fromLegacyStore.length) {
+      legacy = fromLegacyStore;
+    }
+  } catch { /* ignore */ }
+
+  if (!legacy.length) {
+    try {
+      const raw = localStorage.getItem(storageKey(userId));
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) legacy = parsed;
+      }
+    } catch { /* ignore */ }
+  }
+
+  if (!legacy.length) return [];
+
+  console.log(`[DraftCourses] Migrating ${legacy.length} legacy draft(s) to split storage…`);
+  const metas: CourseDraft[] = [];
+
+  for (const d of legacy) {
+    const id = d.id || `draft_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    let snapshot: DraftSnapshot | null = null;
+    if (d.courseSnapshot) {
+      snapshot = parseSnapshotRaw(d.courseSnapshot);
+    } else if (d.phase === 'preview' || d.course) {
+      snapshot = parseSnapshotRaw(d);
+    } else if (d.phase === 'design') {
+      snapshot = parseSnapshotRaw({ phase: 'design', ...d });
+    }
+
+    const phase: DraftPhase =
+      (d.phase as DraftPhase) ||
+      (snapshot ? inferPhaseFromSnapshot(snapshot) : 'preview');
+
+    const titleFromSnap =
+      snapshot?.phase === 'design'
+        ? snapshot.courseTitle
+        : snapshot?.phase === 'preview'
+          ? snapshot.course?.title
+          : undefined;
+    const meta: CourseDraft = {
+      id,
+      savedAt: d.savedAt || new Date().toISOString(),
+      courseTitle: d.courseTitle || titleFromSnap || 'Untitled Course',
+      slideCount: d.slideCount ?? 0,
+      moduleCount: d.moduleCount ?? 0,
+      theme: d.theme || 'light',
+      phase,
+    };
+
+    if (snapshot) {
+      // Store as structured object (no JSON.stringify of multi‑MB base64)
+      await idbPut(STORE_PAYLOAD, payloadKey(userId, id), snapshot);
+    }
+    metas.push(meta);
+  }
+
+  await writeIndex(userId, metas);
+  return metas;
+}
+
+async function loadDraftsForUser(userId: string): Promise<CourseDraft[]> {
+  try {
+    return await migrateLegacyIfNeeded(userId);
+  } catch (e) {
+    console.warn('[DraftCourses] load failed:', e);
+    return [];
+  }
+}
+
+function makeDraftId() {
+  return `draft_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+/**
+ * Drop ephemeral blob: URLs before save (they die on reload anyway).
+ * Keeps data: images. Shrinks payloads and speeds open significantly when TTS was generated.
+ */
+function stripEphemeralMedia(course: any): any {
+  if (!course?.modules) return course;
+  return {
+    ...course,
+    modules: course.modules.map((m: any) => ({
+      ...m,
+      slides: (m.slides || []).map((s: any) => {
+        const next = { ...s };
+        if (typeof next.voiceOverUrl === 'string' && next.voiceOverUrl.startsWith('blob:')) {
+          delete next.voiceOverUrl;
+        }
+        if (typeof next.audioUrl === 'string' && next.audioUrl.startsWith('blob:')) {
+          delete next.audioUrl;
+        }
+        return next;
+      }),
+    })),
+  };
+}
+
 export function getDraftLimitForPlan(plan?: string | null): number {
   if (!plan) return MAX_PRO_DRAFTS;
   const p = plan.toLowerCase();
@@ -232,13 +346,17 @@ export interface UseDraftCoursesReturn {
   refreshDrafts: () => Promise<void>;
   savePreviewDraft: (course: any, playerConfig: any, theme: string) => Promise<{ success: boolean; message: string; id?: string }>;
   saveDesignDraft: (design: Omit<DesignDraftSnapshot, 'phase'>) => Promise<{ success: boolean; message: string; id?: string }>;
+  /** Sync peek from in-memory cache only — prefer loadDraftAsync */
   loadDraft: (id: string) => DraftSnapshot | null;
+  /** Async load of a single draft payload (fast path) */
+  loadDraftAsync: (
+    id: string,
+    onProgress?: (pct: number, phase: DraftLoadProgressPhase) => void
+  ) => Promise<DraftSnapshot | null>;
   deleteDraft: (id: string) => Promise<void>;
   replacePreviewDraft: (id: string, course: any, playerConfig: any, theme: string) => Promise<{ success: boolean; message: string }>;
   replaceDesignDraft: (id: string, design: Omit<DesignDraftSnapshot, 'phase'>) => Promise<{ success: boolean; message: string }>;
-  /** @deprecated use savePreviewDraft */
   saveDraft: (course: any, playerConfig: any, theme: string) => Promise<{ success: boolean; message: string; id?: string }>;
-  /** @deprecated use replacePreviewDraft */
   replaceDraft: (id: string, course: any, playerConfig: any, theme: string) => Promise<{ success: boolean; message: string }>;
 }
 
@@ -250,6 +368,8 @@ export function useDraftCourses(
   const [isReady, setIsReady] = useState(false);
   const draftsRef = useRef<CourseDraft[]>([]);
   draftsRef.current = drafts;
+  /** Small cache of recently opened payloads (not the whole library) */
+  const payloadCacheRef = useRef<Map<string, DraftSnapshot>>(new Map());
 
   const refreshDrafts = useCallback(async () => {
     if (!userId) {
@@ -262,7 +382,7 @@ export function useDraftCourses(
       setDrafts(list);
     } catch (e) {
       console.error('[DraftCourses] refresh failed:', e);
-      setDrafts(readDraftsFromLocalStorage(userId));
+      setDrafts([]);
     } finally {
       setIsReady(true);
     }
@@ -277,10 +397,52 @@ export function useDraftCourses(
   const slotsUsed = drafts.length;
   const canSave = !!userId && slotsUsed < slotsTotal;
 
+  const persistNew = async (
+    meta: CourseDraft,
+    snapshot: DraftSnapshot
+  ): Promise<{ ok: boolean; error?: string }> => {
+    if (!userId) return { ok: false, error: 'Sign in to save drafts.' };
+    try {
+      const t0 = performance.now();
+      await idbPut(STORE_PAYLOAD, payloadKey(userId, meta.id), snapshot);
+      const next = [...draftsRef.current, metaFromDraft(meta)];
+      await writeIndex(userId, next);
+      setDrafts(next);
+      payloadCacheRef.current.set(meta.id, snapshot);
+      console.log(`[DraftCourses] Saved "${meta.courseTitle}" in ${Math.round(performance.now() - t0)}ms`);
+      return { ok: true };
+    } catch (e: any) {
+      console.error('[DraftCourses] Save failed:', e);
+      return {
+        ok: false,
+        error: e?.message || 'Failed to save draft to browser storage.',
+      };
+    }
+  };
+
+  const persistReplace = async (
+    id: string,
+    metaPatch: Partial<CourseDraft>,
+    snapshot: DraftSnapshot
+  ): Promise<{ ok: boolean; error?: string }> => {
+    if (!userId) return { ok: false, error: 'Sign in to save drafts.' };
+    try {
+      await idbPut(STORE_PAYLOAD, payloadKey(userId, id), snapshot);
+      const next = draftsRef.current.map(d =>
+        d.id === id ? metaFromDraft({ ...d, ...metaPatch, id } as CourseDraft) : d
+      );
+      await writeIndex(userId, next);
+      setDrafts(next);
+      payloadCacheRef.current.set(id, snapshot);
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: e?.message || 'Failed to update draft.' };
+    }
+  };
+
   const savePreviewDraft = useCallback(async (course: any, playerConfig: any, theme: string) => {
     if (!userId) return { success: false, message: 'Sign in to save drafts.' };
-    const current = draftsRef.current;
-    if (current.length >= slotsTotal) {
+    if (draftsRef.current.length >= slotsTotal) {
       return {
         success: false,
         message: `You've used all ${slotsTotal} draft slots. Delete an existing draft or upgrade your plan.`,
@@ -292,14 +454,7 @@ export function useDraftCourses(
 
     const id = makeDraftId();
     const snapshot: PreviewDraftSnapshot = { phase: 'preview', course, playerConfig, theme };
-    let courseSnapshot: string;
-    try {
-      courseSnapshot = JSON.stringify(snapshot);
-    } catch (e: any) {
-      return { success: false, message: 'Course data could not be serialized for saving.' };
-    }
-
-    const draft: CourseDraft = {
+    const meta: CourseDraft = {
       id,
       savedAt: new Date().toISOString(),
       courseTitle: course.title || 'Untitled Course',
@@ -307,21 +462,15 @@ export function useDraftCourses(
       moduleCount: (course.modules || []).length,
       theme,
       phase: 'preview',
-      courseSnapshot,
     };
-    const next = [...current, draft];
-    const result = await persistDrafts(userId, next);
-    if (!result.ok) {
-      return { success: false, message: result.error || 'Failed to save draft.' };
-    }
-    setDrafts(next);
-    return { success: true, message: `Draft "${draft.courseTitle}" saved!`, id };
-  }, [userId, slotsTotal]);
+    const result = await persistNew(meta, snapshot);
+    if (!result.ok) return { success: false, message: result.error || 'Failed to save draft.' };
+    return { success: true, message: `Draft "${meta.courseTitle}" saved!`, id };
+  }, [userId, slotsTotal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveDesignDraft = useCallback(async (design: Omit<DesignDraftSnapshot, 'phase'>) => {
     if (!userId) return { success: false, message: 'Sign in to save drafts.' };
-    const current = draftsRef.current;
-    if (current.length >= slotsTotal) {
+    if (draftsRef.current.length >= slotsTotal) {
       return {
         success: false,
         message: `You've used all ${slotsTotal} draft slots. Delete an existing draft or upgrade your plan.`,
@@ -329,13 +478,7 @@ export function useDraftCourses(
     }
     const id = makeDraftId();
     const snapshot: DesignDraftSnapshot = { phase: 'design', ...design };
-    let courseSnapshot: string;
-    try {
-      courseSnapshot = JSON.stringify(snapshot);
-    } catch {
-      return { success: false, message: 'Design data could not be serialized for saving.' };
-    }
-    const draft: CourseDraft = {
+    const meta: CourseDraft = {
       id,
       savedAt: new Date().toISOString(),
       courseTitle: design.courseTitle || 'Untitled Course',
@@ -345,87 +488,122 @@ export function useDraftCourses(
       moduleCount: design.outlineDraft?.modules?.length ?? 0,
       theme: 'light',
       phase: 'design',
-      courseSnapshot,
     };
-    const next = [...current, draft];
-    const result = await persistDrafts(userId, next);
-    if (!result.ok) {
-      return { success: false, message: result.error || 'Failed to save draft.' };
-    }
-    setDrafts(next);
-    return { success: true, message: `Design draft "${draft.courseTitle}" saved!`, id };
-  }, [userId, slotsTotal]);
+    const result = await persistNew(meta, snapshot);
+    if (!result.ok) return { success: false, message: result.error || 'Failed to save draft.' };
+    return { success: true, message: `Design draft "${meta.courseTitle}" saved!`, id };
+  }, [userId, slotsTotal]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const loadDraftAsync = useCallback(async (
+    id: string,
+    onProgress?: (pct: number, phase: DraftLoadProgressPhase) => void
+  ): Promise<DraftSnapshot | null> => {
+    if (!userId) return null;
+    const t0 = performance.now();
+
+    onProgress?.(8, 'fetch');
+    await yieldToUi(10);
+
+    const cached = payloadCacheRef.current.get(id);
+    if (cached) {
+      onProgress?.(70, 'parse');
+      await yieldToUi(10);
+      onProgress?.(100, 'done');
+      console.log(`[DraftCourses] Opened "${id}" from cache in ${Math.round(performance.now() - t0)}ms`);
+      return cached;
+    }
+
+    try {
+      onProgress?.(20, 'fetch');
+      const raw = await idbGet<unknown>(STORE_PAYLOAD, payloadKey(userId, id));
+      onProgress?.(45, 'parse');
+      await yieldToUi(10);
+
+      if (raw == null) {
+        // Fallback: legacy embedded snapshot on an old index entry (shouldn't happen after migrate)
+        onProgress?.(0, 'error');
+        return null;
+      }
+
+      // Structured clone from IDB — usually already an object (no JSON.parse)
+      onProgress?.(60, 'parse');
+      const snapshot = parseSnapshotRaw(raw);
+      await yieldToUi(10);
+
+      if (!snapshot) {
+        onProgress?.(0, 'error');
+        return null;
+      }
+
+      payloadCacheRef.current.set(id, snapshot);
+      // Cap cache size
+      if (payloadCacheRef.current.size > 3) {
+        const oldest = payloadCacheRef.current.keys().next().value;
+        if (oldest) payloadCacheRef.current.delete(oldest);
+      }
+
+      onProgress?.(85, 'hydrate');
+      console.log(
+        `[DraftCourses] Loaded payload "${id}" in ${Math.round(performance.now() - t0)}ms`,
+        snapshot.phase === 'preview'
+          ? `(${snapshot.course?.modules?.length ?? 0} modules)`
+          : '(design)'
+      );
+      return snapshot;
+    } catch (e) {
+      console.error('[DraftCourses] loadDraftAsync failed:', e);
+      onProgress?.(0, 'error');
+      return null;
+    }
+  }, [userId]);
+
+  /** Sync API — only returns cached payloads (kept for legacy callers) */
   const loadDraft = useCallback((id: string): DraftSnapshot | null => {
-    const draft = draftsRef.current.find(d => d.id === id);
-    if (!draft) return null;
-    return parseSnapshot(draft.courseSnapshot);
+    return payloadCacheRef.current.get(id) ?? null;
   }, []);
 
   const deleteDraft = useCallback(async (id: string) => {
     if (!userId) return;
+    try {
+      await idbDelete(STORE_PAYLOAD, payloadKey(userId, id));
+    } catch { /* continue */ }
     const next = draftsRef.current.filter(d => d.id !== id);
-    const result = await persistDrafts(userId, next);
-    if (result.ok) setDrafts(next);
+    await writeIndex(userId, next);
+    setDrafts(next);
+    payloadCacheRef.current.delete(id);
   }, [userId]);
 
   const replacePreviewDraft = useCallback(async (id: string, course: any, playerConfig: any, theme: string) => {
     if (!userId) return { success: false, message: 'Sign in to save drafts.' };
     const snapshot: PreviewDraftSnapshot = { phase: 'preview', course, playerConfig, theme };
-    let courseSnapshot: string;
-    try {
-      courseSnapshot = JSON.stringify(snapshot);
-    } catch {
-      return { success: false, message: 'Course data could not be serialized for saving.' };
-    }
-    const next = draftsRef.current.map(d => {
-      if (d.id !== id) return d;
-      return {
-        ...d,
-        savedAt: new Date().toISOString(),
-        courseTitle: course.title || 'Untitled Course',
-        slideCount: (course.modules || []).reduce((a: number, m: any) => a + (m.slides?.length || 0), 0),
-        moduleCount: (course.modules || []).length,
-        theme,
-        phase: 'preview' as DraftPhase,
-        courseSnapshot,
-      };
-    });
-    const result = await persistDrafts(userId, next);
+    const result = await persistReplace(id, {
+      savedAt: new Date().toISOString(),
+      courseTitle: course.title || 'Untitled Course',
+      slideCount: (course.modules || []).reduce((a: number, m: any) => a + (m.slides?.length || 0), 0),
+      moduleCount: (course.modules || []).length,
+      theme,
+      phase: 'preview',
+    }, snapshot);
     if (!result.ok) return { success: false, message: result.error || 'Failed to update draft.' };
-    setDrafts(next);
     return { success: true, message: 'Draft updated ✓' };
-  }, [userId]);
+  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const replaceDesignDraft = useCallback(async (id: string, design: Omit<DesignDraftSnapshot, 'phase'>) => {
     if (!userId) return { success: false, message: 'Sign in to save drafts.' };
     const snapshot: DesignDraftSnapshot = { phase: 'design', ...design };
-    let courseSnapshot: string;
-    try {
-      courseSnapshot = JSON.stringify(snapshot);
-    } catch {
-      return { success: false, message: 'Design data could not be serialized for saving.' };
-    }
-    const next = draftsRef.current.map(d => {
-      if (d.id !== id) return d;
-      return {
-        ...d,
-        savedAt: new Date().toISOString(),
-        courseTitle: design.courseTitle || 'Untitled Course',
-        slideCount: design.outlineDraft?.modules?.reduce(
-          (a: number, m: any) => a + (m.slides?.length || 0), 0
-        ) ?? 0,
-        moduleCount: design.outlineDraft?.modules?.length ?? 0,
-        theme: 'light',
-        phase: 'design' as DraftPhase,
-        courseSnapshot,
-      };
-    });
-    const result = await persistDrafts(userId, next);
+    const result = await persistReplace(id, {
+      savedAt: new Date().toISOString(),
+      courseTitle: design.courseTitle || 'Untitled Course',
+      slideCount: design.outlineDraft?.modules?.reduce(
+        (a: number, m: any) => a + (m.slides?.length || 0), 0
+      ) ?? 0,
+      moduleCount: design.outlineDraft?.modules?.length ?? 0,
+      theme: 'light',
+      phase: 'design',
+    }, snapshot);
     if (!result.ok) return { success: false, message: result.error || 'Failed to update draft.' };
-    setDrafts(next);
     return { success: true, message: 'Design draft updated ✓' };
-  }, [userId]);
+  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     drafts,
@@ -437,6 +615,7 @@ export function useDraftCourses(
     savePreviewDraft,
     saveDesignDraft,
     loadDraft,
+    loadDraftAsync,
     deleteDraft,
     replacePreviewDraft,
     replaceDesignDraft,

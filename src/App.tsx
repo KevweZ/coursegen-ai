@@ -309,46 +309,49 @@ function countListItems(raw: string): number {
   return raw.split('\n').filter(l => /^\s*([-*+]|\d+\.)\s+/.test(l)).length;
 }
 
-/** Full-screen overlay while a large draft hydrates — CSS bar keeps moving even if JS janks. */
-const DraftOpeningOverlay: React.FC<{ active: boolean }> = ({ active }) => {
+/** Full-screen overlay while a draft hydrates — driven by real load progress when available. */
+const DraftOpeningOverlay: React.FC<{ active: boolean; progress: number; statusText?: string }> = ({
+  active,
+  progress,
+  statusText,
+}) => {
   const [visible, setVisible] = React.useState(false);
-  const [progress, setProgress] = React.useState(0);
+  const [displayPct, setDisplayPct] = React.useState(0);
   const [finishing, setFinishing] = React.useState(false);
 
   React.useEffect(() => {
     if (active) {
       setVisible(true);
       setFinishing(false);
-      setProgress(3);
-      const started = Date.now();
-      const id = window.setInterval(() => {
-        const elapsed = Date.now() - started;
-        // Ease toward ~90% over several seconds (never hits 100 until done)
-        const next = Math.min(90, 3 + 87 * (1 - Math.exp(-elapsed / 2800)));
-        setProgress(prev => Math.max(prev, next));
-      }, 100);
-      return () => window.clearInterval(id);
+      setDisplayPct(Math.max(2, progress));
+      return;
     }
     if (!visible) return;
     setFinishing(true);
-    setProgress(100);
+    setDisplayPct(100);
     const t = window.setTimeout(() => {
       setVisible(false);
       setFinishing(false);
-      setProgress(0);
-    }, 450);
+      setDisplayPct(0);
+    }, 400);
     return () => window.clearTimeout(t);
   }, [active]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  React.useEffect(() => {
+    if (!active) return;
+    setDisplayPct(prev => Math.max(prev, Math.min(99, progress)));
+  }, [active, progress]);
+
   if (!visible) return null;
 
-  const pct = Math.round(progress);
+  const pct = Math.round(finishing ? 100 : displayPct);
   const phase =
-    pct < 25 ? 'Reading saved course…'
-    : pct < 55 ? 'Restoring slides and media…'
-    : pct < 90 ? 'Preparing course preview…'
-    : finishing || pct >= 100 ? 'Almost ready…'
-    : 'Loading course…';
+    statusText ||
+    (pct < 25 ? 'Fetching saved draft…'
+    : pct < 55 ? 'Reading course data…'
+    : pct < 85 ? 'Restoring slides and media…'
+    : pct < 100 ? 'Opening course preview…'
+    : 'Almost ready…');
 
   return (
     <div className="fixed inset-0 z-[800] bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center gap-5 px-6">
@@ -356,7 +359,7 @@ const DraftOpeningOverlay: React.FC<{ active: boolean }> = ({ active }) => {
       <div className="text-center space-y-1.5">
         <p className="text-white font-bold text-base">Opening draft…</p>
         <p className="text-slate-400 text-sm">{phase}</p>
-        <p className="text-slate-500 text-xs">Large courses with images can take a minute</p>
+        <p className="text-slate-500 text-xs">Progress updates as each step finishes</p>
       </div>
       <div className="w-full max-w-sm space-y-2">
         <div className="flex justify-between text-[11px] font-bold uppercase tracking-widest text-slate-500">
@@ -364,9 +367,8 @@ const DraftOpeningOverlay: React.FC<{ active: boolean }> = ({ active }) => {
           <span className="text-indigo-300 tabular-nums">{pct}%</span>
         </div>
         <div className="h-2.5 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
-          {/* CSS animation keeps the bar visually alive; width also tracks JS % */}
           <div
-            className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 relative overflow-hidden transition-[width] duration-200 ease-out"
+            className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 relative overflow-hidden transition-[width] duration-150 ease-out"
             style={{ width: `${Math.max(4, pct)}%` }}
           >
             <div
@@ -617,6 +619,8 @@ export default function App() {
   const [showDraftsPanel, setShowDraftsPanel] = React.useState(false);
   const [showViewDraftsModal, setShowViewDraftsModal] = React.useState(false);
   const [isLoadingDraft, setIsLoadingDraft] = React.useState(false);
+  const [draftLoadProgress, setDraftLoadProgress] = React.useState(0);
+  const [draftLoadStatus, setDraftLoadStatus] = React.useState('');
   const [showAppImagePicker, setShowAppImagePicker] = React.useState(false);
   const [showImageDropdown, setShowImageDropdown] = React.useState(false);
   const [draftSaveMessage, setDraftSaveMessage] = React.useState<string | null>(null);
@@ -660,15 +664,16 @@ export default function App() {
     }
     showDraftMessage('Saving draft…');
     try {
-      if (activeDraftId) {
-        const existing = draftManager.loadDraft(activeDraftId);
-        if (existing?.phase === 'preview') {
-          const updated = await draftManager.replacePreviewDraft(activeDraftId, course, playerConfig, theme);
-          showDraftMessage(updated.message);
-          if (updated.success) navigateTo(ROUTES.preview(activeDraftId), true);
-          return;
-        }
+    if (activeDraftId) {
+      // Prefer async payload (sync cache may be empty after refresh)
+      const existing = await draftManager.loadDraftAsync(activeDraftId);
+      if (existing?.phase === 'preview') {
+        const updated = await draftManager.replacePreviewDraft(activeDraftId, course, playerConfig, theme);
+        showDraftMessage(updated.message);
+        if (updated.success) navigateTo(ROUTES.preview(activeDraftId), true);
+        return;
       }
+    }
       const result = await draftManager.savePreviewDraft(course, playerConfig, theme);
       showDraftMessage(result.message);
       if (result.success && result.id) {
@@ -714,7 +719,7 @@ export default function App() {
     showDraftMessage('Saving design draft…');
     try {
       if (activeDraftId) {
-        const existing = draftManager.loadDraft(activeDraftId);
+        const existing = await draftManager.loadDraftAsync(activeDraftId);
         if (existing?.phase === 'design') {
           const updated = await draftManager.replaceDesignDraft(activeDraftId, design);
           showDraftMessage(updated.message);
@@ -741,36 +746,51 @@ export default function App() {
   };
 
   const handleLoadDraft = (id: string) => {
-    const snapshot = draftManager.loadDraft(id);
-    if (!snapshot) {
-      showDraftMessage('Draft not found. It may have failed to save — try saving again.');
-      return;
-    }
-    // Close modals first so the UI stays responsive while the course hydrates
     setShowDraftsPanel(false);
     setShowViewDraftsModal(false);
     setIsLoadingDraft(true);
+    setDraftLoadProgress(2);
+    setDraftLoadStatus('Fetching saved draft…');
     showDraftMessage('Opening draft…');
 
-    const yieldToUi = () => new Promise<void>(r => window.setTimeout(r, 50));
-
-    // Defer heavy setState (courses with AI images are large) off the click handler
     void (async () => {
+      const t0 = performance.now();
       try {
-        await yieldToUi();
+        const snapshot = await draftManager.loadDraftAsync(id, (pct, phase) => {
+          setDraftLoadProgress(pct);
+          if (phase === 'fetch') setDraftLoadStatus('Fetching saved draft…');
+          else if (phase === 'parse') setDraftLoadStatus('Reading course data…');
+          else if (phase === 'hydrate') setDraftLoadStatus('Preparing to open…');
+        });
+
+        if (!snapshot) {
+          showDraftMessage('Draft not found. It may have failed to save — try saving again.');
+          setStep('home');
+          navigateTo(ROUTES.upload, true);
+          return;
+        }
+
         setActiveDraftId(id);
+        setDraftLoadProgress(88);
+        setDraftLoadStatus('Opening course preview…');
+        await new Promise<void>(r => setTimeout(r, 20));
+
         if (snapshot.phase === 'design') {
           applyDesignSnapshot(snapshot);
           navigateTo(ROUTES.design(id));
+          setDraftLoadProgress(100);
           showDraftMessage('Design draft loaded ✓');
           return;
         }
+
         if (!snapshot.course?.modules?.length) {
           showDraftMessage('This draft has no course content and cannot be opened.');
+          setStep('home');
+          navigateTo(ROUTES.upload, true);
           return;
         }
-        await yieldToUi();
-        // Apply lightweight bits first so the progress bar can keep painting
+
+        // Lightweight UI state first
         setPlayerConfig(snapshot.playerConfig || defaultPlayerConfig);
         setTheme((snapshot.theme as any) || 'light');
         setCurrentSlideIndex(0);
@@ -782,16 +802,24 @@ export default function App() {
         setIsSandboxMode(false);
         setMobileDesignDemo(false);
         setShowPlayerProperties(false);
-        await yieldToUi();
-        // Heavy hydrate — progress overlay keeps animating via its own timer
+
+        setDraftLoadProgress(92);
+        setDraftLoadStatus('Restoring slides and media…');
+        await new Promise<void>(r => setTimeout(r, 20));
+
+        // Single course reference — avoid deep-cloning into originalCourse (that doubled cost)
         setCourse(snapshot.course);
         setOriginalCourse(snapshot.course);
-        await yieldToUi();
+        setCourseBg(snapshot.course?.coverImage || null);
+
+        setDraftLoadProgress(97);
         setStep('preview');
         navigateTo(ROUTES.preview(id));
+        setDraftLoadProgress(100);
+        setDraftLoadStatus('Almost ready…');
+        console.log(`[Drafts] Open complete in ${Math.round(performance.now() - t0)}ms`);
         showDraftMessage('Draft loaded ✓');
-        // Brief beat so the bar can reach 100% before dismiss
-        await new Promise<void>(r => window.setTimeout(r, 350));
+        await new Promise<void>(r => setTimeout(r, 280));
       } catch (err: any) {
         console.error('[Drafts] Open failed:', err);
         showDraftMessage(err?.message || 'Failed to open draft. It may be corrupted.');
@@ -799,6 +827,8 @@ export default function App() {
         navigateTo(ROUTES.upload, true);
       } finally {
         setIsLoadingDraft(false);
+        setDraftLoadProgress(0);
+        setDraftLoadStatus('');
       }
     })();
   };
@@ -1065,36 +1095,59 @@ export default function App() {
       return;
     }
     if (parsed.kind === 'design') {
-      const snap = draftManager.loadDraft(parsed.draftId);
-      if (snap?.phase === 'design') {
-        setActiveDraftId(parsed.draftId);
-        setShowPlayerProperties(false);
-        applyDesignSnapshot(snap);
-      } else {
-        showDraftMessage('Design draft not found.');
-        navigateTo(ROUTES.upload, true);
-        setStep('home');
-      }
+      void (async () => {
+        setIsLoadingDraft(true);
+        setDraftLoadProgress(5);
+        setDraftLoadStatus('Fetching design draft…');
+        const snap = await draftManager.loadDraftAsync(parsed.draftId, (pct) => setDraftLoadProgress(pct));
+        if (snap?.phase === 'design') {
+          setActiveDraftId(parsed.draftId);
+          setShowPlayerProperties(false);
+          applyDesignSnapshot(snap);
+          setDraftLoadProgress(100);
+        } else {
+          showDraftMessage('Design draft not found.');
+          navigateTo(ROUTES.upload, true);
+          setStep('home');
+        }
+        setIsLoadingDraft(false);
+        setDraftLoadProgress(0);
+      })();
       return;
     }
     if (parsed.kind === 'preview') {
-      const snap = draftManager.loadDraft(parsed.draftId);
-      if (snap?.phase === 'preview') {
-        setActiveDraftId(parsed.draftId);
-        setCourse(snap.course);
-        setOriginalCourse(snap.course);
-        setPlayerConfig(snap.playerConfig || defaultPlayerConfig);
-        setTheme((snap.theme as any) || 'light');
-        setCurrentSlideIndex(0);
-        setIsSandboxMode(false);
-        setMobileDesignDemo(false);
-        setShowPlayerProperties(false);
-        setStep('preview');
-      } else {
-        showDraftMessage('Course draft not found.');
-        navigateTo(ROUTES.upload, true);
-        setStep('home');
-      }
+      void (async () => {
+        setIsLoadingDraft(true);
+        setDraftLoadProgress(5);
+        setDraftLoadStatus('Fetching course draft…');
+        const snap = await draftManager.loadDraftAsync(parsed.draftId, (pct, phase) => {
+          setDraftLoadProgress(pct);
+          if (phase === 'fetch') setDraftLoadStatus('Fetching saved draft…');
+          else if (phase === 'parse') setDraftLoadStatus('Reading course data…');
+        });
+        if (snap?.phase === 'preview' && snap.course?.modules?.length) {
+          setActiveDraftId(parsed.draftId);
+          setPlayerConfig(snap.playerConfig || defaultPlayerConfig);
+          setTheme((snap.theme as any) || 'light');
+          setCurrentSlideIndex(0);
+          setIsSandboxMode(false);
+          setMobileDesignDemo(false);
+          setShowPlayerProperties(false);
+          setDraftLoadProgress(92);
+          setCourse(snap.course);
+          setOriginalCourse(snap.course);
+          setCourseBg(snap.course?.coverImage || null);
+          setStep('preview');
+          setDraftLoadProgress(100);
+        } else {
+          showDraftMessage('Course draft not found.');
+          navigateTo(ROUTES.upload, true);
+          setStep('home');
+        }
+        setIsLoadingDraft(false);
+        setDraftLoadProgress(0);
+        setDraftLoadStatus('');
+      })();
       return;
     }
     if (parsed.kind === 'sandbox') {
@@ -3456,7 +3509,11 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
             onDelete={(id) => { void draftManager.deleteDraft(id); }}
           />
 
-          <DraftOpeningOverlay active={isLoadingDraft} />
+          <DraftOpeningOverlay
+            active={isLoadingDraft}
+            progress={draftLoadProgress}
+            statusText={draftLoadStatus}
+          />
 
           {/* QC Track Changes Modal — overlays preview, persists across open/close */}
           <QCTrackChangesModal
