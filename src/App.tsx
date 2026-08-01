@@ -309,6 +309,86 @@ function countListItems(raw: string): number {
   return raw.split('\n').filter(l => /^\s*([-*+]|\d+\.)\s+/.test(l)).length;
 }
 
+/** Full-screen overlay while a large draft hydrates — CSS bar keeps moving even if JS janks. */
+const DraftOpeningOverlay: React.FC<{ active: boolean }> = ({ active }) => {
+  const [visible, setVisible] = React.useState(false);
+  const [progress, setProgress] = React.useState(0);
+  const [finishing, setFinishing] = React.useState(false);
+
+  React.useEffect(() => {
+    if (active) {
+      setVisible(true);
+      setFinishing(false);
+      setProgress(3);
+      const started = Date.now();
+      const id = window.setInterval(() => {
+        const elapsed = Date.now() - started;
+        // Ease toward ~90% over several seconds (never hits 100 until done)
+        const next = Math.min(90, 3 + 87 * (1 - Math.exp(-elapsed / 2800)));
+        setProgress(prev => Math.max(prev, next));
+      }, 100);
+      return () => window.clearInterval(id);
+    }
+    if (!visible) return;
+    setFinishing(true);
+    setProgress(100);
+    const t = window.setTimeout(() => {
+      setVisible(false);
+      setFinishing(false);
+      setProgress(0);
+    }, 450);
+    return () => window.clearTimeout(t);
+  }, [active]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!visible) return null;
+
+  const pct = Math.round(progress);
+  const phase =
+    pct < 25 ? 'Reading saved course…'
+    : pct < 55 ? 'Restoring slides and media…'
+    : pct < 90 ? 'Preparing course preview…'
+    : finishing || pct >= 100 ? 'Almost ready…'
+    : 'Loading course…';
+
+  return (
+    <div className="fixed inset-0 z-[800] bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center gap-5 px-6">
+      <Loader2 className="w-10 h-10 text-indigo-400 animate-spin" />
+      <div className="text-center space-y-1.5">
+        <p className="text-white font-bold text-base">Opening draft…</p>
+        <p className="text-slate-400 text-sm">{phase}</p>
+        <p className="text-slate-500 text-xs">Large courses with images can take a minute</p>
+      </div>
+      <div className="w-full max-w-sm space-y-2">
+        <div className="flex justify-between text-[11px] font-bold uppercase tracking-widest text-slate-500">
+          <span>Progress</span>
+          <span className="text-indigo-300 tabular-nums">{pct}%</span>
+        </div>
+        <div className="h-2.5 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+          {/* CSS animation keeps the bar visually alive; width also tracks JS % */}
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 relative overflow-hidden transition-[width] duration-200 ease-out"
+            style={{ width: `${Math.max(4, pct)}%` }}
+          >
+            <div
+              className="absolute inset-0 opacity-40"
+              style={{
+                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent)',
+                animation: finishing ? 'none' : 'draftShimmer 1.4s ease-in-out infinite',
+              }}
+            />
+          </div>
+        </div>
+      </div>
+      <style>{`
+        @keyframes draftShimmer {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+      `}</style>
+    </div>
+  );
+};
+
 const EmptySlideRegenerate = ({
   title,
   onRegenerate,
@@ -672,9 +752,12 @@ export default function App() {
     setIsLoadingDraft(true);
     showDraftMessage('Opening draft…');
 
+    const yieldToUi = () => new Promise<void>(r => window.setTimeout(r, 50));
+
     // Defer heavy setState (courses with AI images are large) off the click handler
-    window.setTimeout(() => {
+    void (async () => {
       try {
+        await yieldToUi();
         setActiveDraftId(id);
         if (snapshot.phase === 'design') {
           applyDesignSnapshot(snapshot);
@@ -686,8 +769,8 @@ export default function App() {
           showDraftMessage('This draft has no course content and cannot be opened.');
           return;
         }
-        setCourse(snapshot.course);
-        setOriginalCourse(snapshot.course);
+        await yieldToUi();
+        // Apply lightweight bits first so the progress bar can keep painting
         setPlayerConfig(snapshot.playerConfig || defaultPlayerConfig);
         setTheme((snapshot.theme as any) || 'light');
         setCurrentSlideIndex(0);
@@ -699,9 +782,16 @@ export default function App() {
         setIsSandboxMode(false);
         setMobileDesignDemo(false);
         setShowPlayerProperties(false);
+        await yieldToUi();
+        // Heavy hydrate — progress overlay keeps animating via its own timer
+        setCourse(snapshot.course);
+        setOriginalCourse(snapshot.course);
+        await yieldToUi();
         setStep('preview');
         navigateTo(ROUTES.preview(id));
         showDraftMessage('Draft loaded ✓');
+        // Brief beat so the bar can reach 100% before dismiss
+        await new Promise<void>(r => window.setTimeout(r, 350));
       } catch (err: any) {
         console.error('[Drafts] Open failed:', err);
         showDraftMessage(err?.message || 'Failed to open draft. It may be corrupted.');
@@ -710,7 +800,7 @@ export default function App() {
       } finally {
         setIsLoadingDraft(false);
       }
-    }, 40);
+    })();
   };
 
   const handleReplaceDraft = async (id: string) => {
@@ -3366,13 +3456,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
             onDelete={(id) => { void draftManager.deleteDraft(id); }}
           />
 
-          {isLoadingDraft && (
-            <div className="fixed inset-0 z-[800] bg-slate-950/70 backdrop-blur-sm flex flex-col items-center justify-center gap-4">
-              <Loader2 className="w-10 h-10 text-indigo-400 animate-spin" />
-              <p className="text-white font-bold text-sm">Opening draft…</p>
-              <p className="text-slate-400 text-xs">Large courses with images can take a moment</p>
-            </div>
-          )}
+          <DraftOpeningOverlay active={isLoadingDraft} />
 
           {/* QC Track Changes Modal — overlays preview, persists across open/close */}
           <QCTrackChangesModal
