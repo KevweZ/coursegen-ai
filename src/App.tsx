@@ -535,6 +535,8 @@ export default function App() {
   const userPlan = (user?.user_metadata?.plan as string | undefined) ?? null;
   const draftManager = useDraftCourses(user?.id ?? null, userPlan);
   const [showDraftsPanel, setShowDraftsPanel] = React.useState(false);
+  const [showViewDraftsModal, setShowViewDraftsModal] = React.useState(false);
+  const [isLoadingDraft, setIsLoadingDraft] = React.useState(false);
   const [showAppImagePicker, setShowAppImagePicker] = React.useState(false);
   const [showImageDropdown, setShowImageDropdown] = React.useState(false);
   const [draftSaveMessage, setDraftSaveMessage] = React.useState<string | null>(null);
@@ -544,7 +546,8 @@ export default function App() {
 
   const showDraftMessage = (msg: string) => {
     setDraftSaveMessage(msg);
-    setTimeout(() => setDraftSaveMessage(null), 3500);
+    const long = /fail|full|error|quota|sign in|cannot|not found/i.test(msg);
+    setTimeout(() => setDraftSaveMessage(null), long ? 6000 : 3500);
   };
 
   const collectDesignSnapshot = (): Omit<DesignDraftSnapshot, 'phase'> => ({
@@ -570,22 +573,31 @@ export default function App() {
     settingsMode: settingsMode === 'quick' ? 'session' : settingsMode,
   });
 
-  const handleSaveDraft = () => {
-    if (!course) return;
-    if (activeDraftId) {
-      const existing = draftManager.loadDraft(activeDraftId);
-      if (existing?.phase === 'preview') {
-        draftManager.replacePreviewDraft(activeDraftId, course, playerConfig, theme);
-        showDraftMessage('Draft updated ✓');
-        navigateTo(ROUTES.preview(activeDraftId), true);
-        return;
-      }
+  const handleSaveDraft = async () => {
+    if (!course) {
+      showDraftMessage('Nothing to save — open or generate a course first.');
+      return;
     }
-    const result = draftManager.savePreviewDraft(course, playerConfig, theme);
-    showDraftMessage(result.message);
-    if (result.success && result.id) {
-      setActiveDraftId(result.id);
-      navigateTo(ROUTES.preview(result.id));
+    showDraftMessage('Saving draft…');
+    try {
+      if (activeDraftId) {
+        const existing = draftManager.loadDraft(activeDraftId);
+        if (existing?.phase === 'preview') {
+          const updated = await draftManager.replacePreviewDraft(activeDraftId, course, playerConfig, theme);
+          showDraftMessage(updated.message);
+          if (updated.success) navigateTo(ROUTES.preview(activeDraftId), true);
+          return;
+        }
+      }
+      const result = await draftManager.savePreviewDraft(course, playerConfig, theme);
+      showDraftMessage(result.message);
+      if (result.success && result.id) {
+        setActiveDraftId(result.id);
+        navigateTo(ROUTES.preview(result.id));
+      }
+    } catch (err: any) {
+      console.error('[Drafts] Save failed:', err);
+      showDraftMessage(err?.message || 'Failed to save draft.');
     }
   };
 
@@ -617,58 +629,98 @@ export default function App() {
     setStep('details');
   };
 
-  const handleSaveDesignDraft = () => {
+  const handleSaveDesignDraft = async () => {
     const design = collectDesignSnapshot();
-    if (activeDraftId) {
-      const existing = draftManager.loadDraft(activeDraftId);
-      if (existing?.phase === 'design') {
-        draftManager.replaceDesignDraft(activeDraftId, design);
+    showDraftMessage('Saving design draft…');
+    try {
+      if (activeDraftId) {
+        const existing = draftManager.loadDraft(activeDraftId);
+        if (existing?.phase === 'design') {
+          const updated = await draftManager.replaceDesignDraft(activeDraftId, design);
+          showDraftMessage(updated.message);
+          if (updated.success) {
+            setDesignDraftSavedFlash(true);
+            setTimeout(() => setDesignDraftSavedFlash(false), 2500);
+            navigateTo(ROUTES.design(activeDraftId), true);
+          }
+          return;
+        }
+      }
+      const result = await draftManager.saveDesignDraft(design);
+      showDraftMessage(result.message);
+      if (result.success && result.id) {
+        setActiveDraftId(result.id);
         setDesignDraftSavedFlash(true);
         setTimeout(() => setDesignDraftSavedFlash(false), 2500);
-        showDraftMessage('Design draft updated ✓');
-        navigateTo(ROUTES.design(activeDraftId), true);
-        return;
+        navigateTo(ROUTES.design(result.id));
       }
-    }
-    const result = draftManager.saveDesignDraft(design);
-    showDraftMessage(result.message);
-    if (result.success && result.id) {
-      setActiveDraftId(result.id);
-      setDesignDraftSavedFlash(true);
-      setTimeout(() => setDesignDraftSavedFlash(false), 2500);
-      navigateTo(ROUTES.design(result.id));
+    } catch (err: any) {
+      console.error('[Drafts] Design save failed:', err);
+      showDraftMessage(err?.message || 'Failed to save design draft.');
     }
   };
 
   const handleLoadDraft = (id: string) => {
     const snapshot = draftManager.loadDraft(id);
-    if (!snapshot) return;
-    setActiveDraftId(id);
-    setShowDraftsPanel(false);
-    if (snapshot.phase === 'design') {
-      applyDesignSnapshot(snapshot);
-      navigateTo(ROUTES.design(id));
-      showDraftMessage('Design draft loaded ✓');
+    if (!snapshot) {
+      showDraftMessage('Draft not found. It may have failed to save — try saving again.');
       return;
     }
-    setCourse(snapshot.course);
-    setOriginalCourse(snapshot.course);
-    setPlayerConfig(snapshot.playerConfig || playerConfig);
-    setTheme((snapshot.theme as any) || 'light');
-    setCurrentSlideIndex(0);
-    setIsSandboxMode(false);
-    setMobileDesignDemo(false);
-    setStep('preview');
-    navigateTo(ROUTES.preview(id));
-    showDraftMessage('Draft loaded ✓');
+    // Close modals first so the UI stays responsive while the course hydrates
+    setShowDraftsPanel(false);
+    setShowViewDraftsModal(false);
+    setIsLoadingDraft(true);
+    showDraftMessage('Opening draft…');
+
+    // Defer heavy setState (courses with AI images are large) off the click handler
+    window.setTimeout(() => {
+      try {
+        setActiveDraftId(id);
+        if (snapshot.phase === 'design') {
+          applyDesignSnapshot(snapshot);
+          navigateTo(ROUTES.design(id));
+          showDraftMessage('Design draft loaded ✓');
+          return;
+        }
+        if (!snapshot.course?.modules?.length) {
+          showDraftMessage('This draft has no course content and cannot be opened.');
+          return;
+        }
+        setCourse(snapshot.course);
+        setOriginalCourse(snapshot.course);
+        setPlayerConfig(snapshot.playerConfig || defaultPlayerConfig);
+        setTheme((snapshot.theme as any) || 'light');
+        setCurrentSlideIndex(0);
+        setHighestVisitedIndex(0);
+        setQuizState({});
+        setExploredBySlide({});
+        setKcCheckedSlideIds(new Set());
+        setFloatingImagesMap({});
+        setIsSandboxMode(false);
+        setMobileDesignDemo(false);
+        setShowPlayerProperties(false);
+        setStep('preview');
+        navigateTo(ROUTES.preview(id));
+        showDraftMessage('Draft loaded ✓');
+      } catch (err: any) {
+        console.error('[Drafts] Open failed:', err);
+        showDraftMessage(err?.message || 'Failed to open draft. It may be corrupted.');
+        setStep('home');
+        navigateTo(ROUTES.upload, true);
+      } finally {
+        setIsLoadingDraft(false);
+      }
+    }, 40);
   };
 
-  const handleReplaceDraft = (id: string) => {
+  const handleReplaceDraft = async (id: string) => {
     if (!course) return;
-    draftManager.replacePreviewDraft(id, course, playerConfig, theme);
-    setActiveDraftId(id);
-    showDraftMessage('Draft updated ✓');
-    navigateTo(ROUTES.preview(id), true);
+    const result = await draftManager.replacePreviewDraft(id, course, playerConfig, theme);
+    showDraftMessage(result.message);
+    if (result.success) {
+      setActiveDraftId(id);
+      navigateTo(ROUTES.preview(id), true);
+    }
   };
 
   // Controls which pre-auth view to show: public marketing homepage OR login/signup
@@ -796,7 +848,6 @@ export default function App() {
   const [regenTargetType, setRegenTargetType] = useState<string>('content');
   const [regenNoInteraction, setRegenNoInteraction] = useState(false);
   const [isRegenSlideRunning, setIsRegenSlideRunning] = useState(false);
-  const [showViewDraftsModal, setShowViewDraftsModal] = useState(false);
   /** Knowledge-check slides where learner clicked Check Answers / Submit */
   const [kcCheckedSlideIds, setKcCheckedSlideIds] = useState<Set<string>>(() => new Set());
 
@@ -3098,6 +3149,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                     <button
                       onClick={() => {
                         setAdminDropdownOpen(false);
+                        void draftManager.refreshDrafts();
                         setShowViewDraftsModal(true);
                       }}
                       className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800 text-sm font-medium transition-all text-left"
@@ -3296,8 +3348,8 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
               currentCourseTitle={course?.title}
               onSave={handleSaveDraft}
               onLoad={handleLoadDraft}
-              onDelete={(id) => draftManager.deleteDraft(id)}
-              onReplace={handleReplaceDraft}
+              onDelete={(id) => { void draftManager.deleteDraft(id); }}
+              onReplace={(id) => { void handleReplaceDraft(id); }}
               saveMessage={draftSaveMessage}
             />
           )}
@@ -3306,9 +3358,21 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
             isOpen={showViewDraftsModal}
             onClose={() => setShowViewDraftsModal(false)}
             drafts={draftManager.drafts}
+            isReady={draftManager.isReady}
+            slotsUsed={draftManager.slotsUsed}
+            slotsTotal={draftManager.slotsTotal}
+            onRefresh={() => draftManager.refreshDrafts()}
             onLoad={handleLoadDraft}
-            onDelete={(id) => draftManager.deleteDraft(id)}
+            onDelete={(id) => { void draftManager.deleteDraft(id); }}
           />
+
+          {isLoadingDraft && (
+            <div className="fixed inset-0 z-[800] bg-slate-950/70 backdrop-blur-sm flex flex-col items-center justify-center gap-4">
+              <Loader2 className="w-10 h-10 text-indigo-400 animate-spin" />
+              <p className="text-white font-bold text-sm">Opening draft…</p>
+              <p className="text-slate-400 text-xs">Large courses with images can take a moment</p>
+            </div>
+          )}
 
           {/* QC Track Changes Modal — overlays preview, persists across open/close */}
           <QCTrackChangesModal
