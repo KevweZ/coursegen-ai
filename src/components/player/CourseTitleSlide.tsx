@@ -15,6 +15,8 @@ interface CourseTitleSlideProps {
   isPreviewMode?: boolean;
   /** True while /api/generate-image is in progress for this course */
   isGeneratingCover?: boolean;
+  /** When true, hide the right image panel and center the title text */
+  hideImagePanel?: boolean;
 }
 
 const THEME_ACCENT: Record<Theme, string> = {
@@ -61,6 +63,7 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
   theme,
   onImageUpload,
   isGeneratingCover = false,
+  hideImagePanel = false,
 }) => {
   const accent   = accentColor || THEME_ACCENT[theme];
   const darkText = THEME_DARK_TEXT[theme];
@@ -72,8 +75,9 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
   const [hovering, setHovering] = useState(false);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
 
-  // Only show a real cover — never fall back to the stock photo archive
   const displayImage = uploadedImage || coverImage || null;
+  // If user uploaded while "no images" mode, still show the panel
+  const showImagePanel = !hideImagePanel || !!displayImage;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -83,61 +87,79 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
     onImageUpload?.(url);
   };
 
+  const titleBlock = (
+    <motion.div
+      initial={{ opacity: 0, x: showImagePanel ? -24 : 0, y: showImagePanel ? 0 : 12 }}
+      animate={{ opacity: 1, x: 0, y: 0 }}
+      transition={{ duration: 0.5, ease: 'easeOut' }}
+      style={{ maxWidth: showImagePanel ? '100%' : '46rem' }}
+      className={showImagePanel ? undefined : 'mx-auto text-center'}
+    >
+      <div
+        className="font-extrabold leading-tight tracking-tight"
+        style={{
+          fontSize: showImagePanel
+            ? 'clamp(2.4rem, 5.5vw, 4.25rem)'
+            : 'clamp(2.6rem, 6vw, 4.75rem)',
+          color: darkText,
+          wordBreak: 'keep-all',
+        }}
+      >
+        {line1}
+      </div>
+
+      {line2 && (
+        <div
+          className="font-semibold leading-snug tracking-tight mt-1"
+          style={{
+            fontSize: showImagePanel
+              ? 'clamp(1.15rem, 2.4vw, 1.75rem)'
+              : 'clamp(1.25rem, 2.8vw, 2rem)',
+            color: darkText,
+            opacity: 0.82,
+            wordBreak: 'break-word',
+            overflowWrap: 'break-word',
+            maxWidth: '100%',
+          }}
+        >
+          {line2}
+        </div>
+      )}
+
+      {description && description.trim() && (
+        <motion.p
+          className={cnDesc(showImagePanel)}
+          style={{ color: descColor, maxWidth: showImagePanel ? '36rem' : '40rem', marginLeft: showImagePanel ? undefined : 'auto', marginRight: showImagePanel ? undefined : 'auto' }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.4, delay: 0.3 }}
+        >
+          {description}
+        </motion.p>
+      )}
+    </motion.div>
+  );
+
+  if (!showImagePanel) {
+    return (
+      <div className="w-full h-full flex flex-row overflow-hidden" style={{ backgroundColor: leftBg }}>
+        <div className="flex-1 flex flex-col justify-center items-center px-10 sm:px-16 py-10">
+          {titleBlock}
+        </div>
+        <div className="shrink-0" style={{ width: '5%', backgroundColor: stripBg }} />
+      </div>
+    );
+  }
+
   return (
     <div className="w-full h-full flex flex-row overflow-hidden">
-      {/* ── Left text panel ───────────────────────────────────── */}
       <div
         className="flex flex-col justify-center px-14 py-10"
         style={{ width: '52%', flexShrink: 0, backgroundColor: leftBg }}
       >
-        <motion.div
-          initial={{ opacity: 0, x: -24 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.5, ease: 'easeOut' }}
-          style={{ maxWidth: '100%' }}
-        >
-          <div
-            className="font-extrabold leading-tight tracking-tight"
-            style={{
-              fontSize: 'clamp(2.4rem, 5.5vw, 4.25rem)',
-              color: darkText,
-              wordBreak: 'keep-all',
-            }}
-          >
-            {line1}
-          </div>
-
-          {line2 && (
-            <div
-              className="font-semibold leading-snug tracking-tight mt-1"
-              style={{
-                fontSize: 'clamp(1.15rem, 2.4vw, 1.75rem)',
-                color: darkText,
-                opacity: 0.82,
-                wordBreak: 'break-word',
-                overflowWrap: 'break-word',
-                maxWidth: '100%',
-              }}
-            >
-              {line2}
-            </div>
-          )}
-        </motion.div>
-
-        {description && description.trim() && (
-          <motion.p
-            className="mt-5 text-sm font-medium leading-relaxed normal-case tracking-normal"
-            style={{ color: descColor, maxWidth: '36rem' }}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.4, delay: 0.3 }}
-          >
-            {description}
-          </motion.p>
-        )}
+        {titleBlock}
       </div>
 
-      {/* ── Right image panel ─────────────────────────────────── */}
       <div
         className="flex-1 relative overflow-hidden"
         onMouseEnter={() => setHovering(true)}
@@ -172,7 +194,7 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
                 <ImageOff className="w-8 h-8 text-white/50" />
                 <p className="text-white/70 text-sm font-semibold">No AI cover yet</p>
                 <p className="text-white/45 text-xs max-w-[14rem]">
-                  Hover to upload, or enable AI title cover in Course Settings
+                  Hover to upload, or enable AI images in Course Settings
                 </p>
               </>
             )}
@@ -216,5 +238,11 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
     </div>
   );
 };
+
+function cnDesc(showImagePanel: boolean) {
+  return showImagePanel
+    ? 'mt-5 text-sm font-medium leading-relaxed normal-case tracking-normal'
+    : 'mt-6 text-base font-medium leading-relaxed normal-case tracking-normal';
+}
 
 export default CourseTitleSlide;

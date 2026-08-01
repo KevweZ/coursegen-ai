@@ -473,7 +473,16 @@ const INTERACTION_TYPES: Record<string, (slide: any) => boolean> = {
   timeline:         s => !s.data?.events     || s.data.events.length     === 0,
   branching:        s => !s.data?.nodes      || s.data.nodes.length      === 0,
   jeopardy:         s => !s.data?.categories || s.data.categories.length === 0,
-  matching:         s => !s.data?.pairs      || s.data.pairs.length      === 0,
+  // AI pipeline uses items/targets; legacy/regen may use pairs — either form is valid
+  matching:         s => {
+    const d = s.data || s.interactions?.[0] || {};
+    const pairs = Array.isArray(d.pairs) ? d.pairs : [];
+    const items = Array.isArray(d.items) ? d.items : [];
+    const targets = Array.isArray(d.targets) ? d.targets : [];
+    if (pairs.length > 0) return false;
+    if (items.length > 0 && targets.length > 0) return false;
+    return true;
+  },
   sorting:          s => !s.data?.items      || s.data.items.length      === 0,
   'drop-targets':   s => !s.data?.items      || s.data.items.length      === 0,
   hotspot:          s => !s.data?.hotspots   || s.data.hotspots.length   === 0,

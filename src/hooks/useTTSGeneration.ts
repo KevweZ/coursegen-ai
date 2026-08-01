@@ -6,7 +6,7 @@
  * - Patches each slide's voiceOverUrl via functional setCourse (does not wipe cover/source images)
  * - Exposes fine-grained progress state for the UI toast
  * - Skips slides with no narration text gracefully
- * - Does NOT block the UI thread — all work is async/await
+ * - Async/await; callers may await it during course finalize so preview waits for audio
  */
 
 import { useState, useCallback, useRef } from 'react';
@@ -49,6 +49,7 @@ export function useTTSGeneration() {
     course: any,
     setCourse: SetCourse,
     voice: string = 'alloy',
+    onSlideProgress?: (current: number, total: number, title: string) => void,
   ) => {
     if (!course?.modules) return;
 
@@ -87,13 +88,15 @@ export function useTTSGeneration() {
       const { slide } = narratableSlides[i];
       const narrationText = slide.voiceOverText || slide.narration || slide.content || '';
       const slideId = slide.id;
+      const title = slide.title ?? `Slide ${i + 1}`;
 
       setProgress(prev => ({
         ...prev,
         currentSlide: i + 1,
-        currentSlideTitle: slide.title ?? `Slide ${i + 1}`,
+        currentSlideTitle: title,
         error: null,
       }));
+      onSlideProgress?.(i + 1, narratableSlides.length, title);
 
       try {
         const blobUrl = await generateSlideTTS(narrationText, { voice: voice as any });

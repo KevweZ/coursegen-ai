@@ -15,6 +15,8 @@ interface CustomSortingActivityProps {
   correctOrder?: string[];
   prompt?: string;
   theme?: SortTheme;
+  /** Fires when the learner clicks Check Answer */
+  onChecked?: () => void;
 }
 
 // Each draggable item always needs a clearly visible border — without one,
@@ -45,6 +47,7 @@ export const CustomSortingActivity: React.FC<CustomSortingActivityProps> = ({
   correctOrder = [],
   prompt,
   theme = 'light',
+  onChecked,
 }) => {
   const t = T[theme] ?? T.light;
   const [order, setOrder] = useState<SortItem[]>([...items]);
@@ -82,7 +85,10 @@ export const CustomSortingActivity: React.FC<CustomSortingActivityProps> = ({
   };
   const handleDragEnd = () => { setDraggingIdx(null); setDragOverIdx(null); };
 
-  const handleCheck = () => setChecked(true);
+  const handleCheck = () => {
+    setChecked(true);
+    onChecked?.();
+  };
   const handleReset = () => { setOrder([...items]); setChecked(false); };
 
   const isItemCorrect = (idx: number) => {

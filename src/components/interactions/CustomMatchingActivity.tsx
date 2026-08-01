@@ -13,6 +13,8 @@ interface CustomMatchingActivityProps {
   targets: MatchTarget[];
   correctAnswers?: Record<string, string>;
   theme?: MatchTheme;
+  /** Fires when the learner clicks Check Answers */
+  onChecked?: () => void;
 }
 
 // Unplaced item text, drop-zone borders, and placeholder copy all need enough
@@ -74,6 +76,7 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
   targets = [],
   correctAnswers = {},
   theme = 'light',
+  onChecked,
 }) => {
   const t = T[theme] ?? T.light;
   const [userMatches, setUserMatches] = useState<Record<string, string>>({});
@@ -124,7 +127,10 @@ export const CustomMatchingActivity: React.FC<CustomMatchingActivityProps> = ({
     setChecked(false);
   };
 
-  const handleCheck = () => setChecked(true);
+  const handleCheck = () => {
+    setChecked(true);
+    onChecked?.();
+  };
   const handleReset = () => { setUserMatches({}); setChecked(false); };
 
   const allMatched      = targets.length > 0 && Object.keys(userMatches).length === targets.length;

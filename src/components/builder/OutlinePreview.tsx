@@ -177,12 +177,25 @@ export function OutlinePreview({
       {isHydrating && (
          <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-md z-[300] flex flex-col items-center justify-center p-6 animate-in fade-in duration-500">
            <Loader2 className="w-16 h-16 text-indigo-500 animate-spin mb-8" />
-           <h2 className="text-3xl font-bold text-white mb-4">Crafting Final Course</h2>
-           <p className="text-slate-400 max-w-md text-center mb-8">Rendering slides, assembling games, and compiling SCORM packaging...</p>
+           <h2 className="text-3xl font-bold text-white mb-4">
+             {progress < 55 ? 'Crafting Final Course'
+               : progress < 78 ? 'Adding Course Visuals'
+               : progress < 98 ? 'Generating Narration Audio'
+               : 'Opening Course Preview'}
+           </h2>
+           <p className="text-slate-400 max-w-md text-center mb-8">
+             {progress < 55
+               ? 'Rendering slides, interactions, and knowledge checks…'
+               : progress < 78
+                 ? 'Inserting AI and source images before the course opens…'
+                 : progress < 98
+                   ? 'Generating voice-over for every slide…'
+                   : 'Almost ready — opening Course Development…'}
+           </p>
            <div className="w-full max-w-md h-3 bg-slate-800 rounded-full overflow-hidden">
              <div className="h-full bg-gradient-to-r from-emerald-500 to-indigo-500 transition-all duration-500 ease-out" style={{ width: `${Math.min(100, progress)}%` }}></div>
            </div>
-           <span className="text-emerald-400 font-bold mt-4">{Math.round(Math.min(100, Math.max(10, progress)))}% Compiled</span>
+           <span className="text-emerald-400 font-bold mt-4">{Math.round(Math.min(100, Math.max(10, progress)))}% Complete</span>
          </div>
       )}
 

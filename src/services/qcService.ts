@@ -212,35 +212,49 @@ const SCHEMA_HINTS: Record<string, string> = {
   quiz:            '{ "questionText": "string", "options": [{ "id": "string", "text": "string", "isCorrect": boolean }], "feedback": "string" }',
   'multiple-answer':'{ "questionText": "string", "options": [{ "id": "string", "text": "string", "isCorrect": boolean }] }',
   jeopardy:        '{ "categories": [{ "id": "string", "title": "string", "questions": [{ "id": "string", "points": number, "question": "string", "answer": "string" }] }] }',
-  matching:        '{ "pairs": [{ "id": "string", "left": "string", "right": "string" }] }',
+  matching:        '{ "items": [{ "id": "i1", "content": "left term" }], "targets": [{ "id": "t1", "content": "right definition" }], "correctAnswers": { "i1": "t1" } }',
+  sorting:         '{ "items": [{ "id": "string", "content": "string" }], "correctOrder": ["id1", "id2"] }',
+  'drop-targets':  '{ "items": [{ "id": "string", "content": "string", "category": "string" }], "categories": ["Cat A", "Cat B"] }',
+  'multiple-choice':'{ "questionText": "string", "options": [{ "id": "string", "text": "string", "isCorrect": boolean }], "feedback": "string" }',
+  'multiple-answers':'{ "questionText": "string", "options": [{ "id": "string", "text": "string", "isCorrect": boolean }], "feedback": "string" }',
+  'true-false':    '{ "questionText": "string", "options": [{ "id": "a", "text": "True", "isCorrect": true }, { "id": "b", "text": "False", "isCorrect": false }], "feedback": "string" }',
+  content:         '{ "bullets": ["key point 1", "key point 2", "key point 3"] }',
   diagram:         '{ "mermaidCode": "flowchart TD\\n  A[Start] --> B[Step]\\n  B --> C[End]", "caption": "optional short caption" }',
   'carousel-panel':'{ "cards": [{ "id": "string", "label": "string", "color": "#6366f1", "description": "string", "expandedContent": "string" }] }',
   'click-reveal':  '{ "items": [{ "id": "string", "term": "string", "definition": "string" }] }',
+  'tabbed-horizontal': '{ "tabs": [{ "id": "string", "label": "string", "content": "string" }] }',
+  'tabbed-vertical':   '{ "tabs": [{ "id": "string", "label": "string", "content": "string" }] }',
+  hotspot:         '{ "hotspots": [{ "id": "string", "x": 30, "y": 40, "label": "string", "content": "string" }], "imageUrl": "" }',
 };
 
 /**
  * Regenerates a single slide's interaction data by sending a focused prompt to
- * the AI. Returns the new `data` object to be merged into the course.
+ * the AI. Returns `{ type, data, content? }` to merge into the course.
+ * Pass `targetType` to change the interaction kind (or `"content"` for plain bullets).
  */
 export async function regenerateSlideData(
   slide: any,
-  courseTopic: string
-): Promise<any> {
-  const schema = SCHEMA_HINTS[slide.type] ?? '{}';
+  courseTopic: string,
+  targetType?: string
+): Promise<{ type: string; data: any; content?: string }> {
+  const type = targetType || slide.type || 'content';
+  const schema = SCHEMA_HINTS[type] ?? SCHEMA_HINTS.content;
   const prompt = `You are an expert eLearning content author.
 
-Regenerate rich, educational content for this ${slide.type} interaction slide.
+Regenerate rich, educational content for this "${type}" slide.
 
 Slide title: "${slide.title}"
 Course topic: "${courseTopic}"
-${slide.content ? `Slide description: "${slide.content.slice(0, 300)}"` : ''}
+${slide.content ? `Existing slide text (for context): "${String(slide.content).slice(0, 300)}"` : ''}
 
-Return ONLY a valid JSON object matching this exact schema for the "${slide.type}" type:
+Return ONLY a valid JSON object matching this exact schema for the "${type}" type:
 ${schema}
 
 Rules:
-- Use 3–6 items/events/cards unless the schema implies otherwise
+- Use 3–6 items/events/cards/options unless the schema implies otherwise
 - Write in clear, professional English
+- For matching: every item id must appear as a key in correctAnswers mapping to a target id
+- For content with bullets: return { "bullets": ["...", "..."] }
 - Do NOT include markdown, backticks, or any explanation — pure JSON only`;
 
   const res = await fetch(`${API_BASE}/api/ai`, {
@@ -254,10 +268,39 @@ Rules:
   const aiRes = await res.json();
   const text: string = aiRes.content?.[0]?.text ?? aiRes.text ?? '';
 
-  // Extract JSON from the response
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error('AI did not return valid JSON');
-  return JSON.parse(jsonMatch[0]);
+  const parsed = JSON.parse(jsonMatch[0]);
+
+  if (type === 'content') {
+    const bullets: string[] = Array.isArray(parsed.bullets)
+      ? parsed.bullets
+      : Array.isArray(parsed.items)
+        ? parsed.items.map((it: any) => (typeof it === 'string' ? it : it.content || it.title || '')).filter(Boolean)
+        : [];
+    const content = bullets.length
+      ? bullets.map(b => `- ${b}`).join('\n')
+      : (parsed.content || slide.content || `Key points for: ${slide.title}`);
+    return { type: 'content', data: undefined, content };
+  }
+
+  // Normalize matching pairs → items/targets if model returns pairs
+  if (type === 'matching' && Array.isArray(parsed.pairs) && !parsed.items) {
+    const items = parsed.pairs.map((p: any, i: number) => ({
+      id: p.id ? `${p.id}_item` : `i${i + 1}`,
+      content: p.term || p.left || p.content || '',
+    }));
+    const targets = parsed.pairs.map((p: any, i: number) => ({
+      id: p.id ? `${p.id}_target` : `t${i + 1}`,
+      content: p.definition || p.right || '',
+    }));
+    const correctAnswers = Object.fromEntries(
+      items.map((it: any, i: number) => [it.id, targets[i].id])
+    );
+    return { type, data: { items, targets, correctAnswers } };
+  }
+
+  return { type, data: parsed };
 }
 
 /**

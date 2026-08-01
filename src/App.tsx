@@ -53,7 +53,9 @@ import {
   Save,
   Undo2,
   Send,
-  SlidersHorizontal
+  SlidersHorizontal,
+  FolderOpen,
+  RefreshCw,
 } from 'lucide-react';
 import { 
   Accordion, 
@@ -120,6 +122,7 @@ import {
 } from './lib/routes';
 import type { SandboxDemo } from './lib/routes';
 import { DraftCoursesPanel } from './components/player/DraftCoursesPanel';
+import { ViewDraftsModal } from './components/player/ViewDraftsModal';
 import { AppImagePickerModal } from './components/player/AppImagePickerModal';
 import { CourseTitleSlide } from './components/player/CourseTitleSlide';
 import { ClosingSlide } from './components/player/ClosingSlide';
@@ -724,7 +727,7 @@ export default function App() {
   const [lastUploadPath, setLastUploadPath] = useState<UploadPathChoice | null>(null);
   const [regeneratingSlideId, setRegeneratingSlideId] = useState<string | null>(null);
   /** Ref so runAnalysis (defined earlier) can call finalize after hydrate */
-  const finalizeGeneratedCourseRef = useRef<(course: any) => void>(() => {});
+  const finalizeGeneratedCourseRef = useRef<(course: any) => Promise<void>>(async () => {});
   
   const [isGenerating, setIsGenerating] = useState(false);
   const [isHydrating, setIsHydrating] = useState(false);
@@ -789,7 +792,13 @@ export default function App() {
   const [editDrawerOpen, setEditDrawerOpen] = useState(false);
   /** Always-current ref so Save Changes captures the latest editingSlide even after async edits */
   const editingSlideRef = useRef<any>(null);
-  const [editDrawerTab, setEditDrawerTab] = useState<'text'|'audio'>('text');
+  const [editDrawerTab, setEditDrawerTab] = useState<'text'|'audio'|'regenerate'>('text');
+  const [regenTargetType, setRegenTargetType] = useState<string>('content');
+  const [regenNoInteraction, setRegenNoInteraction] = useState(false);
+  const [isRegenSlideRunning, setIsRegenSlideRunning] = useState(false);
+  const [showViewDraftsModal, setShowViewDraftsModal] = useState(false);
+  /** Knowledge-check slides where learner clicked Check Answers / Submit */
+  const [kcCheckedSlideIds, setKcCheckedSlideIds] = useState<Set<string>>(() => new Set());
 
   // Player / Game
   const [quizState, setQuizState] = useState<Record<string, any>>({});
@@ -1375,6 +1384,30 @@ export default function App() {
   const FULL_BLEED_TYPES = ['cover', 'title', 'module-cover', 'closing', 'key-takeaways', 'player-tour', 'course-objectives', 'module-overview'];
   const isFullBleed = FULL_BLEED_TYPES.includes(currentSlide?.type as string);
 
+  const KNOWLEDGE_CHECK_TYPES = new Set([
+    'matching', 'sorting', 'drop-targets', 'quiz', 'multiple-choice',
+    'multiple-answers', 'true-false', 'knowledge-check', 'multiple-answer',
+  ]);
+
+  const markKcChecked = (slideId?: string) => {
+    if (!slideId) return;
+    setKcCheckedSlideIds(prev => {
+      if (prev.has(slideId)) return prev;
+      const next = new Set(prev);
+      next.add(slideId);
+      return next;
+    });
+  };
+
+  const isKnowledgeCheckSlide = (slide?: Slide | null) =>
+    !!slide && KNOWLEDGE_CHECK_TYPES.has(slide.type as string);
+
+  const isKcCheckSatisfied = (): boolean => {
+    if (navigationMode === 'free') return true;
+    if (!currentSlide || !isKnowledgeCheckSlide(currentSlide)) return true;
+    return kcCheckedSlideIds.has(currentSlide.id);
+  };
+
   const isCurrentSlideInteractionsComplete = (): boolean => {
     if (!requireInteractionsComplete) return true;
     if (navigationMode === 'free') return true;
@@ -1386,6 +1419,9 @@ export default function App() {
   };
 
   const interactionProgressLabel = (() => {
+    if (navigationMode !== 'free' && currentSlide && isKnowledgeCheckSlide(currentSlide) && !kcCheckedSlideIds.has(currentSlide.id)) {
+      return 'Check your answers to continue';
+    }
     if (!requireInteractionsComplete || navigationMode === 'free' || !currentSlide) return null;
     const expected = expectedInteractionIds(currentSlide);
     if (expected.length === 0) return null;
@@ -1439,6 +1475,7 @@ export default function App() {
   };
 
   const handleNext = () => {
+    if (!isKcCheckSatisfied()) return;
     if (!isCurrentSlideInteractionsComplete()) return;
     const next = Math.min(allSlides.length - 1, currentSlideIndex + 1);
     setHighestVisitedIndex(prev => Math.max(prev, next));
@@ -1803,11 +1840,11 @@ export default function App() {
               courseType: outlineCourseType,
               scenarioConfig: outlineInteractions.includes('scenario') ? scenarioConfig : undefined,
             },
-            (pct) => setProgress(45 + Math.round(pct * 0.5))
+            // Leave 55–100% for images + audio in finalize
+            (pct) => setProgress(20 + Math.round(pct * 0.35))
           );
-          setProgress(100);
-          // Apply Course Settings (voice-over, exam, nav) + kick off TTS — same as customize path
-          finalizeGeneratedCourseRef.current({
+          // Apply Course Settings + wait for images/audio before showing Development
+          await finalizeGeneratedCourseRef.current({
             ...finalCourse,
             learningObjectives: result.objectives || learningObjectives,
             title: result.title || finalCourse.title,
@@ -2232,9 +2269,14 @@ export default function App() {
       setOutlineDraft(draft);
       if (skipOutlineReview) {
         setProgress(45);
-        const finalCourse = await hydrateCourseContent(draft, prompt, { courseType, scenarioConfig: interactionTypes.includes('scenario') ? scenarioConfig : undefined });
-        // Use the same settings-aware finalize path (cover + source images + QC)
-        finalizeGeneratedCourse(finalCourse);
+        const finalCourse = await hydrateCourseContent(
+          draft,
+          prompt,
+          { courseType, scenarioConfig: interactionTypes.includes('scenario') ? scenarioConfig : undefined },
+          (pct) => setProgress(45 + Math.round(pct * 0.1))
+        );
+        // Wait for images + audio before opening Course Development
+        await finalizeGeneratedCourse(finalCourse);
       } else {
         // Item 7: Jump to 100% when outline generation is done
         setProgress(100);
@@ -2249,8 +2291,8 @@ export default function App() {
     }
   };
 
-  /** Apply saved Course Settings onto a hydrated course + kick off TTS/images/QC. */
-  const finalizeGeneratedCourse = (finalCourse: any) => {
+  /** Apply Course Settings, finish images + audio, then open Course Development. */
+  const finalizeGeneratedCourse = async (finalCourse: any) => {
     const stamped = {
       ...finalCourse,
       examConfig,
@@ -2273,10 +2315,9 @@ export default function App() {
     setActiveDraftId(null);
     setIsSandboxMode(false);
     setMobileDesignDemo(false);
-    setStep('preview');
-    navigateTo(ROUTES.courseDevelopment);
+    // Do NOT open Course Development until images + audio below finish
 
-    // Pre-generate mastery quiz so Begin is instant when the learner reaches it
+    // Pre-generate mastery quiz in parallel (does not gate the preview)
     if (examConfig.enabled) {
       setIsGeneratingExam(true);
       setExamError(null);
@@ -2294,7 +2335,6 @@ export default function App() {
       setExamQuestions([]);
     }
 
-    // Imagery per Course Settings — snapshot mode/file so async work is stable
     const modeSnapshot = imageMode;
     const fileSnapshot = uploadedFile;
     const sourceSnapshot = sourceImages;
@@ -2332,7 +2372,6 @@ export default function App() {
           slides: (m.slides || []).map((s: any) => {
             const src = byId[s.id];
             if (!src) return s;
-            // Prefer imagery-enriched data (tab/item imageUrls) when present
             const mergedData = (() => {
               if (!src.data) return s.data;
               if (!s.data) return src.data;
@@ -2366,14 +2405,14 @@ export default function App() {
       };
     };
 
-    // Imagery → QC → TTS (sequential). Parallel TTS previously wiped covers/source images.
-    void (async () => {
-      let imgs = sourceSnapshot;
-      let working: any = stamped;
-      let coverUrl: string | null = null;
+    let imgs = sourceSnapshot;
+    let working: any = stamped;
+    let coverUrl: string | null = null;
 
-      if (wantsAi || wantsSource) setIsGeneratingImages(true);
-
+    // ── Images (55–78%) ──────────────────────────────────────────────
+    if (wantsAi || wantsSource) {
+      setIsGeneratingImages(true);
+      setProgress(56);
       try {
         if (wantsSource && imgs.length === 0 && fileSnapshot) {
           try {
@@ -2390,6 +2429,7 @@ export default function App() {
             showDraftMessage('Could not extract images from the uploaded file.');
           }
         }
+        setProgress(60);
 
         if (wantsSource && imgs.length > 0) {
           working = attachSourceImagesToCourse(working, imgs);
@@ -2397,6 +2437,7 @@ export default function App() {
           setCourse(working);
           setOriginalCourse(working);
         }
+        setProgress(63);
 
         if (wantsAi) {
           try {
@@ -2408,31 +2449,31 @@ export default function App() {
             showDraftMessage('AI cover image ready ✓');
           } catch (err: any) {
             console.warn('[ImageService] Cover generation failed:', err);
-            showDraftMessage(err?.message || 'Cover image generation failed — add one via Add Image.');
+            showDraftMessage(err?.message || 'Cover image generation failed — add one via Upload Image.');
           }
         }
+        setProgress(68);
 
-        if (wantsAi || wantsSource) {
-          try {
-            const { enrichHotspotAndCarouselImages } = await import('./services/imageService');
-            working = await enrichHotspotAndCarouselImages(working, imgs, {
-              generateAi: wantsAi,
-              useSource: wantsSource,
-            });
-            if (coverUrl) working = { ...working, coverImage: coverUrl };
-            seedFloatingFromCourse(working);
-            setCourse(working);
-            setOriginalCourse(working);
-          } catch (err) {
-            console.warn('[ImageService] Hotspot/carousel enrich failed:', err);
-          }
+        try {
+          const { enrichHotspotAndCarouselImages } = await import('./services/imageService');
+          working = await enrichHotspotAndCarouselImages(working, imgs, {
+            generateAi: wantsAi,
+            useSource: wantsSource,
+          });
+          if (coverUrl) working = { ...working, coverImage: coverUrl };
+          seedFloatingFromCourse(working);
+          setCourse(working);
+          setOriginalCourse(working);
+        } catch (err) {
+          console.warn('[ImageService] Hotspot/carousel enrich failed:', err);
         }
+        setProgress(72);
 
-        // AI visuals for content slides + tab panels (skips quizzes/objectives; only when useful)
         if (wantsAi) {
           try {
             showDraftMessage('Generating content visuals…');
             working = await generateContentSlideImages(working, (done, total) => {
+              setProgress(72 + Math.round((done / Math.max(1, total)) * 6));
               if (done === total) showDraftMessage(`Content visuals ready (${total}) ✓`);
             });
             if (coverUrl) working = { ...working, coverImage: coverUrl };
@@ -2446,78 +2487,92 @@ export default function App() {
       } finally {
         setIsGeneratingImages(false);
       }
+    }
+
+    // ── QC (78–82%) ──────────────────────────────────────────────────
+    setProgress(78);
+    try {
+      setIsRunningQC(true);
+      setQcPhase('structural');
+      const report = await runFullQC(working, voiceSnapshot, (phase) => setQcPhase(phase));
+      setQcReport(report);
+      if (report.issues.some(i => i.autoFixable)) {
+        const { course: fixedCourse } = autoFixCourse(working, report);
+        const merged = mergeImageryInto(fixedCourse, working, coverUrl);
+        seedFloatingFromCourse(merged);
+        setCourse(merged);
+        setOriginalCourse(merged);
+        working = merged;
+      }
+    } catch {
+      // QC failure is non-fatal
+    } finally {
+      setIsRunningQC(false);
+      setQcPhase(null);
+    }
+    setProgress(82);
+
+    // ── Audio (82–98%) ───────────────────────────────────────────────
+    if (voiceSnapshot) {
+      try {
+        await generateTTS(working, setCourse, voiceIdSnapshot, (current, total) => {
+          setProgress(82 + Math.round((current / Math.max(1, total)) * 12));
+        });
+      } catch (err) {
+        console.warn('[TTS] Slide narration generation failed:', err);
+      }
 
       try {
-        setIsRunningQC(true);
-        setQcPhase('structural');
-        const report = await runFullQC(working, voiceSnapshot, (phase) => setQcPhase(phase));
-        setQcReport(report);
-        if (report.issues.some(i => i.autoFixable)) {
-          const { course: fixedCourse } = autoFixCourse(working, report);
-          const merged = mergeImageryInto(fixedCourse, working, coverUrl);
-          seedFloatingFromCourse(merged);
-          setCourse(merged);
-          setOriginalCourse(merged);
-          working = merged;
-        }
-      } catch {
-        // QC failure is non-fatal
-      } finally {
-        setIsRunningQC(false);
-        setQcPhase(null);
-      }
-
-      if (voiceSnapshot) {
-        generateTTS(working, setCourse, voiceIdSnapshot);
-        ;(async () => {
+        const { generateSlideTTS: genSlideTTS } = await import('./services/ttsService');
+        const syntheticJobs: Array<{ id: string; text: string }> = [
+          { id: '__cover__', text: `Welcome to ${working.title}. ${working.description || ''}`.trim() },
+          { id: '__player-tour__', text: 'Before we begin, take a moment to explore the player controls. Hover over each card to see the corresponding element highlighted in the player preview.' },
+        ];
+        const moduleSynthetics: Array<{ id: string; text: string }> = (working.modules || []).flatMap(
+          (m: any, idx: number) => {
+            const modNum = idx + 1;
+            const ct = (m.title || `Module ${modNum}`).replace(/^Module\s+\d+\s*[\u2014\-]\s*/i, '').trim();
+            const items: Array<{ id: string; text: string }> = [];
+            if (includeModuleTitleSlides) {
+              items.push({
+                id: `__module-cover-${modNum}__`,
+                text: `Module ${modNum}: ${ct}.${m.description ? ' ' + m.description : ''}`.trim(),
+              });
+            }
+            if (includeModuleOverviewSlides) {
+              items.push({
+                id: `__module-overview-${modNum}__`,
+                text: includeModuleTitleSlides
+                  ? (m.description
+                    ? `Here's what you'll cover: ${m.description}`
+                    : "Let's look at the learning objectives for this module.")
+                  : `Module ${modNum}: ${ct}. ${m.description ? `Here's what you'll cover: ${m.description}` : "Let's look at the learning objectives for this module."}`.trim(),
+              });
+            }
+            return items;
+          }
+        );
+        const allSynthetic = [...syntheticJobs, ...moduleSynthetics].filter(j => j.text.trim());
+        for (let i = 0; i < allSynthetic.length; i++) {
+          const { id, text } = allSynthetic[i];
           try {
-            const { generateSlideTTS: genSlideTTS } = await import('./services/ttsService');
-            for (const { id, text } of [
-              { id: '__cover__', text: `Welcome to ${working.title}. ${working.description || ''}`.trim() },
-              { id: '__player-tour__', text: 'Before we begin, take a moment to explore the player controls. Hover over each card to see the corresponding element highlighted in the player preview.' },
-            ]) {
-              if (!text.trim()) continue;
-              try {
-                const url = await genSlideTTS(text, { voice: voiceIdSnapshot as any });
-                setSyntheticAudioMap(prev => ({ ...prev, [id]: url }));
-              } catch { /* non-fatal */ }
-            }
-            const moduleSynthetics: Array<{ id: string; text: string }> = (working.modules || []).flatMap(
-              (m: any, idx: number) => {
-                const modNum = idx + 1;
-                const ct = (m.title || `Module ${modNum}`).replace(/^Module\s+\d+\s*[\u2014\-]\s*/i, '').trim();
-                const items: Array<{ id: string; text: string }> = [];
-                if (includeModuleTitleSlides) {
-                  items.push({
-                    id: `__module-cover-${modNum}__`,
-                    text: `Module ${modNum}: ${ct}.${m.description ? ' ' + m.description : ''}`.trim(),
-                  });
-                }
-                if (includeModuleOverviewSlides) {
-                  items.push({
-                    id: `__module-overview-${modNum}__`,
-                    text: includeModuleTitleSlides
-                      ? (m.description
-                        ? `Here's what you'll cover: ${m.description}`
-                        : "Let's look at the learning objectives for this module.")
-                      : `Module ${modNum}: ${ct}. ${m.description ? `Here's what you'll cover: ${m.description}` : "Let's look at the learning objectives for this module."}`.trim(),
-                  });
-                }
-                return items;
-              }
-            );
-            for (const { id, text } of moduleSynthetics) {
-              if (!text.trim()) continue;
-              try {
-                const url = await genSlideTTS(text, { voice: voiceIdSnapshot as any });
-                setSyntheticAudioMap(prev => ({ ...prev, [id]: url }));
-              } catch { /* non-fatal */ }
-              await new Promise(r => setTimeout(r, 300));
-            }
-          } catch { /* silently ignore */ }
-        })();
-      }
-    })();
+            const url = await genSlideTTS(text, { voice: voiceIdSnapshot as any });
+            setSyntheticAudioMap(prev => ({ ...prev, [id]: url }));
+          } catch { /* non-fatal */ }
+          setProgress(94 + Math.round(((i + 1) / Math.max(1, allSynthetic.length)) * 4));
+          if (i < allSynthetic.length - 1) await new Promise(r => setTimeout(r, 300));
+        }
+      } catch { /* silently ignore */ }
+    }
+
+    // Course is complete — open Development preview
+    if (coverUrl) working = { ...working, coverImage: coverUrl };
+    setCourse(working);
+    setOriginalCourse(working);
+    setProgress(100);
+    await new Promise(r => setTimeout(r, 250));
+    setStep('preview');
+    navigateTo(ROUTES.courseDevelopment);
   };
   finalizeGeneratedCourseRef.current = finalizeGeneratedCourse;
 
@@ -2603,11 +2658,10 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
     try {
       const finalCourse = await hydrateCourseContent(
         outlineDraft!, prompt, { courseType, scenarioConfig: interactionTypes.includes('scenario') ? scenarioConfig : undefined },
-        (pct) => setProgress(pct)
+        // Leave 55–100% for images + audio in finalize
+        (pct) => setProgress(Math.round(pct * 0.55))
       );
-      setProgress(100);
-      await new Promise(r => setTimeout(r, 200));
-      finalizeGeneratedCourse(finalCourse);
+      await finalizeGeneratedCourse(finalCourse);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -2667,6 +2721,38 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
   const renderProgressState = () => {
     const isWorking = isGenerating || isHydrating;
     if (!isWorking && !error) return null;
+    const title = isGeneratingImages
+      ? 'Adding Course Visuals…'
+      : ttsProgress.isRunning
+        ? 'Generating Narration Audio…'
+        : isRunningQC
+          ? (qcPhase === 'structural' ? 'Checking Structure & Format…'
+             : qcPhase === 'ai' ? 'Running AI Quality Scan…'
+             : 'Finalising…')
+          : isGenerating && progress < 55
+            ? 'Structuring Module Flow...'
+            : progress < 55
+              ? 'Synthesizing Course Content...'
+              : progress < 78
+                ? 'Adding Course Visuals…'
+                : progress < 98
+                  ? 'Generating Narration Audio…'
+                  : 'Finishing Up…';
+    const subtitle = isGeneratingImages
+      ? 'Creating the cover, placing source images, and adding visuals where they help learning…'
+      : ttsProgress.isRunning
+        ? `Recording slide ${ttsProgress.currentSlide} of ${ttsProgress.totalSlides}${ttsProgress.currentSlideTitle ? ` — ${ttsProgress.currentSlideTitle}` : ''}…`
+        : isRunningQC
+          ? (qcPhase === 'ai' ? 'AI is reviewing spelling, grammar, and clarity. Almost there…' : 'Running instant checks on your course content…')
+          : isGenerating && progress < 55
+            ? 'Analyzing topics and creating progressive learning paths. This usually takes 10-15 seconds.'
+            : progress < 55
+              ? 'Generating detailed slide content, interactions, and knowledge checks. This can take up to a minute.'
+              : progress < 78
+                ? 'Inserting AI and source images into the course before preview…'
+                : progress < 98
+                  ? 'Generating voice-over for every slide before opening the course…'
+                  : 'Opening Course Development…';
     return (
       <div className="w-full flex-col items-center justify-center p-8 bg-slate-900 rounded-3xl border border-indigo-500/30 text-center animate-in fade-in zoom-in duration-500 mb-8 max-w-4xl mx-auto shadow-2xl">
         {error ? (
@@ -2687,16 +2773,10 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
             
             <div className="space-y-3">
               <h3 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">
-                {isRunningQC
-                  ? (qcPhase === 'structural' ? 'Checking Structure & Format…'
-                     : qcPhase === 'ai'       ? 'Running AI Quality Scan…'
-                     : 'Finalising…')
-                  : isGenerating ? 'Structuring Module Flow...' : 'Synthesizing Course Content...'}
+                {title}
               </h3>
               <p className="text-slate-400 text-lg">
-                {isRunningQC
-                  ? (qcPhase === 'ai' ? 'AI is reviewing spelling, grammar, and clarity. Almost there…' : 'Running instant checks on your course content…')
-                  : isGenerating ? 'Analyzing topics and creating progressive learning paths. This usually takes 10-15 seconds.' : 'Generating detailed slide content, interactions, and knowledge checks. This can take up to a minute.'}
+                {subtitle}
               </p>
             </div>
 
@@ -2710,7 +2790,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                 <div className="absolute inset-0 bg-white/20 w-1/2 -skew-x-[30deg] animate-[shimmer_2s_infinite]" />
               </motion.div>
             </div>
-            <p className="text-sm font-bold text-indigo-400 font-mono">{progress}% Complete</p>
+            <p className="text-sm font-bold text-indigo-400 font-mono">{Math.round(progress)}% Complete</p>
             
             <style>{`
               @keyframes shimmer {
@@ -3007,6 +3087,27 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                     <button
                       onClick={() => {
                         setAdminDropdownOpen(false);
+                        setStep('player-properties');
+                        navigateTo(ROUTES.playerProperties);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800 text-sm font-medium transition-all text-left"
+                    >
+                      <Settings2 className="w-3.5 h-3.5 text-orange-400" />
+                      Player Properties
+                    </button>
+                    <button
+                      onClick={() => {
+                        setAdminDropdownOpen(false);
+                        setShowViewDraftsModal(true);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800 text-sm font-medium transition-all text-left"
+                    >
+                      <FolderOpen className="w-3.5 h-3.5 text-emerald-400" />
+                      View Drafts
+                    </button>
+                    <button
+                      onClick={() => {
+                        setAdminDropdownOpen(false);
                         dismissPlayerProperties();
                         setStep('account');
                         navigateTo(ROUTES.myAccount);
@@ -3201,6 +3302,14 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
             />
           )}
 
+          <ViewDraftsModal
+            isOpen={showViewDraftsModal}
+            onClose={() => setShowViewDraftsModal(false)}
+            drafts={draftManager.drafts}
+            onLoad={handleLoadDraft}
+            onDelete={(id) => draftManager.deleteDraft(id)}
+          />
+
           {/* QC Track Changes Modal — overlays preview, persists across open/close */}
           <QCTrackChangesModal
             open={qcModalOpen}
@@ -3266,11 +3375,13 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
               const slide = course?.modules?.[moduleIndex]?.slides?.[slideIndex];
               if (!slide) return;
               try {
-                const newData = await regenerateSlideData(slide, course.title ?? '');
+                const result = await regenerateSlideData(slide, course.title ?? '');
                 const cloned = JSON.parse(JSON.stringify(course));
-                cloned.modules[moduleIndex].slides[slideIndex].data = newData;
+                const target = cloned.modules[moduleIndex].slides[slideIndex];
+                target.type = result.type;
+                target.data = result.data;
+                if (result.content != null) target.content = result.content;
                 pushUndo(); setCourse(cloned);
-                // Remove the resolved empty-interaction issue
                 setQcReport(prev => prev ? {
                   ...prev,
                   issues: prev.issues.filter(i => !(i.slideId === slideId && i.type === 'interaction_empty')),
@@ -3279,7 +3390,6 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                 } : null);
               } catch (err) {
                 console.error('[QC] Regeneration failed:', err);
-                // Non-fatal — user can retry or use simple layout
               }
             }}
             onRunScan={async () => {
@@ -3433,8 +3543,10 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                          <p className="text-xs text-slate-600 text-center">
                            {isGenerating && settingsMode === 'quick' && !isAnalyzing
                              ? (progress < 40 ? 'Creating course structure...' :
-                                progress < 70 ? 'Writing slides and interactions...' :
-                                'Finishing up…')
+                                progress < 55 ? 'Writing slides and interactions...' :
+                                progress < 78 ? 'Adding course visuals…' :
+                                progress < 98 ? 'Generating narration audio…' :
+                                'Opening course preview…')
                              : (progress < 30 ? 'Reading document structure...' :
                                 progress < 55 ? 'Extracting topics and key concepts...' :
                                 progress < 80 ? 'Generating learning objectives...' :
@@ -3841,48 +3953,40 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                       <RotateCw className="w-3 h-3" /><span className="hidden lg:inline">Reset</span>
                     </button>
 
-                    <div className="relative" onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setShowImageDropdown(false); }} tabIndex={-1}>
-                      <button
-                        onClick={() => setShowImageDropdown(v => !v)}
-                        title="Add Image"
-                        className="flex items-center gap-1 px-2 py-1 rounded-md border border-violet-700/50 hover:bg-violet-800/20 text-violet-300 text-[11px] font-semibold"
-                      >
-                        <ImageIcon className="w-3 h-3" /><span className="hidden lg:inline">Add Image</span><ChevronDown className="w-2.5 h-2.5 ml-0.5" />
-                      </button>
-                      {showImageDropdown && (
-                        <div className="absolute top-full right-0 mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 py-1 min-w-[150px]">
-                          <button onClick={() => { setShowAppImagePicker(true); setShowImageDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-white">
-                            <ImageIcon className="w-3 h-3 text-violet-400 shrink-0" /> Image Library
-                          </button>
-                          <label htmlFor="topbar-img-upload" onClick={() => setShowImageDropdown(false)} className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-white cursor-pointer">
-                            <Upload className="w-3 h-3 text-emerald-400 shrink-0" /> Upload Image
-                            <input id="topbar-img-upload" type="file" accept="image/*" multiple className="hidden"
-                              onChange={e => {
-                                if (e.target.files?.length) {
-                                  const newImgs: FloatingImage[] = Array.from(e.target.files).map((f, i) => ({
-                                    id: `fi-${Date.now()}-${i}`,
-                                    url: URL.createObjectURL(f),
-                                    x: 40 + i * 20, y: 40 + i * 20, width: 320, height: 240,
-                                  }));
-                                  pushUndo(); setFloatingImagesMap(prev => ({ ...prev, [currentSlide?.id]: [...(prev[currentSlide?.id] || []), ...newImgs] }));
-                                  e.target.value = '';
-                                }
-                              }}
-                            />
-                          </label>
-                          <button onClick={() => { setShowImageGalleryForSlide(currentSlide?.id || null); setShowImageDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-white">
-                            <Layers className="w-3 h-3 text-teal-400 shrink-0" /> Source Image
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                    <label
+                      htmlFor="topbar-img-upload"
+                      title="Upload Image"
+                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-violet-700/50 hover:bg-violet-800/20 text-violet-300 text-[11px] font-semibold cursor-pointer"
+                    >
+                      <Upload className="w-3 h-3" /><span className="hidden lg:inline">Upload Image</span>
+                      <input id="topbar-img-upload" type="file" accept="image/*" multiple className="hidden"
+                        onChange={e => {
+                          if (e.target.files?.length) {
+                            const newImgs: FloatingImage[] = Array.from(e.target.files).map((f, i) => ({
+                              id: `fi-${Date.now()}-${i}`,
+                              url: URL.createObjectURL(f),
+                              x: 40 + i * 20, y: 40 + i * 20, width: 320, height: 240,
+                            }));
+                            pushUndo(); setFloatingImagesMap(prev => ({ ...prev, [currentSlide?.id]: [...(prev[currentSlide?.id] || []), ...newImgs] }));
+                            e.target.value = '';
+                          }
+                        }}
+                      />
+                    </label>
 
                     <button
-                      title="Edit Text & Audio"
-                      onClick={() => { editingSlideRef.current = currentSlide; setEditingSlide(currentSlide); setEditDrawerOpen(true); setEditDrawerTab('text'); }}
+                      title="Edit Slide"
+                      onClick={() => {
+                        editingSlideRef.current = currentSlide;
+                        setEditingSlide(currentSlide);
+                        setEditDrawerOpen(true);
+                        setEditDrawerTab('text');
+                        setRegenTargetType((currentSlide?.type as string) || 'content');
+                        setRegenNoInteraction(currentSlide?.type === 'content' || currentSlide?.type === 'summary');
+                      }}
                       className="flex items-center gap-1 px-2 py-1 rounded-md border border-indigo-700/50 hover:bg-indigo-800/20 text-indigo-300 text-[11px] font-semibold"
                     >
-                      <Edit3 className="w-3 h-3" /><span className="hidden lg:inline">Edit Text &amp; Audio</span>
+                      <Edit3 className="w-3 h-3" /><span className="hidden lg:inline">Edit Slide</span>
                     </button>
 
                     {(currentSlide?.type === 'scenario' || currentSlide?.type === 'game-template' || ['knowledge-check', 'mastery-exam'].includes(currentSlide?.type ?? '')) && (
@@ -4189,7 +4293,13 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                      coverImage={(currentSlide as any).coverImage || (course as any)?.coverImage || undefined}
                                      theme={theme}
                                      isPreviewMode={true}
-                                     isGeneratingCover={isGeneratingImages && !(currentSlide as any).coverImage && !(course as any)?.coverImage}
+                                     hideImagePanel={normalizeImageMode(imageMode) === 'none'}
+                                     isGeneratingCover={
+                                       normalizeImageMode(imageMode) !== 'none' &&
+                                       isGeneratingImages &&
+                                       !(currentSlide as any).coverImage &&
+                                       !(course as any)?.coverImage
+                                     }
                                      onImageUpload={(url) => {
                                        setCourse((prev: any) => prev ? { ...prev, coverImage: url } : prev);
                                        setCourseBg(url);
@@ -4362,7 +4472,10 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                      {!qs.submitted ? (
                                        <button
                                          disabled={qs.selectedIdx === null}
-                                         onClick={() => setQuizState(s => ({ ...s, [qKey]: { ...qs, submitted: true } }))}
+                                         onClick={() => {
+                                           setQuizState(s => ({ ...s, [qKey]: { ...qs, submitted: true } }));
+                                           markKcChecked(currentSlide.id);
+                                         }}
                                          className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-bold rounded-xl transition-all"
                                        >Submit Answer</button>
                                      ) : (
@@ -4429,7 +4542,10 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                      {!maState.submitted ? (
                                        <button
                                          disabled={maState.selected.length === 0}
-                                         onClick={() => setQuizState((s: any) => ({ ...s, [qKey]: { ...maState, submitted: true } }))}
+                                         onClick={() => {
+                                           setQuizState((s: any) => ({ ...s, [qKey]: { ...maState, submitted: true } }));
+                                           markKcChecked(currentSlide.id);
+                                         }}
                                          className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-bold rounded-xl transition-all"
                                        >Submit Answers</button>
                                      ) : (
@@ -4482,6 +4598,46 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                     }
                                     return { items: [], targets: [], correctAnswers: {} };
                                   })();
+                                  if (!matchingProps.items.length || !matchingProps.targets.length) {
+                                    return (
+                                      <div className="space-y-6 w-full">
+                                        <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
+                                        <EmptySlideRegenerate
+                                          title={currentSlide.title}
+                                          isRegenerating={regeneratingSlideId === currentSlide.id || isRegenSlideRunning}
+                                          onRegenerate={async () => {
+                                            setIsRegenSlideRunning(true);
+                                            try {
+                                              const result = await regenerateSlideData(currentSlide, course?.title ?? '', 'matching');
+                                              pushUndo();
+                                              setCourse((prev: any) => {
+                                                if (!prev) return prev;
+                                                return {
+                                                  ...prev,
+                                                  modules: prev.modules.map((m: any) => ({
+                                                    ...m,
+                                                    slides: m.slides.map((s: any) =>
+                                                      s.id === currentSlide.id
+                                                        ? { ...s, type: result.type, data: result.data, content: result.content ?? s.content }
+                                                        : s
+                                                    ),
+                                                  })),
+                                                };
+                                              });
+                                              setQcReport(prev => prev ? {
+                                                ...prev,
+                                                issues: prev.issues.filter(i => !(i.slideId === currentSlide.id && i.type === 'interaction_empty')),
+                                              } : null);
+                                            } catch (err: any) {
+                                              alert(err?.message || 'Regeneration failed');
+                                            } finally {
+                                              setIsRegenSlideRunning(false);
+                                            }
+                                          }}
+                                        />
+                                      </div>
+                                    );
+                                  }
                                   return (
                                     <div className="space-y-6 w-full">
                                       <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
@@ -4491,6 +4647,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                         targets={matchingProps.targets || []}
                                         correctAnswers={matchingProps.correctAnswers || {}}
                                         theme={theme}
+                                        onChecked={() => markKcChecked(currentSlide.id)}
                                        />
                                     </div>
                                   );
@@ -4549,7 +4706,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                      <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
                                      <SmartContent content={sanitizeContent(currentSlide.content) + '\n\nDrag items or use ↑ ↓ arrows to reorder.'} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                      <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
-                                        <CustomSortingActivity items={(currentSlide.data || currentSlide.interactions?.[0] || {}).items || []} correctOrder={(currentSlide.data || currentSlide.interactions?.[0] || {}).correctOrder || []} theme={theme} />
+                                        <CustomSortingActivity items={(currentSlide.data || currentSlide.interactions?.[0] || {}).items || []} correctOrder={(currentSlide.data || currentSlide.interactions?.[0] || {}).correctOrder || []} theme={theme} onChecked={() => markKcChecked(currentSlide.id)} />
                                      </div>
                                   </div>
                                )}
@@ -4823,9 +4980,18 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                   <div className="space-y-6 w-full">
                                      <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
                                      <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
-                                     <div className="p-8 border-2 border-dashed border-indigo-400/50 bg-indigo-500/10 rounded-2xl text-center">
-                                       <Gamepad2 className="w-12 h-12 text-indigo-400 mx-auto mb-4 opacity-50" />
+                                     <div className="p-8 border-2 border-dashed border-indigo-400/50 bg-indigo-500/10 rounded-2xl text-center space-y-4">
+                                       <Gamepad2 className="w-12 h-12 text-indigo-400 mx-auto opacity-50" />
                                        <p className="text-xl font-bold text-indigo-300">[{currentSlide.type}] interaction is under construction.</p>
+                                       {navigationMode !== 'free' && !kcCheckedSlideIds.has(currentSlide.id) && (
+                                         <button
+                                           type="button"
+                                           onClick={() => markKcChecked(currentSlide.id)}
+                                           className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm"
+                                         >
+                                           Check Answers
+                                         </button>
+                                       )}
                                      </div>
                                   </div>
                                )}
@@ -4838,7 +5004,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                        <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
                                        <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300 text-sm flex items-start gap-3">
                                          <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                                         <span>Scenario data is missing. Use <strong>Edit Text &amp; Audio</strong> or regenerate this slide.</span>
+                                         <span>Scenario data is missing. Use <strong>Edit Slide → Regenerate</strong> to rebuild this slide.</span>
                                        </div>
                                      </div>
                                    );
@@ -4979,6 +5145,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                           currentSlide?.type === 'mastery-exam' ||
                           currentSlide?.type === 'exam-results' ||
                           (currentSlide?.type === 'scenario' && !scenarioCompleted) ||
+                          !isKcCheckSatisfied() ||
                           !isCurrentSlideInteractionsComplete()
                         }
                         disableNextReason={interactionProgressLabel}
@@ -5085,12 +5252,21 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                 <div className="flex border-b border-slate-800 flex-shrink-0">
                   {[
                     { id: 'text', icon: '✏', label: 'Edit Text', activeColor: 'border-indigo-500 text-indigo-300 bg-indigo-500/10' },
-                    { id: 'audio', icon: '🎤', label: 'Audio / Narration', activeColor: 'border-emerald-500 text-emerald-300 bg-emerald-500/10' },
+                    { id: 'audio', icon: '🎤', label: 'Audio', activeColor: 'border-emerald-500 text-emerald-300 bg-emerald-500/10' },
+                    { id: 'regenerate', icon: '↻', label: 'Regenerate', activeColor: 'border-amber-500 text-amber-300 bg-amber-500/10' },
                   ].map(tab => (
                     <button
                       key={tab.id}
-                      onClick={() => setEditDrawerTab(tab.id as any)}
-                      className={`flex-1 flex items-center justify-center gap-1.5 px-4 py-3 text-sm font-bold border-b-2 transition-all ${editDrawerTab === tab.id ? tab.activeColor : 'border-transparent text-slate-500 hover:text-slate-300'}`}
+                      onClick={() => {
+                        setEditDrawerTab(tab.id as any);
+                        if (tab.id === 'regenerate' && editingSlide) {
+                          const t = (editingSlide.type as string) || 'content';
+                          const plain = t === 'content' || t === 'summary' || t === 'key-takeaways';
+                          setRegenNoInteraction(plain);
+                          setRegenTargetType(plain ? 'content' : t);
+                        }
+                      }}
+                      className={`flex-1 flex items-center justify-center gap-1 px-2 py-3 text-[11px] sm:text-sm font-bold border-b-2 transition-all ${editDrawerTab === tab.id ? tab.activeColor : 'border-transparent text-slate-500 hover:text-slate-300'}`}
                     >
                       <span>{tab.icon}</span> {tab.label}
                     </button>
@@ -5230,6 +5406,135 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                         )}
                       </>
                     )}
+
+                  {editDrawerTab === 'regenerate' && editingSlide && (() => {
+                    const slideType = (editingSlide.type as string) || 'content';
+                    const isKc = KNOWLEDGE_CHECK_TYPES.has(slideType);
+                    const contentOptions = [
+                      { id: 'content', label: 'Plain content' },
+                      { id: 'tabbed-horizontal', label: 'Tabs (Horizontal)' },
+                      { id: 'tabbed-vertical', label: 'Tabs (Vertical)' },
+                      { id: 'click-reveal', label: 'Click & Reveal' },
+                      { id: 'flashcards', label: 'Flashcards' },
+                      { id: 'timeline', label: 'Timeline' },
+                      { id: 'carousel-panel', label: 'Carousel' },
+                      { id: 'hotspot', label: 'Hotspot' },
+                    ];
+                    const kcOptions = [
+                      { id: 'matching', label: 'Matching' },
+                      { id: 'sorting', label: 'Sorting' },
+                      { id: 'drop-targets', label: 'Drop Targets' },
+                      { id: 'quiz', label: 'Multiple Choice' },
+                      { id: 'multiple-answers', label: 'Multiple Answers' },
+                      { id: 'true-false', label: 'True / False' },
+                    ];
+                    const options = isKc ? kcOptions : contentOptions;
+                    const effectiveType = regenNoInteraction ? 'content' : regenTargetType;
+                    return (
+                      <div className="space-y-4">
+                        <div className="p-3 bg-amber-900/20 border border-amber-700/30 rounded-xl text-xs text-amber-200 leading-relaxed">
+                          Regenerate only this slide. Choose an interaction type (or plain content), then click Regenerate.
+                        </div>
+                        <label className="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-700 bg-slate-950 cursor-pointer">
+                          <div>
+                            <p className="text-sm font-bold text-white">No interaction</p>
+                            <p className="text-[11px] text-slate-500 mt-0.5">Simple bullet-point content slide</p>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={regenNoInteraction}
+                            onChange={e => {
+                              setRegenNoInteraction(e.target.checked);
+                              if (e.target.checked) setRegenTargetType('content');
+                            }}
+                            className="w-4 h-4 rounded border-slate-600 text-amber-500"
+                          />
+                        </label>
+                        {!regenNoInteraction && (
+                          <div className="space-y-2">
+                            <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">
+                              {isKc ? 'Knowledge check type' : 'Interactive element'}
+                            </p>
+                            <div className="grid grid-cols-2 gap-2">
+                              {options.map(opt => (
+                                <button
+                                  key={opt.id}
+                                  type="button"
+                                  onClick={() => setRegenTargetType(opt.id)}
+                                  className={cn(
+                                    'px-3 py-2.5 rounded-xl border text-left text-xs font-bold transition-all',
+                                    regenTargetType === opt.id
+                                      ? 'border-amber-500 bg-amber-500/10 text-amber-200'
+                                      : 'border-slate-700 bg-slate-950 text-slate-400 hover:border-slate-500'
+                                  )}
+                                >
+                                  {opt.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        <button
+                          disabled={isRegenSlideRunning}
+                          onClick={async () => {
+                            if (!editingSlide || !course) return;
+                            setIsRegenSlideRunning(true);
+                            try {
+                              const result = await regenerateSlideData(
+                                editingSlide,
+                                course.title ?? '',
+                                effectiveType
+                              );
+                              pushUndo();
+                              setCourse((prev: any) => {
+                                if (!prev) return prev;
+                                return {
+                                  ...prev,
+                                  modules: prev.modules.map((m: any) => ({
+                                    ...m,
+                                    slides: m.slides.map((s: any) => {
+                                      if (s.id !== editingSlide.id) return s;
+                                      return {
+                                        ...s,
+                                        type: result.type,
+                                        data: result.data,
+                                        content: result.content != null ? result.content : s.content,
+                                      };
+                                    }),
+                                  })),
+                                };
+                              });
+                              const updated = {
+                                ...editingSlide,
+                                type: result.type as any,
+                                data: result.data,
+                                content: result.content != null ? result.content : editingSlide.content,
+                              };
+                              editingSlideRef.current = updated;
+                              setEditingSlide(updated);
+                              setQcReport(prev => prev ? {
+                                ...prev,
+                                issues: prev.issues.filter(i => !(i.slideId === editingSlide.id && i.type === 'interaction_empty')),
+                              } : null);
+                              showDraftMessage('Slide regenerated ✓');
+                            } catch (err: any) {
+                              console.error('[Edit Slide] Regenerate failed:', err);
+                              alert(err?.message || 'Regeneration failed. Please try again.');
+                            } finally {
+                              setIsRegenSlideRunning(false);
+                            }
+                          }}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-sm transition-all disabled:opacity-50"
+                        >
+                          {isRegenSlideRunning ? (
+                            <><Loader2 className="w-4 h-4 animate-spin" /> Regenerating…</>
+                          ) : (
+                            <><RefreshCw className="w-4 h-4" /> Regenerate This Slide</>
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })()}
                   </div>
 
                 {/* Footer */}
@@ -5240,13 +5545,12 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                   >
                     Cancel
                   </button>
+                  {editDrawerTab !== 'regenerate' && (
                   <button
                     onClick={() => {
                       if (editingSlideRef.current) {
                         const latest = editingSlideRef.current;
                         pushUndo();
-                        // Synthetic slides (module-overview etc.) don't exist in course.modules.
-                        // Route their edits to syntheticSlideOverrides instead.
                         if (latest.id?.match(/^__module-overview-\d+__$/)) {
                           setSyntheticSlideOverrides(prev => ({
                             ...prev,
@@ -5271,6 +5575,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                   >
                     <CheckCircle2 className="w-4 h-4" /> Save Changes
                   </button>
+                  )}
                 </div>
               </motion.div>
             </>
@@ -5338,11 +5643,13 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
           )}
         </AnimatePresence>
 
-        {/* ── TTS Generation Progress Toast ── */}
-        <TTSProgressToast
-          progress={ttsProgress}
-          onDismiss={resetTTS}
-        />
+        {/* TTS toast only after generation — initial audio is on the main progress bar */}
+        {!(isGenerating || isHydrating) && (
+          <TTSProgressToast
+            progress={ttsProgress}
+            onDismiss={resetTTS}
+          />
+        )}
 
         {/* Interaction Preview Modal */}
 
