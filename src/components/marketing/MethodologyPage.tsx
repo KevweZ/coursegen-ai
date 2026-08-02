@@ -167,7 +167,7 @@ export function MethodologyPage({ onGetStarted, onBack }: Props) {
                   ['Week 1–2', 'SME interviews, content gathering, source document review'],
                   ['Week 2–3', 'Learning objectives written and approved by stakeholders'],
                   ['Week 3–4', 'Storyboard drafted in Word/PowerPoint, SME review cycle'],
-                  ['Week 4–6', 'Development in Articulate Storyline or Adobe Captivate'],
+                  ['Week 4–6', 'Development in traditional eLearning authoring tools'],
                   ['Week 6–8', 'QA review, bug fixes, accessibility check'],
                   ['Week 8–10', 'LMS upload, SCORM testing, pilot with learners'],
                   ['Week 10–12', 'Revisions, final sign-off, full rollout'],
@@ -371,7 +371,7 @@ export function MethodologyPage({ onGetStarted, onBack }: Props) {
               <GraduationCap className="w-8 h-8 text-indigo-400 mb-4" />
               <h3 className="text-2xl font-black text-white mb-3">Instructional Designers</h3>
               <p className="text-slate-400 text-sm leading-relaxed mb-5">
-                IDs spend up to 70% of project time in the Development phase — authoring in Storyline,
+                IDs spend up to 70% of project time in the Development phase — building in authoring tools,
                 formatting in PowerPoint, copy-pasting from storyboards. NexCourse AI automates
                 that entire phase. The ID's expertise is redirected to strategy: defining objectives,
                 curating interaction types, reviewing AI output, and applying domain expertise.
@@ -403,7 +403,7 @@ export function MethodologyPage({ onGetStarted, onBack }: Props) {
                 {[
                   'Upload PPT, PDF, or Word — AI extracts structure',
                   'AI converts lecture content into interactive learning',
-                  'No Articulate, Captivate, or Lectora license needed',
+                  'No separate authoring-tool license needed',
                   'Professional SCORM output without a development team',
                 ].map(p => (
                   <p key={p} className="flex items-center gap-2 text-sm text-slate-300">
