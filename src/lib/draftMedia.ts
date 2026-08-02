@@ -119,3 +119,46 @@ export function takeLegacyMedia(draftId: string): Record<string, string> {
   pendingLegacyMedia.delete(draftId);
   return m;
 }
+
+/**
+ * Tiny course so the preview can paint immediately (title slide).
+ * Full modules are swapped in after the overlay is gone.
+ */
+export function buildInstantStubCourse(course: any): any {
+  return {
+    title: course?.title || 'Untitled Course',
+    description: course?.description || '',
+    visualTheme: course?.visualTheme,
+    navigationMode: course?.navigationMode || 'free',
+    examConfig: course?.examConfig,
+    coverImage: null,
+    modules: [
+      {
+        id: course?.modules?.[0]?.id || 'stub-module',
+        title: course?.modules?.[0]?.title || 'Module 1',
+        slides: [
+          {
+            id: '__draft_opening_stub__',
+            type: 'content',
+            title: course?.title || 'Opening draft…',
+            content: 'Restoring slides…',
+          },
+        ],
+      },
+    ],
+  };
+}
+
+/** Copy one module's slides into a growing partial course (no deep clone of the whole tree). */
+export function withModulesUpTo(full: any, moduleCount: number): any {
+  const mods = full?.modules || [];
+  return {
+    ...full,
+    coverImage: full?.coverImage ?? null,
+    modules: mods.slice(0, Math.max(1, moduleCount)).map((m: any) => ({
+      id: m.id,
+      title: m.title,
+      slides: (m.slides || []).map((s: any) => ({ ...s })),
+    })),
+  };
+}

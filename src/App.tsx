@@ -112,7 +112,13 @@ import { SlideHeader } from './components/player/SlideHeader';
 import { SlideErrorBoundary } from './components/player/SlideErrorBoundary';
 import { useDraftCourses } from './lib/useDraftCourses';
 import type { DesignDraftSnapshot } from './lib/useDraftCourses';
-import { attachHeavyMedia, mediaRecordToMap, takeLegacyMedia } from './lib/draftMedia';
+import {
+  attachHeavyMedia,
+  mediaRecordToMap,
+  takeLegacyMedia,
+  buildInstantStubCourse,
+  withModulesUpTo,
+} from './lib/draftMedia';
 import {
   ROUTES,
   parseAppPath,
@@ -310,49 +316,25 @@ function countListItems(raw: string): number {
   return raw.split('\n').filter(l => /^\s*([-*+]|\d+\.)\s+/.test(l)).length;
 }
 
-/** Full-screen overlay while a draft hydrates — driven by real load progress when available. */
+/**
+ * Fetch-only overlay. Must unmount the instant `active` is false —
+ * never use a delayed "finishing" hide: a blocked main thread after
+ * setCourse would freeze the overlay at 100% forever (see production bug).
+ */
 const DraftOpeningOverlay: React.FC<{ active: boolean; progress: number; statusText?: string }> = ({
   active,
   progress,
   statusText,
 }) => {
-  const [visible, setVisible] = React.useState(false);
-  const [displayPct, setDisplayPct] = React.useState(0);
-  const [finishing, setFinishing] = React.useState(false);
+  if (!active) return null;
 
-  React.useEffect(() => {
-    if (active) {
-      setVisible(true);
-      setFinishing(false);
-      setDisplayPct(Math.max(2, progress));
-      return;
-    }
-    if (!visible) return;
-    setFinishing(true);
-    setDisplayPct(100);
-    const t = window.setTimeout(() => {
-      setVisible(false);
-      setFinishing(false);
-      setDisplayPct(0);
-    }, 400);
-    return () => window.clearTimeout(t);
-  }, [active]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  React.useEffect(() => {
-    if (!active) return;
-    setDisplayPct(prev => Math.max(prev, Math.min(99, progress)));
-  }, [active, progress]);
-
-  if (!visible) return null;
-
-  const pct = Math.round(finishing ? 100 : displayPct);
+  const pct = Math.round(Math.max(2, Math.min(99, progress)));
   const phase =
     statusText ||
     (pct < 25 ? 'Fetching saved draft…'
     : pct < 55 ? 'Reading course data…'
-    : pct < 85 ? 'Restoring slides and media…'
-    : pct < 100 ? 'Opening course preview…'
-    : 'Almost ready…');
+    : pct < 85 ? 'Preparing course…'
+    : 'Opening preview…');
 
   return (
     <div className="fixed inset-0 z-[800] bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center gap-5 px-6">
@@ -360,7 +342,6 @@ const DraftOpeningOverlay: React.FC<{ active: boolean; progress: number; statusT
       <div className="text-center space-y-1.5">
         <p className="text-white font-bold text-base">Opening draft…</p>
         <p className="text-slate-400 text-sm">{phase}</p>
-        <p className="text-slate-500 text-xs">Progress updates as each step finishes</p>
       </div>
       <div className="w-full max-w-sm space-y-2">
         <div className="flex justify-between text-[11px] font-bold uppercase tracking-widest text-slate-500">
@@ -369,25 +350,11 @@ const DraftOpeningOverlay: React.FC<{ active: boolean; progress: number; statusT
         </div>
         <div className="h-2.5 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
           <div
-            className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 relative overflow-hidden transition-[width] duration-150 ease-out"
+            className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-fuchsia-500 transition-[width] duration-150 ease-out"
             style={{ width: `${Math.max(4, pct)}%` }}
-          >
-            <div
-              className="absolute inset-0 opacity-40"
-              style={{
-                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent)',
-                animation: finishing ? 'none' : 'draftShimmer 1.4s ease-in-out infinite',
-              }}
-            />
-          </div>
+          />
         </div>
       </div>
-      <style>{`
-        @keyframes draftShimmer {
-          0% { transform: translateX(-100%); }
-          100% { transform: translateX(100%); }
-        }
-      `}</style>
     </div>
   );
 };
@@ -746,7 +713,7 @@ export default function App() {
     }
   };
 
-  /** Mount lean course shell; dismiss overlay BEFORE heavy React work; images later */
+  /** Show preview immediately (stub), then hydrate modules + images without trapping the overlay */
   const openPreviewFromSnapshot = async (id: string, snapshot: Extract<Awaited<ReturnType<typeof draftManager.loadDraftAsync>>, object>) => {
     if (snapshot.phase !== 'preview' || !snapshot.course?.modules?.length) {
       showDraftMessage('This draft has no course content and cannot be opened.');
@@ -757,6 +724,7 @@ export default function App() {
 
     const shell = snapshot.course;
     const legacyMedia = mediaRecordToMap(takeLegacyMedia(id));
+    const stub = buildInstantStubCourse(shell);
 
     setPlayerConfig(snapshot.playerConfig || defaultPlayerConfig);
     setTheme((snapshot.theme as any) || 'light');
@@ -770,24 +738,44 @@ export default function App() {
     setMobileDesignDemo(false);
     setShowPlayerProperties(false);
 
-    setDraftLoadProgress(90);
-    setDraftLoadStatus('Opening course (text first)…');
-    // Paint progress, then dismiss overlay BEFORE setCourse so a slow commit can't trap the UI at 92%
-    await new Promise<void>(r => setTimeout(r, 32));
-    setDraftLoadProgress(100);
+    // 1) Kill overlay first (no delayed hide — that was the 100% trap)
     setIsLoadingDraft(false);
+    setDraftLoadProgress(0);
     setDraftLoadStatus('');
-    await new Promise<void>(r => setTimeout(r, 48));
 
-    setCourse(shell);
-    setOriginalCourse(shell);
+    // 2) Instant tiny preview so the user always sees the course chrome/title
+    setCourse(stub);
+    setOriginalCourse(stub);
     setCourseBg(null);
     setStep('preview');
     navigateTo(ROUTES.preview(id));
-    showDraftMessage('Draft opened — loading images…');
+    showDraftMessage('Opening preview…');
 
+    // Let React paint the stub with the overlay gone
+    await new Promise<void>(r => setTimeout(r, 0));
     await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
+    // 3) Hydrate modules one at a time so a huge course never freezes the tab
+    const moduleCount = shell.modules.length;
+    try {
+      for (let n = 1; n <= moduleCount; n++) {
+        const partial = withModulesUpTo(shell, n);
+        setCourse(partial);
+        setOriginalCourse(partial);
+        showDraftMessage(`Loading modules ${n}/${moduleCount}…`);
+        await new Promise<void>(r => setTimeout(r, 0));
+      }
+      setCourse(shell);
+      setOriginalCourse(shell);
+    } catch (e) {
+      console.warn('[Drafts] Module hydrate failed, using full shell:', e);
+      setCourse(shell);
+      setOriginalCourse(shell);
+    }
+
+    await new Promise<void>(r => setTimeout(r, 0));
+
+    // 4) Images last — never block preview on media
     try {
       const stored = await draftManager.loadDraftAssets(id);
       const media = mediaRecordToMap(stored);
@@ -797,11 +785,11 @@ export default function App() {
         return true;
       }
 
-      // Attach cover + first slide images first so the UI stays responsive
       const priorityKeys = [...media.keys()].filter(k =>
-        k === 'coverImage' || k.includes('[0]') || k.endsWith('.coverImage')
+        k === 'coverImage' || k.includes('modules[0]') || k.endsWith('.coverImage')
       );
       const restKeys = [...media.keys()].filter(k => !priorityKeys.includes(k));
+      let working = shell;
 
       const applyKeys = (keys: string[]) => {
         const subset = new Map<string, string>();
@@ -810,24 +798,24 @@ export default function App() {
           if (v) subset.set(k, v);
         }
         if (!subset.size) return;
-        attachHeavyMedia(shell, subset);
-        const withMedia = { ...shell, modules: shell.modules?.map((m: any) => ({ ...m, slides: m.slides ? [...m.slides] : [] })) };
-        setCourse(withMedia);
-        setOriginalCourse(withMedia);
-        if (subset.has('coverImage') || withMedia.coverImage) {
-          setCourseBg(withMedia.coverImage || null);
-        }
+        attachHeavyMedia(working, subset);
+        working = {
+          ...working,
+          modules: working.modules?.map((m: any) => ({ ...m, slides: m.slides ? [...m.slides] : [] })),
+        };
+        setCourse(working);
+        setOriginalCourse(working);
+        if (working.coverImage) setCourseBg(working.coverImage);
       };
 
       applyKeys(priorityKeys);
-      await new Promise<void>(r => setTimeout(r, 32));
-      // Remaining images in small batches
-      const BATCH = 4;
+      await new Promise<void>(r => setTimeout(r, 0));
+      const BATCH = 3;
       for (let i = 0; i < restKeys.length; i += BATCH) {
         applyKeys(restKeys.slice(i, i + BATCH));
-        await new Promise<void>(r => setTimeout(r, 16));
+        await new Promise<void>(r => setTimeout(r, 0));
       }
-      console.log(`[Drafts] Attached ${media.size} image(s) after shell open`);
+      console.log(`[Drafts] Attached ${media.size} image(s) after preview open`);
       showDraftMessage('Draft loaded ✓');
     } catch (e) {
       console.warn('[Drafts] Image attach after open failed:', e);
@@ -844,13 +832,12 @@ export default function App() {
     setDraftLoadStatus('Fetching saved draft…');
     showDraftMessage('Opening draft…');
 
-    // Watchdog: never leave the overlay stuck if the main thread stalls mid-open
+    // Safety: overlay is fetch-only; force-clear if something hangs before openPreview
     const watchdog = window.setTimeout(() => {
       setIsLoadingDraft(false);
       setDraftLoadProgress(0);
       setDraftLoadStatus('');
-      showDraftMessage('Opening is taking longer than expected — showing what we can…');
-    }, 12000);
+    }, 8000);
 
     void (async () => {
       const t0 = performance.now();
@@ -859,8 +846,14 @@ export default function App() {
           setDraftLoadProgress(pct);
           if (phase === 'fetch') setDraftLoadStatus('Fetching saved draft…');
           else if (phase === 'parse') setDraftLoadStatus('Reading course data…');
-          else if (phase === 'hydrate') setDraftLoadStatus('Preparing to open…');
+          else if (phase === 'hydrate') setDraftLoadStatus('Preparing course…');
         });
+
+        // Overlay off as soon as fetch finishes — preview open must not depend on it
+        window.clearTimeout(watchdog);
+        setIsLoadingDraft(false);
+        setDraftLoadProgress(0);
+        setDraftLoadStatus('');
 
         if (!snapshot) {
           showDraftMessage('Draft not found. It may have failed to save — try saving again.');
@@ -870,14 +863,10 @@ export default function App() {
         }
 
         setActiveDraftId(id);
-        setDraftLoadProgress(88);
-        setDraftLoadStatus('Opening course preview…');
-        await new Promise<void>(r => setTimeout(r, 16));
 
         if (snapshot.phase === 'design') {
           applyDesignSnapshot(snapshot);
           navigateTo(ROUTES.design(id));
-          setDraftLoadProgress(100);
           showDraftMessage('Design draft loaded ✓');
           return;
         }
@@ -1190,8 +1179,12 @@ export default function App() {
             setDraftLoadProgress(pct);
             if (phase === 'fetch') setDraftLoadStatus('Fetching saved draft…');
             else if (phase === 'parse') setDraftLoadStatus('Reading course data…');
-            else if (phase === 'hydrate') setDraftLoadStatus('Preparing to open…');
+            else if (phase === 'hydrate') setDraftLoadStatus('Preparing course…');
           });
+          // Dismiss fetch overlay before any setCourse work (deep-link path)
+          setIsLoadingDraft(false);
+          setDraftLoadProgress(0);
+          setDraftLoadStatus('');
           if (snap?.phase === 'preview' && snap.course?.modules?.length) {
             setActiveDraftId(parsed.draftId);
             await openPreviewFromSnapshot(parsed.draftId, snap);
