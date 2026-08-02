@@ -800,48 +800,55 @@ export default function App() {
   };
 
   const handleLoadDraft = (id: string) => {
+    // Tear down every full-screen overlay first (blur backdrops were freezing the preview)
     setShowDraftsPanel(false);
     setShowViewDraftsModal(false);
-    // No blocking overlay — toast only. Overlay was trapping users when fetch/setCourse stalled.
+    setAdminDropdownOpen(false);
+    setShowPlayerProperties(false);
     setIsLoadingDraft(false);
     setDraftLoadProgress(0);
     setDraftLoadStatus('');
     showDraftMessage('Opening draft…');
 
-    void (async () => {
-      const t0 = performance.now();
-      try {
-        const snapshot = await draftManager.loadDraftAsync(id);
+    // Wait one frame so portal modals leave the DOM before mounting the player
+    window.requestAnimationFrame(() => {
+      void (async () => {
+        const t0 = performance.now();
+        try {
+          const snapshot = await draftManager.loadDraftAsync(id);
 
-        if (!snapshot) {
-          showDraftMessage('Draft not found. It may have failed to save — try saving again.');
+          if (!snapshot) {
+            showDraftMessage('Draft not found. It may have failed to save — try saving again.');
+            setStep('home');
+            navigateTo(ROUTES.upload, true);
+            return;
+          }
+
+          setActiveDraftId(id);
+
+          if (snapshot.phase === 'design') {
+            applyDesignSnapshot(snapshot);
+            navigateTo(ROUTES.design(id));
+            showDraftMessage('Design draft loaded ✓');
+            return;
+          }
+
+          await openPreviewFromSnapshot(id, snapshot);
+          console.log(`[Drafts] Open complete in ${Math.round(performance.now() - t0)}ms`);
+        } catch (err: any) {
+          console.error('[Drafts] Open failed:', err);
+          showDraftMessage(err?.message || 'Failed to open draft. It may be corrupted.');
           setStep('home');
           navigateTo(ROUTES.upload, true);
-          return;
+        } finally {
+          setIsLoadingDraft(false);
+          setDraftLoadProgress(0);
+          setDraftLoadStatus('');
+          setShowViewDraftsModal(false);
+          setShowDraftsPanel(false);
         }
-
-        setActiveDraftId(id);
-
-        if (snapshot.phase === 'design') {
-          applyDesignSnapshot(snapshot);
-          navigateTo(ROUTES.design(id));
-          showDraftMessage('Design draft loaded ✓');
-          return;
-        }
-
-        await openPreviewFromSnapshot(id, snapshot);
-        console.log(`[Drafts] Open complete in ${Math.round(performance.now() - t0)}ms`);
-      } catch (err: any) {
-        console.error('[Drafts] Open failed:', err);
-        showDraftMessage(err?.message || 'Failed to open draft. It may be corrupted.');
-        setStep('home');
-        navigateTo(ROUTES.upload, true);
-      } finally {
-        setIsLoadingDraft(false);
-        setDraftLoadProgress(0);
-        setDraftLoadStatus('');
-      }
-    })();
+      })();
+    });
   };
 
   const handleReplaceDraft = async (id: string) => {

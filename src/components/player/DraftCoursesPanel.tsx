@@ -65,25 +65,18 @@ export const DraftCoursesPanel: React.FC<Props> = ({
   const cardBg = theme === 'light' ? 'bg-slate-50 border-slate-200 hover:border-indigo-300' : theme === 'unified' ? 'bg-indigo-900/40 border-indigo-500/20 hover:border-purple-400/50' : 'bg-slate-800/60 border-slate-700 hover:border-indigo-500/50';
   const subText = theme === 'light' ? 'text-slate-500' : 'text-slate-400';
 
+  // Instant unmount when closed — AnimatePresence exit left a frozen blur over the player
+  if (!isOpen) return null;
+
   const content = (
-    <AnimatePresence>
-      {isOpen && (
         <>
-          {/* Backdrop */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[600]"
+          <div
+            className="fixed inset-0 bg-black/40 z-[600]"
             onClick={onClose}
+            aria-hidden
           />
 
-          {/* Panel */}
-          <motion.div
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+          <div
             className={cn(
               'fixed right-0 top-0 bottom-0 w-[380px] max-w-[95vw] z-[601] flex flex-col border-l shadow-2xl',
               bg
@@ -262,10 +255,8 @@ export const DraftCoursesPanel: React.FC<Props> = ({
             <div className={cn('px-5 py-3 border-t text-xs', subText, theme === 'light' ? 'border-slate-200' : 'border-slate-700/60')}>
               Drafts are saved locally on this device. Cloud sync available on Business plan.
             </div>
-          </motion.div>
+          </div>
         </>
-      )}
-    </AnimatePresence>
   );
 
   return ReactDOM.createPortal(content, document.body);
