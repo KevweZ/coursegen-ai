@@ -212,7 +212,7 @@ const renderInstructionalText = (children: React.ReactNode, theme: string, isLis
   );
 };
 
-type AppStep = 'home' | 'details' | 'outline' | 'preview' | 'pricing' | 'account' | 'player-properties' | 'payment-success' | 'payment-cancel';
+type AppStep = 'marketing' | 'home' | 'details' | 'outline' | 'preview' | 'pricing' | 'account' | 'player-properties' | 'payment-success' | 'payment-cancel';
 type CourseType = 'quick' | 'standard' | 'comprehensive';
 
 /** Detects whether a string is HTML (from the rich-text editor) vs plain Markdown */
@@ -867,6 +867,7 @@ export default function App() {
   
   const [step, setStep] = useState<AppStep>(isScormPlayer ? 'preview' : 'home');
 
+  /** In-app home — Course upload / builder dashboard */
   const goHome = () => {
     setShowPlayerProperties(false);
     setStep('home');
@@ -874,6 +875,20 @@ export default function App() {
     setActiveDraftId(null);
     setIsSandboxMode(false);
     navigateTo(ROUTES.upload);
+  };
+
+  /** Public marketing landing (nexcourse.ai /) — logo + bare-domain default */
+  const goToMarketingHome = () => {
+    setShowPlayerProperties(false);
+    setShowViewDraftsModal(false);
+    setShowDraftsPanel(false);
+    setAdminDropdownOpen(false);
+    setMobileDesignDemo(false);
+    setActiveDraftId(null);
+    setIsSandboxMode(false);
+    setPublicView('homepage');
+    setStep('marketing');
+    navigateTo(ROUTES.home);
   };
 
   /** Modal overlay — Course Development / Design only. Keeps the current course URL. */
@@ -1061,9 +1076,23 @@ export default function App() {
   const applyAuthenticatedPath = React.useCallback((target: string) => {
     const parsed = parseAppPath(target);
 
-    if (parsed.kind === 'auth' || target === '/' || target === '') {
+    // After login/signup → app dashboard
+    if (parsed.kind === 'auth') {
       navigateTo(ROUTES.upload, true);
       setStep('home');
+      return;
+    }
+    // Bare nexcourse.ai (/) → marketing landing (even when signed in)
+    if (parsed.kind === 'marketing' && parsed.view === 'homepage') {
+      setPublicView('homepage');
+      setStep('marketing');
+      navigateTo(ROUTES.home, true);
+      return;
+    }
+    if (target === '/' || target === '') {
+      setPublicView('homepage');
+      setStep('marketing');
+      navigateTo(ROUTES.home, true);
       return;
     }
     if (parsed.kind === 'upload') {
@@ -1218,6 +1247,13 @@ export default function App() {
     const path = window.location.pathname;
     if (path.startsWith('/sandbox/')) return;
 
+    if (step === 'marketing') {
+      if (publicView === 'homepage' && path !== ROUTES.home) navigateTo(ROUTES.home, true);
+      else if (publicView === 'methodology' && path !== ROUTES.methodology) navigateTo(ROUTES.methodology, true);
+      else if (publicView === 'pricing' && path !== ROUTES.pricing) navigateTo(ROUTES.pricing, true);
+      else if (publicView === 'examples' && path !== ROUTES.examples) navigateTo(ROUTES.examples, true);
+      return;
+    }
     if (step === 'home' && path !== ROUTES.upload) navigateTo(ROUTES.upload, true);
     else if (step === 'details' && !isSandboxMode) {
       if (activeDraftId && !path.startsWith('/design/')) navigateTo(ROUTES.design(activeDraftId), true);
@@ -1234,7 +1270,7 @@ export default function App() {
         navigateTo(ROUTES.courseDevelopment, true);
       }
     }
-  }, [step, user, isScormPlayer, isSandboxMode, activeDraftId]);
+  }, [step, user, isScormPlayer, isSandboxMode, activeDraftId, publicView]);
 
   // ── Browser back / forward ────────────────────────────────────────────────
   useEffect(() => {
@@ -3059,12 +3095,22 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
     );
   }
 
-  // Not authenticated — show Public Marketing Homepage OR Sign In/Up page
-  if (!user && !isScormPlayer) {
-    if (publicView === 'auth') {
+  // Marketing / auth pages — also shown to signed-in users on the landing URL (/)
+  if (!isScormPlayer && (!user || step === 'marketing')) {
+    const enterApp = () => {
+      setStep('home');
+      navigateTo(ROUTES.upload);
+    };
+    const goMarketing = () => {
+      setPublicView('homepage');
+      if (user) setStep('marketing');
+      navigateTo(ROUTES.home);
+    };
+
+    if (!user && publicView === 'auth') {
       return (
         <AuthPage
-          onBackToHome={() => { setPublicView('homepage'); window.history.pushState({}, '', '/'); }}
+          onBackToHome={goMarketing}
           initialMode={authInitialMode}
         />
       );
@@ -3072,8 +3118,8 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
     if (publicView === 'methodology') {
       return (
         <MethodologyPage
-          onGetStarted={() => { setAuthInitialMode('signup'); setPublicView('auth'); window.history.pushState({}, '', '/signup'); }}
-          onBack={() => { setPublicView('homepage'); window.history.pushState({}, '', '/'); }}
+          onGetStarted={user ? enterApp : () => { setAuthInitialMode('signup'); setPublicView('auth'); navigateTo(ROUTES.signup); }}
+          onBack={goMarketing}
         />
       );
     }
@@ -3082,7 +3128,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
         <div className="min-h-screen bg-slate-950">
           <nav className="sticky top-0 z-50 border-b border-slate-800/60 bg-slate-950/80 backdrop-blur-xl">
             <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-              <button onClick={() => { setPublicView('homepage'); window.history.pushState({}, '', '/'); }}
+              <button onClick={goMarketing}
                 className="flex items-center gap-2 text-slate-400 hover:text-white text-sm font-bold transition-colors">
                 <ArrowRight className="w-4 h-4 rotate-180" /> Back to Home
               </button>
@@ -3092,9 +3138,9 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                 </div>
                 <span className="font-extrabold text-lg text-white">NexCourse <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">AI</span></span>
               </div>
-              <button onClick={() => { setAuthInitialMode('signup'); setPublicView('auth'); window.history.pushState({}, '', '/signup'); }}
+              <button onClick={user ? enterApp : () => { setAuthInitialMode('signup'); setPublicView('auth'); navigateTo(ROUTES.signup); }}
                 className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold px-4 py-2 rounded-xl transition-all shadow-lg shadow-indigo-500/20 whitespace-nowrap shrink-0">
-                Get Started <ArrowRight className="w-4 h-4" />
+                {user ? 'Go to App' : 'Get Started'} <ArrowRight className="w-4 h-4" />
               </button>
             </div>
           </nav>
@@ -3105,18 +3151,18 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
     if (publicView === 'examples') {
       return (
         <ExamplesPage
-          onBack={() => { setPublicView('homepage'); window.history.pushState({}, '', '/'); }}
-          onGetStarted={() => { setAuthInitialMode('signup'); setPublicView('auth'); window.history.pushState({}, '', '/signup'); }}
+          onBack={goMarketing}
+          onGetStarted={user ? enterApp : () => { setAuthInitialMode('signup'); setPublicView('auth'); navigateTo(ROUTES.signup); }}
         />
       );
     }
     return (
       <MarketingHomepage
-        onGetStarted={() => { setAuthInitialMode('signup'); setPublicView('auth'); window.history.pushState({}, '', '/signup'); }}
-        onSignIn={() => { setAuthInitialMode('login'); setPublicView('auth'); window.history.pushState({}, '', '/login'); }}
-        onMethodology={() => { setPublicView('methodology'); window.history.pushState({}, '', '/methodology'); }}
-        onViewPricing={() => { setPublicView('pricing'); window.history.pushState({}, '', '/pricing'); window.scrollTo(0, 0); }}
-        onExamples={() => { setPublicView('examples'); window.history.pushState({}, '', '/examples'); }}
+        onGetStarted={user ? enterApp : () => { setAuthInitialMode('signup'); setPublicView('auth'); navigateTo(ROUTES.signup); }}
+        onSignIn={user ? enterApp : () => { setAuthInitialMode('login'); setPublicView('auth'); navigateTo(ROUTES.login); }}
+        onMethodology={() => { setPublicView('methodology'); if (user) setStep('marketing'); navigateTo(ROUTES.methodology); }}
+        onViewPricing={() => { setPublicView('pricing'); if (user) setStep('marketing'); navigateTo(ROUTES.pricing); window.scrollTo(0, 0); }}
+        onExamples={() => { setPublicView('examples'); if (user) setStep('marketing'); navigateTo(ROUTES.examples); }}
       />
     );
   }
@@ -3138,7 +3184,12 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
       {step !== 'preview' && !mobileDesignDemo && (
       <header className="relative z-[600] border-b border-slate-800/80 bg-slate-900/50 backdrop-blur-xl">
         <div className="container mx-auto px-6 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-3 relative group cursor-pointer" onClick={goHome}>
+          <div
+            className="flex items-center gap-3 relative group cursor-pointer"
+            onClick={goToMarketingHome}
+            title="NexCourse AI home"
+            role="link"
+          >
             <div className="w-10 h-10 bg-indigo-500/10 rounded-xl flex items-center justify-center border border-indigo-500/20 group-hover:scale-105 group-hover:bg-indigo-500/20 transition-all">
               <Zap className="w-5 h-5 text-indigo-400 group-hover:text-indigo-300 group-hover:scale-110 transition-all" />
             </div>

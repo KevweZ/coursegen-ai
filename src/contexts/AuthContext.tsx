@@ -97,10 +97,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signInWithGoogle = async () => {
-    // Use the canonical production URL in production, fall back to origin in local dev
+    // After OAuth, land on the app dashboard (/upload), not the marketing homepage
     const redirectTo = window.location.hostname === 'localhost'
-      ? window.location.origin
-      : 'https://nexcourse.ai';
+      ? `${window.location.origin}/upload`
+      : 'https://nexcourse.ai/upload';
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
