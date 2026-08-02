@@ -228,9 +228,9 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
   ];
 
   const MARKETING_FAQS = [
-    { q: 'How does NexCourse AI work?', a: 'Upload a PDF, Word doc, PowerPoint, technical document, or eLearning storyboard. NexCourse AI analyzes the file, applies instructional design structure, and builds an interactive course with slides, knowledge checks, and narration. Export a SCORM package straight to your LMS—typically in minutes, not weeks.' },
+    { q: 'How does NexCourse AI work?', a: 'Upload a PDF, Word doc, PowerPoint, or technical document. NexCourse AI analyzes the file, applies instructional design structure, and builds an interactive course with slides, knowledge checks, and narration. Export a SCORM package straight to your LMS—typically in minutes, not weeks.' },
     { q: 'What file types does it support?', a: 'PDF, Microsoft PowerPoint (.pptx), and Microsoft Word (.docx). You can also type a topic if you do not have a file yet.' },
-    { q: 'Do I need experience with authoring tools?', a: 'No. Subject matter experts and corporate teams can publish without authoring-tool expertise. Instructional designers can skip manual interaction building and still edit everything before publishing.' },
+    { q: 'Do I need experience with authoring tools?', a: 'No. Subject matter experts and corporate teams can publish without authoring-tool expertise. Instructional designers get extra Course Settings controls—objectives, assessments, interactions, and structure—then can edit everything before publishing.' },
     { q: 'Is there a free trial?', a: 'We offer trial access by invitation—contact us to request early access. Paid plans are credit-based and cover course generation, AI narration, and interactive content.' },
     { q: 'What is SCORM and which LMS platforms does it work with?', a: 'SCORM is the standard package format for eLearning. NexCourse AI exports SCORM 1.2 and 2004 packages for LMS platforms such as Moodle, Canvas, Blackboard, Cornerstone, TalentLMS, Docebo, and more.' },
     { q: 'Can I edit the AI-generated course?', a: 'Yes. Every slide is editable after generation—text, structure, images, quizzes, narration, and interactions—before you export.' },
@@ -264,7 +264,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
   };
 
   const features = [
-    { icon: Brain,      title: 'Document → Course',       description: 'Upload a technical document, PDF, storyboard, or PowerPoint. AI structures modules, objectives, and slides using adult-learning principles.', color: 'from-indigo-600/20 to-purple-600/20', delay: 0 },
+    { icon: Brain,      title: 'Document → Course',       description: 'Upload a technical document, PDF, Word doc, or PowerPoint. AI structures modules, objectives, and slides using adult-learning principles.', color: 'from-indigo-600/20 to-purple-600/20', delay: 0 },
     { icon: Layers,     title: 'Interactions Built In',   description: 'Hotspots, tabs, flashcards, timelines, and assessments are all integrated—no eLearning design or development experience needed.', color: 'from-purple-600/20 to-pink-600/20',   delay: 0.05 },
     { icon: Mic,        title: 'AI Voice-Over',            description: 'Professional narration generated for each slide. Choose voices and speeds, then edit scripts anytime.',        color: 'from-cyan-600/20 to-blue-600/20',     delay: 0.1 },
     { icon: FileOutput, title: 'SCORM for Any LMS',        description: 'Export SCORM 1.2 or 2004 and publish to Canvas, Moodle, Blackboard, Cornerstone, and more.',                      color: 'from-emerald-600/20 to-teal-600/20', delay: 0.15 },
@@ -387,7 +387,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
 
           <motion.p initial={{ opacity:0, y:12 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.5, delay:0.2 }}
             className="text-slate-400 text-base md:text-lg max-w-xl mb-10 leading-relaxed">
-            PDFs, PowerPoints, technical documents, and storyboards become ready-made eLearning courses in minutes—no development experience needed.
+            PDFs, PowerPoints, Word docs, and technical documents become ready-made eLearning courses in minutes—no development experience needed.
           </motion.p>
 
           <motion.div initial={{ opacity:0, y:14 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.5, delay:0.26 }}
@@ -479,8 +479,8 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
                   borderColor: 'border-cyan-500/30',
                   pillColor: 'bg-cyan-500/20 text-cyan-300',
                   title: 'Upload Your File',
-                  description: 'Drop in a technical document, detailed storyboard, PowerPoint, Word file, or PDF. Or type a topic if you are starting from scratch.',
-                  tags: ['PDF', 'PPTX', 'DOCX', 'Storyboard'],
+                  description: 'Drop in a technical document, PowerPoint, Word file, or PDF. Or type a topic if you are starting from scratch.',
+                  tags: ['PDF', 'PPTX', 'DOCX', 'Topic'],
                 },
                 {
                   step: '02',
@@ -594,8 +594,8 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
                 iconColor: 'text-indigo-400',
                 checkColor: 'text-indigo-400',
                 title: 'Instructional Designers',
-                body: 'Upload a design document or detailed storyboard. We read the layout and instructions, then build the interactions for you.',
-                bullets: ['Storyboards → interactive course', 'Skip manual work in authoring tools', 'Full edit control before publishing'],
+                body: 'Upload source content, then use Course Settings to shape the course—objectives, assessments, interactions, and structure. Familiar ID controls, without rebuilding everything by hand.',
+                bullets: ['Tune objectives, quizzes & interactions', 'Skip manual work in authoring tools', 'Full edit control before publishing'],
               },
               {
                 icon: Building2,
