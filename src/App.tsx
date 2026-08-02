@@ -116,8 +116,6 @@ import {
   attachHeavyMedia,
   mediaRecordToMap,
   takeLegacyMedia,
-  buildInstantStubCourse,
-  withModulesUpTo,
 } from './lib/draftMedia';
 import {
   ROUTES,
@@ -713,7 +711,7 @@ export default function App() {
     }
   };
 
-  /** Show preview immediately (stub), then hydrate modules + images without trapping the overlay */
+  /** Open a full interactive preview from a lean draft shell (images attach in the background). */
   const openPreviewFromSnapshot = async (id: string, snapshot: Extract<Awaited<ReturnType<typeof draftManager.loadDraftAsync>>, object>) => {
     if (snapshot.phase !== 'preview' || !snapshot.course?.modules?.length) {
       showDraftMessage('This draft has no course content and cannot be opened.');
@@ -724,10 +722,23 @@ export default function App() {
 
     const shell = snapshot.course;
     const legacyMedia = mediaRecordToMap(takeLegacyMedia(id));
-    const stub = buildInstantStubCourse(shell);
+    const cfg = snapshot.playerConfig || defaultPlayerConfig;
 
-    setPlayerConfig(snapshot.playerConfig || defaultPlayerConfig);
+    // Ensure no modal/backdrop can sit on top of the player and eat clicks
+    setShowViewDraftsModal(false);
+    setShowDraftsPanel(false);
+    setShowPlayerProperties(false);
+    setIsLoadingDraft(false);
+    setDraftLoadProgress(0);
+    setDraftLoadStatus('');
+
+    setPlayerConfig(cfg);
     setTheme((snapshot.theme as any) || 'light');
+    // Authoring preview: always allow free navigation so drafts aren't "frozen"
+    // (linear/restricted + interaction gates make the player feel like a screenshot).
+    setNavigationMode('free');
+    setRequireInteractionsComplete(false);
+
     setCurrentSlideIndex(0);
     setHighestVisitedIndex(0);
     setQuizState({});
@@ -736,91 +747,55 @@ export default function App() {
     setFloatingImagesMap({});
     setIsSandboxMode(false);
     setMobileDesignDemo(false);
-    setShowPlayerProperties(false);
-
-    // 1) Kill overlay first (no delayed hide — that was the 100% trap)
-    setIsLoadingDraft(false);
-    setDraftLoadProgress(0);
-    setDraftLoadStatus('');
-
-    // 2) Instant tiny preview so the user always sees the course chrome/title
-    setCourse(stub);
-    setOriginalCourse(stub);
+    setScenarioCompleted(false);
     setCourseBg(null);
+
+    // One commit with the full lean course — progressive stub hydration left a non-interactive shell
+    setCourse(shell);
+    setOriginalCourse(shell);
     setStep('preview');
+    setActiveDraftId(id);
     navigateTo(ROUTES.preview(id));
-    showDraftMessage('Opening preview…');
+    showDraftMessage('Draft loaded ✓');
 
-    // Let React paint the stub with the overlay gone
-    await new Promise<void>(r => setTimeout(r, 0));
-    await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+    // Images after first paint — idle so Nav/Next stay responsive
+    const attachImages = async () => {
+      try {
+        await new Promise<void>(r => setTimeout(r, 100));
+        const stored = await draftManager.loadDraftAssets(id);
+        const media = mediaRecordToMap(stored);
+        legacyMedia.forEach((v, k) => { if (!media.has(k)) media.set(k, v); });
+        if (!media.size) return;
 
-    // 3) Hydrate modules one at a time so a huge course never freezes the tab
-    const moduleCount = shell.modules.length;
-    try {
-      for (let n = 1; n <= moduleCount; n++) {
-        const partial = withModulesUpTo(shell, n);
-        setCourse(partial);
-        setOriginalCourse(partial);
-        showDraftMessage(`Loading modules ${n}/${moduleCount}…`);
-        await new Promise<void>(r => setTimeout(r, 0));
-      }
-      setCourse(shell);
-      setOriginalCourse(shell);
-    } catch (e) {
-      console.warn('[Drafts] Module hydrate failed, using full shell:', e);
-      setCourse(shell);
-      setOriginalCourse(shell);
-    }
-
-    await new Promise<void>(r => setTimeout(r, 0));
-
-    // 4) Images last — never block preview on media
-    try {
-      const stored = await draftManager.loadDraftAssets(id);
-      const media = mediaRecordToMap(stored);
-      legacyMedia.forEach((v, k) => { if (!media.has(k)) media.set(k, v); });
-      if (!media.size) {
-        showDraftMessage('Draft loaded ✓');
-        return true;
-      }
-
-      const priorityKeys = [...media.keys()].filter(k =>
-        k === 'coverImage' || k.includes('modules[0]') || k.endsWith('.coverImage')
-      );
-      const restKeys = [...media.keys()].filter(k => !priorityKeys.includes(k));
-      let working = shell;
-
-      const applyKeys = (keys: string[]) => {
-        const subset = new Map<string, string>();
-        for (const k of keys) {
-          const v = media.get(k);
-          if (v) subset.set(k, v);
+        const keys = [...media.keys()];
+        let working = shell;
+        const BATCH = 2;
+        for (let i = 0; i < keys.length; i += BATCH) {
+          const subset = new Map<string, string>();
+          for (const k of keys.slice(i, i + BATCH)) {
+            const v = media.get(k);
+            if (v) subset.set(k, v);
+          }
+          if (!subset.size) continue;
+          attachHeavyMedia(working, subset);
+          working = {
+            ...working,
+            modules: working.modules?.map((m: any) => ({
+              ...m,
+              slides: m.slides ? m.slides.map((s: any) => ({ ...s })) : [],
+            })),
+          };
+          setCourse(working);
+          setOriginalCourse(working);
+          if (working.coverImage) setCourseBg(working.coverImage);
+          await new Promise<void>(r => setTimeout(r, 32));
         }
-        if (!subset.size) return;
-        attachHeavyMedia(working, subset);
-        working = {
-          ...working,
-          modules: working.modules?.map((m: any) => ({ ...m, slides: m.slides ? [...m.slides] : [] })),
-        };
-        setCourse(working);
-        setOriginalCourse(working);
-        if (working.coverImage) setCourseBg(working.coverImage);
-      };
-
-      applyKeys(priorityKeys);
-      await new Promise<void>(r => setTimeout(r, 0));
-      const BATCH = 3;
-      for (let i = 0; i < restKeys.length; i += BATCH) {
-        applyKeys(restKeys.slice(i, i + BATCH));
-        await new Promise<void>(r => setTimeout(r, 0));
+        console.log(`[Drafts] Attached ${media.size} image(s) after preview open`);
+      } catch (e) {
+        console.warn('[Drafts] Image attach after open failed:', e);
       }
-      console.log(`[Drafts] Attached ${media.size} image(s) after preview open`);
-      showDraftMessage('Draft loaded ✓');
-    } catch (e) {
-      console.warn('[Drafts] Image attach after open failed:', e);
-      showDraftMessage('Draft opened (some images may be missing).');
-    }
+    };
+    void attachImages();
     return true;
   };
 

@@ -68,10 +68,8 @@ export const ViewDraftsModal: React.FC<Props> = ({
     <AnimatePresence>
       {isOpen && (
         <>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+          {/* No exit animation on backdrop — delayed unmount was blocking player clicks */}
+          <div
             className="fixed inset-0 bg-black/55 backdrop-blur-sm z-[700]"
             onClick={onClose}
           />
