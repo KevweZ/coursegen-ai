@@ -381,7 +381,7 @@ export function TimelinePreview({ isPreview = true }: { isPreview?: boolean }) {
         )}
       </div>
 
-      <div className={`relative ${layout === 'horizontal' ? 'flex items-start justify-between min-h-[160px] pt-4' : ''}`}>
+      <div className={`relative ${layout === 'horizontal' ? 'flex items-start justify-between min-h-[160px] pt-4 px-1 overflow-visible' : ''}`}>
         {layout === 'vertical' && (
           <div className="absolute left-[22px] top-4 bottom-4 w-0.5 bg-gradient-to-b from-blue-500 via-orange-500 to-green-500 opacity-40" />
         )}
@@ -389,17 +389,24 @@ export function TimelinePreview({ isPreview = true }: { isPreview?: boolean }) {
           <div className="absolute top-[32px] left-8 right-8 h-0.5 bg-gradient-to-r from-blue-500 via-orange-500 to-green-500 opacity-40 z-0" />
         )}
 
-        <div className={layout === 'vertical' ? 'space-y-3' : 'w-full flex justify-between relative z-10'}>
+        <div className={layout === 'vertical' ? 'space-y-3' : 'w-full flex justify-between relative z-10 overflow-visible'}>
           {steps.map((step, i) => {
             const isOpen = openStep === i;
             if (layout === 'horizontal') {
+              // Edge steps: anchor popup inward so mobile frames don't clip left/right
+              const popupPos =
+                i === 0
+                  ? 'left-0'
+                  : i === steps.length - 1
+                    ? 'right-0 left-auto'
+                    : 'left-1/2 -translate-x-1/2';
               return (
-                <div key={i} className="flex flex-col items-center flex-1 cursor-pointer relative" onClick={(e) => { e.stopPropagation(); setOpenStep(isOpen ? null : i); }}>
+                <div key={i} className="flex flex-col items-center flex-1 cursor-pointer relative overflow-visible" onClick={(e) => { e.stopPropagation(); setOpenStep(isOpen ? null : i); }}>
                   <motion.div className={`w-8 h-8 rounded-full ${step.color} flex items-center justify-center text-white font-bold text-sm shadow-lg z-10 mb-2 transition-transform ${isOpen ? 'scale-125 ring-4 ring-indigo-200' : 'hover:scale-110'}`}>{step.n}</motion.div>
                   <span className="font-bold text-xs text-center text-slate-700 mb-2 h-8">{step.title}</span>
                   <AnimatePresence>
                      {isOpen && (
-                       <motion.div initial={{ opacity: 0, scale: 0.5, y: -30, originY: 0 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.5, y: -30, originY: 0, transition:{duration:0.15} }} className={`absolute top-16 left-1/2 -translate-x-1/2 w-48 bg-white border-2 ${step.border} rounded-xl p-4 text-sm text-slate-700 shadow-2xl z-20 pointer-events-none`}>
+                       <motion.div initial={{ opacity: 0, scale: 0.5, y: -30, originY: 0 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.5, y: -30, originY: 0, transition:{duration:0.15} }} className={`absolute top-16 ${popupPos} w-44 sm:w-48 bg-white border-2 ${step.border} rounded-xl p-4 text-sm text-slate-700 shadow-2xl z-20 pointer-events-none`}>
                          <span className="font-bold border-b border-slate-200 pb-1 mb-2 block w-full text-slate-900">{step.title}</span>
                          {step.content}
                        </motion.div>

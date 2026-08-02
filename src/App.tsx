@@ -5951,7 +5951,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                  )}>
                      <div className={cn(
                        previewModalViewMode === 'mobile'
-                         ? "w-[min(96vw,calc((100vh-8rem)*16/9))] h-[min(calc(100vh-8rem),calc(96vw*9/16))] max-w-[1280px] max-h-[720px] overflow-auto rounded-[2rem] border-[10px] border-slate-300 bg-white shadow-2xl p-3"
+                         ? "w-[min(96vw,calc((100vh-8rem)*16/9))] h-[min(calc(100vh-8rem),calc(96vw*9/16))] max-w-[1280px] max-h-[720px] overflow-x-visible overflow-y-auto rounded-[2rem] border-[10px] border-slate-300 bg-white shadow-2xl p-3"
                          : "w-full min-h-[420px] flex flex-wrap items-start justify-center gap-6 py-6 px-2"
                      )}>
                          {previewModalOption === 'Multiple Choice' && <MultipleChoicePreview />}
