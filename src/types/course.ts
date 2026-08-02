@@ -174,7 +174,7 @@ export type ExamQuestionType = 'mc' | 'ma' | 'tf' | 'sorting' | 'matching' | 'dr
 
 export interface ExamConfig {
   enabled: boolean;
-  passingScore: number;                     // 0-100, default 80
+  passingScore: number;                     // 0-100, default 70
   questionMode: 'total' | 'per-module';
   questionCount: number;
   allowRetake: boolean;

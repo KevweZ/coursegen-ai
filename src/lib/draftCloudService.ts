@@ -229,20 +229,38 @@ export async function fetchCloudDraft(
   return { snapshot, assets: {} };
 }
 
-export async function deleteCloudDraft(userId: string, draftId: string): Promise<void> {
-  if (!(await isCloudDraftsAvailable())) return;
-  try {
-    await supabase.from('course_drafts').delete().eq('id', draftId).eq('user_id', userId);
-  } catch (e) {
-    console.warn('[DraftCloud] delete row failed:', e);
+export async function deleteCloudDraft(
+  userId: string,
+  draftId: string
+): Promise<{ ok: boolean; error?: string }> {
+  if (!(await isCloudDraftsAvailable())) {
+    // No cloud table — treat as success so local delete can proceed
+    return { ok: true };
   }
+
+  const { error } = await supabase
+    .from('course_drafts')
+    .delete()
+    .eq('id', draftId)
+    .eq('user_id', userId);
+
+  if (error) {
+    console.warn('[DraftCloud] delete row failed:', error.message);
+    return { ok: false, error: error.message };
+  }
+
   try {
     const prefix = assetPrefix(userId, draftId);
     const { data: files } = await supabase.storage.from(BUCKET).list(prefix);
     if (files?.length) {
-      await supabase.storage.from(BUCKET).remove(files.map(f => `${prefix}/${f.name}`));
+      const { error: rmErr } = await supabase.storage
+        .from(BUCKET)
+        .remove(files.map(f => `${prefix}/${f.name}`));
+      if (rmErr) console.warn('[DraftCloud] delete assets failed:', rmErr.message);
     }
   } catch (e) {
     console.warn('[DraftCloud] delete assets failed:', e);
   }
+
+  return { ok: true };
 }

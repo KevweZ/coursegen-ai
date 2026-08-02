@@ -23,8 +23,49 @@ export interface SavedCourseSettings {
 
 const STORAGE_KEY = 'nexcourse.courseSettings.v1';
 
+/**
+ * Factory defaults for every new account (no saved Course Settings yet).
+ * Once a user saves Course Settings, their saved values replace these.
+ */
+export const DEFAULT_COURSE_SETTINGS: SavedCourseSettings = {
+  preset: 'standard',
+  objectiveFormat: 'AB',
+  examConfig: {
+    enabled: true,
+    passingScore: 70,
+    questionMode: 'total',
+    questionCount: 10,
+    allowRetake: true,
+    questionTypes: ['mc', 'ma', 'tf'],
+    presentationMode: 'one-at-a-time',
+    knowledgeCheckMode: 'per-module',
+    knowledgeCheckCount: 2,
+    knowledgeCheckQuestionTypes: ['sorting', 'matching', 'drop-targets'],
+  },
+  navigationMode: 'restricted',
+  requireInteractionsComplete: true,
+  interactionTypes: ['tabbed-horizontal', 'tabbed-vertical', 'click-reveal'],
+  gameTemplateIds: [],
+  voiceOverEnabled: true,
+  ttsVoice: 'alloy',
+  includeModuleTitleSlides: true,
+  includeModuleOverviewSlides: true,
+  includeSummarySlides: true,
+  slideCount: 14,
+  imageMode: 'none',
+};
+
 function storageKey(userId?: string | null): string {
   return userId ? `${STORAGE_KEY}:${userId}` : STORAGE_KEY;
+}
+
+function cloneDefaults(): SavedCourseSettings {
+  return {
+    ...DEFAULT_COURSE_SETTINGS,
+    examConfig: { ...DEFAULT_COURSE_SETTINGS.examConfig },
+    interactionTypes: [...DEFAULT_COURSE_SETTINGS.interactionTypes],
+    gameTemplateIds: [...DEFAULT_COURSE_SETTINGS.gameTemplateIds],
+  };
 }
 
 export function loadCourseSettings(userId?: string | null): SavedCourseSettings | null {
@@ -43,6 +84,11 @@ export function loadCourseSettings(userId?: string | null): SavedCourseSettings 
   } catch {
     return null;
   }
+}
+
+/** Saved settings when present; otherwise factory defaults for new accounts. */
+export function resolveCourseSettings(userId?: string | null): SavedCourseSettings {
+  return loadCourseSettings(userId) ?? cloneDefaults();
 }
 
 export function saveCourseSettings(settings: SavedCourseSettings, userId?: string | null): void {

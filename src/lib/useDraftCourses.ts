@@ -39,11 +39,13 @@ export const MAX_TEAM_DRAFTS = 10;
 export const MAX_ADMIN_DRAFTS = 100;
 const STORAGE_PREFIX = 'nexcourse_drafts_v1_';
 const IDB_NAME = 'nexcourse_drafts_db';
-const IDB_VERSION = 3;
+const IDB_VERSION = 4;
 const STORE_INDEX = 'draft_index';
 const STORE_PAYLOAD = 'draft_payload';
 /** Heavy data-URL images keyed per draft — kept out of the course shell */
 const STORE_ASSETS = 'draft_assets';
+/** Confirmed deletes — prevents cloud/legacy refresh from resurrecting a draft */
+const STORE_TOMBSTONES = 'draft_tombstones';
 /** @deprecated v1 single-blob store — still read for migration */
 const STORE_LEGACY = 'user_drafts';
 
@@ -147,6 +149,9 @@ function openDraftsDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE_ASSETS)) {
         db.createObjectStore(STORE_ASSETS);
       }
+      if (!db.objectStoreNames.contains(STORE_TOMBSTONES)) {
+        db.createObjectStore(STORE_TOMBSTONES);
+      }
       // Keep legacy store readable during migration
       if (!db.objectStoreNames.contains(STORE_LEGACY)) {
         db.createObjectStore(STORE_LEGACY);
@@ -227,7 +232,8 @@ export function yieldToUi(ms = 16): Promise<void> {
 async function readIndex(userId: string): Promise<CourseDraft[]> {
   try {
     const idx = await idbGet<CourseDraft[]>(STORE_INDEX, userId);
-    if (Array.isArray(idx) && idx.length > 0) {
+    // Empty array is a valid migrated state (user deleted all drafts) — do not fall through to legacy.
+    if (Array.isArray(idx)) {
       return idx.map(metaFromDraft);
     }
   } catch (e) {
@@ -244,13 +250,68 @@ async function writeIndex(userId: string, drafts: CourseDraft[]): Promise<void> 
   } catch { /* optional */ }
 }
 
+async function readTombstones(userId: string): Promise<Set<string>> {
+  try {
+    const list = await idbGet<string[]>(STORE_TOMBSTONES, userId);
+    return new Set(Array.isArray(list) ? list : []);
+  } catch {
+    return new Set();
+  }
+}
+
+async function writeTombstones(userId: string, ids: Set<string>): Promise<void> {
+  await idbPut(STORE_TOMBSTONES, userId, Array.from(ids));
+}
+
+async function addTombstone(userId: string, draftId: string): Promise<void> {
+  const ids = await readTombstones(userId);
+  ids.add(draftId);
+  await writeTombstones(userId, ids);
+}
+
+async function removeTombstones(userId: string, draftIds: string[]): Promise<void> {
+  if (!draftIds.length) return;
+  const ids = await readTombstones(userId);
+  let changed = false;
+  for (const id of draftIds) {
+    if (ids.delete(id)) changed = true;
+  }
+  if (changed) await writeTombstones(userId, ids);
+}
+
+/** Strip a deleted draft from legacy v1 blobs so an empty index never resurrects it. */
+async function purgeLegacyDraft(userId: string, draftId: string): Promise<void> {
+  try {
+    const fromLegacyStore = await idbGet<any[]>(STORE_LEGACY, userId);
+    if (Array.isArray(fromLegacyStore) && fromLegacyStore.length) {
+      const next = fromLegacyStore.filter(d => d?.id !== draftId);
+      if (next.length !== fromLegacyStore.length) {
+        await idbPut(STORE_LEGACY, userId, next);
+      }
+    }
+  } catch { /* ok */ }
+  try {
+    const raw = localStorage.getItem(storageKey(userId));
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return;
+    const next = parsed.filter((d: any) => d?.id !== draftId);
+    if (next.length !== parsed.length) {
+      localStorage.setItem(storageKey(userId), JSON.stringify(next));
+    }
+  } catch { /* ok */ }
+}
+
 /**
  * Migrate v1 formats (localStorage blob / single IDB array with embedded snapshots)
  * into index + per-draft payloads.
  */
 async function migrateLegacyIfNeeded(userId: string): Promise<CourseDraft[]> {
-  const existing = await readIndex(userId);
-  if (existing.length > 0) return existing;
+  // If an index key already exists (even []), migration already ran — never re-import legacy.
+  try {
+    const idx = await idbGet<CourseDraft[]>(STORE_INDEX, userId);
+    if (Array.isArray(idx)) return idx.map(metaFromDraft);
+  } catch { /* fall through to migrate */ }
 
   let legacy: any[] = [];
 
@@ -315,6 +376,9 @@ async function migrateLegacyIfNeeded(userId: string): Promise<CourseDraft[]> {
   }
 
   await writeIndex(userId, metas);
+  // Clear legacy sources so an empty index can never re-import deleted drafts
+  try { await idbPut(STORE_LEGACY, userId, []); } catch { /* ok */ }
+  try { localStorage.removeItem(storageKey(userId)); } catch { /* ok */ }
   return metas;
 }
 
@@ -424,18 +488,29 @@ export function useDraftCourses(
       return;
     }
     try {
-      const local = await loadDraftsForUser(userId);
+      const tombstones = await readTombstones(userId);
+      let local = (await loadDraftsForUser(userId)).filter(d => !tombstones.has(d.id));
       resetCloudDraftsProbe();
       const cloudOk = await isCloudDraftsAvailable();
       setCloudEnabled(cloudOk);
 
       let cloud: CourseDraft[] = [];
       if (cloudOk) {
-        cloud = await listCloudDrafts(userId);
-        // Migrate local-only drafts up to the cloud (admin + all signed-in users)
+        // Retry cloud deletes for any confirmed local deletes that may have failed
+        const cleared: string[] = [];
+        for (const id of tombstones) {
+          const del = await deleteCloudDraft(userId, id);
+          if (del.ok) cleared.push(id);
+        }
+        if (cleared.length) await removeTombstones(userId, cleared);
+
+        const activeTombstones = await readTombstones(userId);
+        cloud = (await listCloudDrafts(userId)).filter(d => !activeTombstones.has(d.id));
+
+        // Migrate local-only drafts up to the cloud (never re-upload tombstoned ids)
         const cloudIds = new Set(cloud.map(d => d.id));
         for (const meta of local) {
-          if (cloudIds.has(meta.id)) continue;
+          if (activeTombstones.has(meta.id) || cloudIds.has(meta.id)) continue;
           try {
             const raw = await idbGet<unknown>(STORE_PAYLOAD, payloadKey(userId, meta.id));
             const snapshot = parseSnapshotRaw(raw);
@@ -461,10 +536,11 @@ export function useDraftCourses(
             console.warn('[DraftCourses] Cloud migrate failed for', meta.id, e);
           }
         }
-        cloud = await listCloudDrafts(userId);
+        cloud = (await listCloudDrafts(userId)).filter(d => !activeTombstones.has(d.id));
       }
 
-      const merged = mergeDraftLists(cloud, local);
+      const remainingTombstones = await readTombstones(userId);
+      const merged = mergeDraftLists(cloud, local).filter(d => !remainingTombstones.has(d.id));
       await writeIndex(userId, merged);
       setDrafts(merged);
     } catch (e) {
@@ -757,17 +833,42 @@ export function useDraftCourses(
 
   const deleteDraft = useCallback(async (id: string) => {
     if (!userId) return;
+
+    // Record the delete first so a refresh cannot resurrect this draft
+    try {
+      await addTombstone(userId, id);
+    } catch (e) {
+      console.warn('[DraftCourses] tombstone write failed:', e);
+    }
+
+    // Optimistic UI — remove from list immediately
+    const next = draftsRef.current.filter(d => d.id !== id);
+    setDrafts(next);
+    payloadCacheRef.current.delete(id);
+
+    try {
+      await writeIndex(userId, next);
+    } catch (e) {
+      console.warn('[DraftCourses] index update after delete failed:', e);
+    }
+
     try {
       await idbDelete(STORE_PAYLOAD, payloadKey(userId, id));
     } catch { /* continue */ }
     try {
       await idbDelete(STORE_ASSETS, payloadKey(userId, id));
     } catch { /* continue */ }
-    void deleteCloudDraft(userId, id);
-    const next = draftsRef.current.filter(d => d.id !== id);
-    await writeIndex(userId, next);
-    setDrafts(next);
-    payloadCacheRef.current.delete(id);
+
+    await purgeLegacyDraft(userId, id);
+
+    const cloud = await deleteCloudDraft(userId, id);
+    if (cloud.ok) {
+      try {
+        await removeTombstones(userId, [id]);
+      } catch { /* tombstone can clear on next refresh */ }
+    } else {
+      console.warn('[DraftCourses] Cloud delete incomplete; will retry on refresh:', cloud.error);
+    }
   }, [userId]);
 
   const replacePreviewDraft = useCallback(async (id: string, course: any, playerConfig: any, theme: string) => {
