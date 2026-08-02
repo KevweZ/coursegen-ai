@@ -827,33 +827,16 @@ export default function App() {
   const handleLoadDraft = (id: string) => {
     setShowDraftsPanel(false);
     setShowViewDraftsModal(false);
-    setIsLoadingDraft(true);
-    setDraftLoadProgress(2);
-    setDraftLoadStatus('Fetching saved draft…');
+    // No blocking overlay — toast only. Overlay was trapping users when fetch/setCourse stalled.
+    setIsLoadingDraft(false);
+    setDraftLoadProgress(0);
+    setDraftLoadStatus('');
     showDraftMessage('Opening draft…');
-
-    // Safety: overlay is fetch-only; force-clear if something hangs before openPreview
-    const watchdog = window.setTimeout(() => {
-      setIsLoadingDraft(false);
-      setDraftLoadProgress(0);
-      setDraftLoadStatus('');
-    }, 8000);
 
     void (async () => {
       const t0 = performance.now();
       try {
-        const snapshot = await draftManager.loadDraftAsync(id, (pct, phase) => {
-          setDraftLoadProgress(pct);
-          if (phase === 'fetch') setDraftLoadStatus('Fetching saved draft…');
-          else if (phase === 'parse') setDraftLoadStatus('Reading course data…');
-          else if (phase === 'hydrate') setDraftLoadStatus('Preparing course…');
-        });
-
-        // Overlay off as soon as fetch finishes — preview open must not depend on it
-        window.clearTimeout(watchdog);
-        setIsLoadingDraft(false);
-        setDraftLoadProgress(0);
-        setDraftLoadStatus('');
+        const snapshot = await draftManager.loadDraftAsync(id);
 
         if (!snapshot) {
           showDraftMessage('Draft not found. It may have failed to save — try saving again.');
@@ -879,7 +862,6 @@ export default function App() {
         setStep('home');
         navigateTo(ROUTES.upload, true);
       } finally {
-        window.clearTimeout(watchdog);
         setIsLoadingDraft(false);
         setDraftLoadProgress(0);
         setDraftLoadStatus('');
@@ -1150,41 +1132,31 @@ export default function App() {
     }
     if (parsed.kind === 'design') {
       void (async () => {
-        setIsLoadingDraft(true);
-        setDraftLoadProgress(5);
-        setDraftLoadStatus('Fetching design draft…');
-        const snap = await draftManager.loadDraftAsync(parsed.draftId, (pct) => setDraftLoadProgress(pct));
+        setIsLoadingDraft(false);
+        showDraftMessage('Opening design draft…');
+        const snap = await draftManager.loadDraftAsync(parsed.draftId);
         if (snap?.phase === 'design') {
           setActiveDraftId(parsed.draftId);
           setShowPlayerProperties(false);
           applyDesignSnapshot(snap);
-          setDraftLoadProgress(100);
+          showDraftMessage('Design draft loaded ✓');
         } else {
           showDraftMessage('Design draft not found.');
           navigateTo(ROUTES.upload, true);
           setStep('home');
         }
-        setIsLoadingDraft(false);
-        setDraftLoadProgress(0);
       })();
       return;
     }
     if (parsed.kind === 'preview') {
       void (async () => {
-        setIsLoadingDraft(true);
-        setDraftLoadProgress(5);
-        setDraftLoadStatus('Fetching course draft…');
+        // Never block the UI with the draft overlay on deep-link restore
+        setIsLoadingDraft(false);
+        setDraftLoadProgress(0);
+        setDraftLoadStatus('');
+        showDraftMessage('Opening draft…');
         try {
-          const snap = await draftManager.loadDraftAsync(parsed.draftId, (pct, phase) => {
-            setDraftLoadProgress(pct);
-            if (phase === 'fetch') setDraftLoadStatus('Fetching saved draft…');
-            else if (phase === 'parse') setDraftLoadStatus('Reading course data…');
-            else if (phase === 'hydrate') setDraftLoadStatus('Preparing course…');
-          });
-          // Dismiss fetch overlay before any setCourse work (deep-link path)
-          setIsLoadingDraft(false);
-          setDraftLoadProgress(0);
-          setDraftLoadStatus('');
+          const snap = await draftManager.loadDraftAsync(parsed.draftId);
           if (snap?.phase === 'preview' && snap.course?.modules?.length) {
             setActiveDraftId(parsed.draftId);
             await openPreviewFromSnapshot(parsed.draftId, snap);
@@ -1200,8 +1172,6 @@ export default function App() {
           setStep('home');
         } finally {
           setIsLoadingDraft(false);
-          setDraftLoadProgress(0);
-          setDraftLoadStatus('');
         }
       })();
       return;

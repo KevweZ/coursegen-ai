@@ -197,6 +197,7 @@ export async function upsertCloudDraft(
   }
 }
 
+/** Fetch lean snapshot only — never downloads media (that blocked the open overlay). */
 export async function fetchCloudDraft(
   userId: string,
   draftId: string
@@ -225,8 +226,7 @@ export async function fetchCloudDraft(
     };
   }
 
-  const assets = await downloadCloudAssets(userId, draftId);
-  return { snapshot, assets };
+  return { snapshot, assets: {} };
 }
 
 export async function deleteCloudDraft(userId: string, draftId: string): Promise<void> {

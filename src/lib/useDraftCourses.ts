@@ -642,28 +642,35 @@ export function useDraftCourses(
 
     try {
       onProgress?.(18, 'fetch');
-      // Prefer cloud (source of truth), fall back to IndexedDB cache
+      // Local cache FIRST (fast). Cloud shell is a fallback — never wait on media downloads.
       let snapshot: DraftSnapshot | null = null;
       let cloudAssets: Record<string, string> = {};
 
-      const cloud = await fetchCloudDraft(userId, id);
-      if (cloud?.snapshot) {
-        snapshot = parseSnapshotRaw(cloud.snapshot);
-        cloudAssets = cloud.assets || {};
-        // Refresh local cache
-        if (snapshot) {
-          try {
-            await idbPut(STORE_PAYLOAD, payloadKey(userId, id), snapshot);
-            if (Object.keys(cloudAssets).length) {
-              await idbPut(STORE_ASSETS, payloadKey(userId, id), cloudAssets);
-            }
-          } catch { /* cache best-effort */ }
+      onProgress?.(25, 'fetch');
+      const raw = await idbGet<unknown>(STORE_PAYLOAD, payloadKey(userId, id));
+      if (raw != null) {
+        snapshot = parseSnapshotRaw(raw);
+        console.log(`[DraftCourses] Loaded "${id}" from local cache`);
+      }
+
+      if (!snapshot) {
+        onProgress?.(32, 'fetch');
+        const cloudPromise = fetchCloudDraft(userId, id);
+        const timed = await Promise.race([
+          cloudPromise.then(c => ({ ok: true as const, c })),
+          new Promise<{ ok: false }>(r => setTimeout(() => r({ ok: false }), 4000)),
+        ]);
+        if (timed.ok && timed.c?.snapshot) {
+          snapshot = parseSnapshotRaw(timed.c.snapshot);
+          if (snapshot) {
+            try {
+              await idbPut(STORE_PAYLOAD, payloadKey(userId, id), snapshot);
+            } catch { /* cache best-effort */ }
+          }
+          console.log(`[DraftCourses] Loaded "${id}" from cloud`);
+        } else if (!timed.ok) {
+          console.warn('[DraftCourses] Cloud fetch timed out — continuing without it');
         }
-        console.log(`[DraftCourses] Loaded "${id}" from cloud`);
-      } else {
-        onProgress?.(28, 'fetch');
-        const raw = await idbGet<unknown>(STORE_PAYLOAD, payloadKey(userId, id));
-        if (raw != null) snapshot = parseSnapshotRaw(raw);
       }
 
       onProgress?.(45, 'parse');
