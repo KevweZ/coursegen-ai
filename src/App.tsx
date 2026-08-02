@@ -87,7 +87,12 @@ import { OutlinePreview } from './components/builder/OutlinePreview';
 import { CourseSettingsPage } from './components/builder/CourseSettingsPage';
 import { UploadPathModal, UploadPathChoice } from './components/builder/UploadPathModal';
 import { PlayerPropertiesModal, PlayerConfig, defaultPlayerConfig } from './components/builder/PlayerPropertiesModal';
-import { loadCourseSettings, saveCourseSettings, SavedCourseSettings } from './lib/courseSettingsStorage';
+import {
+  DEFAULT_COURSE_SETTINGS,
+  resolveCourseSettings,
+  saveCourseSettings,
+  SavedCourseSettings,
+} from './lib/courseSettingsStorage';
 import { loadPlayerProperties, savePlayerProperties } from './lib/playerPropertiesStorage';
 import { CourseOutline, Slide, TerminalObjectiveGroup, ExamConfig, ExamQuestion, ExamSessionState, NavigationMode } from './types/course';
 import { extractTextFromFile, extractImagesFromFile, SourceImage } from './lib/fileProcessor';
@@ -1353,15 +1358,15 @@ export default function App() {
   const [courseType, setCourseType] = useState<CourseType>('standard');
   const [courseDescription, setCourseDescription] = useState('');
   const [learningObjectives, setLearningObjectives] = useState<(string | TerminalObjectiveGroup)[]>([{ terminalObjective: '', enablingObjectives: [''] }]);
-  const [objectiveFormat, setObjectiveFormat] = useState<string>('ABC');
-  const [slideCount, setSlideCount] = useState(14);
-  const [interactionTypes, setInteractionTypes] = useState<string[]>([]);
+  const [objectiveFormat, setObjectiveFormat] = useState<string>(DEFAULT_COURSE_SETTINGS.objectiveFormat);
+  const [slideCount, setSlideCount] = useState(DEFAULT_COURSE_SETTINGS.slideCount);
+  const [interactionTypes, setInteractionTypes] = useState<string[]>([...DEFAULT_COURSE_SETTINGS.interactionTypes]);
   const [gameTemplateIds, setGameTemplateIds] = useState<string[]>([]);
   // Build mode: 'course' = full course builder, 'game' = standalone game mode
   const [buildMode, setBuildMode] = useState<'course' | 'game' | 'workflow'>('course');
   const [selectedGameType, setSelectedGameType] = useState<GameTemplateType>('jeopardy');
   const [extractedFileText, setExtractedFileText] = useState<string>('');
-  const [voiceOverEnabled, setVoiceOverEnabled] = useState(true);
+  const [voiceOverEnabled, setVoiceOverEnabled] = useState(DEFAULT_COURSE_SETTINGS.voiceOverEnabled);
 
   // Articulate-style scale-to-fit: always called at hook level regardless of step.
   // 'full' resolution mode intentionally fills the available space responsively
@@ -1370,7 +1375,7 @@ export default function App() {
     playerConfig?.playerResolution ?? '16:9',
     step === 'preview' && viewMode === 'desktop' && playerConfig?.playerResolution !== 'full'
   );
-  const [ttsVoice, setTtsVoice] = useState<string>('alloy');
+  const [ttsVoice, setTtsVoice] = useState<string>(DEFAULT_COURSE_SETTINGS.ttsVoice);
   // Per-slide TTS regeneration state
   const [regenSlideId, setRegenSlideId] = useState<string | null>(null);
   // Voice preview state
@@ -1410,26 +1415,15 @@ export default function App() {
   const [soundEffectsEnabled, setSoundEffectsEnabled] = useState(true);
   // Module Overview (1.1, 2.1, …): synthetic objectives accordion after Module Title.
   // On by default — Course Settings → Objectives → Structure Components.
-  const [includeModuleOverviewSlides, setIncludeModuleOverviewSlides] = useState(true);
-  const [includeSummarySlides, setIncludeSummarySlides] = useState(true);
-  const [includeModuleTitleSlides, setIncludeModuleTitleSlides] = useState(true);
-  const [imageMode, setImageMode] = useState<CourseImageMode>('ai');
+  const [includeModuleOverviewSlides, setIncludeModuleOverviewSlides] = useState(DEFAULT_COURSE_SETTINGS.includeModuleOverviewSlides);
+  const [includeSummarySlides, setIncludeSummarySlides] = useState(DEFAULT_COURSE_SETTINGS.includeSummarySlides);
+  const [includeModuleTitleSlides, setIncludeModuleTitleSlides] = useState(DEFAULT_COURSE_SETTINGS.includeModuleTitleSlides);
+  const [imageMode, setImageMode] = useState<CourseImageMode>(DEFAULT_COURSE_SETTINGS.imageMode);
   const [generatedCourseTitle, setGeneratedCourseTitle] = useState('');
   const [qcFocusSlideId, setQcFocusSlideId] = useState<string | null>(null);
 
   // Mastery Quiz state
-  const [examConfig, setExamConfig] = useState<ExamConfig>({
-    enabled: true,
-    passingScore: 80,
-    questionMode: 'total',
-    questionCount: 10,
-    allowRetake: true,
-    questionTypes: ['mc', 'ma', 'tf'],
-    presentationMode: 'one-at-a-time',
-    knowledgeCheckMode: 'per-module',
-    knowledgeCheckCount: 1,
-    knowledgeCheckQuestionTypes: ['mc', 'ma', 'tf', 'sorting', 'matching'],
-  });
+  const [examConfig, setExamConfig] = useState<ExamConfig>({ ...DEFAULT_COURSE_SETTINGS.examConfig });
   const [examQuestions, setExamQuestions] = useState<ExamQuestion[]>([]);
   const [examPhase, setExamPhase] = useState<'idle' | 'active' | 'complete'>('idle');
   const [examError, setExamError] = useState<string | null>(null);
@@ -1444,8 +1438,8 @@ export default function App() {
   const [isGeneratingExam, setIsGeneratingExam] = useState(false);
 
   // Navigation restriction state
-  const [navigationMode, setNavigationMode] = useState<NavigationMode>('free');
-  const [requireInteractionsComplete, setRequireInteractionsComplete] = useState(false);
+  const [navigationMode, setNavigationMode] = useState<NavigationMode>(DEFAULT_COURSE_SETTINGS.navigationMode);
+  const [requireInteractionsComplete, setRequireInteractionsComplete] = useState(DEFAULT_COURSE_SETTINGS.requireInteractionsComplete);
   const [highestVisitedIndex, setHighestVisitedIndex] = useState(0);
   /** Per-slide set of explored interaction item ids (for requireInteractionsComplete) */
   const [exploredBySlide, setExploredBySlide] = useState<Record<string, string[]>>({});
@@ -1855,7 +1849,7 @@ export default function App() {
     clearColdStartCountdown();
     setAnalyzeError(null);
     if (lastUploadPath) {
-      const override = lastUploadPath === 'quick' ? loadCourseSettings(user?.id) : null;
+      const override = lastUploadPath === 'quick' ? resolveCourseSettings(user?.id) : null;
       if (override) applySavedSettings(override);
       runAnalysis(uploadedFile, lastUploadPath, override);
     } else {
@@ -1935,11 +1929,10 @@ export default function App() {
     setTimeout(() => setSettingsSavedFlash(false), 2000);
   };
 
-  // Load saved course defaults once auth is ready
+  // Load saved course defaults once auth is ready (factory defaults for new accounts)
   useEffect(() => {
     if (authLoading) return;
-    const saved = loadCourseSettings(user?.id);
-    if (saved) applySavedSettings(saved);
+    applySavedSettings(resolveCourseSettings(user?.id));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user?.id]);
 
@@ -2177,8 +2170,8 @@ export default function App() {
     if (!file) return;
     let settingsOverride: SavedCourseSettings | null = null;
     if (choice === 'quick') {
-      settingsOverride = loadCourseSettings(user?.id);
-      if (settingsOverride) applySavedSettings(settingsOverride);
+      settingsOverride = resolveCourseSettings(user?.id);
+      applySavedSettings(settingsOverride);
     }
     await runAnalysis(file, choice, settingsOverride);
   };
@@ -3323,8 +3316,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                       onClick={() => {
                         setAdminDropdownOpen(false);
                         dismissPlayerProperties();
-                        const saved = loadCourseSettings(user?.id);
-                        if (saved) applySavedSettings(saved);
+                        applySavedSettings(resolveCourseSettings(user?.id));
                         setSettingsMode('defaults');
                         setIsSandboxMode(false);
                         setMobileDesignDemo(false);
@@ -3752,7 +3744,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                            onClick={() => {
                              if (!uploadedFile) return;
                              if (lastUploadPath) {
-                               const override = lastUploadPath === 'quick' ? loadCourseSettings(user?.id) : null;
+                               const override = lastUploadPath === 'quick' ? resolveCourseSettings(user?.id) : null;
                                if (override) applySavedSettings(override);
                                runAnalysis(uploadedFile, lastUploadPath, override);
                              } else {
@@ -5954,12 +5946,12 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                     </div>
                  </div>
                  <div className={cn(
-                   "flex-1 overflow-y-auto p-8 bg-slate-900 custom-scrollbar theme-dark InteractionPreviewBodyWrapper",
-                   previewModalViewMode === 'mobile' && "flex items-center justify-center bg-slate-950"
+                   "flex-1 overflow-y-auto p-8 bg-white custom-scrollbar theme-light interaction-light-fix InteractionPreviewBodyWrapper",
+                   previewModalViewMode === 'mobile' && "flex items-center justify-center bg-slate-100"
                  )}>
                      <div className={cn(
                        previewModalViewMode === 'mobile'
-                         ? "w-[min(96vw,calc((100vh-8rem)*16/9))] h-[min(calc(100vh-8rem),calc(96vw*9/16))] max-w-[1280px] max-h-[720px] overflow-auto rounded-[2rem] border-[10px] border-gray-800 bg-slate-900 shadow-2xl p-3"
+                         ? "w-[min(96vw,calc((100vh-8rem)*16/9))] h-[min(calc(100vh-8rem),calc(96vw*9/16))] max-w-[1280px] max-h-[720px] overflow-auto rounded-[2rem] border-[10px] border-slate-300 bg-white shadow-2xl p-3"
                          : "w-full min-h-[420px] flex flex-wrap items-start justify-center gap-6 py-6 px-2"
                      )}>
                          {previewModalOption === 'Multiple Choice' && <MultipleChoicePreview />}
@@ -5971,7 +5963,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                  { front: 'What is phishing?', back: 'A social engineering attack using disguised messages to steal credentials or spread malware.' },
                                  { front: 'What is multi-factor authentication?', back: 'A security method requiring two or more verification factors: something you know, have, or are.' },
                                  { front: 'What does "need-to-know" principle mean?', back: 'Limiting access to sensitive information only to those who need it to perform their job.' }
-                              ]} theme="unified" />
+                              ]} theme="light" />
                            </div>
                          )}
                          {previewModalOption === 'Matching' && <MatchingPreview />}
@@ -5983,9 +5975,21 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                              <ScenarioPreview />
                            </div>
                          )}
+                         {previewModalOption === 'Click & Reveal' && (
+                           <div className="w-full max-w-2xl">
+                             <ClickRevealInteraction
+                               theme="light"
+                               items={[
+                                 { id: '1', term: 'Phishing', definition: 'A social engineering attack that uses disguised emails or messages to steal credentials or install malware.' },
+                                 { id: '2', term: 'Multi-factor authentication', definition: 'A security method requiring two or more verification factors — something you know, have, or are.' },
+                                 { id: '3', term: 'Need-to-know principle', definition: 'Limiting access to sensitive information only to people who need it to perform their job.' },
+                               ]}
+                             />
+                           </div>
+                         )}
                          {previewModalOption === 'Tabs (Horizontal)' && (
                             <div className="w-full max-w-2xl">
-                              <TabbedHorizontal tabs={[
+                              <TabbedHorizontal theme="light" tabs={[
                                 { id: '1', label: 'Overview', content: 'Welcome to this interactive learning module. Use the tabs to navigate between sections. Each section builds on the previous one to support progressive mastery.' },
                                 { id: '2', label: 'Key Concepts', content: 'This section covers the essential principles and frameworks. Take time to understand each before moving on.' },
                                 { id: '3', label: 'Practice', content: 'Apply what you have learned through real-world scenarios and hands-on exercises.' },
@@ -5995,7 +5999,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                          )}
                          {previewModalOption === 'Tabs (Vertical)' && (
                             <div className="w-full max-w-2xl">
-                              <TabbedVertical tabs={[
+                              <TabbedVertical theme="light" tabs={[
                                 { id: '1', label: 'Introduction', icon: '📖', content: 'This section introduces the core framework. Use the vertical navigation on the left to jump between areas. Each tab covers a distinct concept.' },
                                 { id: '2', label: 'Core Skills', icon: '⚡', content: 'These are the essential skills needed for mastery. Review each carefully and take notes on areas where you may need practice.' },
                                 { id: '3', label: 'Application', icon: '🔧', content: 'Apply the concepts through real-world scenarios. The exercises here reinforce your understanding with practical examples.' },
@@ -6015,7 +6019,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                           )}
                          {previewModalOption === 'Carousel Panel' && (
                             <div className="w-full max-w-2xl">
-                              <CarouselPanel cards={[
+                              <CarouselPanel theme="light" cards={[
                                 { id: 'c1', label: 'Discover', description: 'Gather requirements, understand learner needs, and analyze existing content to identify key learning gaps.', color: '#6366f1', expandedContent: 'During the discovery phase, we use surveys, interviews, and performance data to build a clear picture of what learners already know and what they need to learn.' },
                                 { id: 'c2', label: 'Design', description: 'Develop the instructional design blueprint including objectives, module structure, and interaction types.', color: '#ec4899', expandedContent: 'In the design phase, we create storyboards, wireframes, and learning maps that guide the content authoring process.' },
                                 { id: 'c3', label: 'Develop', description: 'Build the actual course content, interactions, assessments, and media elements.', color: '#f59e0b', expandedContent: 'Development transforms the design documents into a fully functional eLearning experience using tools like NexCourse AI.' },
@@ -6139,28 +6143,28 @@ function MultipleAnswersPreviewDemo() {
   const [maSelected, setMaSelected] = React.useState<number[]>([]);
   const [maSubmitted, setMaSubmitted] = React.useState(false);
   const isAllCorrect = maSubmitted && maSelected.length === 3 && maSelected.every(i => correctSet.includes(i));
-  
+
   return (
     <div className="space-y-3 max-w-lg w-full mx-auto">
-      <p className="text-slate-100 font-bold text-lg mb-1">Which of the following are animals?</p>
-      <p className="text-indigo-400 text-xs font-bold uppercase tracking-wider mb-3">Select all correct answers</p>
+      <p className="text-slate-900 font-bold text-lg mb-1">Which of the following are animals?</p>
+      <p className="text-indigo-600 text-xs font-bold uppercase tracking-wider mb-3">Select all correct answers</p>
       {maOpts.map((opt, i) => {
         const isSelected = maSelected.includes(i);
         const isCorrect = correctSet.includes(i);
-        let cls = 'border-slate-700 bg-slate-800/50 hover:border-slate-600 text-slate-300';
+        let cls = 'border-slate-200 bg-slate-50 hover:border-slate-300 text-slate-700';
         if (maSubmitted) {
-          if (isCorrect && isSelected) cls = 'border-emerald-500 bg-emerald-500/15 text-emerald-200';
-          else if (isCorrect) cls = 'border-emerald-400/50 text-emerald-300 border-dashed bg-transparent';
-          else if (isSelected) cls = 'border-red-500 bg-red-500/15 text-red-300';
-        } else if (isSelected) cls = 'border-indigo-500 bg-indigo-500/15 text-indigo-200';
+          if (isCorrect && isSelected) cls = 'border-emerald-500 bg-emerald-50 text-emerald-800';
+          else if (isCorrect) cls = 'border-emerald-400/60 text-emerald-700 border-dashed bg-transparent';
+          else if (isSelected) cls = 'border-red-400 bg-red-50 text-red-700';
+        } else if (isSelected) cls = 'border-indigo-500 bg-indigo-50 text-indigo-800';
         return (
           <div key={i} onClick={() => !maSubmitted && setMaSelected(s => s.includes(i) ? s.filter(x => x !== i) : [...s, i])}
             className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${cls}`}>
-            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 ${isSelected ? 'border-indigo-400 bg-indigo-500' : 'border-slate-500'}`}>
+            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 ${isSelected ? 'border-indigo-500 bg-indigo-500' : 'border-slate-300'}`}>
               {isSelected && <div className="w-2.5 h-2.5 bg-white rounded-sm" />}
             </div>
             <span className="text-sm font-medium">{opt}</span>
-            {maSubmitted && isCorrect && <CheckCircle2 className="w-4 h-4 text-emerald-400 ml-auto shrink-0" />}
+            {maSubmitted && isCorrect && <CheckCircle2 className="w-4 h-4 text-emerald-500 ml-auto shrink-0" />}
           </div>
         );
       })}
@@ -6170,7 +6174,7 @@ function MultipleAnswersPreviewDemo() {
           Submit Answers
         </button>
       ) : (
-        <div className={`mt-2 p-3 rounded-xl font-bold text-sm flex items-center gap-2 ${isAllCorrect ? 'bg-emerald-500/15 border border-emerald-500/40 text-emerald-300' : 'bg-red-500/15 border border-red-500/40 text-red-300'}`}>
+        <div className={`mt-2 p-3 rounded-xl font-bold text-sm flex items-center gap-2 ${isAllCorrect ? 'bg-emerald-50 border border-emerald-200 text-emerald-700' : 'bg-red-50 border border-red-200 text-red-700'}`}>
           {isAllCorrect ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
           {isAllCorrect ? 'Correct! Rabbit, Dog, and Cat are animals.' : 'Not quite — only Rabbit, Dog, and Cat are animals.'}
         </div>

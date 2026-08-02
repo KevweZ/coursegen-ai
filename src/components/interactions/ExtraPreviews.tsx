@@ -12,25 +12,25 @@ export function AccordionPreview() {
   ];
   return (
     <div className="w-full max-w-2xl space-y-2 select-none">
-      <p className="text-white font-bold text-base mb-4">Core Leadership Competencies — click to expand</p>
+      <p className="text-slate-900 font-bold text-base mb-4">Core Leadership Competencies — click to expand</p>
       {items.map((item, i) => (
         <div
           key={i}
           className={`rounded-xl overflow-hidden border-2 cursor-pointer transition-all ${
-            openIdx === i ? 'border-indigo-500/60 shadow-lg shadow-indigo-900/20' : 'border-slate-700/60 hover:border-slate-600'
+            openIdx === i ? 'border-indigo-400 shadow-md shadow-indigo-100' : 'border-slate-200 hover:border-slate-300'
           }`}
           onClick={() => setOpenIdx(openIdx === i ? -1 : i)}
         >
           <div className={`flex items-center justify-between px-5 py-3.5 font-bold text-sm transition-colors ${
-            openIdx === i ? 'bg-indigo-600/20 text-indigo-100 border-l-4 border-indigo-500' : 'bg-slate-800 text-slate-300 border-l-4 border-transparent'
+            openIdx === i ? 'bg-indigo-50 text-indigo-900 border-l-4 border-indigo-500' : 'bg-white text-slate-700 border-l-4 border-transparent'
           }`}>
             <span>{item.title}</span>
-            <span className={`text-lg transition-transform ${openIdx === i ? 'rotate-180 text-indigo-400' : 'text-slate-500'}`}>⌃</span>
+            <span className={`text-lg transition-transform ${openIdx === i ? 'rotate-180 text-indigo-500' : 'text-slate-400'}`}>⌃</span>
           </div>
           <AnimatePresence>
             {openIdx === i && (
-              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="bg-slate-900/60 text-slate-300 text-sm leading-relaxed overflow-hidden">
-                <div className="px-5 py-4 border-l-4 border-indigo-500/30">{item.content}</div>
+              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="bg-slate-50 text-slate-600 text-sm leading-relaxed overflow-hidden">
+                <div className="px-5 py-4 border-l-4 border-indigo-200">{item.content}</div>
               </motion.div>
             )}
           </AnimatePresence>
@@ -50,10 +50,9 @@ export function HotspotPreview() {
   ];
   return (
     <div className="w-full max-w-xl select-none">
-      <p className="text-white font-bold text-lg mb-4">Click hotspots to view state specific data:</p>
-      <div className="relative w-full aspect-[4/3] bg-slate-900 rounded-2xl border border-slate-700 overflow-hidden flex items-center justify-center p-4">
-        {/* Simplified high-quality outline of the contiguous US */}
-        <img src="https://upload.wikimedia.org/wikipedia/commons/1/1a/Blank_US_Map_(states_only).svg" alt="USA Map" className="absolute inset-0 w-full h-full object-contain opacity-50 p-2 pointer-events-none" style={{ filter: "invert(0.5) sepia(1) hue-rotate(180deg) saturate(300%)" }} />
+      <p className="text-slate-900 font-bold text-lg mb-4">Click hotspots to view state specific data:</p>
+      <div className="relative w-full aspect-[4/3] bg-slate-50 rounded-2xl border border-slate-200 overflow-hidden flex items-center justify-center p-4">
+        <img src="https://upload.wikimedia.org/wikipedia/commons/1/1a/Blank_US_Map_(states_only).svg" alt="USA Map" className="absolute inset-0 w-full h-full object-contain opacity-70 p-2 pointer-events-none" />
         <div className="absolute inset-0">
           {dots.map((dot) => (
             <div key={dot.n} className="absolute z-10" style={{ left: dot.x, top: dot.y }}>
@@ -72,7 +71,7 @@ export function HotspotPreview() {
                       initial={{ opacity: 0, scale: 0.8, x: isRight ? -20 : 20 }} 
                       animate={{ opacity: 1, scale: 1, x: isRight ? -40 : 40 }} 
                       exit={{ opacity: 0, scale: 0.8, x: isRight ? -20 : 20 }} 
-                      className={`absolute -top-1 ${isRight ? 'right-0' : 'left-0'} bg-slate-900 border-2 border-pink-500 text-white text-xs font-bold px-3 py-2 rounded-xl whitespace-nowrap shadow-2xl z-30`}
+                      className={`absolute -top-1 ${isRight ? 'right-0' : 'left-0'} bg-white border-2 border-pink-500 text-slate-900 text-xs font-bold px-3 py-2 rounded-xl whitespace-nowrap shadow-2xl z-30`}
                     >
                       {dot.label}
                     </motion.div>
@@ -161,18 +160,18 @@ export function MultipleChoicePreview() {
   return (
     <div className="w-full max-w-lg select-none">
       <div className="space-y-4 w-full">
-        <p className="font-bold text-lg text-white mb-2">Which of the following is a primary benefit of microlearning?</p>
+        <p className="font-bold text-lg text-slate-900 mb-2">Which of the following is a primary benefit of microlearning?</p>
         {opts.map((opt) => {
-          let cls = 'border-slate-700 bg-slate-800 text-slate-200 hover:border-indigo-500 cursor-pointer';
-          if (selected === opt.id) cls = 'border-indigo-500 bg-indigo-500/15 text-indigo-100 cursor-pointer';
+          let cls = 'border-slate-200 bg-white text-slate-700 hover:border-indigo-400 cursor-pointer';
+          if (selected === opt.id) cls = 'border-indigo-500 bg-indigo-50 text-indigo-900 cursor-pointer';
           if (submitted) {
-            if (opt.correct) cls = 'border-emerald-500 bg-emerald-500/20 text-white';
-            else if (selected === opt.id) cls = 'border-red-500 bg-red-500/20 text-white opacity-80';
-            else cls = 'border-slate-800 bg-slate-900 text-slate-500 opacity-50';
+            if (opt.correct) cls = 'border-emerald-500 bg-emerald-50 text-emerald-900';
+            else if (selected === opt.id) cls = 'border-red-400 bg-red-50 text-red-800 opacity-90';
+            else cls = 'border-slate-100 bg-slate-50 text-slate-400 opacity-60';
           }
           return (
             <button disabled={submitted} key={opt.id} onClick={() => setSelected(opt.id)} className={`w-full text-left p-4 rounded-xl border-2 transition-all flex items-center gap-3 ${cls}`}>
-              <div className={`w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ${selected === opt.id || (submitted && opt.correct) ? (submitted && opt.correct ? 'border-emerald-500 bg-emerald-500' : 'border-indigo-500 bg-indigo-500') : 'border-slate-500 bg-transparent'}`}>
+              <div className={`w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ${selected === opt.id || (submitted && opt.correct) ? (submitted && opt.correct ? 'border-emerald-500 bg-emerald-500' : 'border-indigo-500 bg-indigo-500') : 'border-slate-300 bg-transparent'}`}>
                 {(selected === opt.id || (submitted && opt.correct)) && <div className="w-2 h-2 bg-white rounded-full" />}
               </div>
               <span className="font-medium text-sm">{opt.text}</span>
@@ -184,7 +183,7 @@ export function MultipleChoicePreview() {
         {!submitted ? (
           <button disabled={!selected} onClick={() => setSubmitted(true)} className="px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-sm w-full transition-colors">Submit Answer</button>
         ) : (
-          <button onClick={() => { setSelected(null); setSubmitted(false); }} className="px-5 py-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold text-sm w-full transition-colors">Reset</button>
+          <button onClick={() => { setSelected(null); setSubmitted(false); }} className="px-5 py-2.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-sm w-full transition-colors">Reset</button>
         )}
       </div>
     </div>
@@ -204,17 +203,17 @@ export function SortingPreview() {
   
   return (
     <div className="w-full max-w-md select-none">
-      <p className="text-white font-bold text-lg mb-4">Click arrows to organize items (Bloom's Taxonomy):</p>
+      <p className="text-slate-900 font-bold text-lg mb-4">Click arrows to organize items (Bloom's Taxonomy):</p>
       <div className="space-y-2">
         <AnimatePresence>
           {items.map((level, i) => (
-            <motion.div layout key={level} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3 p-3 bg-slate-800 border border-slate-700 rounded-xl transition-colors shadow-sm">
-              <div className="flex flex-col gap-1 pr-2 border-r border-slate-600">
-                <button disabled={i === 0} onClick={() => moveItem(i, i - 1)} className="text-slate-400 hover:text-white disabled:opacity-30">▲</button>
-                <button disabled={i === items.length - 1} onClick={() => moveItem(i, i + 1)} className="text-slate-400 hover:text-white disabled:opacity-30">▼</button>
+            <motion.div layout key={level} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-xl transition-colors shadow-sm">
+              <div className="flex flex-col gap-1 pr-2 border-r border-slate-200">
+                <button disabled={i === 0} onClick={() => moveItem(i, i - 1)} className="text-slate-400 hover:text-indigo-600 disabled:opacity-30">▲</button>
+                <button disabled={i === items.length - 1} onClick={() => moveItem(i, i + 1)} className="text-slate-400 hover:text-indigo-600 disabled:opacity-30">▼</button>
               </div>
-              <span className="text-white font-medium text-sm flex-1">{level}</span>
-              <span className="text-xs text-indigo-400 font-bold shrink-0">Level {i + 1}</span>
+              <span className="text-slate-800 font-medium text-sm flex-1">{level}</span>
+              <span className="text-xs text-indigo-600 font-bold shrink-0">Level {i + 1}</span>
             </motion.div>
           ))}
         </AnimatePresence>
@@ -237,33 +236,33 @@ export function MatchingPreview() {
 
   return (
     <div className="w-full max-w-2xl select-none">
-      <p className="text-white font-bold text-lg mb-4 text-center">Match each term to its definition:</p>
+      <p className="text-slate-900 font-bold text-lg mb-4 text-center">Match each term to its definition:</p>
       <div className="grid grid-cols-2 gap-8">
         <div className="space-y-3">
-          <p className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-2 text-center">Terms (Click One)</p>
+          <p className="text-xs font-bold text-indigo-600 uppercase tracking-widest mb-2 text-center">Terms (Click One)</p>
           {terms.map(term => {
             const isMatched = !!matches[term];
             const isSelected = selectedTerm === term;
-            let cls = 'bg-slate-800 border-slate-600 text-slate-300';
-            if (isSelected) cls = 'bg-indigo-600 border-indigo-400 text-white ring-4 ring-indigo-500/20';
-            else if (isMatched) cls = 'bg-emerald-900/30 border-emerald-500/50 text-emerald-400 opacity-50';
+            let cls = 'bg-white border-slate-200 text-slate-700';
+            if (isSelected) cls = 'bg-indigo-600 border-indigo-500 text-white ring-4 ring-indigo-500/20';
+            else if (isMatched) cls = 'bg-emerald-50 border-emerald-300 text-emerald-700 opacity-70';
             return (
-              <div key={term} onClick={() => !isMatched && setSelectedTerm(isSelected ? null : term)} className={`p-4 border-2 rounded-xl font-bold text-sm text-center cursor-pointer transition-all shadow-md ${cls}`}>
+              <div key={term} onClick={() => !isMatched && setSelectedTerm(isSelected ? null : term)} className={`p-4 border-2 rounded-xl font-bold text-sm text-center cursor-pointer transition-all shadow-sm ${cls}`}>
                 {term} {isMatched && '✅'}
               </div>
             );
           })}
         </div>
         <div className="space-y-3">
-          <p className="text-xs font-bold text-purple-400 uppercase tracking-widest mb-2 text-center">Definitions</p>
+          <p className="text-xs font-bold text-purple-600 uppercase tracking-widest mb-2 text-center">Definitions</p>
           {defs.map(def => {
             const matchedBy = Object.keys(matches).find(k => matches[k] === def);
-            let cls = 'bg-slate-800/50 border-slate-700 text-slate-400 hover:border-slate-500';
-            if (matchedBy) cls = 'bg-emerald-900/30 border-emerald-500 text-emerald-300 pointer-events-none cursor-default';
-            else if (selectedTerm) cls = 'bg-purple-900/40 border-purple-500 text-white cursor-pointer ring-2 ring-purple-500 hover:bg-purple-800/80';
+            let cls = 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300';
+            if (matchedBy) cls = 'bg-emerald-50 border-emerald-400 text-emerald-800 pointer-events-none cursor-default';
+            else if (selectedTerm) cls = 'bg-purple-50 border-purple-400 text-slate-900 cursor-pointer ring-2 ring-purple-300 hover:bg-purple-100';
             return (
               <div key={def} onClick={() => handleDefClick(def)} className={`p-4 border border-dashed rounded-xl text-sm transition-all shadow-sm ${cls}`}>
-                {matchedBy ? <span className="font-bold text-xs uppercase tracking-wider block mb-1 text-emerald-400">Match: {matchedBy}</span> : null}
+                {matchedBy ? <span className="font-bold text-xs uppercase tracking-wider block mb-1 text-emerald-600">Match: {matchedBy}</span> : null}
                 {def}
               </div>
             );
@@ -272,8 +271,8 @@ export function MatchingPreview() {
       </div>
       {Object.keys(matches).length === terms.length && (
          <div className="mt-6 text-center animate-bounce">
-            <p className="text-emerald-400 font-bold">All Matchings Complete! 🎉</p>
-            <button onClick={() => setMatches({})} className="mt-2 text-xs opacity-60 hover:opacity-100 text-white">Reset</button>
+            <p className="text-emerald-600 font-bold">All Matchings Complete! 🎉</p>
+            <button onClick={() => setMatches({})} className="mt-2 text-xs opacity-60 hover:opacity-100 text-slate-700">Reset</button>
          </div>
       )}
     </div>
@@ -326,8 +325,8 @@ export function DropTargetsPreview() {
 
   return (
     <div className="w-full max-w-2xl select-none">
-      <p className="text-white font-bold text-lg mb-4">Drag `&` Drop regulations to the correct category:</p>
-      <div className="flex flex-wrap gap-2 p-4 bg-slate-800/50 rounded-xl border border-slate-700 mb-4 min-h-[70px]">
+      <p className="text-slate-900 font-bold text-lg mb-4">Drag & Drop regulations to the correct category:</p>
+      <div className="flex flex-wrap gap-2 p-4 bg-slate-50 rounded-xl border border-slate-200 mb-4 min-h-[70px]">
         {bank.map(item => (
           <div key={item.id} draggable onDragStart={(e) => handleDragStart(e, item.id)} className="group relative px-6 py-2 bg-indigo-600 rounded-lg text-white text-sm font-bold shadow-md pr-20 overflow-hidden cursor-grab active:cursor-grabbing hover:bg-indigo-500 transition-colors">
             {item.text}
@@ -338,14 +337,14 @@ export function DropTargetsPreview() {
             </div>
           </div>
         ))}
-        {bank.length === 0 && <p className="text-emerald-400 font-bold m-auto animate-pulse">All sorted properly!</p>}
+        {bank.length === 0 && <p className="text-emerald-600 font-bold m-auto animate-pulse">All sorted properly!</p>}
       </div>
       <div className="grid grid-cols-3 gap-3">
         {(['Healthcare', 'Financial', 'Education'] as const).map((zone) => (
-          <div key={zone} onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDrop(e, zone)} className={`p-4 rounded-xl border-2 border-dashed bg-slate-800/50 min-h-[140px] flex flex-col items-center gap-2 transition-all ${wrongFlash === zone ? 'border-red-500 bg-red-500/20' : 'border-slate-600 hover:border-indigo-500'}`}>
+          <div key={zone} onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDrop(e, zone)} className={`p-4 rounded-xl border-2 border-dashed bg-white min-h-[140px] flex flex-col items-center gap-2 transition-all ${wrongFlash === zone ? 'border-red-500 bg-red-50' : 'border-slate-300 hover:border-indigo-400'}`}>
             {wrongFlash === zone && <AlertCircle className="w-8 h-8 text-red-500 absolute" />}
             <span className="text-2xl">{zone === 'Healthcare' ? '🏥' : zone === 'Financial' ? '💰' : '🎓'}</span>
-            <span className="text-xs font-bold uppercase text-slate-400">{zone}</span>
+            <span className="text-xs font-bold uppercase text-slate-500">{zone}</span>
             <div className="w-full mt-2 space-y-1">
               {zones[zone].map(i => <div key={i.id} className="text-xs font-bold bg-indigo-600 text-white p-1.5 text-center rounded w-full line-clamp-1">{i.text}</div>)}
             </div>
@@ -371,13 +370,13 @@ export function TimelinePreview({ isPreview = true }: { isPreview?: boolean }) {
     <div className="w-full max-w-3xl select-none">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <p className="text-white font-bold text-lg">Incident Timeline</p>
-          <p className="text-slate-400 text-xs font-medium">Click steps to reveal details</p>
+          <p className="text-slate-900 font-bold text-lg">Incident Timeline</p>
+          <p className="text-slate-500 text-xs font-medium">Click steps to reveal details</p>
         </div>
         {isPreview && (
-          <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700">
-            <button onClick={(e) => { e.stopPropagation(); e.preventDefault(); setLayout("vertical"); }} className={`px-3 py-1 text-xs font-bold rounded-md transition-colors ${layout === 'vertical' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><LayoutList className="w-4 h-4" /></button>
-            <button onClick={(e) => { e.stopPropagation(); e.preventDefault(); setLayout("horizontal"); }} className={`px-3 py-1 text-xs font-bold rounded-md transition-colors ${layout === 'horizontal' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><GripVertical className="w-4 h-4 rotate-90" /></button>
+          <div className="flex bg-slate-100 rounded-lg p-1 border border-slate-200">
+            <button onClick={(e) => { e.stopPropagation(); e.preventDefault(); setLayout("vertical"); }} className={`px-3 py-1 text-xs font-bold rounded-md transition-colors ${layout === 'vertical' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-800'}`}><LayoutList className="w-4 h-4" /></button>
+            <button onClick={(e) => { e.stopPropagation(); e.preventDefault(); setLayout("horizontal"); }} className={`px-3 py-1 text-xs font-bold rounded-md transition-colors ${layout === 'horizontal' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-800'}`}><GripVertical className="w-4 h-4 rotate-90" /></button>
           </div>
         )}
       </div>
@@ -396,12 +395,12 @@ export function TimelinePreview({ isPreview = true }: { isPreview?: boolean }) {
             if (layout === 'horizontal') {
               return (
                 <div key={i} className="flex flex-col items-center flex-1 cursor-pointer relative" onClick={(e) => { e.stopPropagation(); setOpenStep(isOpen ? null : i); }}>
-                  <motion.div className={`w-8 h-8 rounded-full ${step.color} flex items-center justify-center text-white font-bold text-sm shadow-lg z-10 mb-2 transition-transform ${isOpen ? 'scale-125 ring-4 ring-white/20' : 'hover:scale-110'}`}>{step.n}</motion.div>
-                  <span className="font-bold text-xs text-center text-slate-200 mb-2 h-8">{step.title}</span>
+                  <motion.div className={`w-8 h-8 rounded-full ${step.color} flex items-center justify-center text-white font-bold text-sm shadow-lg z-10 mb-2 transition-transform ${isOpen ? 'scale-125 ring-4 ring-indigo-200' : 'hover:scale-110'}`}>{step.n}</motion.div>
+                  <span className="font-bold text-xs text-center text-slate-700 mb-2 h-8">{step.title}</span>
                   <AnimatePresence>
                      {isOpen && (
-                       <motion.div initial={{ opacity: 0, scale: 0.5, y: -30, originY: 0 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.5, y: -30, originY: 0, transition:{duration:0.15} }} className={`absolute top-16 left-1/2 -translate-x-1/2 w-48 bg-slate-900 border-2 ${step.border} rounded-xl p-4 text-sm text-white shadow-2xl z-20 pointer-events-none`}>
-                         <span className="font-bold border-b border-slate-600 pb-1 mb-2 block w-full">{step.title}</span>
+                       <motion.div initial={{ opacity: 0, scale: 0.5, y: -30, originY: 0 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.5, y: -30, originY: 0, transition:{duration:0.15} }} className={`absolute top-16 left-1/2 -translate-x-1/2 w-48 bg-white border-2 ${step.border} rounded-xl p-4 text-sm text-slate-700 shadow-2xl z-20 pointer-events-none`}>
+                         <span className="font-bold border-b border-slate-200 pb-1 mb-2 block w-full text-slate-900">{step.title}</span>
                          {step.content}
                        </motion.div>
                      )}
@@ -412,15 +411,15 @@ export function TimelinePreview({ isPreview = true }: { isPreview?: boolean }) {
 
             return (
               <div key={i}>
-                <button onClick={(e) => { e.stopPropagation(); setOpenStep(isOpen ? null : i); }} className={`w-full relative flex items-center gap-4 pl-14 pr-4 py-3 rounded-xl border transition-all text-left group ${isOpen ? '${step.border} bg-slate-800 text-white' : 'border-slate-700 bg-slate-800/50 text-slate-300 hover:border-slate-600 hover:bg-slate-800'}`}>
+                <button onClick={(e) => { e.stopPropagation(); setOpenStep(isOpen ? null : i); }} className={`w-full relative flex items-center gap-4 pl-14 pr-4 py-3 rounded-xl border transition-all text-left group ${isOpen ? `${step.border} bg-indigo-50 text-slate-900` : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'}`}>
                   <div className={`absolute left-3 w-8 h-8 rounded-full ${step.color} flex items-center justify-center text-white font-bold text-sm shadow-lg shrink-0`}>{step.n}</div>
                   <span className="font-bold text-sm flex-1">{step.title}</span>
-                  <span className="text-slate-500 text-xs group-hover:text-slate-300 transition-colors">{isOpen ? '▲ Close' : '▼ Details'}</span>
+                  <span className="text-slate-400 text-xs group-hover:text-slate-600 transition-colors">{isOpen ? '▲ Close' : '▼ Details'}</span>
                 </button>
                 <AnimatePresence>
                   {isOpen && (
                     <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-                       <div className={`mt-2 ml-14 mb-1 p-4 rounded-xl bg-slate-900 border ${step.border} text-slate-300 text-sm leading-relaxed shadow-inner`}>{step.content}</div>
+                       <div className={`mt-2 ml-14 mb-1 p-4 rounded-xl bg-slate-50 border ${step.border} text-slate-600 text-sm leading-relaxed shadow-inner`}>{step.content}</div>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -590,21 +589,21 @@ export function ScenarioPreview() {
     { id:'c', text:"Escalate Ethan's performance to HR before the meeting", consequence:"Jumping to HR before a one-on-one conversation is perceived as punitive. Team morale suffers and your judgment is questioned.", score:'bad' },
   ];
 
-  const scoreColor = (s:string) => s==='good'?'border-emerald-500 bg-emerald-900/20':s==='bad'?'border-red-500/50 bg-red-900/10':'border-amber-500/50 bg-amber-900/10';
+  const scoreColor = (s:string) => s==='good'?'border-emerald-400 bg-emerald-50':s==='bad'?'border-red-300 bg-red-50':'border-amber-300 bg-amber-50';
   const scoreLabel = (s:string) => s==='good'?'✦ Strong choice':s==='bad'?'⚠ Consider the impact':'~ Mixed outcome';
-  const scoreLc = (s:string) => s==='good'?'text-emerald-400':s==='bad'?'text-red-400':'text-amber-400';
+  const scoreLc = (s:string) => s==='good'?'text-emerald-700':s==='bad'?'text-red-700':'text-amber-700';
 
   return (
     <div className="w-full max-w-2xl select-none">
-      <div className="flex items-center gap-3 mb-4 p-3 bg-slate-800/60 rounded-xl border border-slate-700">
+      <div className="flex items-center gap-3 mb-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
         <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white font-black text-sm shrink-0">JR</div>
         <div>
-          <p className="text-white font-bold text-xs">Jordan Reyes — Operations Manager</p>
-          <p className="text-slate-400 text-[10px]">Decision Simulation · Phases 1–2 of 4</p>
+          <p className="text-slate-900 font-bold text-xs">Jordan Reyes — Operations Manager</p>
+          <p className="text-slate-500 text-[10px]">Decision Simulation · Phases 1–2 of 4</p>
         </div>
         <div className="ml-auto flex gap-1">
           {[0,1,2,3].map(i => (
-            <div key={i} className={`w-5 h-1.5 rounded-full transition-colors ${i===0?'bg-indigo-500':i===1&&(phase==='q2'||phase==='consequence2')?'bg-indigo-500':'bg-slate-700'}`} />
+            <div key={i} className={`w-5 h-1.5 rounded-full transition-colors ${i===0?'bg-indigo-500':i===1&&(phase==='q2'||phase==='consequence2')?'bg-indigo-500':'bg-slate-200'}`} />
           ))}
         </div>
       </div>
@@ -612,15 +611,15 @@ export function ScenarioPreview() {
       <AnimatePresence mode="wait">
         {phase==='q1' && (
           <motion.div key="q1" initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-10}} className="space-y-3">
-            <div className="bg-slate-800 rounded-xl border-l-4 border-indigo-500 p-4">
-              <p className="text-[10px] text-indigo-400 font-black uppercase tracking-widest mb-1">Phase 1 — First Response</p>
-              <p className="text-white text-sm font-semibold leading-snug">It's Monday morning. Priya flagged that Ethan missed two critical deliverables. An urgent client status email sits in your inbox.</p>
-              <p className="text-slate-300 text-xs mt-2 font-medium">What is your first move?</p>
+            <div className="bg-white rounded-xl border border-slate-200 border-l-4 border-l-indigo-500 p-4">
+              <p className="text-[10px] text-indigo-600 font-black uppercase tracking-widest mb-1">Phase 1 — First Response</p>
+              <p className="text-slate-900 text-sm font-semibold leading-snug">It's Monday morning. Priya flagged that Ethan missed two critical deliverables. An urgent client status email sits in your inbox.</p>
+              <p className="text-slate-600 text-xs mt-2 font-medium">What is your first move?</p>
             </div>
             <div className="space-y-2">
               {opts1.map(o => (
                 <button key={o.id} onClick={() => { setSel1(o.id); setPhase('consequence1'); }}
-                  className="w-full text-left p-3 rounded-xl border-2 border-slate-700 bg-slate-800/60 hover:border-indigo-500/60 hover:bg-slate-800 text-slate-300 text-xs font-medium transition-all">
+                  className="w-full text-left p-3 rounded-xl border-2 border-slate-200 bg-white hover:border-indigo-400 hover:bg-indigo-50 text-slate-700 text-xs font-medium transition-all">
                   {o.text}
                 </button>
               ))}
@@ -633,7 +632,7 @@ export function ScenarioPreview() {
             <motion.div key="c1" initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-10}} className="space-y-3">
               <div className={`rounded-xl border-2 p-4 ${scoreColor(opt.score)}`}>
                 <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${scoreLc(opt.score)}`}>{scoreLabel(opt.score)}</p>
-                <p className="text-white text-xs leading-relaxed">{opt.consequence}</p>
+                <p className="text-slate-800 text-xs leading-relaxed">{opt.consequence}</p>
               </div>
               <button onClick={() => setPhase('q2')} className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition-colors">
                 Continue to Phase 2 →
@@ -643,15 +642,15 @@ export function ScenarioPreview() {
         })()}
         {phase==='q2' && (
           <motion.div key="q2" initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-10}} className="space-y-3">
-            <div className="bg-slate-800 rounded-xl border-l-4 border-violet-500 p-4">
-              <p className="text-[10px] text-violet-400 font-black uppercase tracking-widest mb-1">Phase 2 — Director Meeting</p>
-              <p className="text-white text-sm font-semibold leading-snug">Priya pulls you aside: she believes Ethan's behavior suggests something personal. Your director's check-in is in 3 hours.</p>
-              <p className="text-slate-300 text-xs mt-2 font-medium">How do you approach the meeting?</p>
+            <div className="bg-white rounded-xl border border-slate-200 border-l-4 border-l-violet-500 p-4">
+              <p className="text-[10px] text-violet-600 font-black uppercase tracking-widest mb-1">Phase 2 — Director Meeting</p>
+              <p className="text-slate-900 text-sm font-semibold leading-snug">Priya pulls you aside: she believes Ethan's behavior suggests something personal. Your director's check-in is in 3 hours.</p>
+              <p className="text-slate-600 text-xs mt-2 font-medium">How do you approach the meeting?</p>
             </div>
             <div className="space-y-2">
               {opts2.map(o => (
                 <button key={o.id} onClick={() => { setSel2(o.id); setPhase('consequence2'); }}
-                  className="w-full text-left p-3 rounded-xl border-2 border-slate-700 bg-slate-800/60 hover:border-violet-500/60 hover:bg-slate-800 text-slate-300 text-xs font-medium transition-all">
+                  className="w-full text-left p-3 rounded-xl border-2 border-slate-200 bg-white hover:border-violet-400 hover:bg-violet-50 text-slate-700 text-xs font-medium transition-all">
                   {o.text}
                 </button>
               ))}
@@ -665,20 +664,20 @@ export function ScenarioPreview() {
             <motion.div key="c2" initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-10}} className="space-y-3">
               <div className={`rounded-xl border-2 p-4 ${scoreColor(opt.score)}`}>
                 <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${scoreLc(opt.score)}`}>{scoreLabel(opt.score)}</p>
-                <p className="text-white text-xs leading-relaxed">{opt.consequence}</p>
+                <p className="text-slate-800 text-xs leading-relaxed">{opt.consequence}</p>
               </div>
-              <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
-                <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-3">Your Decision Profile (so far)</p>
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-3">Your Decision Profile (so far)</p>
                 {bars.map(b => (
                   <div key={b.label} className="mb-2">
-                    <div className="flex justify-between text-[10px] mb-1"><span className="text-slate-300">{b.label}</span><span className="text-white font-bold">{b.val}%</span></div>
-                    <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                    <div className="flex justify-between text-[10px] mb-1"><span className="text-slate-600">{b.label}</span><span className="text-slate-900 font-bold">{b.val}%</span></div>
+                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
                       <motion.div initial={{width:0}} animate={{width:`${b.val}%`}} transition={{duration:0.8,delay:0.2}} className={`h-full rounded-full ${b.val>=70?'bg-indigo-500':'bg-amber-500'}`} />
                     </div>
                   </div>
                 ))}
               </div>
-              <button onClick={() => { setPhase('q1'); setSel1(null); setSel2(null); }} className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-bold rounded-xl transition-colors">
+              <button onClick={() => { setPhase('q1'); setSel1(null); setSel2(null); }} className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors">
                 ↩ Restart Preview
               </button>
             </motion.div>

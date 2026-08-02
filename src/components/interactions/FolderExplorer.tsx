@@ -34,7 +34,7 @@ export default function FolderExplorer({ folderLabel, items = [] }: Props) {
 
   return (
     <div className="w-full select-none">
-      <p className="text-slate-400 text-sm text-center mb-6 font-bold">
+      <p className="text-slate-600 text-sm text-center mb-6 font-bold">
         {folderLabel || 'Click any folder to view its document'}
       </p>
       <div className="relative flex items-end justify-center gap-3 px-4" style={{ minHeight: 220 }}>

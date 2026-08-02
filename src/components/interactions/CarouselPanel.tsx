@@ -15,12 +15,13 @@ export interface CarouselCard {
 interface Props {
   cards: CarouselCard[];
   title?: string;
+  theme?: 'light' | 'dark' | 'unified';
   onCardView?: (cardId: string) => void;
 }
 
 const DEFAULT_COLORS = ['#fbbf24', '#f87171', '#38bdf8', '#c084fc', '#4ade80'];
 
-export default function CarouselPanel({ cards = [], title, onCardView }: Props) {
+export default function CarouselPanel({ cards = [], title, theme = 'dark', onCardView }: Props) {
   const normalized = React.useMemo(
     () => (cards || []).map((c, i) => ({ ...c, id: (c?.id != null && String(c.id).trim()) ? String(c.id) : `card-${i}` })),
     [cards]
@@ -49,11 +50,17 @@ export default function CarouselPanel({ cards = [], title, onCardView }: Props) 
     if (id) onCardView?.(id);
   };
 
+  const isLight = theme === 'light';
+
   return (
-    <div className="w-full flex flex-col items-center gap-3 select-none bg-slate-900 py-5 px-2 rounded-2xl border border-slate-800 shadow-xl">
+    <div className={`w-full flex flex-col items-center gap-3 select-none py-5 px-2 rounded-2xl border shadow-xl ${
+      isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800'
+    }`}>
       {title && (
         <div className="w-full px-6 text-left">
-          <p className="text-white text-lg font-bold bg-slate-800 inline-block px-4 py-2 border border-slate-700 rounded-md">
+          <p className={`text-lg font-bold inline-block px-4 py-2 border rounded-md ${
+            isLight ? 'text-slate-900 bg-slate-50 border-slate-200' : 'text-white bg-slate-800 border-slate-700'
+          }`}>
             {title}
           </p>
         </div>
