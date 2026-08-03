@@ -19,6 +19,7 @@ import rateLimit from 'express-rate-limit';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import * as dotenv from 'dotenv';
+import crypto from 'crypto';
 import Stripe from 'stripe';
 import { Resend } from 'resend';
 
@@ -48,22 +49,38 @@ const STRIPE_SECRET_KEY      = process.env.STRIPE_SECRET_KEY ?? '';
 const STRIPE_WEBHOOK_SECRET  = process.env.STRIPE_WEBHOOK_SECRET ?? '';
 
 // Map frontend plan IDs → Stripe Price IDs (set in Render env vars)
+// Prefer v2 annual/monthly keys; fall back to legacy STRIPE_PRICE_* for older deploys.
 const STRIPE_PRICE_MAP = {
-  teacher_pro:      process.env.STRIPE_PRICE_TEACHER_PRO      ?? '',
-  pro_creator:      process.env.STRIPE_PRICE_PRO_CREATOR      ?? '',
-  business_team:    process.env.STRIPE_PRICE_BUSINESS_TEAM    ?? '',
-  credits_standard: process.env.STRIPE_PRICE_CREDITS_STANDARD ?? '',
-  credits_volume:   process.env.STRIPE_PRICE_CREDITS_VOLUME   ?? '',
+  teacher_pro:         process.env.STRIPE_PRICE_TEACHER_PRO ?? '',
+  pro_creator:         process.env.STRIPE_PRICE_PRO_CREATOR_ANNUAL
+                         || process.env.STRIPE_PRICE_PRO_CREATOR
+                         || '',
+  pro_creator_monthly: process.env.STRIPE_PRICE_PRO_CREATOR_MONTHLY
+                         || process.env.STRIPE_PRICE_PRO_CREATOR
+                         || '',
+  business_team:       process.env.STRIPE_PRICE_BUSINESS_TEAM_ANNUAL
+                         || process.env.STRIPE_PRICE_BUSINESS_TEAM
+                         || '',
+  credits_standard:    process.env.STRIPE_PRICE_CREDITS_STANDARD ?? '',
+  credits_volume:      process.env.STRIPE_PRICE_CREDITS_VOLUME   ?? '',
 };
 
 // Map plan IDs → credit grants (applied on successful checkout)
 const PLAN_CREDITS = {
-  teacher_pro:      { credits_ai: 300,  credits_tts: 300  },
-  pro_creator:      { credits_ai: 500,  credits_tts: 500  },
-  business_team:    { credits_ai: 1500, credits_tts: 1500 },
-  credits_standard: { credits_ai: 100,  credits_tts: 0    },
-  credits_volume:   { credits_ai: 500,  credits_tts: 0    },
+  teacher_pro:         { credits_ai: 300,  credits_tts: 300  },
+  pro_creator:         { credits_ai: 500,  credits_tts: 500  },
+  pro_creator_monthly: { credits_ai: 500,  credits_tts: 500  },
+  business_team:       { credits_ai: 1500, credits_tts: 1500 },
+  credits_standard:    { credits_ai: 100,  credits_tts: 0    },
+  credits_volume:      { credits_ai: 500,  credits_tts: 0    },
 };
+
+/** Normalize checkout variants → canonical entitlement tier stored in DB. */
+function normalizeEntitlementPlan(planId) {
+  if (planId === 'pro_creator_monthly' || planId === 'pro_creator_annual') return 'pro_creator';
+  if (planId === 'business_team_annual') return 'business_team';
+  return planId;
+}
 
 const stripe = STRIPE_SECRET_KEY
   ? new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2024-12-18.acacia' })
@@ -643,6 +660,115 @@ function getSupabaseKey() {
       || '';
 }
 
+async function getAdminSupabase() {
+  const { createClient } = await import('@supabase/supabase-js');
+  return createClient(
+    process.env.VITE_SUPABASE_URL,
+    getSupabaseKey(),
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  );
+}
+
+/** Decode Bearer JWT and return { userId, email } or null. */
+function authFromHeader(authHeader) {
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token) return null;
+  const payload = decodeJwtPayload(token);
+  if (!payload?.sub) return null;
+  return {
+    userId: payload.sub,
+    email: (payload.email ?? '').toLowerCase(),
+  };
+}
+
+/**
+ * Ensure a Team workspace exists for the billing owner.
+ * Credits live on the workspace so all seats share one pool.
+ */
+async function ensureTeamWorkspace(supabase, {
+  ownerUserId,
+  ownerEmail,
+  creditsAi = 1500,
+  creditsTts = 1500,
+  stripeCustomerId = null,
+  stripeSubId = null,
+  name = 'Team Workspace',
+}) {
+  const now = new Date().toISOString();
+  const { data: existing } = await supabase
+    .from('workspaces')
+    .select('id')
+    .eq('owner_user_id', ownerUserId)
+    .maybeSingle();
+
+  let workspaceId = existing?.id;
+  if (workspaceId) {
+    await supabase.from('workspaces').update({
+      status: 'active',
+      credits_ai: creditsAi,
+      credits_tts: creditsTts,
+      stripe_customer_id: stripeCustomerId,
+      stripe_sub_id: stripeSubId,
+      updated_at: now,
+    }).eq('id', workspaceId);
+  } else {
+    const { data: created, error } = await supabase.from('workspaces').insert({
+      name,
+      owner_user_id: ownerUserId,
+      seat_limit: 5,
+      credits_ai: creditsAi,
+      credits_tts: creditsTts,
+      stripe_customer_id: stripeCustomerId,
+      stripe_sub_id: stripeSubId,
+      status: 'active',
+      updated_at: now,
+    }).select('id').single();
+    if (error) throw error;
+    workspaceId = created.id;
+  }
+
+  const email = (ownerEmail || '').toLowerCase() || `owner-${ownerUserId}@nexcourse.local`;
+  await supabase.from('workspace_members').upsert({
+    workspace_id: workspaceId,
+    user_id: ownerUserId,
+    email,
+    role: 'owner',
+    status: 'active',
+    invite_token: null,
+    joined_at: now,
+  }, { onConflict: 'workspace_id,email' });
+
+  return workspaceId;
+}
+
+/** Active Team membership for a user (owner or member). */
+async function getActiveTeamMembership(supabase, userId, email) {
+  const memberSelect =
+    'id, workspace_id, role, status, email, workspaces(id, name, owner_user_id, seat_limit, credits_ai, credits_tts, status, stripe_customer_id)';
+
+  const { data: byUser } = await supabase
+    .from('workspace_members')
+    .select(memberSelect)
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .limit(1)
+    .maybeSingle();
+
+  if (byUser?.workspaces?.status === 'active') return byUser;
+
+  if (email) {
+    const { data: byEmail } = await supabase
+      .from('workspace_members')
+      .select(memberSelect)
+      .eq('email', email.toLowerCase())
+      .eq('status', 'active')
+      .limit(1)
+      .maybeSingle();
+    if (byEmail?.workspaces?.status === 'active') return byEmail;
+  }
+  return null;
+}
+
 // Decode a Supabase JWT payload without verifying the signature.
 // The email and user_metadata are self-contained in the token body.
 // Security: Supabase JWTs are signed with the project's JWT secret — the email
@@ -893,7 +1019,12 @@ app.post('/api/payments/create-checkout', async (req, res) => {
     return res.status(400).json({ error: `Unknown planId: ${planId}` });
   }
 
-  const isSubscription = ['teacher_pro', 'pro_creator', 'business_team'].includes(planId);
+  const isSubscription = [
+    'teacher_pro',
+    'pro_creator',
+    'pro_creator_monthly',
+    'business_team',
+  ].includes(planId);
   const frontendBase = isProd ? 'https://nexcourse.ai' : 'http://localhost:3000';
 
   try {
@@ -959,9 +1090,10 @@ app.post(
         const session  = event.data.object;
         const userId   = session.metadata?.userId;
         const planId   = session.metadata?.planId;
+        const entitlementPlan = normalizeEntitlementPlan(planId);
         const custId   = session.customer;
         const subId    = session.subscription ?? null;
-        const credits  = PLAN_CREDITS[planId] ?? { credits_ai: 0, credits_tts: 0 };
+        const credits  = PLAN_CREDITS[planId] ?? PLAN_CREDITS[entitlementPlan] ?? { credits_ai: 0, credits_tts: 0 };
         const isSubscription = subId !== null;
 
         if (userId && planId) {
@@ -973,21 +1105,43 @@ app.post(
           );
 
           if (isSubscription) {
-            // Upsert subscription record
+            // Upsert subscription record (canonical tier — not monthly/annual variant)
             await supabase.from('user_entitlements').upsert({
               user_id:            userId,
-              subscription:       planId,
+              subscription:       entitlementPlan,
               credits_ai:         credits.credits_ai,
               credits_tts:        credits.credits_tts,
               stripe_customer_id: custId,
               stripe_sub_id:      subId,
               updated_at:         new Date().toISOString(),
             }, { onConflict: 'user_id' });
+
+            // Team plan → create/refresh workspace + owner seat (pooled credits)
+            if (entitlementPlan === 'business_team') {
+              try {
+                let ownerEmail = session.customer_details?.email || session.customer_email || '';
+                if (!ownerEmail) {
+                  const { data: { user: ownerUser } } = await supabase.auth.admin.getUserById(userId);
+                  ownerEmail = ownerUser?.email || '';
+                }
+                await ensureTeamWorkspace(supabase, {
+                  ownerUserId: userId,
+                  ownerEmail,
+                  creditsAi: credits.credits_ai,
+                  creditsTts: credits.credits_tts,
+                  stripeCustomerId: custId,
+                  stripeSubId: subId,
+                });
+                console.log(`[Stripe Webhook] Team workspace ensured — userId=${userId}`);
+              } catch (wsErr) {
+                console.warn('[Stripe Webhook] Workspace ensure failed:', wsErr?.message);
+              }
+            }
           } else {
             // One-time purchase — add credits on top of existing balance
             const { data: existing } = await supabase
               .from('user_entitlements')
-              .select('credits_ai, credits_tts')
+              .select('credits_ai, credits_tts, subscription')
               .eq('user_id', userId)
               .single();
 
@@ -1000,35 +1154,38 @@ app.post(
               updated_at:         new Date().toISOString(),
             }, { onConflict: 'user_id' });
           }
-          console.log(`[Stripe Webhook] checkout.session.completed — userId=${userId} plan=${planId}`);
+          console.log(`[Stripe Webhook] checkout.session.completed — userId=${userId} plan=${planId} entitlement=${entitlementPlan}`);
 
-          // ── If this was a trial user, graduate them to full customer ─────────
-          // Clear the 'trial' role flag so all trial restrictions lift immediately.
-          try {
-            await supabase.auth.admin.updateUserById(userId, {
-              user_metadata: { role: 'customer', trial_expires_at: null },
-            });
-            console.log(`[Stripe Webhook] Trial graduated to customer — userId=${userId}`);
-          } catch (graduateErr) {
-            // Non-fatal — entitlements are already updated, restrictions lift on next login
-            console.warn('[Stripe Webhook] Could not clear trial metadata:', graduateErr?.message);
+          // Graduate trials + sync user_metadata.plan for draft limits / UI gating
+          if (isSubscription) {
+            try {
+              await supabase.auth.admin.updateUserById(userId, {
+                user_metadata: {
+                  role: 'customer',
+                  trial_expires_at: null,
+                  plan: entitlementPlan,
+                },
+              });
+              console.log(`[Stripe Webhook] Plan synced to metadata — userId=${userId} plan=${entitlementPlan}`);
+            } catch (graduateErr) {
+              console.warn('[Stripe Webhook] Could not sync user metadata:', graduateErr?.message);
+            }
           }
         }
       }
 
       if (event.type === 'customer.subscription.deleted') {
-        // Subscription cancelled — downgrade to free
+        // Subscription cancelled — downgrade to free + cancel Team workspace
         const sub    = event.data.object;
         const custId = sub.customer;
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(
-          process.env.VITE_SUPABASE_URL,
-          getSupabaseKey(),
-          { auth: { autoRefreshToken: false, persistSession: false } }
-        );
+        const supabase = await getAdminSupabase();
         await supabase
           .from('user_entitlements')
           .update({ subscription: 'free', stripe_sub_id: null, updated_at: new Date().toISOString() })
+          .eq('stripe_customer_id', custId);
+        await supabase
+          .from('workspaces')
+          .update({ status: 'cancelled', stripe_sub_id: null, updated_at: new Date().toISOString() })
           .eq('stripe_customer_id', custId);
         console.log(`[Stripe Webhook] subscription.deleted — customer=${custId}`);
       }
@@ -1041,31 +1198,352 @@ app.post(
   }
 );
 
-// 8c. Get Payment Status for a user
+// 8c. Get Payment Status for a user (own plan OR active Team seat)
 app.get('/api/payments/status', async (req, res) => {
   const { userId } = req.query;
   if (!userId) return res.status(400).json({ error: 'Missing userId query param' });
 
   try {
-    const { createClient } = await import('@supabase/supabase-js');
-    const supabase = createClient(
-      process.env.VITE_SUPABASE_URL,
-      getSupabaseKey(),
-      { auth: { autoRefreshToken: false, persistSession: false } }
-    );
+    const supabase = await getAdminSupabase();
     const { data, error } = await supabase
       .from('user_entitlements')
       .select('subscription, credits_ai, credits_tts, stripe_customer_id')
       .eq('user_id', userId)
-      .single();
+      .maybeSingle();
 
-    if (error || !data) {
-      // No record = free tier user
-      return res.json({ subscription: 'free', credits_ai: 0, credits_tts: 0, stripe_customer_id: null });
+    const own = (!error && data)
+      ? data
+      : { subscription: 'free', credits_ai: 0, credits_tts: 0, stripe_customer_id: null };
+
+    // Owner on Team: expose workspace pooled credits
+    if (own.subscription === 'business_team') {
+      const { data: ws } = await supabase
+        .from('workspaces')
+        .select('id, name, seat_limit, credits_ai, credits_tts, status')
+        .eq('owner_user_id', userId)
+        .eq('status', 'active')
+        .maybeSingle();
+      if (ws) {
+        return res.json({
+          subscription: 'business_team',
+          credits_ai: ws.credits_ai,
+          credits_tts: ws.credits_tts,
+          stripe_customer_id: own.stripe_customer_id,
+          workspace_id: ws.id,
+          workspace_name: ws.name,
+          workspace_role: 'owner',
+          seat_limit: ws.seat_limit,
+        });
+      }
     }
-    return res.json(data);
+
+    // Member seat: inherit Team plan + pooled credits (not billing customer)
+    if (own.subscription !== 'business_team' && own.subscription !== 'pro_creator') {
+      let email = '';
+      try {
+        const { data: { user } } = await supabase.auth.admin.getUserById(userId);
+        email = user?.email || '';
+      } catch { /* ignore */ }
+      const membership = await getActiveTeamMembership(supabase, userId, email);
+      if (membership?.workspaces) {
+        const ws = membership.workspaces;
+        return res.json({
+          subscription: 'business_team',
+          credits_ai: ws.credits_ai,
+          credits_tts: ws.credits_tts,
+          stripe_customer_id: null,
+          workspace_id: ws.id,
+          workspace_name: ws.name,
+          workspace_role: membership.role,
+          seat_limit: ws.seat_limit,
+        });
+      }
+    }
+
+    return res.json({
+      ...own,
+      workspace_id: null,
+      workspace_name: null,
+      workspace_role: null,
+      seat_limit: null,
+    });
   } catch (err) {
     console.error('[Payment Status] Error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── 8d. Team workspace / seats ─────────────────────────────────────────────
+
+app.get('/api/workspace', async (req, res) => {
+  const auth = authFromHeader(req.headers.authorization);
+  if (!auth) return res.status(401).json({ error: 'Sign in required.' });
+
+  try {
+    const supabase = await getAdminSupabase();
+    const membership = await getActiveTeamMembership(supabase, auth.userId, auth.email);
+    if (!membership?.workspaces) {
+      // Owner may have Team entitlement but membership row missing — heal
+      const { data: ent } = await supabase
+        .from('user_entitlements')
+        .select('subscription, credits_ai, credits_tts, stripe_customer_id, stripe_sub_id')
+        .eq('user_id', auth.userId)
+        .maybeSingle();
+      if (ent?.subscription === 'business_team') {
+        const wsId = await ensureTeamWorkspace(supabase, {
+          ownerUserId: auth.userId,
+          ownerEmail: auth.email,
+          creditsAi: ent.credits_ai,
+          creditsTts: ent.credits_tts,
+          stripeCustomerId: ent.stripe_customer_id,
+          stripeSubId: ent.stripe_sub_id,
+        });
+        const { data: members } = await supabase
+          .from('workspace_members')
+          .select('id, email, role, status, user_id, created_at, joined_at')
+          .eq('workspace_id', wsId)
+          .neq('status', 'removed')
+          .order('created_at', { ascending: true });
+        return res.json({
+          workspace: { id: wsId, name: 'Team Workspace', seat_limit: 5, role: 'owner' },
+          members: members || [],
+        });
+      }
+      return res.json({ workspace: null, members: [] });
+    }
+
+    const ws = membership.workspaces;
+    const { data: members } = await supabase
+      .from('workspace_members')
+      .select('id, email, role, status, user_id, created_at, joined_at')
+      .eq('workspace_id', ws.id)
+      .neq('status', 'removed')
+      .order('created_at', { ascending: true });
+
+    return res.json({
+      workspace: {
+        id: ws.id,
+        name: ws.name,
+        seat_limit: ws.seat_limit,
+        role: membership.role,
+        credits_ai: ws.credits_ai,
+        credits_tts: ws.credits_tts,
+      },
+      members: members || [],
+    });
+  } catch (err) {
+    console.error('[Workspace] GET error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/workspace/invite', async (req, res) => {
+  const auth = authFromHeader(req.headers.authorization);
+  if (!auth) return res.status(401).json({ error: 'Sign in required.' });
+
+  const email = (req.body?.email || '').trim().toLowerCase();
+  if (!email || !email.includes('@')) {
+    return res.status(400).json({ error: 'A valid email is required.' });
+  }
+  if (email === auth.email) {
+    return res.status(400).json({ error: 'You are already on this workspace.' });
+  }
+
+  try {
+    const supabase = await getAdminSupabase();
+    const { data: ent } = await supabase
+      .from('user_entitlements')
+      .select('subscription, credits_ai, credits_tts, stripe_customer_id, stripe_sub_id')
+      .eq('user_id', auth.userId)
+      .maybeSingle();
+
+    if (ent?.subscription !== 'business_team') {
+      return res.status(403).json({ error: 'Team plan required to invite seats.' });
+    }
+
+    const workspaceId = await ensureTeamWorkspace(supabase, {
+      ownerUserId: auth.userId,
+      ownerEmail: auth.email,
+      creditsAi: ent.credits_ai,
+      creditsTts: ent.credits_tts,
+      stripeCustomerId: ent.stripe_customer_id,
+      stripeSubId: ent.stripe_sub_id,
+    });
+
+    const { data: ws } = await supabase
+      .from('workspaces')
+      .select('seat_limit, name')
+      .eq('id', workspaceId)
+      .single();
+
+    const { data: existingMembers } = await supabase
+      .from('workspace_members')
+      .select('id, email, status')
+      .eq('workspace_id', workspaceId)
+      .neq('status', 'removed');
+
+    const occupied = (existingMembers || []).length;
+    const already = (existingMembers || []).find(m => m.email === email);
+    if (already?.status === 'active') {
+      return res.status(400).json({ error: 'That person is already on your Team.' });
+    }
+    if (!already && occupied >= (ws?.seat_limit ?? 5)) {
+      return res.status(400).json({ error: `Seat limit reached (${ws?.seat_limit ?? 5}).` });
+    }
+
+    const inviteToken = crypto.randomBytes(24).toString('hex');
+    const { data: member, error } = await supabase.from('workspace_members').upsert({
+      workspace_id: workspaceId,
+      email,
+      user_id: null,
+      role: 'member',
+      status: 'invited',
+      invite_token: inviteToken,
+      invited_by: auth.userId,
+      joined_at: null,
+    }, { onConflict: 'workspace_id,email' }).select('id, email, role, status').single();
+
+    if (error) throw error;
+
+    const baseUrl = isProd ? 'https://nexcourse.ai' : 'http://localhost:3000';
+    const inviteLink = `${baseUrl}/account?team_invite=${inviteToken}`;
+
+    if (resend) {
+      await resend.emails.send({
+        from: FROM_EMAIL,
+        to: email,
+        subject: "You're invited to a NexCourse AI Team workspace",
+        html: `
+          <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#0f172a">
+            <h2 style="margin:0 0 12px">Join ${ws?.name || 'your team'} on NexCourse AI</h2>
+            <p style="color:#475569;line-height:1.5">
+              You've been invited to a shared Team workspace (pooled credits, shared draft slots, all narration voices).
+            </p>
+            <p style="margin:24px 0">
+              <a href="${inviteLink}"
+                 style="background:#4f46e5;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:700">
+                Accept invite
+              </a>
+            </p>
+            <p style="color:#94a3b8;font-size:12px">If you don't have an account yet, create one with this email, then open the link again.</p>
+          </div>
+        `,
+      }).catch(e => console.warn('[Workspace Invite] Resend failed:', e.message));
+    }
+
+    return res.json({ member, inviteLink, emailSent: !!resend });
+  } catch (err) {
+    console.error('[Workspace] invite error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/workspace/accept', async (req, res) => {
+  const auth = authFromHeader(req.headers.authorization);
+  if (!auth) return res.status(401).json({ error: 'Sign in required.' });
+
+  const token = (req.body?.token || '').trim();
+  if (!token) return res.status(400).json({ error: 'Invite token required.' });
+
+  try {
+    const supabase = await getAdminSupabase();
+    const { data: invite, error } = await supabase
+      .from('workspace_members')
+      .select('id, email, status, workspace_id, workspaces:workspace_id(status, seat_limit)')
+      .eq('invite_token', token)
+      .maybeSingle();
+
+    if (error || !invite) return res.status(404).json({ error: 'Invite not found.' });
+    if (invite.workspaces?.status !== 'active') {
+      return res.status(400).json({ error: 'This Team workspace is no longer active.' });
+    }
+    if (invite.status === 'removed') {
+      return res.status(400).json({ error: 'This invite was revoked.' });
+    }
+    if (invite.email !== auth.email) {
+      return res.status(403).json({
+        error: `Sign in as ${invite.email} to accept this invite.`,
+      });
+    }
+
+    const now = new Date().toISOString();
+    await supabase.from('workspace_members').update({
+      user_id: auth.userId,
+      status: 'active',
+      joined_at: now,
+      invite_token: null,
+    }).eq('id', invite.id);
+
+    // Soft-sync metadata so UI gates (voices/drafts) see Team without waiting on Stripe row
+    try {
+      await supabase.auth.admin.updateUserById(auth.userId, {
+        user_metadata: { plan: 'business_team' },
+      });
+    } catch (metaErr) {
+      console.warn('[Workspace] accept metadata sync failed:', metaErr?.message);
+    }
+
+    return res.json({ ok: true, workspace_id: invite.workspace_id });
+  } catch (err) {
+    console.error('[Workspace] accept error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/workspace/remove', async (req, res) => {
+  const auth = authFromHeader(req.headers.authorization);
+  if (!auth) return res.status(401).json({ error: 'Sign in required.' });
+
+  const memberId = req.body?.memberId;
+  if (!memberId) return res.status(400).json({ error: 'memberId required.' });
+
+  try {
+    const supabase = await getAdminSupabase();
+    const { data: ent } = await supabase
+      .from('user_entitlements')
+      .select('subscription')
+      .eq('user_id', auth.userId)
+      .maybeSingle();
+    if (ent?.subscription !== 'business_team') {
+      return res.status(403).json({ error: 'Only the Team owner can remove seats.' });
+    }
+
+    const { data: ws } = await supabase
+      .from('workspaces')
+      .select('id')
+      .eq('owner_user_id', auth.userId)
+      .eq('status', 'active')
+      .maybeSingle();
+    if (!ws) return res.status(404).json({ error: 'Workspace not found.' });
+
+    const { data: member } = await supabase
+      .from('workspace_members')
+      .select('id, role, user_id')
+      .eq('id', memberId)
+      .eq('workspace_id', ws.id)
+      .maybeSingle();
+
+    if (!member) return res.status(404).json({ error: 'Member not found.' });
+    if (member.role === 'owner') {
+      return res.status(400).json({ error: 'Cannot remove the workspace owner.' });
+    }
+
+    await supabase.from('workspace_members').update({
+      status: 'removed',
+      invite_token: null,
+    }).eq('id', memberId);
+
+    if (member.user_id) {
+      try {
+        await supabase.auth.admin.updateUserById(member.user_id, {
+          user_metadata: { plan: 'free' },
+        });
+      } catch { /* ignore */ }
+    }
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('[Workspace] remove error:', err.message);
     return res.status(500).json({ error: err.message });
   }
 });

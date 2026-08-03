@@ -652,48 +652,48 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
           <motion.p initial={{ opacity:0 }} whileInView={{ opacity:1 }} viewport={{ once:true }}
             className="text-amber-400 text-sm font-black uppercase tracking-widest mb-3">Simple, Transparent Pricing</motion.p>
           <motion.h2 initial={{ opacity:0, y:16 }} whileInView={{ opacity:1, y:0 }} viewport={{ once:true }}
-            transition={{ duration:0.5 }} className="text-4xl md:text-5xl font-black text-white mb-4">Credit-Based Plans for Every Team.</motion.h2>
-          <p className="text-slate-400 text-lg mb-10">Purpose-built for corporate L&amp;D — from independent designers to enterprise organizations.</p>
+            transition={{ duration:0.5 }} className="text-4xl md:text-5xl font-black text-white mb-4">Credit-Based Plans for Creators &amp; Teams.</motion.h2>
+          <p className="text-slate-400 text-lg mb-10">Solo creators or a flat Team workspace — honest features, SCORM export for your LMS.</p>
           <div className="grid sm:grid-cols-3 gap-5 mb-10">
             {[
               {
-                name: 'Pro Creator',
-                price: '$79',
-                priceNote: 'per user / month · billed annually',
+                name: 'Creator',
+                price: '$59',
+                priceNote: '/ mo · billed annually ($708/yr)',
                 color: 'border-slate-700',
                 textColor: 'text-slate-300',
                 badge: null,
                 highlighted: false,
-                features: ['Full AI course generation', 'All interactive templates', 'SCORM 1.2 & 2004 exports', 'Standard & HD TTS Audio', 'Premium support'],
+                features: ['Full AI course generation', 'Interactive elements', 'SCORM 1.2 & 2004 export', 'AI voice-over (Alloy)', '3 cloud drafts'],
                 featureColor: 'text-slate-300',
               },
               {
-                name: 'Business Team',
+                name: 'Team',
                 price: '$149',
-                priceNote: 'per user / month · billed annually',
+                priceNote: '/ mo · billed annually · up to 5 seats',
                 color: 'border-indigo-500/50 bg-indigo-500/5',
                 textColor: 'text-indigo-300',
                 badge: 'Best Value',
                 highlighted: true,
-                features: ['Everything in Pro Creator', 'HD TTS Audio (all 6 voices)', 'Up to 5 user seats', 'SCORM completion & score reporting', 'Priority email support'],
+                features: ['Everything in Creator', 'Flat fee for up to 5 seats', '10 shared cloud drafts', 'All 6 TTS voices', 'Pooled credits'],
                 featureColor: 'text-indigo-200',
               },
               {
-                name: 'Enterprise',
+                name: 'Contact us',
                 price: 'Custom',
-                priceNote: '',
+                priceNote: 'Invoice & volume quotes',
                 color: 'border-slate-700',
                 textColor: 'text-slate-300',
                 badge: null,
                 highlighted: false,
-                features: ['Custom AI configuration', 'Dedicated account manager', 'SLA guarantees', 'Custom contract & billing', 'API access'],
+                features: ['Invoice / PO billing', 'Volume quotes', 'Onboarding help', 'Priority support', 'Same core Team product'],
                 featureColor: 'text-slate-300',
               },
             ].map(({ name, price, priceNote, color, textColor, badge, highlighted, features: planFeatures, featureColor }) => (
               <div key={name} className={`relative p-6 rounded-2xl border ${color} text-center ${highlighted ? 'scale-[1.03]' : ''}`}>
                 {badge && <div className={`absolute -top-3 left-1/2 -translate-x-1/2 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full whitespace-nowrap ${highlighted ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white' : 'bg-slate-700 text-slate-300'}`}>{badge}</div>}
                 <p className={`font-black text-base mb-1 ${textColor}`}>{name}</p>
-                <p className="text-3xl font-black text-white mb-1">{price}{price !== 'Custom' && <span className="text-sm text-slate-500 font-medium"> /user</span>}</p>
+                <p className="text-3xl font-black text-white mb-1">{price}</p>
                 {priceNote && <p className="text-[11px] text-slate-600 mb-4">{priceNote}</p>}
                 <ul className="space-y-2 text-left mt-4">
                   {planFeatures.map(feat => (
@@ -763,7 +763,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
               className="text-indigo-400 text-sm font-black uppercase tracking-widest mb-3">Get In Touch</motion.p>
             <motion.h2 initial={{ opacity:0, y:16 }} whileInView={{ opacity:1, y:0 }} viewport={{ once:true }}
               transition={{ duration:0.5 }} className="text-4xl md:text-5xl font-black text-white mb-4">Contact Us</motion.h2>
-            <p className="text-slate-400">Have a question about our plans or want to explore an enterprise deal? We'd love to hear from you.</p>
+            <p className="text-slate-400">Questions about Creator or Team, or need an invoice quote? We&apos;d love to hear from you.</p>
           </div>
 
           <motion.div initial={{ opacity:0, y:20 }} whileInView={{ opacity:1, y:0 }} viewport={{ once:true }}

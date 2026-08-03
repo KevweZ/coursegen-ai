@@ -2,21 +2,29 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Zap, CreditCard, Crown, Star, Building2, GraduationCap,
-  ArrowRight, RefreshCw, Shield, Loader2, AlertCircle,
+  ArrowRight, Shield, Loader2, AlertCircle,
   CheckCircle2, ChevronRight, Calendar, BarChart3, Sparkles,
-  TrendingUp, Package,
+  TrendingUp, Package, Users, UserPlus, Trash2,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getPaymentStatus, redirectToCheckout, type PaymentStatus } from '../services/paymentService';
+import {
+  fetchWorkspace,
+  inviteWorkspaceMember,
+  acceptWorkspaceInvite,
+  removeWorkspaceMember,
+  type WorkspaceMember,
+  type WorkspaceInfo,
+} from '../services/workspaceService';
 
 // ── Plan display metadata ─────────────────────────────────────────────────────
 const PLAN_META: Record<string, {
   label: string; color: string; gradient: string; icon: React.ElementType; creditsAi: number; creditsTts: number;
 }> = {
-  free:          { label: 'Free',          color: 'slate',  gradient: 'from-slate-600 to-slate-700',    icon: Zap,       creditsAi: 50,   creditsTts: 0    },
-  teacher_pro:   { label: 'Teacher Pro',   color: 'emerald',gradient: 'from-emerald-600 to-teal-600',   icon: GraduationCap, creditsAi: 300, creditsTts: 300 },
-  pro_creator:   { label: 'Pro Creator',   color: 'indigo', gradient: 'from-indigo-600 to-purple-600',  icon: Star,      creditsAi: 500,  creditsTts: 500  },
-  business_team: { label: 'Business Team', color: 'amber',  gradient: 'from-amber-500 to-orange-600',   icon: Building2, creditsAi: 1500, creditsTts: 1500 },
+  free:          { label: 'Free',        color: 'slate',  gradient: 'from-slate-600 to-slate-700',    icon: Zap,       creditsAi: 50,   creditsTts: 0    },
+  teacher_pro:   { label: 'Teacher Pro', color: 'emerald',gradient: 'from-emerald-600 to-teal-600',   icon: GraduationCap, creditsAi: 300, creditsTts: 300 },
+  pro_creator:   { label: 'Creator',     color: 'indigo', gradient: 'from-indigo-600 to-purple-600',  icon: Star,      creditsAi: 500,  creditsTts: 500  },
+  business_team: { label: 'Team',        color: 'amber',  gradient: 'from-amber-500 to-orange-600',   icon: Building2, creditsAi: 1500, creditsTts: 1500 },
 };
 
 // ── Credit bar ────────────────────────────────────────────────────────────────
@@ -57,11 +65,18 @@ interface AccountPageProps {
 }
 
 export function AccountPage({ onUpgrade }: AccountPageProps) {
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const [status, setStatus]   = useState<PaymentStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [packLoading, setPackLoading] = useState<'standard' | 'volume' | null>(null);
   const [packError, setPackError]     = useState<string | null>(null);
+  const [workspace, setWorkspace] = useState<WorkspaceInfo | null>(null);
+  const [members, setMembers] = useState<WorkspaceMember[]>([]);
+  const [wsLoading, setWsLoading] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [wsMessage, setWsMessage] = useState<string | null>(null);
+  const [wsError, setWsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) { setLoading(false); return; }
@@ -73,9 +88,53 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
     return () => { cancelled = true; };
   }, [user]);
 
+  const loadWorkspace = async () => {
+    if (!session?.access_token) return;
+    setWsLoading(true);
+    setWsError(null);
+    try {
+      const data = await fetchWorkspace(session.access_token);
+      setWorkspace(data.workspace);
+      setMembers(data.members);
+    } catch (err: any) {
+      setWsError(err.message ?? 'Could not load workspace');
+    } finally {
+      setWsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!session?.access_token) return;
+    loadWorkspace();
+    // Accept invite from ?team_invite= token once signed in
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('team_invite');
+    if (!token) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await acceptWorkspaceInvite(session.access_token, token);
+        if (cancelled) return;
+        setWsMessage('You joined the Team workspace.');
+        params.delete('team_invite');
+        const next = `${window.location.pathname}${params.toString() ? `?${params}` : ''}${window.location.hash}`;
+        window.history.replaceState({}, '', next);
+        await loadWorkspace();
+        const s = await getPaymentStatus(user!.id);
+        setStatus(s);
+      } catch (err: any) {
+        if (!cancelled) setWsError(err.message ?? 'Invite could not be accepted.');
+      }
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.access_token, user?.id]);
+
   const plan = status?.subscription ?? 'free';
   const meta = PLAN_META[plan] ?? PLAN_META.free;
   const PlanIcon = meta.icon;
+  const isTeamOwner = plan === 'business_team' && (status?.workspace_role === 'owner' || workspace?.role === 'owner');
+  const showTeamPanel = plan === 'business_team' || !!workspace;
 
   const aiCredits  = status?.credits_ai  ?? 0;
   const ttsCredits = status?.credits_tts ?? 0;
@@ -350,6 +409,133 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
             </div>
           </div>
         </motion.div>
+
+        {/* ── Team seats ───────────────────────────────────────────────────── */}
+        {showTeamPanel && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.22 }}
+            className="rounded-2xl border border-amber-500/25 bg-gradient-to-br from-amber-950/20 via-slate-900 to-slate-900 p-6"
+          >
+            <div className="flex items-start justify-between gap-4 mb-5">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+                  <Users className="w-4.5 h-4.5 text-amber-400" />
+                </div>
+                <div>
+                  <p className="font-bold text-white">
+                    {workspace?.name || status?.workspace_name || 'Team Workspace'}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Up to {workspace?.seat_limit ?? status?.seat_limit ?? 5} seats · pooled credits · shared draft slots
+                  </p>
+                </div>
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/25">
+                {workspace?.role || status?.workspace_role || 'member'}
+              </span>
+            </div>
+
+            {wsMessage && (
+              <div className="flex items-center gap-2 mb-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <p className="text-sm text-emerald-300">{wsMessage}</p>
+              </div>
+            )}
+            {wsError && (
+              <div className="flex items-center gap-2 mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+                <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                <p className="text-sm text-red-300">{wsError}</p>
+              </div>
+            )}
+
+            {isTeamOwner && (
+              <form
+                className="flex flex-col sm:flex-row gap-2 mb-5"
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!session?.access_token || !inviteEmail.trim()) return;
+                  setInviteBusy(true);
+                  setWsError(null);
+                  setWsMessage(null);
+                  try {
+                    const result = await inviteWorkspaceMember(session.access_token, inviteEmail.trim());
+                    setInviteEmail('');
+                    setWsMessage(
+                      result.emailSent
+                        ? `Invite sent to ${result.member.email}.`
+                        : `Invite created for ${result.member.email}. Share this link: ${result.inviteLink}`
+                    );
+                    await loadWorkspace();
+                  } catch (err: any) {
+                    setWsError(err.message ?? 'Invite failed');
+                  } finally {
+                    setInviteBusy(false);
+                  }
+                }}
+              >
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  placeholder="teammate@company.com"
+                  className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500/50"
+                  required
+                />
+                <button
+                  type="submit"
+                  disabled={inviteBusy}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-sm font-black disabled:opacity-60"
+                >
+                  {inviteBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+                  Invite
+                </button>
+              </form>
+            )}
+
+            {wsLoading ? (
+              <div className="flex items-center gap-2 text-slate-500 text-sm">
+                <Loader2 className="w-4 h-4 animate-spin" /> Loading seats…
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {members.map((m) => (
+                  <li
+                    key={m.id}
+                    className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl bg-slate-800/50 border border-slate-700/50"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-slate-200 truncate">{m.email}</p>
+                      <p className="text-[11px] text-slate-500 capitalize">{m.role} · {m.status}</p>
+                    </div>
+                    {isTeamOwner && m.role !== 'owner' && (
+                      <button
+                        type="button"
+                        title="Remove seat"
+                        onClick={async () => {
+                          if (!session?.access_token) return;
+                          setWsError(null);
+                          try {
+                            await removeWorkspaceMember(session.access_token, m.id);
+                            setWsMessage(`Removed ${m.email}`);
+                            await loadWorkspace();
+                          } catch (err: any) {
+                            setWsError(err.message ?? 'Remove failed');
+                          }
+                        }}
+                        className="p-2 rounded-lg text-slate-500 hover:text-red-300 hover:bg-red-500/10 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </li>
+                ))}
+                {!members.length && (
+                  <p className="text-sm text-slate-500">No seats loaded yet. Buy Team or refresh after checkout.</p>
+                )}
+              </ul>
+            )}
+          </motion.div>
+        )}
 
         {/* ── Row 4: Publishing History (placeholder) ───────────────────────── */}
         <motion.div

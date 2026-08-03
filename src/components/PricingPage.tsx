@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Check,
@@ -16,9 +16,11 @@ import {
   CreditCard,
   HelpCircle,
   Loader2,
+  Mail,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { redirectToCheckout, type StripePlanId } from '../services/paymentService';
+import { planDisplayName } from '../lib/planEntitlements';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -33,6 +35,7 @@ interface PricingPlan {
   subtitle: string;
   price: string;
   priceNote?: string;
+  priceUnit?: string; // e.g. "/ mo" — omit for Custom
   audience: string;
   credits: string;
   features: PlanFeature[];
@@ -41,92 +44,105 @@ interface PricingPlan {
   badge?: string;
   highlighted?: boolean;
   stripePlanId?: StripePlanId;
+  contactHref?: string;
 }
 
-// ── Data ────────────────────────────────────────────────────────────────────
+// ── Data builders ───────────────────────────────────────────────────────────
 
-const corporatePlans: PricingPlan[] = [
-  {
-    id: 'pro-creator',
-    name: 'Pro Creator',
-    subtitle: 'Built for independent designers',
-    price: '$79',
-    priceNote: 'per user / month · billed annually',
-    audience: 'Freelance IDs & Subject Matter Experts',
-    credits: '500 credits / month',
-    features: [
-      { text: 'Full AI course generation', included: true },
-      { text: 'All interactive templates', included: true },
-      { text: 'SCORM 1.2 / 2004 exports', included: true },
-      { text: 'Standard & HD TTS Audio', included: true },
-      { text: 'Premium support', included: true },
-      { text: 'Team collaboration', included: false },
-      { text: 'Brand kit management', included: false },
-      { text: 'Advanced analytics', included: false },
-    ],
-    cta: 'Get Started',
-    ctaStyle: 'outline',
-    badge: 'Freelancers',
-    stripePlanId: 'pro_creator',
-  },
-  {
-    id: 'business-team',
-    name: 'Business Team',
-    subtitle: 'Scale your L&D operations',
-    price: '$149',
-    priceNote: 'per user / month · billed annually',
-    audience: 'Corporate L&D Teams (up to 5 seats)',
-    credits: '1,500 pooled credits / month',
-    features: [
-      { text: 'Full AI course generation', included: true },
-      { text: 'All interactive templates', included: true },
-      { text: 'SCORM 1.2 / 2004 exports', included: true },
-      { text: 'HD TTS Audio (all 6 voices)', included: true },
-      { text: 'Up to 5 user seats', included: true },
-      { text: 'SCORM completion & score reporting', included: true },
-      { text: 'Priority email support', included: true },
-      { text: 'Custom AI model training', included: false },
-    ],
-    cta: 'Get Started',
-    ctaStyle: 'primary',
-    badge: 'Best Value',
-    highlighted: true,
-    stripePlanId: 'business_team',
-  },
-  {
-    id: 'enterprise',
-    name: 'Enterprise',
-    subtitle: 'For large-scale organizations',
-    price: 'Custom',
-    audience: 'Large Corporations',
-    credits: 'Custom',
-    features: [
-      { text: 'Custom AI model training', included: true },
-      { text: 'Advanced security (SOC2)', included: true },
-      { text: 'API access', included: true },
-      { text: 'Dedicated account manager', included: true },
-      { text: 'Unlimited HD TTS Audio', included: true },
-      { text: 'Enterprise Voice Cloning', included: true },
-      { text: 'SLA guarantees', included: true },
-      { text: 'Custom contract & billing', included: true },
-    ],
-    cta: 'Contact Sales',
-    ctaStyle: 'secondary',
-  },
-];
+function buildPlans(billing: 'annual' | 'monthly'): PricingPlan[] {
+  const creatorAnnual = billing === 'annual';
+  return [
+    {
+      id: 'creator',
+      name: 'Creator',
+      subtitle: 'For independent designers & SMEs',
+      price: creatorAnnual ? '$59' : '$79',
+      priceUnit: '/ mo',
+      priceNote: creatorAnnual
+        ? 'billed annually ($708/yr)'
+        : 'billed monthly · cancel anytime',
+      audience: 'Freelance IDs & Subject Matter Experts',
+      credits: '500 AI + 500 TTS credits / month',
+      features: [
+        { text: 'Full AI course generation', included: true },
+        { text: 'Interactive elements (tabs, timelines, click-reveal & more)', included: true },
+        { text: 'SCORM 1.2 / 2004 export for your LMS', included: true },
+        { text: 'AI voice-over (Alloy)', included: true },
+        { text: '3 cloud drafts', included: true },
+        { text: 'Email support', included: true },
+        { text: 'Team seats & shared workspace', included: false },
+        { text: 'All 6 TTS voices', included: false },
+      ],
+      cta: 'Get Started',
+      ctaStyle: 'outline',
+      badge: 'Solo',
+      stripePlanId: creatorAnnual ? 'pro_creator' : 'pro_creator_monthly',
+    },
+    {
+      id: 'team',
+      name: 'Team',
+      subtitle: 'One workspace for your L&D group',
+      price: '$149',
+      priceUnit: '/ mo',
+      priceNote: 'billed annually ($1,788/yr) · up to 5 seats',
+      audience: 'Corporate L&D teams (flat workspace fee)',
+      credits: '1,500 pooled AI + TTS credits / month',
+      features: [
+        { text: 'Everything in Creator', included: true },
+        { text: 'Up to 5 seats — flat fee, not per user', included: true },
+        { text: '10 shared cloud drafts for the workspace', included: true },
+        { text: 'Pooled AI + TTS credits across the team', included: true },
+        { text: 'All 6 AI narration voices', included: true },
+        { text: 'SCORM 1.2 / 2004 export for your LMS', included: true },
+        { text: 'Priority email support', included: true },
+      ],
+      cta: 'Get Started',
+      ctaStyle: 'primary',
+      badge: 'Best Value',
+      highlighted: true,
+      stripePlanId: 'business_team',
+    },
+    {
+      id: 'contact',
+      name: 'Contact us',
+      subtitle: 'Invoice & volume needs',
+      price: 'Custom',
+      audience: 'Larger orgs & procurement',
+      credits: 'Custom volume',
+      features: [
+        { text: 'Invoice / PO billing', included: true },
+        { text: 'Volume or multi-workspace quotes', included: true },
+        { text: 'Onboarding help for your team', included: true },
+        { text: 'Priority support channels', included: true },
+        { text: 'Same core product as Team', included: true },
+      ],
+      cta: 'Contact Sales',
+      ctaStyle: 'secondary',
+      contactHref: 'mailto:support@nexcourse.ai?subject=NexCourse%20AI%20%E2%80%94%20Team%20%2F%20volume%20inquiry',
+    },
+  ];
+}
 
 const faqItems = [
   {
     q: 'How do credits work?',
-    a: 'Credits are consumed based on the complexity of the course you generate. A Quick Overview costs 20 credits, while a Comprehensive Course costs 100 credits. Generating audio narration costs additional credits per slide — 5 for Standard TTS and 10 for HD TTS.',
+    a: 'Credits are used when you generate a course and when you generate AI narration. A short overview uses fewer credits than a full multi-module course. Narration uses TTS credits per slide based on script length. Your plan refreshes AI and TTS credits each billing cycle.',
   },
   {
     q: 'Do unused credits roll over?',
-    a: 'Subscription credits reset at the beginning of each billing cycle. However, any Pay-As-You-Go overage credits you purchase will roll over and never expire.',
+    a: 'Subscription credits reset at the start of each billing cycle. Pay-As-You-Go credit packs you buy separately never expire and stack on top of your plan.',
   },
   {
-    q: 'Can I use it for both corporate training and education?',
-    a: 'Absolutely! NexCourse AI is optimized for corporate L&D, but the Game Mode feature works beautifully for educational refreshers, onboarding, and compliance training in any context.',
+    q: 'What’s the difference between Creator and Team?',
+    a: 'Creator is for one person: Alloy voice, 3 cloud drafts, 500 AI + 500 TTS credits/month. Team is a flat workspace fee for up to 5 seats, 10 shared drafts, pooled credits, and all 6 narration voices. The Team buyer owns billing; teammates join via invite and share the workspace pool.',
+  },
+  {
+    q: 'Is SCORM export included?',
+    a: 'Yes. Creator and Team both include SCORM 1.2 and 2004 packages you upload to your LMS. Completion and score reporting are handled by your LMS after you publish the package — not a separate NexCourse analytics product.',
+  },
+  {
+    q: 'Can I switch between annual and monthly?',
+    a: 'Creator offers annual ($59/mo equivalent) or month-to-month ($79/mo). Team is billed annually at the $149/mo rate. You can manage or cancel anytime from My Account → Manage Subscription.',
   },
 ];
 
@@ -154,10 +170,12 @@ const CtaButton = ({ plan }: { plan: PricingPlan }) => {
   const base = 'w-full py-3.5 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 group disabled:opacity-60 disabled:cursor-not-allowed';
 
   const handleClick = async () => {
-    // Contact Sales & Free plans — no checkout
+    if (plan.contactHref) {
+      window.location.href = plan.contactHref;
+      return;
+    }
     if (!plan.stripePlanId || plan.price === '$0') return;
     if (!user) {
-      // Redirect to auth if not logged in
       window.location.href = '/#auth';
       return;
     }
@@ -175,12 +193,16 @@ const CtaButton = ({ plan }: { plan: PricingPlan }) => {
     }
   };
 
-  const isClickable = !!plan.stripePlanId && plan.price !== '$0';
+  const isClickable = !!plan.stripePlanId || !!plan.contactHref;
 
   const inner = loading ? (
     <><Loader2 className="w-4 h-4 animate-spin" /> Processing...</>
   ) : (
-    <>{plan.cta}<ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" /></>
+    <>
+      {plan.contactHref ? <Mail className="w-4 h-4" /> : null}
+      {plan.cta}
+      {!plan.contactHref && <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />}
+    </>
   );
 
   return (
@@ -229,7 +251,6 @@ const PlanCard = ({ plan, index }: { plan: PricingPlan; index: number }) => (
         : 'bg-slate-900/70 border-slate-700/60 hover:border-slate-600 hover:bg-slate-800/60'
     }`}
   >
-    {/* Badge */}
     {plan.badge && (
       <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
         <span className={`px-4 py-1.5 rounded-full text-[11px] font-black uppercase tracking-widest whitespace-nowrap ${
@@ -242,7 +263,6 @@ const PlanCard = ({ plan, index }: { plan: PricingPlan; index: number }) => (
       </div>
     )}
 
-    {/* Header */}
     <div className="mb-5">
       <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-1">{plan.subtitle}</p>
       <h3 className={`text-2xl font-extrabold mb-1 ${plan.highlighted ? 'text-white' : 'text-slate-100'}`}>{plan.name}</h3>
@@ -251,27 +271,24 @@ const PlanCard = ({ plan, index }: { plan: PricingPlan; index: number }) => (
       </p>
     </div>
 
-    {/* Price */}
     <div className="mb-5 pb-5 border-b border-slate-700/60">
       <div className="flex items-end gap-2">
         <span className={`font-extrabold tracking-tight ${plan.price === 'Custom' ? 'text-3xl text-slate-200' : 'text-5xl text-white'}`}>
           {plan.price}
         </span>
-        {plan.price !== 'Custom' && plan.price !== '$0' && (
-          <span className="text-slate-400 text-sm pb-2">/ user</span>
+        {plan.priceUnit && (
+          <span className="text-slate-400 text-sm pb-2">{plan.priceUnit}</span>
         )}
       </div>
       {plan.priceNote && (
         <p className="text-xs text-slate-500 mt-1 font-medium">{plan.priceNote}</p>
       )}
-      {/* Credits badge */}
       <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
         <Zap className="w-3.5 h-3.5 text-indigo-400" />
         <span className="text-xs font-bold text-indigo-300">{plan.credits}</span>
       </div>
     </div>
 
-    {/* Features */}
     <ul className="space-y-3 flex-1 mb-7">
       {plan.features.map((f, i) => (
         <FeatureRow key={i} feature={f} />
@@ -282,7 +299,7 @@ const PlanCard = ({ plan, index }: { plan: PricingPlan; index: number }) => (
   </motion.div>
 );
 
-const FAQItem = ({ item, index }: { item: typeof faqItems[0]; index: number }) => {
+const FAQItem = ({ item }: { item: typeof faqItems[0]; index: number }) => {
   const [open, setOpen] = useState(false);
   return (
     <div className={`rounded-xl border transition-all duration-300 overflow-hidden ${open ? 'border-indigo-500/40 bg-slate-800/60' : 'border-slate-700/50 bg-slate-900/40 hover:border-slate-600'}`}>
@@ -312,7 +329,6 @@ const FAQItem = ({ item, index }: { item: typeof faqItems[0]; index: number }) =
   );
 };
 
-// ── Credit Pack Buttons (checkout-wired) ─────────────────────────────────────
 const CreditPackButtons = () => {
   const { user } = useAuth();
   const [loadingPack, setLoadingPack] = useState<'standard' | 'volume' | null>(null);
@@ -332,13 +348,12 @@ const CreditPackButtons = () => {
 
   return (
     <div className="flex flex-col sm:flex-row gap-4">
-      {/* Standard Pack */}
       <div className="relative flex-1 min-w-[200px] rounded-xl border border-amber-500/20 bg-slate-800/60 p-5 hover:border-amber-500/40 hover:bg-slate-800 transition-all">
         <p className="text-xs font-black uppercase tracking-widest text-amber-400 mb-2">Standard Pack</p>
         <p className="text-3xl font-extrabold text-white mb-1">$25</p>
         <div className="flex items-center gap-2 mb-4">
           <Zap className="w-4 h-4 text-amber-400" />
-          <span className="text-slate-300 font-bold text-sm">100 credits</span>
+          <span className="text-slate-300 font-bold text-sm">100 AI credits</span>
         </div>
         <button
           onClick={() => handleBuyPack('credits_standard')}
@@ -349,7 +364,6 @@ const CreditPackButtons = () => {
         </button>
       </div>
 
-      {/* Volume Pack */}
       <div className="relative flex-1 min-w-[200px] rounded-xl border border-amber-400/40 bg-gradient-to-b from-amber-950/40 to-slate-800/60 p-5 hover:border-amber-400/60 transition-all shadow-lg shadow-amber-500/5">
         <div className="absolute -top-3 left-1/2 -translate-x-1/2">
           <span className="px-3 py-1 rounded-full bg-amber-500 text-black text-[10px] font-black uppercase tracking-widest whitespace-nowrap">Best Deal</span>
@@ -358,7 +372,7 @@ const CreditPackButtons = () => {
         <p className="text-3xl font-extrabold text-white mb-1">$100</p>
         <div className="flex items-center gap-2 mb-4">
           <Zap className="w-4 h-4 text-amber-400" />
-          <span className="text-slate-300 font-bold text-sm">500 credits</span>
+          <span className="text-slate-300 font-bold text-sm">500 AI credits</span>
           <span className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">Save 20%</span>
         </div>
         <button
@@ -377,7 +391,6 @@ const CreditPackButtons = () => {
   );
 };
 
-// ── Manage Billing Banner (shown to subscribed users) ────────────────────────
 const ManageBillingBanner = () => {
   const { user } = useAuth();
   const [customerId, setCustomerId] = useState<string | null>(null);
@@ -402,14 +415,6 @@ const ManageBillingBanner = () => {
   }, [user?.id]);
 
   if (loading || !customerId) return null;
-
-  const PLAN_LABELS: Record<string, string> = {
-    pro_creator:   'Pro Creator',
-    business_team: 'Business Team',
-    enterprise:    'Enterprise',
-    teacher_pro:   'Teacher Pro',
-    free:          'Free',
-  };
 
   const handlePortal = async () => {
     setPortalLoading(true);
@@ -443,7 +448,7 @@ const ManageBillingBanner = () => {
           </div>
           <div>
             <p className="text-white font-extrabold text-sm">
-              Current Plan: <span className="text-emerald-400">{PLAN_LABELS[planName] ?? planName}</span>
+              Current Plan: <span className="text-emerald-400">{planDisplayName(planName)}</span>
             </p>
             <p className="text-slate-400 text-xs mt-0.5">Manage invoices, update payment method, or cancel anytime.</p>
           </div>
@@ -467,9 +472,11 @@ const ManageBillingBanner = () => {
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export function PricingPage() {
+  const [billing, setBilling] = useState<'annual' | 'monthly'>('annual');
+  const plans = useMemo(() => buildPlans(billing), [billing]);
+
   return (
     <div className="min-h-screen w-full relative z-10">
-      {/* Hero header */}
       <div className="relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[500px] bg-indigo-900/20 rounded-full blur-[120px]" />
@@ -482,38 +489,61 @@ export function PricingPage() {
             <h1 className="text-5xl md:text-6xl font-extrabold text-white tracking-tight mb-4">
               Choose Your <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">Plan</span>
             </h1>
-            <p className="text-xl text-slate-400 max-w-2xl mx-auto leading-relaxed mb-10">
-              Purpose-built pricing for corporate L&amp;D teams — from independent designers to enterprise organizations.
+            <p className="text-xl text-slate-400 max-w-2xl mx-auto leading-relaxed mb-8">
+              Upload documents. Get LMS-ready SCORM courses. Pricing for solo creators and small L&amp;D teams — without fake enterprise claims.
+            </p>
+
+            {/* Creator billing toggle */}
+            <div className="inline-flex items-center gap-1 p-1 rounded-xl bg-slate-900/80 border border-slate-700/80">
+              <button
+                type="button"
+                onClick={() => setBilling('annual')}
+                className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
+                  billing === 'annual'
+                    ? 'bg-indigo-600 text-white shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Annual
+                <span className="ml-1.5 text-[10px] font-black uppercase tracking-wide text-emerald-300">Save 25%</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setBilling('monthly')}
+                className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
+                  billing === 'monthly'
+                    ? 'bg-indigo-600 text-white shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Monthly
+              </button>
+            </div>
+            <p className="text-xs text-slate-500 mt-3">
+              Toggle applies to Creator. Team is always billed annually.
             </p>
           </motion.div>
         </div>
       </div>
 
-      {/* Manage Subscription Banner (subscribed users only) */}
       <ManageBillingBanner />
 
-      {/* Pricing Cards */}
       <div className="max-w-6xl mx-auto px-6 pb-20">
-        {/* Context banner */}
         <div className="flex items-center justify-center gap-2.5 mb-10 px-5 py-3 rounded-xl border text-sm font-semibold mx-auto max-w-xl bg-indigo-500/5 border-indigo-500/20 text-indigo-400">
           <Building2 className="w-4 h-4 shrink-0" />
-          All plans include SCORM 1.2 / 2004 export and full LMS compatibility.
+          All paid plans include SCORM 1.2 / 2004 export for your LMS.
         </div>
 
-        {/* Cards grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
-          {corporatePlans.map((plan, i) => (
-            <PlanCard key={plan.id} plan={plan} index={i} />
+          {plans.map((plan, i) => (
+            <PlanCard key={`${plan.id}-${billing}`} plan={plan} index={i} />
           ))}
         </div>
       </div>
 
-      {/* ── Credit Overage Section ── */}
       <div className="max-w-6xl mx-auto px-6 pb-24">
         <div className="relative rounded-2xl border border-amber-500/20 bg-gradient-to-br from-amber-950/30 via-slate-900 to-slate-900 overflow-hidden p-8 md:p-10">
-          {/* Glow */}
           <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
-
           <div className="relative flex flex-col md:flex-row md:items-center gap-8">
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-3">
@@ -523,22 +553,20 @@ export function PricingPage() {
                 <h2 className="text-2xl font-extrabold text-white">Need More Credits?</h2>
               </div>
               <p className="text-slate-400 text-base max-w-xl leading-relaxed">
-                Running low? Purchase Pay-As-You-Go credit packs at any time. They never expire and stack on top of your monthly subscription credits.
+                Running low? Purchase Pay-As-You-Go AI credit packs anytime. They never expire and stack on top of your subscription credits.
               </p>
             </div>
-
             <CreditPackButtons />
           </div>
         </div>
       </div>
 
-      {/* ── Trust Badges ── */}
       <div className="max-w-6xl mx-auto px-6 pb-24">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
             { icon: Shield, label: 'Encrypted & Secure', desc: 'Your data is always kept private & safe' },
-            { icon: Infinity, label: 'SCORM Compliant', desc: '1.2 & 2004 supported' },
-            { icon: Headphones, label: 'Dedicated Support', desc: 'Human help, not bots' },
+            { icon: Infinity, label: 'SCORM Export', desc: '1.2 & 2004 for your LMS' },
+            { icon: Headphones, label: 'Human Support', desc: 'Email help when you need it' },
             { icon: Star, label: 'Cancel Anytime', desc: 'No lock-in contracts' },
           ].map(({ icon: Icon, label, desc }) => (
             <div key={label} className="flex flex-col items-center gap-2 p-5 rounded-xl bg-slate-800/30 border border-slate-700/40 text-center">
@@ -550,7 +578,6 @@ export function PricingPage() {
         </div>
       </div>
 
-      {/* ── FAQ ── */}
       <div className="max-w-3xl mx-auto px-6 pb-32">
         <div className="text-center mb-10">
           <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-slate-400 text-xs font-bold uppercase tracking-widest mb-4">

@@ -5,16 +5,17 @@
  * Run ONCE with: node stripe_setup.mjs <YOUR_STRIPE_SECRET_KEY>
  *
  * What it creates:
- *   Subscriptions (annual billing):
- *     - Teacher Pro (K-12)           $12 / user / month
- *     - Pro Creator (Corporate)      $79 / user / month
- *     - Business Team (Corporate)   $149 / user / month
+ *   Subscriptions:
+ *     - Creator (Annual)             $708 / year  ($59/mo equivalent)
+ *     - Creator (Monthly)            $79 / month
+ *     - Team (Annual)                $1,788 / year ($149/mo · up to 5 seats)
  *
  *   One-time credit packs:
  *     - Standard Credit Pack         $25
  *     - Volume Credit Pack          $100
  *
  * Output: Appends all Price IDs to your .env file automatically.
+ * Prefer stripe_create_v2_prices.mjs when migrating an existing Stripe account.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -23,7 +24,6 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// ── Arg check ────────────────────────────────────────────────────────────────
 const secretKey = process.argv[2];
 if (!secretKey || !secretKey.startsWith('sk_')) {
   console.error('\n❌  Usage: node stripe_setup.mjs <YOUR_STRIPE_SECRET_KEY>');
@@ -33,47 +33,43 @@ if (!secretKey || !secretKey.startsWith('sk_')) {
 
 const stripe = new Stripe(secretKey, { apiVersion: '2024-12-18.acacia' });
 
-// ── Product definitions ───────────────────────────────────────────────────────
 const PRODUCTS = [
-  // ── Subscriptions (billed annually, shown as monthly price) ─────────────
   {
-    envKey:      'STRIPE_PRICE_TEACHER_PRO',
-    name:        'Teacher Pro (K-12)',
-    description: '300 AI credits/month · Full AI generation · Standard TTS · No watermarks · LMS integration',
-    metadata:    { track: 'k12', tier: 'teacher_pro', credits_monthly: '300' },
-    price:       1200,   // $12.00 in cents
+    envKey:      'STRIPE_PRICE_PRO_CREATOR_ANNUAL',
+    name:        'Creator (Annual)',
+    description: '500 AI + 500 TTS credits/mo · Alloy voice · 3 cloud drafts · SCORM export · $59/mo billed annually',
+    metadata:    { track: 'corporate', tier: 'pro_creator', billing: 'annual', credits_monthly: '500' },
+    price:       70800,
+    currency:    'usd',
+    type:        'recurring',
+    interval:    'year',
+  },
+  {
+    envKey:      'STRIPE_PRICE_PRO_CREATOR_MONTHLY',
+    name:        'Creator (Monthly)',
+    description: '500 AI + 500 TTS credits/mo · Alloy voice · 3 cloud drafts · SCORM export · $79/mo billed monthly',
+    metadata:    { track: 'corporate', tier: 'pro_creator', billing: 'monthly', credits_monthly: '500' },
+    price:       7900,
     currency:    'usd',
     type:        'recurring',
     interval:    'month',
   },
   {
-    envKey:      'STRIPE_PRICE_PRO_CREATOR',
-    name:        'Pro Creator (Corporate)',
-    description: '500 AI credits/month · Full AI generation · SCORM exports · Standard & HD TTS',
-    metadata:    { track: 'corporate', tier: 'pro_creator', credits_monthly: '500' },
-    price:       7900,   // $79.00 in cents
+    envKey:      'STRIPE_PRICE_BUSINESS_TEAM_ANNUAL',
+    name:        'Team (Annual)',
+    description: '1,500 pooled credits/mo · up to 5 seats · 10 shared drafts · all 6 TTS voices · $149/mo billed annually',
+    metadata:    { track: 'corporate', tier: 'business_team', billing: 'annual', credits_monthly: '1500', seats: '5' },
+    price:       178800,
     currency:    'usd',
     type:        'recurring',
-    interval:    'month',
+    interval:    'year',
   },
-  {
-    envKey:      'STRIPE_PRICE_BUSINESS_TEAM',
-    name:        'Business Team (Corporate)',
-    description: '1,500 pooled credits/month · Team collaboration · Brand kit · HD TTS · Basic Voice Cloning',
-    metadata:    { track: 'corporate', tier: 'business_team', credits_monthly: '1500' },
-    price:       14900,  // $149.00 in cents
-    currency:    'usd',
-    type:        'recurring',
-    interval:    'month',
-  },
-
-  // ── One-time credit packs ────────────────────────────────────────────────
   {
     envKey:      'STRIPE_PRICE_CREDITS_STANDARD',
     name:        'Standard Credit Pack',
     description: '100 AI credits · Never expire · Stack on top of subscription',
     metadata:    { type: 'credit_pack', credits: '100' },
-    price:       2500,   // $25.00 in cents
+    price:       2500,
     currency:    'usd',
     type:        'one_time',
   },
@@ -82,19 +78,17 @@ const PRODUCTS = [
     name:        'Volume Credit Pack',
     description: '500 AI credits · Best value (save 20%) · Never expire · Stack on top of subscription',
     metadata:    { type: 'credit_pack', credits: '500' },
-    price:       10000,  // $100.00 in cents
+    price:       10000,
     currency:    'usd',
     type:        'one_time',
   },
 ];
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 function formatPrice(cents) {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
 async function createProductAndPrice(def) {
-  // 1. Create product
   const product = await stripe.products.create({
     name:        def.name,
     description: def.description,
@@ -102,7 +96,6 @@ async function createProductAndPrice(def) {
   });
   console.log(`  ✅  Product created: ${product.name} (${product.id})`);
 
-  // 2. Create price
   const priceData = {
     product:     product.id,
     unit_amount: def.price,
@@ -123,9 +116,8 @@ async function createProductAndPrice(def) {
   return { envKey: def.envKey, priceId: price.id, name: def.name };
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
 async function main() {
-  console.log('\n🚀  NexCourse AI — Stripe Product Setup');
+  console.log('\n🚀  NexCourse AI — Stripe Product Setup (v2)');
   console.log('━'.repeat(55));
 
   const results = [];
@@ -141,33 +133,29 @@ async function main() {
     }
   }
 
-  // ── Print summary ─────────────────────────────────────────────────────────
   console.log('\n' + '━'.repeat(55));
   console.log('📋  All Price IDs:\n');
   for (const r of results) {
     console.log(`  ${r.envKey}=${r.priceId}`);
   }
 
-  // ── Append to .env ────────────────────────────────────────────────────────
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const envPath   = path.join(__dirname, '.env');
 
   const envBlock = [
     '',
-    '# ── Stripe Keys & Price IDs (auto-generated by stripe_setup.mjs) ────────────',
-    `STRIPE_SECRET_KEY=${secretKey}`,
-    `VITE_STRIPE_PUBLISHABLE_KEY=pk_test_REPLACE_WITH_YOUR_PUBLISHABLE_KEY`,
-    `STRIPE_WEBHOOK_SECRET=whsec_REPLACE_WITH_YOUR_WEBHOOK_SECRET`,
+    '# ── Stripe Price IDs (auto-generated by stripe_setup.mjs v2) ─────────────',
     ...results.map(r => `${r.envKey}=${r.priceId}`),
+    // Legacy aliases used as fallbacks in server.js
+    `STRIPE_PRICE_PRO_CREATOR=${results.find(r => r.envKey === 'STRIPE_PRICE_PRO_CREATOR_ANNUAL')?.priceId ?? ''}`,
+    `STRIPE_PRICE_BUSINESS_TEAM=${results.find(r => r.envKey === 'STRIPE_PRICE_BUSINESS_TEAM_ANNUAL')?.priceId ?? ''}`,
     '',
   ].join('\n');
 
   fs.appendFileSync(envPath, envBlock, 'utf8');
 
   console.log('\n✅  Price IDs appended to .env successfully!');
-  console.log('\n⚠️   ACTION REQUIRED — open .env and fill in:');
-  console.log('   1. VITE_STRIPE_PUBLISHABLE_KEY  → your pk_test_... key');
-  console.log('   2. STRIPE_WEBHOOK_SECRET        → your whsec_... secret');
+  console.log('\n⚠️   Also set the new STRIPE_PRICE_* keys on Render (production server).');
   console.log('\n🎉  Stripe setup complete!\n');
 }
 

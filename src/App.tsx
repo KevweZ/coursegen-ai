@@ -177,6 +177,8 @@ import { PricingPage } from './components/PricingPage';
 import { AccountPage } from './components/AccountPage';
 import { PaymentSuccessPage } from './components/PaymentSuccessPage';
 import { PaymentCancelPage } from './components/PaymentCancelPage';
+import { getPaymentStatus } from './services/paymentService';
+import { canUseAllVoices } from './lib/planEntitlements';
 import { useAuth } from './contexts/AuthContext';
 import { AuthPage } from './components/auth/AuthPage';
 import { MarketingHomepage } from './components/marketing/MarketingHomepage';
@@ -584,9 +586,38 @@ export default function App() {
   const isScormPlayer = typeof window !== 'undefined' && !!(window as any).__COURSE_DATA__;
   const { user, session, loading: authLoading, signOut, isAdmin, isTrial, isTrialExpired } = useAuth();
 
+  // ── Plan entitlements (Stripe) — prefer over signup metadata for drafts/voices ─
+  const [entitlementPlan, setEntitlementPlan] = React.useState<string | null>(null);
+  const [workspaceId, setWorkspaceId] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    if (!user?.id) {
+      setEntitlementPlan(null);
+      setWorkspaceId(null);
+      return;
+    }
+    let cancelled = false;
+    getPaymentStatus(user.id)
+      .then(s => {
+        if (!cancelled) {
+          setEntitlementPlan(s?.subscription ?? null);
+          setWorkspaceId(s?.workspace_id ?? null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setEntitlementPlan(null);
+          setWorkspaceId(null);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
   // ── Draft Courses (shared Design + Development slots) ─────────────────────
-  const userPlan = (user?.user_metadata?.plan as string | undefined) ?? null;
-  const draftManager = useDraftCourses(user?.id ?? null, userPlan, isAdmin);
+  const userPlan =
+    entitlementPlan
+    ?? (user?.user_metadata?.plan as string | undefined)
+    ?? null;
+  const draftManager = useDraftCourses(user?.id ?? null, userPlan, isAdmin, workspaceId);
   const [showDraftsPanel, setShowDraftsPanel] = React.useState(false);
   const [showViewDraftsModal, setShowViewDraftsModal] = React.useState(false);
   const [isLoadingDraft, setIsLoadingDraft] = React.useState(false);
@@ -1376,6 +1407,12 @@ export default function App() {
     step === 'preview' && viewMode === 'desktop' && playerConfig?.playerResolution !== 'full'
   );
   const [ttsVoice, setTtsVoice] = useState<string>(DEFAULT_COURSE_SETTINGS.ttsVoice);
+  // Creator/free: Alloy only — clamp if plan can't use other voices
+  React.useEffect(() => {
+    if (!canUseAllVoices(userPlan) && ttsVoice !== 'alloy') {
+      setTtsVoice('alloy');
+    }
+  }, [userPlan, ttsVoice]);
   // Per-slide TTS regeneration state
   const [regenSlideId, setRegenSlideId] = useState<string | null>(null);
   // Voice preview state
@@ -3949,6 +3986,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                         setVoiceOverEnabled={setVoiceOverEnabled}
                         ttsVoice={ttsVoice}
                         setTtsVoice={setTtsVoice}
+                        subscriptionPlan={userPlan}
                         imageMode={imageMode}
                         setImageMode={setImageMode}
                         previewingVoice={previewingVoice}
@@ -4017,6 +4055,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                 setVoiceOverEnabled={setVoiceOverEnabled}
                 ttsVoice={ttsVoice}
                 setTtsVoice={setTtsVoice}
+                subscriptionPlan={userPlan}
                 imageMode={imageMode}
                 setImageMode={setImageMode}
                 previewingVoice={previewingVoice}
@@ -5607,11 +5646,15 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                  className="flex-1 bg-slate-950 border border-emerald-700/40 rounded-lg px-3 py-1.5 text-emerald-200 text-xs font-bold outline-none focus:border-emerald-500 transition-all"
                                >
                                  <option value="alloy">Alloy — Neutral / Balanced</option>
-                                 <option value="echo">Echo — Male / Measured</option>
-                                 <option value="fable">Fable — Male / Warm</option>
-                                 <option value="onyx">Onyx — Male / Deep</option>
-                                 <option value="nova">Nova — Female / Bright</option>
-                                 <option value="shimmer">Shimmer — Female / Soft</option>
+                                 {canUseAllVoices(userPlan) && (
+                                   <>
+                                     <option value="echo">Echo — Male / Measured</option>
+                                     <option value="fable">Fable — Male / Warm</option>
+                                     <option value="onyx">Onyx — Male / Deep</option>
+                                     <option value="nova">Nova — Female / Bright</option>
+                                     <option value="shimmer">Shimmer — Female / Soft</option>
+                                   </>
+                                 )}
                                </select>
                                {/* Ear preview button — previews the currently selected voice */}
                                <button

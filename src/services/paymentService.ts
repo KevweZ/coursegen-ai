@@ -18,10 +18,13 @@ const API_BASE =
     : 'http://localhost:3001';
 
 // ── Plan IDs that map to Stripe Price IDs on the backend ─────────────────────
+// Checkout variants (monthly/annual) normalize to pro_creator / business_team
+// in user_entitlements.subscription after webhook.
 export type StripePlanId =
   | 'teacher_pro'
-  | 'pro_creator'
-  | 'business_team'
+  | 'pro_creator'          // Creator annual ($59/mo billed yearly)
+  | 'pro_creator_monthly'  // Creator month-to-month ($79/mo)
+  | 'business_team'        // Team annual ($149/mo billed yearly, up to 5 seats)
   | 'credits_standard'
   | 'credits_volume';
 
@@ -40,6 +43,10 @@ export interface PaymentStatus {
   credits_ai: number;
   credits_tts: number;
   stripe_customer_id: string | null;
+  workspace_id?: string | null;
+  workspace_name?: string | null;
+  workspace_role?: 'owner' | 'member' | null;
+  seat_limit?: number | null;
 }
 
 // ── Create Checkout Session ───────────────────────────────────────────────────

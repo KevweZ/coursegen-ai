@@ -471,7 +471,8 @@ export interface UseDraftCoursesReturn {
 export function useDraftCourses(
   userId: string | null,
   plan?: string | null,
-  isAdmin?: boolean
+  isAdmin?: boolean,
+  workspaceId?: string | null
 ): UseDraftCoursesReturn {
   const [drafts, setDrafts] = useState<CourseDraft[]>([]);
   const [isReady, setIsReady] = useState(false);
@@ -505,7 +506,7 @@ export function useDraftCourses(
         if (cleared.length) await removeTombstones(userId, cleared);
 
         const activeTombstones = await readTombstones(userId);
-        cloud = (await listCloudDrafts(userId)).filter(d => !activeTombstones.has(d.id));
+        cloud = (await listCloudDrafts(userId, workspaceId)).filter(d => !activeTombstones.has(d.id));
 
         // Migrate local-only drafts up to the cloud (never re-upload tombstoned ids)
         const cloudIds = new Set(cloud.map(d => d.id));
@@ -525,7 +526,7 @@ export function useDraftCourses(
                 await idbPut(STORE_ASSETS, payloadKey(userId, meta.id), assets);
               }
             }
-            const up = await upsertCloudDraft(userId, meta, snapshot, assets);
+            const up = await upsertCloudDraft(userId, meta, snapshot, assets, workspaceId);
             if (up.ok) {
               console.log(`[DraftCourses] Migrated "${meta.courseTitle}" → cloud`);
               cloudIds.add(meta.id);
@@ -536,11 +537,14 @@ export function useDraftCourses(
             console.warn('[DraftCourses] Cloud migrate failed for', meta.id, e);
           }
         }
-        cloud = (await listCloudDrafts(userId)).filter(d => !activeTombstones.has(d.id));
+        cloud = (await listCloudDrafts(userId, workspaceId)).filter(d => !activeTombstones.has(d.id));
       }
 
       const remainingTombstones = await readTombstones(userId);
-      const merged = mergeDraftLists(cloud, local).filter(d => !remainingTombstones.has(d.id));
+      // Team: cloud list is the shared pool — don't inflate slots with personal IndexedDB-only rows
+      const merged = workspaceId
+        ? cloud.filter(d => !remainingTombstones.has(d.id))
+        : mergeDraftLists(cloud, local).filter(d => !remainingTombstones.has(d.id));
       await writeIndex(userId, merged);
       setDrafts(merged);
     } catch (e) {
@@ -549,7 +553,7 @@ export function useDraftCourses(
     } finally {
       setIsReady(true);
     }
-  }, [userId]);
+  }, [userId, workspaceId]);
 
   useEffect(() => {
     setIsReady(false);
@@ -604,7 +608,7 @@ export function useDraftCourses(
       payloadCacheRef.current.set(meta.id, snapshot);
 
       let cloudNote = '';
-      const cloud = await upsertCloudDraft(userId, meta, snapshot, assets);
+      const cloud = await upsertCloudDraft(userId, meta, snapshot, assets, workspaceId);
       if (cloud.ok) setCloudEnabled(true);
       else if (cloud.error) cloudNote = ` (local only — ${cloud.error})`;
 
@@ -639,7 +643,7 @@ export function useDraftCourses(
       setDrafts(next);
       payloadCacheRef.current.set(id, snapshot);
 
-      const cloud = await upsertCloudDraft(userId, nextMeta, snapshot, assets);
+      const cloud = await upsertCloudDraft(userId, nextMeta, snapshot, assets, workspaceId);
       if (cloud.ok) setCloudEnabled(true);
       return { ok: true, error: cloud.ok ? undefined : cloud.error };
     } catch (e: any) {

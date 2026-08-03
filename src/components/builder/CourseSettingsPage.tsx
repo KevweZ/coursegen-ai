@@ -12,6 +12,7 @@ import type { ScenarioConfig } from '../../types/scenario';
 import type { CourseOutlineDraft } from '../../services/aiService';
 import type { ExamConfig, NavigationMode, TerminalObjectiveGroup } from '../../types/course';
 import { imageModeFlags, imageModeFromFlags, type CourseImageMode } from '../../services/imageService';
+import { canUseAllVoices } from '../../lib/planEntitlements';
 
 export type SettingsMode = 'defaults' | 'session';
 export type SettingsTab =
@@ -103,6 +104,8 @@ export interface CourseSettingsPageProps {
   setVoiceOverEnabled: (v: boolean) => void;
   ttsVoice: string;
   setTtsVoice: (v: string) => void;
+  /** Entitlement plan — Creator/free = Alloy only; Team = all 6 voices */
+  subscriptionPlan?: string | null;
   imageMode: CourseImageMode;
   setImageMode: (m: CourseImageMode) => void;
   previewingVoice: string | null;
@@ -1028,6 +1031,12 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
               {props.voiceOverEnabled && (
                 <div className="mt-5 space-y-3">
                   <div className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">AI Narrator Voice</div>
+                  {!canUseAllVoices(props.subscriptionPlan) && (
+                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                      Creator includes <span className="text-emerald-400 font-semibold">Alloy</span>.
+                      Upgrade to <span className="text-amber-400 font-semibold">Team</span> for all 6 voices.
+                    </p>
+                  )}
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {([
                       { id: 'alloy', label: 'Alloy', sub: 'Neutral · Balanced' },
@@ -1036,26 +1045,31 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                       { id: 'onyx', label: 'Onyx', sub: 'Male · Deep' },
                       { id: 'nova', label: 'Nova', sub: 'Female · Bright' },
                       { id: 'shimmer', label: 'Shimmer', sub: 'Female · Soft' },
-                    ] as const).map(v => (
+                    ] as const).map(v => {
+                      const locked = v.id !== 'alloy' && !canUseAllVoices(props.subscriptionPlan);
+                      return (
                       <div key={v.id} className="relative">
                         <button
                           type="button"
-                          onClick={() => props.setTtsVoice(v.id)}
+                          onClick={() => { if (!locked) props.setTtsVoice(v.id); }}
+                          disabled={locked}
+                          title={locked ? 'Team plan required' : undefined}
                           className={cn(
                             'w-full flex flex-col items-start px-3 pt-2.5 pb-2 rounded-xl border text-left transition-all',
+                            locked && 'opacity-40 cursor-not-allowed',
                             props.ttsVoice === v.id
                               ? 'border-emerald-500 bg-emerald-500/10 text-emerald-300'
                               : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-600'
                           )}
                         >
-                          <span className="text-xs font-bold pr-5">{v.label}</span>
+                          <span className="text-xs font-bold pr-5">{v.label}{locked ? ' · Team' : ''}</span>
                           <span className="text-[10px] opacity-70 mt-0.5">{v.sub}</span>
                         </button>
                         <button
                           type="button"
-                          onClick={e => { e.stopPropagation(); props.onPreviewVoice(v.id); }}
-                          disabled={!!props.previewingVoice}
-                          title={`Preview ${v.label}`}
+                          onClick={e => { e.stopPropagation(); if (!locked) props.onPreviewVoice(v.id); }}
+                          disabled={!!props.previewingVoice || locked}
+                          title={locked ? 'Team plan required' : `Preview ${v.label}`}
                           className={cn(
                             'absolute top-1.5 right-1.5 w-5 h-5 rounded flex items-center justify-center',
                             props.previewingVoice === v.id ? 'text-emerald-400' : 'text-slate-500 hover:text-emerald-400'
@@ -1064,7 +1078,8 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                           {props.previewingVoice === v.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Ear className="w-3 h-3" />}
                         </button>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}

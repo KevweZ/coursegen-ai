@@ -50,13 +50,25 @@ function assetPrefix(userId: string, draftId: string) {
   return `${userId}/${draftId}`;
 }
 
-export async function listCloudDrafts(userId: string): Promise<CloudDraftMeta[]> {
+export async function listCloudDrafts(
+  userId: string,
+  workspaceId?: string | null
+): Promise<CloudDraftMeta[]> {
   if (!(await isCloudDraftsAvailable())) return [];
-  const { data, error } = await supabase
+
+  // Team: list the shared workspace pool. Creator: personal drafts only.
+  let query = supabase
     .from('course_drafts')
     .select('id, phase, course_title, slide_count, module_count, theme, updated_at')
-    .eq('user_id', userId)
     .order('updated_at', { ascending: false });
+
+  if (workspaceId) {
+    query = query.eq('workspace_id', workspaceId);
+  } else {
+    query = query.eq('user_id', userId);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     console.warn('[DraftCloud] list failed:', error.message);
@@ -166,14 +178,15 @@ export async function upsertCloudDraft(
   userId: string,
   meta: CloudDraftMeta,
   snapshot: CloudDraftSnapshot,
-  assets?: Record<string, string>
+  assets?: Record<string, string>,
+  workspaceId?: string | null
 ): Promise<{ ok: boolean; error?: string }> {
   if (!(await isCloudDraftsAvailable())) {
     return { ok: false, error: 'Cloud drafts table not set up. Run supabase_drafts_migration.sql in Supabase.' };
   }
 
   try {
-    const row = {
+    const row: Record<string, unknown> = {
       id: meta.id,
       user_id: userId,
       phase: meta.phase,
@@ -185,6 +198,7 @@ export async function upsertCloudDraft(
       snapshot,
       updated_at: meta.savedAt || new Date().toISOString(),
     };
+    if (workspaceId) row.workspace_id = workspaceId;
 
     const { error } = await supabase.from('course_drafts').upsert(row, { onConflict: 'id' });
     if (error) throw error;
@@ -204,11 +218,11 @@ export async function fetchCloudDraft(
 ): Promise<{ snapshot: CloudDraftSnapshot; assets: Record<string, string> } | null> {
   if (!(await isCloudDraftsAvailable())) return null;
 
+  // Do not filter by user_id — Team members may open shared workspace drafts (RLS).
   const { data, error } = await supabase
     .from('course_drafts')
-    .select('snapshot, player_config, phase, theme')
+    .select('snapshot, player_config, phase, theme, user_id')
     .eq('id', draftId)
-    .eq('user_id', userId)
     .maybeSingle();
 
   if (error || !data?.snapshot) {
@@ -226,6 +240,7 @@ export async function fetchCloudDraft(
     };
   }
 
+  void userId; // viewer id — assets still live under the saver's prefix when loaded later
   return { snapshot, assets: {} };
 }
 
@@ -238,11 +253,17 @@ export async function deleteCloudDraft(
     return { ok: true };
   }
 
+  // Prefer owner delete; Team RLS also allows workspace members to delete shared rows.
+  const { data: row } = await supabase
+    .from('course_drafts')
+    .select('user_id')
+    .eq('id', draftId)
+    .maybeSingle();
+
   const { error } = await supabase
     .from('course_drafts')
     .delete()
-    .eq('id', draftId)
-    .eq('user_id', userId);
+    .eq('id', draftId);
 
   if (error) {
     console.warn('[DraftCloud] delete row failed:', error.message);
@@ -250,7 +271,8 @@ export async function deleteCloudDraft(
   }
 
   try {
-    const prefix = assetPrefix(userId, draftId);
+    const ownerId = row?.user_id || userId;
+    const prefix = assetPrefix(ownerId, draftId);
     const { data: files } = await supabase.storage.from(BUCKET).list(prefix);
     if (files?.length) {
       const { error: rmErr } = await supabase.storage
