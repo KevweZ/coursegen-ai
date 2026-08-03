@@ -4,7 +4,7 @@ import {
   Zap, CreditCard, Crown, Star, Building2, GraduationCap,
   ArrowRight, Shield, Loader2, AlertCircle,
   CheckCircle2, ChevronRight, Calendar, BarChart3, Sparkles,
-  TrendingUp, Package, Users, UserPlus, Trash2,
+  TrendingUp, Package, Users, UserPlus, Trash2, Eye,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getPaymentStatus, redirectToCheckout, type PaymentStatus } from '../services/paymentService';
@@ -16,6 +16,14 @@ import {
   type WorkspaceMember,
   type WorkspaceInfo,
 } from '../services/workspaceService';
+import {
+  type AdminAccountView,
+  ADMIN_ACCOUNT_VIEWS,
+  readAdminAccountView,
+  writeAdminAccountView,
+  planForAdminView,
+  demoCreditsForView,
+} from '../lib/adminPreview';
 
 // ── Plan display metadata ─────────────────────────────────────────────────────
 const PLAN_META: Record<string, {
@@ -25,6 +33,41 @@ const PLAN_META: Record<string, {
   teacher_pro:   { label: 'Teacher Pro', color: 'emerald',gradient: 'from-emerald-600 to-teal-600',   icon: GraduationCap, creditsAi: 300, creditsTts: 300 },
   pro_creator:   { label: 'Creator',     color: 'indigo', gradient: 'from-indigo-600 to-purple-600',  icon: Star,      creditsAi: 500,  creditsTts: 500  },
   business_team: { label: 'Team',        color: 'amber',  gradient: 'from-amber-500 to-orange-600',   icon: Building2, creditsAi: 1500, creditsTts: 1500 },
+};
+
+const DEMO_TEAM_MEMBERS: WorkspaceMember[] = [
+  {
+    id: 'demo-owner',
+    email: 'you@company.com',
+    role: 'owner',
+    status: 'active',
+    user_id: 'demo-owner',
+    joined_at: new Date().toISOString(),
+  },
+  {
+    id: 'demo-m1',
+    email: 'alex.id@company.com',
+    role: 'member',
+    status: 'active',
+    user_id: 'demo-m1',
+    joined_at: new Date().toISOString(),
+  },
+  {
+    id: 'demo-m2',
+    email: 'sam.sme@company.com',
+    role: 'member',
+    status: 'invited',
+    user_id: null,
+  },
+];
+
+const DEMO_WORKSPACE: WorkspaceInfo = {
+  id: 'demo-workspace',
+  name: 'Team Workspace (preview)',
+  seat_limit: 5,
+  role: 'owner',
+  credits_ai: 1280,
+  credits_tts: 1100,
 };
 
 // ── Credit bar ────────────────────────────────────────────────────────────────
@@ -65,7 +108,7 @@ interface AccountPageProps {
 }
 
 export function AccountPage({ onUpgrade }: AccountPageProps) {
-  const { user, session } = useAuth();
+  const { user, session, isAdmin } = useAuth();
   const [status, setStatus]   = useState<PaymentStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [packLoading, setPackLoading] = useState<'standard' | 'volume' | null>(null);
@@ -77,6 +120,9 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
   const [inviteBusy, setInviteBusy] = useState(false);
   const [wsMessage, setWsMessage] = useState<string | null>(null);
   const [wsError, setWsError] = useState<string | null>(null);
+  const [adminView, setAdminView] = useState<AdminAccountView>(() =>
+    typeof window !== 'undefined' ? readAdminAccountView() : 'admin'
+  );
 
   useEffect(() => {
     if (!user) { setLoading(false); return; }
@@ -130,14 +176,31 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.access_token, user?.id]);
 
-  const plan = status?.subscription ?? 'free';
+  const previewActive = isAdmin && adminView !== 'admin';
+  const realPlan = status?.subscription ?? 'free';
+  const plan = isAdmin ? planForAdminView(adminView, realPlan) : realPlan;
   const meta = PLAN_META[plan] ?? PLAN_META.free;
   const PlanIcon = meta.icon;
-  const isTeamOwner = plan === 'business_team' && (status?.workspace_role === 'owner' || workspace?.role === 'owner');
-  const showTeamPanel = plan === 'business_team' || !!workspace;
 
-  const aiCredits  = status?.credits_ai  ?? 0;
-  const ttsCredits = status?.credits_tts ?? 0;
+  const demoCredits = previewActive ? demoCreditsForView(adminView) : null;
+  const aiCredits  = demoCredits ? demoCredits.ai  : (status?.credits_ai  ?? 0);
+  const ttsCredits = demoCredits ? demoCredits.tts : (status?.credits_tts ?? 0);
+
+  const teamPreview = isAdmin && adminView === 'team';
+  const displayWorkspace = teamPreview && !workspace ? DEMO_WORKSPACE : workspace;
+  const displayMembers = teamPreview && !workspace ? DEMO_TEAM_MEMBERS : members;
+  const isTeamOwner =
+    (plan === 'business_team' && (status?.workspace_role === 'owner' || workspace?.role === 'owner'))
+    || (teamPreview && (!workspace || workspace.role === 'owner'));
+  const showTeamPanel = plan === 'business_team' || !!workspace || teamPreview;
+  const teamActionsDisabled = teamPreview && !workspace; // demo seats — don't hit API
+
+  const setView = (view: AdminAccountView) => {
+    setAdminView(view);
+    writeAdminAccountView(view);
+    setWsMessage(null);
+    setWsError(null);
+  };
 
   const handleBuyPack = async (packId: 'credits_standard' | 'credits_volume') => {
     if (!user) return;
@@ -164,6 +227,9 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
           <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
             <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-bold uppercase tracking-widest mb-5">
               <Shield className="w-3.5 h-3.5" /> My Account
+              {isAdmin && (
+                <span className="text-amber-300/90 normal-case tracking-normal font-semibold">· Admin</span>
+              )}
             </span>
             <div className="flex items-center gap-4">
               {/* Avatar */}
@@ -184,6 +250,7 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-gradient-to-r ${meta.gradient} text-white`}>
                       <PlanIcon className="w-3 h-3" />
                       {meta.label}
+                      {previewActive ? ' (preview)' : ''}
                     </span>
                   )}
                   <span className="text-xs text-slate-500 font-medium">Corporate Training</span>
@@ -195,6 +262,49 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
       </div>
 
       <div className="max-w-5xl mx-auto px-6 space-y-6">
+
+        {/* ── Admin view switcher ───────────────────────────────────────────── */}
+        {isAdmin && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+            className="rounded-2xl border border-violet-500/30 bg-violet-500/5 p-5"
+          >
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-9 h-9 rounded-xl bg-violet-500/15 border border-violet-500/25 flex items-center justify-center shrink-0">
+                <Eye className="w-4 h-4 text-violet-300" />
+              </div>
+              <div>
+                <p className="font-bold text-white text-sm">Admin account views</p>
+                <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                  Preview how Free, Creator, and Team customers see Account — including the seats panel.
+                  Also drives voice unlocks and draft limits in the builder. No payment required.
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {ADMIN_ACCOUNT_VIEWS.map(v => (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => setView(v.id)}
+                  className={`text-left px-3 py-2.5 rounded-xl border transition-all ${
+                    adminView === v.id
+                      ? 'border-violet-400/60 bg-violet-500/20 text-white'
+                      : 'border-slate-700/60 bg-slate-900/40 text-slate-400 hover:border-slate-600 hover:text-slate-200'
+                  }`}
+                >
+                  <p className="text-xs font-black uppercase tracking-wide">{v.label}</p>
+                  <p className="text-[10px] mt-0.5 opacity-70 leading-snug">{v.hint}</p>
+                </button>
+              ))}
+            </div>
+            {previewActive && (
+              <p className="mt-3 text-[11px] text-violet-300/90 font-medium">
+                Preview mode — credits and seats below are simulated. Switch back to Admin for your real account.
+              </p>
+            )}
+          </motion.div>
+        )}
 
         {/* ── Row 1: Plan + Reset Timer ─────────────────────────────────────── */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -234,8 +344,13 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
             ) : (
               <div className="space-y-3">
                 <div className="flex items-center gap-2 text-sm text-emerald-400 font-bold">
-                  <CheckCircle2 className="w-4 h-4" /> Active subscription
+                  <CheckCircle2 className="w-4 h-4" /> {previewActive ? 'Preview subscription' : 'Active subscription'}
                 </div>
+                {isAdmin && adminView === 'admin' && (
+                  <p className="text-xs text-slate-500">
+                    Admin tools stay available. Use the view switcher above to QA customer plans.
+                  </p>
+                )}
                 <button
                   onClick={onUpgrade}
                   className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-300 font-bold text-sm transition-all flex items-center justify-center gap-2"
@@ -423,17 +538,27 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
                 </div>
                 <div>
                   <p className="font-bold text-white">
-                    {workspace?.name || status?.workspace_name || 'Team Workspace'}
+                    {displayWorkspace?.name || status?.workspace_name || 'Team Workspace'}
                   </p>
                   <p className="text-xs text-slate-500">
-                    Up to {workspace?.seat_limit ?? status?.seat_limit ?? 5} seats · pooled credits · shared draft slots
+                    Up to {displayWorkspace?.seat_limit ?? status?.seat_limit ?? 5} seats · pooled credits · shared draft slots
+                    {teamActionsDisabled ? ' · demo data' : ''}
                   </p>
                 </div>
               </div>
               <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/25">
-                {workspace?.role || status?.workspace_role || 'member'}
+                {displayWorkspace?.role || status?.workspace_role || 'member'}
               </span>
             </div>
+
+            {teamActionsDisabled && (
+              <div className="flex items-center gap-2 mb-4 p-3 rounded-xl bg-violet-500/10 border border-violet-500/20">
+                <Eye className="w-4 h-4 text-violet-300 shrink-0" />
+                <p className="text-sm text-violet-200">
+                  Preview seats panel. Invite/remove are disabled until you have a real Team subscription (or complete a Stripe test checkout).
+                </p>
+              </div>
+            )}
 
             {wsMessage && (
               <div className="flex items-center gap-2 mb-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
@@ -441,7 +566,7 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
                 <p className="text-sm text-emerald-300">{wsMessage}</p>
               </div>
             )}
-            {wsError && (
+            {wsError && !teamActionsDisabled && (
               <div className="flex items-center gap-2 mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
                 <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
                 <p className="text-sm text-red-300">{wsError}</p>
@@ -453,6 +578,10 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
                 className="flex flex-col sm:flex-row gap-2 mb-5"
                 onSubmit={async (e) => {
                   e.preventDefault();
+                  if (teamActionsDisabled) {
+                    setWsMessage('Demo mode — switch to Admin after a Team test checkout to send real invites.');
+                    return;
+                  }
                   if (!session?.access_token || !inviteEmail.trim()) return;
                   setInviteBusy(true);
                   setWsError(null);
@@ -478,12 +607,13 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
                   placeholder="teammate@company.com"
-                  className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500/50"
+                  disabled={teamActionsDisabled}
+                  className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500/50 disabled:opacity-50"
                   required
                 />
                 <button
                   type="submit"
-                  disabled={inviteBusy}
+                  disabled={inviteBusy || teamActionsDisabled}
                   className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-sm font-black disabled:opacity-60"
                 >
                   {inviteBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
@@ -492,13 +622,13 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
               </form>
             )}
 
-            {wsLoading ? (
+            {wsLoading && !teamActionsDisabled ? (
               <div className="flex items-center gap-2 text-slate-500 text-sm">
                 <Loader2 className="w-4 h-4 animate-spin" /> Loading seats…
               </div>
             ) : (
               <ul className="space-y-2">
-                {members.map((m) => (
+                {displayMembers.map((m) => (
                   <li
                     key={m.id}
                     className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl bg-slate-800/50 border border-slate-700/50"
@@ -510,9 +640,10 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
                     {isTeamOwner && m.role !== 'owner' && (
                       <button
                         type="button"
-                        title="Remove seat"
+                        title={teamActionsDisabled ? 'Disabled in preview' : 'Remove seat'}
+                        disabled={teamActionsDisabled}
                         onClick={async () => {
-                          if (!session?.access_token) return;
+                          if (teamActionsDisabled || !session?.access_token) return;
                           setWsError(null);
                           try {
                             await removeWorkspaceMember(session.access_token, m.id);
@@ -522,14 +653,14 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
                             setWsError(err.message ?? 'Remove failed');
                           }
                         }}
-                        className="p-2 rounded-lg text-slate-500 hover:text-red-300 hover:bg-red-500/10 transition-colors"
+                        className="p-2 rounded-lg text-slate-500 hover:text-red-300 hover:bg-red-500/10 transition-colors disabled:opacity-40 disabled:pointer-events-none"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     )}
                   </li>
                 ))}
-                {!members.length && (
+                {!displayMembers.length && (
                   <p className="text-sm text-slate-500">No seats loaded yet. Buy Team or refresh after checkout.</p>
                 )}
               </ul>

@@ -39,8 +39,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Derived: true only when the signed-in email matches the hardcoded admin email
-  const isAdmin = !!(user?.email && user.email.toLowerCase() === ADMIN_EMAIL);
+  // Derived: admin by email match OR user_metadata.role === 'admin'
+  const isAdmin = !!(
+    (user?.email && user.email.toLowerCase() === ADMIN_EMAIL)
+    || user?.user_metadata?.role === 'admin'
+  );
 
   // Derived: trial role flags (read from Supabase user_metadata set at invite time)
   const isTrial        = user?.user_metadata?.role === 'trial';

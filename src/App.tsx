@@ -179,6 +179,11 @@ import { PaymentSuccessPage } from './components/PaymentSuccessPage';
 import { PaymentCancelPage } from './components/PaymentCancelPage';
 import { getPaymentStatus } from './services/paymentService';
 import { canUseAllVoices } from './lib/planEntitlements';
+import {
+  readAdminAccountView,
+  planForAdminView,
+  type AdminAccountView,
+} from './lib/adminPreview';
 import { useAuth } from './contexts/AuthContext';
 import { AuthPage } from './components/auth/AuthPage';
 import { MarketingHomepage } from './components/marketing/MarketingHomepage';
@@ -589,6 +594,18 @@ export default function App() {
   // ── Plan entitlements (Stripe) — prefer over signup metadata for drafts/voices ─
   const [entitlementPlan, setEntitlementPlan] = React.useState<string | null>(null);
   const [workspaceId, setWorkspaceId] = React.useState<string | null>(null);
+  const [adminAccountView, setAdminAccountView] = React.useState<AdminAccountView>(() =>
+    typeof window !== 'undefined' ? readAdminAccountView() : 'admin'
+  );
+  React.useEffect(() => {
+    const sync = () => setAdminAccountView(readAdminAccountView());
+    window.addEventListener('nexcourse-admin-view', sync);
+    window.addEventListener('storage', sync);
+    return () => {
+      window.removeEventListener('nexcourse-admin-view', sync);
+      window.removeEventListener('storage', sync);
+    };
+  }, []);
   React.useEffect(() => {
     if (!user?.id) {
       setEntitlementPlan(null);
@@ -613,11 +630,21 @@ export default function App() {
   }, [user?.id]);
 
   // ── Draft Courses (shared Design + Development slots) ─────────────────────
-  const userPlan =
+  const realUserPlan =
     entitlementPlan
     ?? (user?.user_metadata?.plan as string | undefined)
     ?? null;
-  const draftManager = useDraftCourses(user?.id ?? null, userPlan, isAdmin, workspaceId);
+  // Admin can preview Free / Creator / Team plan gates without paying
+  const userPlan = isAdmin
+    ? planForAdminView(adminAccountView, realUserPlan)
+    : realUserPlan;
+  const draftsAsAdmin = isAdmin && adminAccountView === 'admin';
+  const draftManager = useDraftCourses(
+    user?.id ?? null,
+    userPlan,
+    draftsAsAdmin,
+    adminAccountView === 'team' ? workspaceId : (adminAccountView === 'admin' ? workspaceId : null)
+  );
   const [showDraftsPanel, setShowDraftsPanel] = React.useState(false);
   const [showViewDraftsModal, setShowViewDraftsModal] = React.useState(false);
   const [isLoadingDraft, setIsLoadingDraft] = React.useState(false);
