@@ -3493,7 +3493,13 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
           )}
           {step === 'payment-success' && (
             <motion.div key="payment-success" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <PaymentSuccessPage onContinue={() => setStep('home')} />
+              <PaymentSuccessPage
+                userId={user?.id}
+                onContinue={() => {
+                  setStep('account');
+                  navigateTo(ROUTES.myAccount);
+                }}
+              />
             </motion.div>
           )}
           {step === 'payment-cancel' && (

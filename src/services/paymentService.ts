@@ -95,3 +95,22 @@ export async function getPaymentStatus(userId: string): Promise<PaymentStatus | 
 
   return res.json();
 }
+
+/**
+ * After Checkout redirect: apply entitlements from session_id (webhook fallback).
+ */
+export async function confirmCheckoutSession(
+  sessionId: string,
+  userId: string
+): Promise<{ ok: boolean; subscription?: string; error?: string }> {
+  const res = await fetch(`${API_BASE}/api/payments/confirm-session`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, userId }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    return { ok: false, error: data.error ?? res.statusText };
+  }
+  return { ok: true, subscription: data.subscription };
+}

@@ -795,6 +795,89 @@ async function getActiveTeamMembership(supabase, userId, email) {
   return null;
 }
 
+/**
+ * Apply entitlements after a successful Checkout Session (webhook or confirm-session).
+ * Idempotent for the same subscription/customer.
+ */
+async function applyCheckoutEntitlements({
+  userId,
+  planId,
+  custId,
+  subId,
+  customerEmail = '',
+}) {
+  if (!userId || !planId) {
+    throw new Error('Missing userId or planId for entitlement apply');
+  }
+  const entitlementPlan = normalizeEntitlementPlan(planId);
+  const credits = PLAN_CREDITS[planId] ?? PLAN_CREDITS[entitlementPlan] ?? { credits_ai: 0, credits_tts: 0 };
+  const isSubscription = !!subId;
+  const supabase = await getAdminSupabase();
+
+  if (isSubscription) {
+    const { error } = await supabase.from('user_entitlements').upsert({
+      user_id:            userId,
+      subscription:       entitlementPlan,
+      credits_ai:         credits.credits_ai,
+      credits_tts:        credits.credits_tts,
+      stripe_customer_id: custId,
+      stripe_sub_id:      subId,
+      updated_at:         new Date().toISOString(),
+    }, { onConflict: 'user_id' });
+    if (error) throw new Error(`entitlements upsert failed: ${error.message}`);
+
+    if (entitlementPlan === 'business_team') {
+      let ownerEmail = customerEmail || '';
+      if (!ownerEmail) {
+        const { data: { user: ownerUser } } = await supabase.auth.admin.getUserById(userId);
+        ownerEmail = ownerUser?.email || '';
+      }
+      await ensureTeamWorkspace(supabase, {
+        ownerUserId: userId,
+        ownerEmail,
+        creditsAi: credits.credits_ai,
+        creditsTts: credits.credits_tts,
+        stripeCustomerId: custId,
+        stripeSubId: subId,
+      });
+    }
+
+    try {
+      const { data: { user: existingUser } } = await supabase.auth.admin.getUserById(userId);
+      const prevRole = existingUser?.user_metadata?.role;
+      const nextRole = prevRole === 'admin' ? 'admin' : 'customer';
+      await supabase.auth.admin.updateUserById(userId, {
+        user_metadata: {
+          ...(existingUser?.user_metadata || {}),
+          role: nextRole,
+          trial_expires_at: null,
+          plan: entitlementPlan,
+        },
+      });
+    } catch (metaErr) {
+      console.warn('[Stripe] metadata sync failed:', metaErr?.message);
+    }
+  } else {
+    const { data: existing } = await supabase
+      .from('user_entitlements')
+      .select('credits_ai, credits_tts, subscription')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    const { error } = await supabase.from('user_entitlements').upsert({
+      user_id:            userId,
+      subscription:       existing?.subscription ?? 'free',
+      credits_ai:         (existing?.credits_ai ?? 0) + credits.credits_ai,
+      credits_tts:        (existing?.credits_tts ?? 0) + credits.credits_tts,
+      stripe_customer_id: custId,
+      updated_at:         new Date().toISOString(),
+    }, { onConflict: 'user_id' });
+    if (error) throw new Error(`credit pack upsert failed: ${error.message}`);
+  }
+
+  return { entitlementPlan, credits, isSubscription };
+}
+
 // Decode a Supabase JWT payload without verifying the signature.
 // The email and user_metadata are self-contained in the token body.
 // Security: Supabase JWTs are signed with the project's JWT secret — the email
@@ -1115,88 +1198,25 @@ app.post(
         const session  = event.data.object;
         const userId   = session.metadata?.userId;
         const planId   = session.metadata?.planId;
-        const entitlementPlan = normalizeEntitlementPlan(planId);
         const custId   = session.customer;
         const subId    = session.subscription ?? null;
-        const credits  = PLAN_CREDITS[planId] ?? PLAN_CREDITS[entitlementPlan] ?? { credits_ai: 0, credits_tts: 0 };
-        const isSubscription = subId !== null;
+        const customerEmail = session.customer_details?.email || session.customer_email || '';
 
-        if (userId && planId) {
-          const { createClient } = await import('@supabase/supabase-js');
-          const supabase = createClient(
-            process.env.VITE_SUPABASE_URL,
-            getSupabaseKey(),
-            { auth: { autoRefreshToken: false, persistSession: false } }
-          );
-
-          if (isSubscription) {
-            // Upsert subscription record (canonical tier — not monthly/annual variant)
-            await supabase.from('user_entitlements').upsert({
-              user_id:            userId,
-              subscription:       entitlementPlan,
-              credits_ai:         credits.credits_ai,
-              credits_tts:        credits.credits_tts,
-              stripe_customer_id: custId,
-              stripe_sub_id:      subId,
-              updated_at:         new Date().toISOString(),
-            }, { onConflict: 'user_id' });
-
-            // Team plan → create/refresh workspace + owner seat (pooled credits)
-            if (entitlementPlan === 'business_team') {
-              try {
-                let ownerEmail = session.customer_details?.email || session.customer_email || '';
-                if (!ownerEmail) {
-                  const { data: { user: ownerUser } } = await supabase.auth.admin.getUserById(userId);
-                  ownerEmail = ownerUser?.email || '';
-                }
-                await ensureTeamWorkspace(supabase, {
-                  ownerUserId: userId,
-                  ownerEmail,
-                  creditsAi: credits.credits_ai,
-                  creditsTts: credits.credits_tts,
-                  stripeCustomerId: custId,
-                  stripeSubId: subId,
-                });
-                console.log(`[Stripe Webhook] Team workspace ensured — userId=${userId}`);
-              } catch (wsErr) {
-                console.warn('[Stripe Webhook] Workspace ensure failed:', wsErr?.message);
-              }
-            }
-          } else {
-            // One-time purchase — add credits on top of existing balance
-            const { data: existing } = await supabase
-              .from('user_entitlements')
-              .select('credits_ai, credits_tts, subscription')
-              .eq('user_id', userId)
-              .single();
-
-            await supabase.from('user_entitlements').upsert({
-              user_id:            userId,
-              subscription:       existing?.subscription ?? 'free',
-              credits_ai:         (existing?.credits_ai ?? 0) + credits.credits_ai,
-              credits_tts:        (existing?.credits_tts ?? 0) + credits.credits_tts,
-              stripe_customer_id: custId,
-              updated_at:         new Date().toISOString(),
-            }, { onConflict: 'user_id' });
-          }
-          console.log(`[Stripe Webhook] checkout.session.completed — userId=${userId} plan=${planId} entitlement=${entitlementPlan}`);
-
-          // Graduate trials + sync user_metadata.plan for draft limits / UI gating
-          if (isSubscription) {
-            try {
-              await supabase.auth.admin.updateUserById(userId, {
-                user_metadata: {
-                  role: 'customer',
-                  trial_expires_at: null,
-                  plan: entitlementPlan,
-                },
-              });
-              console.log(`[Stripe Webhook] Plan synced to metadata — userId=${userId} plan=${entitlementPlan}`);
-            } catch (graduateErr) {
-              console.warn('[Stripe Webhook] Could not sync user metadata:', graduateErr?.message);
-            }
-          }
+        if (!userId || !planId) {
+          console.error('[Stripe Webhook] Missing metadata userId/planId on session', session.id);
+          return res.status(400).json({ error: 'Missing checkout metadata' });
         }
+
+        const applied = await applyCheckoutEntitlements({
+          userId,
+          planId,
+          custId,
+          subId,
+          customerEmail,
+        });
+        console.log(
+          `[Stripe Webhook] checkout.session.completed — userId=${userId} plan=${planId} entitlement=${applied.entitlementPlan}`
+        );
       }
 
       if (event.type === 'customer.subscription.deleted') {
@@ -1216,12 +1236,57 @@ app.post(
       }
     } catch (handlerErr) {
       console.error('[Stripe Webhook] Handler error:', handlerErr.message);
-      // Still return 200 so Stripe doesn't retry
+      // Return 500 so Stripe retries — silent 200 left entitlements stuck on Free
+      return res.status(500).json({ error: handlerErr.message });
     }
 
     res.json({ received: true });
   }
 );
+
+// Confirm checkout from success page (webhook fallback — idempotent)
+app.post('/api/payments/confirm-session', async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Payments not configured on this server.' });
+
+  const { sessionId, userId } = req.body || {};
+  if (!sessionId || !userId) {
+    return res.status(400).json({ error: 'sessionId and userId are required.' });
+  }
+
+  try {
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    if (session.payment_status !== 'paid' && session.status !== 'complete') {
+      return res.status(400).json({ error: 'Checkout session is not paid/complete.' });
+    }
+    if (session.metadata?.userId && session.metadata.userId !== userId) {
+      return res.status(403).json({ error: 'Session does not belong to this user.' });
+    }
+
+    const planId = session.metadata?.planId;
+    if (!planId) {
+      return res.status(400).json({ error: 'Checkout session missing plan metadata.' });
+    }
+
+    const applied = await applyCheckoutEntitlements({
+      userId,
+      planId,
+      custId: session.customer,
+      subId: session.subscription ?? null,
+      customerEmail: session.customer_details?.email || session.customer_email || '',
+    });
+
+    console.log(`[Stripe] confirm-session — userId=${userId} plan=${planId} entitlement=${applied.entitlementPlan}`);
+    return res.json({
+      ok: true,
+      subscription: applied.entitlementPlan,
+      credits_ai: applied.credits.credits_ai,
+      credits_tts: applied.credits.credits_tts,
+    });
+  } catch (err) {
+    console.error('[Stripe] confirm-session error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
 
 // 8c. Get Payment Status for a user (own plan OR active Team seat)
 app.get('/api/payments/status', async (req, res) => {

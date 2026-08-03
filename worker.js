@@ -17,12 +17,17 @@ export default {
     if (url.pathname.startsWith('/api/')) {
       const renderUrl = RENDER_API + url.pathname + url.search;
 
-      const proxyRequest = new Request(renderUrl, {
+      const proxyInit = {
         method:  request.method,
         headers: request.headers,
-        body:    ['GET', 'HEAD'].includes(request.method) ? undefined : request.body,
         redirect: 'follow',
-      });
+      };
+      // Forward body for POST/PUT/PATCH — duplex required for streamed bodies (Stripe webhooks).
+      if (!['GET', 'HEAD'].includes(request.method)) {
+        proxyInit.body = request.body;
+        proxyInit.duplex = 'half';
+      }
+      const proxyRequest = new Request(renderUrl, proxyInit);
 
       try {
         const renderRes = await fetch(proxyRequest);
