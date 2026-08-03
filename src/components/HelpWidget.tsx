@@ -29,7 +29,7 @@ const FAQS = [
   },
   {
     q: 'How do I cancel or change my subscription?',
-    a: 'Go to your Account page (click your name in the top-right → "My Account & Billing"). From there you can manage your subscription through the Stripe billing portal. Alternatively, email support@nexcourse.ai and we\'ll assist you directly.',
+    a: 'Go to My Account → Manage Subscription (Stripe billing portal) to update payment method, download invoices, or cancel. Access continues through the end of the paid period. For refund requests within 14 days of a charge, email support@nexcourse.ai with your account email and receipt.',
   },
 ];
 

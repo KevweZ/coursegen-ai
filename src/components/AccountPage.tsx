@@ -202,6 +202,9 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
     setWsError(null);
   };
 
+  const [portalLoading, setPortalLoading] = useState(false);
+  const [portalError, setPortalError] = useState<string | null>(null);
+
   const handleBuyPack = async (packId: 'credits_standard' | 'credits_volume') => {
     if (!user) return;
     setPackError(null);
@@ -214,7 +217,31 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
     }
   };
 
+  const handleBillingPortal = async () => {
+    const customerId = status?.stripe_customer_id;
+    if (!customerId) {
+      setPortalError('No Stripe customer on this account yet. Complete a checkout first (test mode is fine).');
+      return;
+    }
+    setPortalLoading(true);
+    setPortalError(null);
+    try {
+      const res = await fetch('/api/payments/billing-portal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customerId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Failed to open billing portal.');
+      window.location.href = data.url;
+    } catch (err: any) {
+      setPortalError(err.message ?? 'Could not open billing portal.');
+      setPortalLoading(false);
+    }
+  };
+
   const daysLeft = daysUntilReset();
+  const canManageBilling = !!status?.stripe_customer_id && !previewActive;
 
   return (
     <div className="min-h-screen w-full relative z-10 pb-24">
@@ -351,6 +378,18 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
                     Admin tools stay available. Use the view switcher above to QA customer plans.
                   </p>
                 )}
+                {canManageBilling && (
+                  <button
+                    type="button"
+                    onClick={handleBillingPortal}
+                    disabled={portalLoading}
+                    className="w-full py-2.5 rounded-xl bg-emerald-600/90 hover:bg-emerald-500 text-white font-bold text-sm transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+                  >
+                    {portalLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
+                    Manage Subscription
+                  </button>
+                )}
+                {portalError && <p className="text-xs text-red-400">{portalError}</p>}
                 <button
                   onClick={onUpgrade}
                   className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-300 font-bold text-sm transition-all flex items-center justify-center gap-2"

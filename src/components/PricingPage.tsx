@@ -141,6 +141,10 @@ const faqItems = [
     a: 'Yes. Creator and Team both include SCORM 1.2 and 2004 packages you upload to your LMS. Completion and score reporting are handled by your LMS after you publish the package — not a separate NexCourse analytics product.',
   },
   {
+    q: 'Can I cancel or get a refund?',
+    a: 'You can cancel anytime from My Account → Manage Subscription (Stripe billing portal). Access continues through the end of the paid period. For refunds within 14 days of a charge, email support@nexcourse.ai with your account email and Stripe receipt — we review refund requests case by case (unused credits and first-time charges are prioritized).',
+  },
+  {
     q: 'Can I switch between annual and monthly?',
     a: 'Creator offers annual ($59/mo equivalent) or month-to-month ($79/mo). Team is billed annually at the $149/mo rate. You can manage or cancel anytime from My Account → Manage Subscription.',
   },

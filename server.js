@@ -45,24 +45,46 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const OPENAI_API_KEY    = process.env.OPENAI_API_KEY ?? '';
 
 // ─── 1b. Stripe Init ────────────────────────────────────────────────────────
-const STRIPE_SECRET_KEY      = process.env.STRIPE_SECRET_KEY ?? '';
-const STRIPE_WEBHOOK_SECRET  = process.env.STRIPE_WEBHOOK_SECRET ?? '';
+// STRIPE_MODE=test|live — default test. Flip to live only when ready for real charges.
+// Keep both key sets on Render; only the active mode is used at runtime.
+const STRIPE_MODE = (process.env.STRIPE_MODE || 'test').toLowerCase() === 'live' ? 'live' : 'test';
+
+function stripePriceEnv(...keys) {
+  for (const key of keys) {
+    const modeKey = `${key}_${STRIPE_MODE.toUpperCase()}`;
+    const v = (process.env[modeKey] || process.env[key] || '').trim();
+    if (v) return v;
+  }
+  return '';
+}
+
+const STRIPE_SECRET_KEY =
+  STRIPE_MODE === 'live'
+    ? (process.env.STRIPE_SECRET_KEY_LIVE || process.env.STRIPE_SECRET_KEY || '')
+    : (process.env.STRIPE_SECRET_KEY_TEST || process.env.STRIPE_SECRET_KEY || '');
+const STRIPE_WEBHOOK_SECRET =
+  STRIPE_MODE === 'live'
+    ? (process.env.STRIPE_WEBHOOK_SECRET_LIVE || process.env.STRIPE_WEBHOOK_SECRET || '')
+    : (process.env.STRIPE_WEBHOOK_SECRET_TEST || process.env.STRIPE_WEBHOOK_SECRET || '');
 
 // Map frontend plan IDs → Stripe Price IDs (set in Render env vars)
 // Prefer v2 annual/monthly keys; fall back to legacy STRIPE_PRICE_* for older deploys.
 const STRIPE_PRICE_MAP = {
-  teacher_pro:         process.env.STRIPE_PRICE_TEACHER_PRO ?? '',
-  pro_creator:         process.env.STRIPE_PRICE_PRO_CREATOR_ANNUAL
-                         || process.env.STRIPE_PRICE_PRO_CREATOR
-                         || '',
-  pro_creator_monthly: process.env.STRIPE_PRICE_PRO_CREATOR_MONTHLY
-                         || process.env.STRIPE_PRICE_PRO_CREATOR
-                         || '',
-  business_team:       process.env.STRIPE_PRICE_BUSINESS_TEAM_ANNUAL
-                         || process.env.STRIPE_PRICE_BUSINESS_TEAM
-                         || '',
-  credits_standard:    process.env.STRIPE_PRICE_CREDITS_STANDARD ?? '',
-  credits_volume:      process.env.STRIPE_PRICE_CREDITS_VOLUME   ?? '',
+  teacher_pro:         stripePriceEnv('STRIPE_PRICE_TEACHER_PRO'),
+  pro_creator:         stripePriceEnv(
+                         'STRIPE_PRICE_PRO_CREATOR_ANNUAL',
+                         'STRIPE_PRICE_PRO_CREATOR'
+                       ),
+  pro_creator_monthly: stripePriceEnv(
+                         'STRIPE_PRICE_PRO_CREATOR_MONTHLY',
+                         'STRIPE_PRICE_PRO_CREATOR'
+                       ),
+  business_team:       stripePriceEnv(
+                         'STRIPE_PRICE_BUSINESS_TEAM_ANNUAL',
+                         'STRIPE_PRICE_BUSINESS_TEAM'
+                       ),
+  credits_standard:    stripePriceEnv('STRIPE_PRICE_CREDITS_STANDARD'),
+  credits_volume:      stripePriceEnv('STRIPE_PRICE_CREDITS_VOLUME'),
 };
 
 // Map plan IDs → credit grants (applied on successful checkout)
@@ -94,6 +116,10 @@ const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 
 // ─── 2. Express App Setup ───────────────────────────────────────────────────
 const app = express();
+
+// Stripe webhooks MUST receive the raw body for signature verification.
+// Mount raw parser for that path BEFORE express.json().
+app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '512kb' }));
 
 // ─── 2a. CORS — allow Cloudflare Pages frontend ─────────────────────────────
@@ -1058,7 +1084,7 @@ app.post('/api/payments/billing-portal', async (req, res) => {
   try {
     const session = await stripe.billingPortal.sessions.create({
       customer:   customerId,
-      return_url: `${frontendBase}/`,
+      return_url: `${frontendBase}/account`,
     });
     return res.json({ url: session.url });
   } catch (err) {
@@ -1069,7 +1095,6 @@ app.post('/api/payments/billing-portal', async (req, res) => {
 
 app.post(
   '/api/payments/webhook',
-  express.raw({ type: 'application/json' }),
   async (req, res) => {
     if (!stripe || !STRIPE_WEBHOOK_SECRET) {
       return res.status(503).json({ error: 'Webhook not configured.' });
@@ -1809,12 +1834,23 @@ Suggest 3–5 eLearning course topics this person should build based on their wo
 
 // ─── 11. Health Check ───────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => {
+  const priceConfigured = {
+    pro_creator: !!STRIPE_PRICE_MAP.pro_creator,
+    pro_creator_monthly: !!STRIPE_PRICE_MAP.pro_creator_monthly,
+    business_team: !!STRIPE_PRICE_MAP.business_team,
+    credits_standard: !!STRIPE_PRICE_MAP.credits_standard,
+    credits_volume: !!STRIPE_PRICE_MAP.credits_volume,
+  };
   res.json({
     status: 'ok',
     mode: isProd ? 'production' : 'development',
+    stripe_mode: STRIPE_MODE,
+    stripe_configured: !!stripe,
+    stripe_webhook_configured: !!STRIPE_WEBHOOK_SECRET,
+    stripe_prices_configured: priceConfigured,
     resend_configured: !!resend,
     support_email: SUPPORT_EMAIL,
-    version: '437a0ab-v2',
+    version: '4d8e13a-stripe-mode',
   });
 });
 
