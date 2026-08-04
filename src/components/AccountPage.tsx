@@ -23,6 +23,7 @@ import {
   writeAdminAccountView,
   planForAdminView,
   demoCreditsForView,
+  isTeamPreviewView,
 } from '../lib/adminPreview';
 
 // ── Plan display metadata ─────────────────────────────────────────────────────
@@ -61,13 +62,19 @@ const DEMO_TEAM_MEMBERS: WorkspaceMember[] = [
   },
 ];
 
-const DEMO_WORKSPACE: WorkspaceInfo = {
+const DEMO_WORKSPACE_OWNER: WorkspaceInfo = {
   id: 'demo-workspace',
   name: 'Team Workspace (preview)',
   seat_limit: 5,
   role: 'owner',
   credits_ai: 1280,
   credits_tts: 1100,
+};
+
+const DEMO_WORKSPACE_MEMBER: WorkspaceInfo = {
+  ...DEMO_WORKSPACE_OWNER,
+  name: 'Acme L&D Team (preview)',
+  role: 'member',
 };
 
 // ── Credit bar ────────────────────────────────────────────────────────────────
@@ -186,14 +193,27 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
   const aiCredits  = demoCredits ? demoCredits.ai  : (status?.credits_ai  ?? 0);
   const ttsCredits = demoCredits ? demoCredits.tts : (status?.credits_tts ?? 0);
 
-  const teamPreview = isAdmin && adminView === 'team';
-  const displayWorkspace = teamPreview && !workspace ? DEMO_WORKSPACE : workspace;
-  const displayMembers = teamPreview && !workspace ? DEMO_TEAM_MEMBERS : members;
-  const isTeamOwner =
-    (plan === 'business_team' && (status?.workspace_role === 'owner' || workspace?.role === 'owner'))
-    || (teamPreview && (!workspace || workspace.role === 'owner'));
+  const teamPreview = isAdmin && isTeamPreviewView(adminView);
+  const previewAsOwner = adminView === 'team_owner';
+  const previewAsMember = adminView === 'team_member';
+  const demoWorkspace = previewAsMember ? DEMO_WORKSPACE_MEMBER : DEMO_WORKSPACE_OWNER;
+  // In Team Owner/Seat preview, always use demo workspace so role differences are visible
+  // even when the admin has a real Team subscription.
+  const displayWorkspace = teamPreview ? demoWorkspace : workspace;
+  const displayMembers = teamPreview ? DEMO_TEAM_MEMBERS : members;
+  const realIsTeamOwner =
+    plan === 'business_team'
+    && (status?.workspace_role === 'owner' || workspace?.role === 'owner');
+  const realIsTeamMember =
+    plan === 'business_team'
+    && (status?.workspace_role === 'member' || workspace?.role === 'member')
+    && !realIsTeamOwner;
+  const isTeamOwner = teamPreview ? previewAsOwner : realIsTeamOwner;
+  const isTeamSeatMember = teamPreview ? previewAsMember : realIsTeamMember;
   const showTeamPanel = plan === 'business_team' || !!workspace || teamPreview;
-  const teamActionsDisabled = teamPreview && !workspace; // demo seats — don't hit API
+  const teamActionsDisabled = teamPreview; // preview seats — don't hit API
+  // Top-ups: Free/Creator/Team owner yes; Team seat members use pooled credits only
+  const canBuyTopUps = !isTeamSeatMember;
 
   const setView = (view: AdminAccountView) => {
     setAdminView(view);
@@ -207,6 +227,10 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
 
   const handleBuyPack = async (packId: 'credits_standard' | 'credits_volume') => {
     if (!user) return;
+    if (!canBuyTopUps) {
+      setPackError('Only the Team workspace owner can purchase credit packs for the shared pool.');
+      return;
+    }
     setPackError(null);
     setPackLoading(packId === 'credits_standard' ? 'standard' : 'volume');
     try {
@@ -241,7 +265,11 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
   };
 
   const daysLeft = daysUntilReset();
-  const canManageBilling = !!status?.stripe_customer_id && !previewActive;
+  // Billing portal: real Stripe customer only; Team seat members never have one
+  const canManageBilling =
+    !!status?.stripe_customer_id
+    && !previewActive
+    && !isTeamSeatMember;
 
   return (
     <div className="min-h-screen w-full relative z-10 pb-24">
@@ -303,12 +331,12 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
               <div>
                 <p className="font-bold text-white text-sm">Admin account views</p>
                 <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
-                  Preview how Free, Creator, and Team customers see Account — including the seats panel.
-                  Also drives voice unlocks and draft limits in the builder. No payment required.
+                  Preview Free, Creator, Team Owner, and Team Seat Account pages — including billing,
+                  top-ups, and seats. Also drives voice unlocks and draft limits in the builder.
                 </p>
               </div>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
               {ADMIN_ACCOUNT_VIEWS.map(v => (
                 <button
                   key={v.id}
@@ -378,6 +406,11 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
                     Admin tools stay available. Use the view switcher above to QA customer plans.
                   </p>
                 )}
+                {isTeamSeatMember && (
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    You&apos;re on a Team seat. Billing and credit top-ups are managed by the workspace owner.
+                  </p>
+                )}
                 {canManageBilling && (
                   <button
                     type="button"
@@ -390,12 +423,14 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
                   </button>
                 )}
                 {portalError && <p className="text-xs text-red-400">{portalError}</p>}
-                <button
-                  onClick={onUpgrade}
-                  className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-300 font-bold text-sm transition-all flex items-center justify-center gap-2"
-                >
-                  View All Plans <ChevronRight className="w-4 h-4" />
-                </button>
+                {!isTeamSeatMember && (
+                  <button
+                    onClick={onUpgrade}
+                    className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-300 font-bold text-sm transition-all flex items-center justify-center gap-2"
+                  >
+                    View All Plans <ChevronRight className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             )}
           </motion.div>
@@ -490,7 +525,8 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
           </div>
         </motion.div>
 
-        {/* ── Row 3: Buy Credit Packs ───────────────────────────────────────── */}
+        {/* ── Row 3: Buy Credit Packs (hidden for Team seat members) ─────────── */}
+        {canBuyTopUps ? (
         <motion.div
           initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.2 }}
           className="relative rounded-2xl border border-amber-500/20 bg-gradient-to-br from-amber-950/20 via-slate-900 to-slate-900 p-6 overflow-hidden"
@@ -502,7 +538,11 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
             </div>
             <div>
               <p className="font-bold text-white">Top-Up Credit Packs</p>
-              <p className="text-xs text-slate-500">One-time purchase · never expires · stacks with subscription</p>
+              <p className="text-xs text-slate-500">
+                {isTeamOwner
+                  ? 'One-time purchase · never expires · adds to the shared Team pool'
+                  : 'One-time purchase · never expires · stacks with subscription'}
+              </p>
             </div>
           </div>
 
@@ -526,7 +566,7 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
               </div>
               <button
                 onClick={() => handleBuyPack('credits_standard')}
-                disabled={!!packLoading}
+                disabled={!!packLoading || previewActive}
                 className="w-full py-2.5 rounded-xl border border-amber-500/30 hover:border-amber-400 bg-amber-500/5 hover:bg-amber-500/10 text-amber-300 text-sm font-bold transition-all flex items-center justify-center gap-2 disabled:opacity-60"
               >
                 {packLoading === 'standard'
@@ -553,7 +593,7 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
               </div>
               <button
                 onClick={() => handleBuyPack('credits_volume')}
-                disabled={!!packLoading}
+                disabled={!!packLoading || previewActive}
                 className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-sm font-black transition-all flex items-center justify-center gap-2 disabled:opacity-60 hover:scale-[1.02] active:scale-[0.98]"
               >
                 {packLoading === 'volume'
@@ -562,7 +602,31 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
               </button>
             </div>
           </div>
+          {previewActive && (
+            <p className="mt-4 text-[11px] text-slate-500 font-medium">
+              Preview only — Buy Pack is disabled until you switch back to Admin.
+            </p>
+          )}
         </motion.div>
+        ) : (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.2 }}
+          className="rounded-2xl border border-slate-700/50 bg-slate-900/50 p-5"
+        >
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0">
+              <Package className="w-4 h-4 text-slate-400" />
+            </div>
+            <div>
+              <p className="font-bold text-white text-sm">Shared Team credits</p>
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                Your workspace uses a pooled credit balance. Only the Team owner can buy top-up packs
+                or manage the subscription. Ask your owner if you need more credits.
+              </p>
+            </div>
+          </div>
+        </motion.div>
+        )}
 
         {/* ── Team seats ───────────────────────────────────────────────────── */}
         {showTeamPanel && (
@@ -594,7 +658,9 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
               <div className="flex items-center gap-2 mb-4 p-3 rounded-xl bg-violet-500/10 border border-violet-500/20">
                 <Eye className="w-4 h-4 text-violet-300 shrink-0" />
                 <p className="text-sm text-violet-200">
-                  Preview seats panel. Invite/remove are disabled until you have a real Team subscription (or complete a Stripe test checkout).
+                  {previewAsMember
+                    ? 'Seat member preview — invite/remove and billing are hidden. Switch to Team Owner to see admin controls.'
+                    : 'Team owner preview — invite/remove are simulated. Switch to Admin to manage your real workspace.'}
                 </p>
               </div>
             )}

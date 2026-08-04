@@ -182,6 +182,7 @@ import { canUseAllVoices } from './lib/planEntitlements';
 import {
   readAdminAccountView,
   planForAdminView,
+  isTeamPreviewView,
   type AdminAccountView,
 } from './lib/adminPreview';
 import { useAuth } from './contexts/AuthContext';
@@ -639,11 +640,17 @@ export default function App() {
     ? planForAdminView(adminAccountView, realUserPlan)
     : realUserPlan;
   const draftsAsAdmin = isAdmin && adminAccountView === 'admin';
+  const draftWorkspaceId =
+    isAdmin && isTeamPreviewView(adminAccountView)
+      ? workspaceId
+      : (adminAccountView === 'admin' || !isAdmin)
+        ? workspaceId
+        : null;
   const draftManager = useDraftCourses(
     user?.id ?? null,
     userPlan,
     draftsAsAdmin,
-    adminAccountView === 'team' ? workspaceId : (adminAccountView === 'admin' ? workspaceId : null)
+    draftWorkspaceId
   );
   const [showDraftsPanel, setShowDraftsPanel] = React.useState(false);
   const [showViewDraftsModal, setShowViewDraftsModal] = React.useState(false);

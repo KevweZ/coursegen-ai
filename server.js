@@ -583,18 +583,19 @@ app.post('/api/ai', aiRateLimit, async (req, res) => {
     return res.status(400).json({ error: 'Missing required fields: model, system, user' });
   }
 
-  // ── Trial-user AI generation cap ─────────────────────────────────────────
-  // • Only 'complex' calls are counted (analysis, outline, mastery exam).
-  //   'bulk' hydration calls are cheap internal calls that should not count.
+  // ── Trial-user gates ─────────────────────────────────────────────────────
+  // • Expired trials are blocked on ALL AI calls (not just complex).
+  // • Only 'complex' calls count toward the weekly limit (analysis, outline, etc.).
   // • Usage is logged AFTER a successful AI response — failed/retried requests
-  //   never consume trial credits.
+  //   never consume the weekly allowance.
   const authHeader = req.headers.authorization ?? '';
   const jwt = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
   let trialSupaClient = null;
   let trialUserId = null;
-  const isComplexCall = (model === 'complex');   // only count expensive calls
+  const isComplexCall = (model === 'complex');
+  const TRIAL_AI_LIMIT = 5; // matches TrialInvitePanel copy
 
-  if (jwt && isComplexCall) {
+  if (jwt) {
     try {
       const { createClient } = await import('@supabase/supabase-js');
       trialSupaClient = createClient(
@@ -604,26 +605,42 @@ app.post('/api/ai', aiRateLimit, async (req, res) => {
       );
       const { data: { user: authUser } } = await trialSupaClient.auth.getUser(jwt);
       if (authUser?.user_metadata?.role === 'trial') {
-        trialUserId = authUser.id;
-        const TRIAL_AI_LIMIT = 100;   // ~30+ complete course generations for a trial
-        const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-        const { count } = await trialSupaClient
-          .from('ai_usage')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', authUser.id)
-          .gte('created_at', weekAgo);
-
-        if (typeof count === 'number' && count >= TRIAL_AI_LIMIT) {
-          return res.status(429).json({
-            error: `Trial limit reached. You've used ${count}/${TRIAL_AI_LIMIT} AI generations this week. Contact us to upgrade your account.`,
-            code: 'TRIAL_LIMIT_EXCEEDED',
+        const expiresAt = authUser.user_metadata?.trial_expires_at;
+        if (expiresAt && new Date(expiresAt).getTime() <= Date.now()) {
+          return res.status(403).json({
+            error: 'Your trial has expired. Contact us to upgrade your account.',
+            code: 'TRIAL_EXPIRED',
           });
         }
-        // NOTE: usage is logged AFTER the AI call succeeds (see below).
+
+        if (isComplexCall) {
+          trialUserId = authUser.id;
+          const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+          const { count, error: countErr } = await trialSupaClient
+            .from('ai_usage')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', authUser.id)
+            .gte('created_at', weekAgo);
+
+          if (countErr) {
+            // Fail closed for trial users — don't allow unlimited AI if usage table is broken
+            console.error('[AI Proxy] Trial usage check failed:', countErr.message);
+            return res.status(503).json({
+              error: 'Trial usage tracking temporarily unavailable. Please try again shortly.',
+              code: 'TRIAL_USAGE_UNAVAILABLE',
+            });
+          }
+
+          if (typeof count === 'number' && count >= TRIAL_AI_LIMIT) {
+            return res.status(429).json({
+              error: `Trial limit reached. You've used ${count}/${TRIAL_AI_LIMIT} AI generations this week. Contact us to upgrade your account.`,
+              code: 'TRIAL_LIMIT_EXCEEDED',
+            });
+          }
+        }
       }
     } catch (trialCheckErr) {
-      // Degrade gracefully — if ai_usage table doesn't exist yet, just proceed
-      console.warn('[AI Proxy] Trial check skipped:', trialCheckErr?.message ?? trialCheckErr);
+      console.warn('[AI Proxy] Trial check error:', trialCheckErr?.message ?? trialCheckErr);
       trialSupaClient = null;
       trialUserId = null;
     }
@@ -858,21 +875,63 @@ async function applyCheckoutEntitlements({
       console.warn('[Stripe] metadata sync failed:', metaErr?.message);
     }
   } else {
+    // One-time credit packs — Team owners top up the shared workspace pool
     const { data: existing } = await supabase
       .from('user_entitlements')
       .select('credits_ai, credits_tts, subscription')
       .eq('user_id', userId)
       .maybeSingle();
 
-    const { error } = await supabase.from('user_entitlements').upsert({
-      user_id:            userId,
-      subscription:       existing?.subscription ?? 'free',
-      credits_ai:         (existing?.credits_ai ?? 0) + credits.credits_ai,
-      credits_tts:        (existing?.credits_tts ?? 0) + credits.credits_tts,
-      stripe_customer_id: custId,
-      updated_at:         new Date().toISOString(),
-    }, { onConflict: 'user_id' });
-    if (error) throw new Error(`credit pack upsert failed: ${error.message}`);
+    // Seat members cannot buy packs (also blocked at create-checkout)
+    let buyerEmail = customerEmail || '';
+    if (!buyerEmail) {
+      try {
+        const { data: { user: buyer } } = await supabase.auth.admin.getUserById(userId);
+        buyerEmail = buyer?.email || '';
+      } catch { /* ignore */ }
+    }
+    const membership = await getActiveTeamMembership(supabase, userId, buyerEmail);
+    if (membership?.role === 'member') {
+      throw new Error('Team seat members cannot purchase credit packs. Ask the workspace owner.');
+    }
+
+    const { data: ownedWs } = await supabase
+      .from('workspaces')
+      .select('id, credits_ai, credits_tts')
+      .eq('owner_user_id', userId)
+      .eq('status', 'active')
+      .maybeSingle();
+
+    if (ownedWs || existing?.subscription === 'business_team') {
+      if (ownedWs) {
+        const { error: wsErr } = await supabase.from('workspaces').update({
+          credits_ai:  (ownedWs.credits_ai ?? 0) + credits.credits_ai,
+          credits_tts: (ownedWs.credits_tts ?? 0) + credits.credits_tts,
+          updated_at:  new Date().toISOString(),
+        }).eq('id', ownedWs.id);
+        if (wsErr) throw new Error(`workspace credit pack failed: ${wsErr.message}`);
+      }
+      // Keep owner entitlements row in sync for billing metadata
+      const { error } = await supabase.from('user_entitlements').upsert({
+        user_id:            userId,
+        subscription:       existing?.subscription ?? 'business_team',
+        credits_ai:         (existing?.credits_ai ?? 0) + credits.credits_ai,
+        credits_tts:        (existing?.credits_tts ?? 0) + credits.credits_tts,
+        stripe_customer_id: custId,
+        updated_at:         new Date().toISOString(),
+      }, { onConflict: 'user_id' });
+      if (error) throw new Error(`credit pack upsert failed: ${error.message}`);
+    } else {
+      const { error } = await supabase.from('user_entitlements').upsert({
+        user_id:            userId,
+        subscription:       existing?.subscription ?? 'free',
+        credits_ai:         (existing?.credits_ai ?? 0) + credits.credits_ai,
+        credits_tts:        (existing?.credits_tts ?? 0) + credits.credits_tts,
+        stripe_customer_id: custId,
+        updated_at:         new Date().toISOString(),
+      }, { onConflict: 'user_id' });
+      if (error) throw new Error(`credit pack upsert failed: ${error.message}`);
+    }
   }
 
   return { entitlementPlan, credits, isSubscription };
@@ -1126,6 +1185,21 @@ app.post('/api/payments/create-checkout', async (req, res) => {
   const priceId = STRIPE_PRICE_MAP[planId];
   if (!priceId) {
     return res.status(400).json({ error: `Unknown planId: ${planId}` });
+  }
+
+  const isCreditPack = planId === 'credits_standard' || planId === 'credits_volume';
+  if (isCreditPack) {
+    try {
+      const supabase = await getAdminSupabase();
+      const membership = await getActiveTeamMembership(supabase, userId, userEmail);
+      if (membership?.role === 'member') {
+        return res.status(403).json({
+          error: 'Only the Team workspace owner can purchase credit packs for the shared pool.',
+        });
+      }
+    } catch (err) {
+      console.warn('[Stripe] credit-pack seat check failed:', err.message);
+    }
   }
 
   const isSubscription = [
@@ -1915,22 +1989,24 @@ app.get('/api/health', (_req, res) => {
     stripe_prices_configured: priceConfigured,
     resend_configured: !!resend,
     support_email: SUPPORT_EMAIL,
-    version: '4d8e13a-stripe-mode',
+    version: 'pilot-trial-harden-1',
   });
 });
 
-// ─── Temporary: Supabase connection diagnostic (admin-only, remove after fix) ─
+// ─── Supabase connection diagnostic (admin JWT required) ────────────────────
 app.get('/api/admin/test-supabase', async (req, res) => {
+  if (!(await verifyAdminJwt(req.headers.authorization))) {
+    return res.status(403).json({ error: 'Admin only' });
+  }
+
   const supabaseUrl = process.env.VITE_SUPABASE_URL ?? '';
   const serviceKey  = getSupabaseKey();
   const result = {
     url_set:       !!supabaseUrl,
     url_value:     supabaseUrl ? `${supabaseUrl.slice(0, 40)}...` : '(not set)',
     supa_admin_key_set: !!process.env.SUPA_ADMIN_KEY,
-    supa_admin_key_prefix: process.env.SUPA_ADMIN_KEY ? process.env.SUPA_ADMIN_KEY.slice(0, 20) + '...' : '(not set)',
     legacy_key_set: !!process.env.SUPABASE_SERVICE_KEY,
-    legacy_key_prefix: process.env.SUPABASE_SERVICE_KEY ? process.env.SUPABASE_SERVICE_KEY.slice(0, 20) + '...' : '(not set)',
-    key_in_use_prefix: serviceKey ? serviceKey.slice(0, 20) + '...' : '(none)',
+    key_configured: !!serviceKey,
     supabase_test: 'not run',
   };
   if (supabaseUrl && serviceKey) {

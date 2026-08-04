@@ -3,7 +3,12 @@
  * so the admin can QA Free / Creator / Team without paying.
  */
 
-export type AdminAccountView = 'admin' | 'free' | 'creator' | 'team';
+export type AdminAccountView =
+  | 'admin'
+  | 'free'
+  | 'creator'
+  | 'team_owner'
+  | 'team_member';
 
 export const ADMIN_ACCOUNT_VIEW_KEY = 'nexcourse_admin_account_view';
 
@@ -15,13 +20,28 @@ export const ADMIN_ACCOUNT_VIEWS: {
   { id: 'admin', label: 'Admin', hint: 'Your real entitlements + admin tools' },
   { id: 'free', label: 'Free', hint: 'New / unpaid customer' },
   { id: 'creator', label: 'Creator', hint: 'Solo plan · Alloy · 3 drafts' },
-  { id: 'team', label: 'Team', hint: 'Seats panel · all voices · 10 drafts' },
+  { id: 'team_owner', label: 'Team Owner', hint: 'Billing · invites · top-ups' },
+  { id: 'team_member', label: 'Team Seat', hint: 'Pooled credits · no billing' },
 ];
+
+function normalizeView(v: string | null): AdminAccountView {
+  // Migrate legacy single "team" preview → owner
+  if (v === 'team') return 'team_owner';
+  if (
+    v === 'free'
+    || v === 'creator'
+    || v === 'team_owner'
+    || v === 'team_member'
+    || v === 'admin'
+  ) {
+    return v;
+  }
+  return 'admin';
+}
 
 export function readAdminAccountView(): AdminAccountView {
   try {
-    const v = localStorage.getItem(ADMIN_ACCOUNT_VIEW_KEY);
-    if (v === 'free' || v === 'creator' || v === 'team' || v === 'admin') return v;
+    return normalizeView(localStorage.getItem(ADMIN_ACCOUNT_VIEW_KEY));
   } catch { /* ignore */ }
   return 'admin';
 }
@@ -40,7 +60,8 @@ export function planForAdminView(view: AdminAccountView, realPlan: string | null
       return 'free';
     case 'creator':
       return 'pro_creator';
-    case 'team':
+    case 'team_owner':
+    case 'team_member':
       return 'business_team';
     case 'admin':
     default:
@@ -54,9 +75,15 @@ export function demoCreditsForView(view: AdminAccountView): { ai: number; tts: n
       return { ai: 50, tts: 0 };
     case 'creator':
       return { ai: 420, tts: 380 };
-    case 'team':
+    case 'team_owner':
+    case 'team_member':
       return { ai: 1280, tts: 1100 };
     default:
       return { ai: 0, tts: 0 };
   }
+}
+
+/** True when admin is previewing either Team role. */
+export function isTeamPreviewView(view: AdminAccountView): boolean {
+  return view === 'team_owner' || view === 'team_member';
 }

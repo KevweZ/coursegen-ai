@@ -90,7 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         data: {
           full_name: fullName,
           track,
-          plan: 'pro_creator',
+          plan: 'free',
         },
       },
     });

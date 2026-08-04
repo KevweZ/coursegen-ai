@@ -54,8 +54,8 @@ Stripe Dashboard → Settings → Billing → Customer portal: enable cancel, in
 - Cancel anytime via billing portal (access through paid period)
 - Refunds: email support within **14 days** of charge; case-by-case (unused credits / first-time charges prioritized)
 - Pricing FAQ + Help widget should match this policy
-- [ ] Decide who answers refund emails (you) and max turnaround (e.g. 2 business days)
-- [ ] In Stripe Dashboard, practice issuing a **test** refund once
+- [x] Decide who answers refund emails (**you**) and max turnaround (**2 business days**)
+- [x] In Stripe Dashboard, practice issuing a **test** refund once (Team annual refunded + sub canceled immediately)
 
 ### 5. Accidental real charges
 - Keep `STRIPE_MODE=test` on Render until launch
