@@ -55,7 +55,7 @@ export function WelcomeTourModal({ open, onClose }: WelcomeTourModalProps) {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
         >
-          <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm" onClick={finish} />
+          <div className="absolute inset-0 bg-slate-950/35 backdrop-blur-[1px]" onClick={finish} />
           <motion.div
             role="dialog"
             aria-labelledby="welcome-tour-title"
