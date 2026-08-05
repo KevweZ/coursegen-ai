@@ -687,6 +687,8 @@ export async function hydrateCourseContent(
   - Each item: { "id": "r1", "term": "Key Term or Concept", "definition": "Full explanation, 1-3 sentences." }
   - term: the bold clickable label (2-6 words, bold key concept — NO markdown asterisks in the term field itself)
   - definition: the revealed content (1-3 sentences explaining the term, with context and examples)
+  - COUNT ALIGNMENT (STRICT): voiceOverText must mention the SAME number of items as data.items.length
+    (e.g. if there are 4 items, say "four"; never introduce a 5th concept that is not in data.items).
   - FAIL CONDITION: fewer than 3 items, or any item missing definition -> regenerate
 
   DIAGRAM (type: "diagram"):

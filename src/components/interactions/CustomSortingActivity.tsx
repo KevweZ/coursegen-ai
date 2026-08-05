@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ChevronUp, ChevronDown, GripVertical, CheckCircle2 } from 'lucide-react';
 import { markdownToHtml } from '../../lib/markdownInline';
@@ -17,6 +17,27 @@ interface CustomSortingActivityProps {
   theme?: SortTheme;
   /** Fires when the learner clicks Check Answer */
   onChecked?: () => void;
+}
+
+function shuffleItems(items: SortItem[], correctOrder: string[]): SortItem[] {
+  const list = [...items];
+  if (list.length < 2) return list;
+  // Prefer a shuffle that is not already in correct order
+  for (let attempt = 0; attempt < 8; attempt++) {
+    for (let i = list.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [list[i], list[j]] = [list[j], list[i]];
+    }
+    if (!correctOrder.length) return list;
+    const ids = list.map(x => x.id);
+    const alreadyCorrect = correctOrder.every((id, idx) => ids[idx] === id);
+    if (!alreadyCorrect) return list;
+  }
+  // Last resort: reverse if still correct
+  if (correctOrder.length && correctOrder.every((id, idx) => list[idx]?.id === id)) {
+    return list.reverse();
+  }
+  return list;
 }
 
 // Each draggable item always needs a clearly visible border — without one,
@@ -50,10 +71,16 @@ export const CustomSortingActivity: React.FC<CustomSortingActivityProps> = ({
   onChecked,
 }) => {
   const t = T[theme] ?? T.light;
-  const [order, setOrder] = useState<SortItem[]>([...items]);
+  const initialOrder = useMemo(() => shuffleItems(items, correctOrder), [items, correctOrder]);
+  const [order, setOrder] = useState<SortItem[]>(initialOrder);
   const [checked, setChecked] = useState(false);
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+
+  useEffect(() => {
+    setOrder(shuffleItems(items, correctOrder));
+    setChecked(false);
+  }, [items, correctOrder]);
 
   const moveItem = (from: number, to: number) => {
     if (to < 0 || to >= order.length) return;
@@ -89,7 +116,7 @@ export const CustomSortingActivity: React.FC<CustomSortingActivityProps> = ({
     setChecked(true);
     onChecked?.();
   };
-  const handleReset = () => { setOrder([...items]); setChecked(false); };
+  const handleReset = () => { setOrder(shuffleItems(items, correctOrder)); setChecked(false); };
 
   const isItemCorrect = (idx: number) => {
     if (!checked || correctOrder.length === 0) return null;

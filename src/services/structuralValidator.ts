@@ -708,6 +708,11 @@ export function validateCourse(course: any, narrationEnabled = false): QCReport 
     const modTitle = mod.title ?? `Module ${modIdx + 1}`;
     (mod.slides ?? []).forEach((slide: any, slideIdx: number) => {
       totalSlides++;
+      // Skip overview-like / objectives slides left in modules — they are authoring shells, not learner bugs
+      const title = String(slide.title || '');
+      if (/module\s+\d+\s*[—\-:]?\s*overview/i.test(title) || /^(learning\s+)?objectives?$/i.test(title.trim())) {
+        return;
+      }
       issues.push(...checkEmptyTitle(slide, modIdx, slideIdx, modTitle));
       issues.push(...checkTitleLength(slide, modIdx, slideIdx, modTitle));
       issues.push(...checkContentEmpty(slide, modIdx, slideIdx, modTitle));
@@ -725,15 +730,22 @@ export function validateCourse(course: any, narrationEnabled = false): QCReport 
     });
   });
 
+  // Drop no-op "fixes" that would re-flag forever (suggestion empty or identical)
+  const cleaned = issues.filter(i => {
+    if (!i.autoFixable) return true;
+    if (!i.suggestion || i.suggestion === i.originalText) return false;
+    return true;
+  });
+
   return {
     courseTitle: course.title ?? 'Untitled Course',
     runAt: new Date().toISOString(),
-    score: calcScore(issues, totalSlides),
-    totalIssues: issues.length,
-    errors:   issues.filter(i => i.severity === 'error').length,
-    warnings: issues.filter(i => i.severity === 'warning').length,
-    info:     issues.filter(i => i.severity === 'info').length,
-    issues,
+    score: calcScore(cleaned, totalSlides),
+    totalIssues: cleaned.length,
+    errors:   cleaned.filter(i => i.severity === 'error').length,
+    warnings: cleaned.filter(i => i.severity === 'warning').length,
+    info:     cleaned.filter(i => i.severity === 'info').length,
+    issues: cleaned,
   };
 }
 

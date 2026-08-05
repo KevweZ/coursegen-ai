@@ -177,7 +177,13 @@ export async function runFullQC(
     console.warn('[QC] AI scan unavailable — returning structural results only.');
   }
 
-  const aiIssues = aiIssuesToQCIssues(rawAIIssues, course);
+  const aiIssues = aiIssuesToQCIssues(rawAIIssues, course).filter(i => {
+    const t = String(i.slideTitle || '');
+    if (/module\s+\d+\s*[—\-:]?\s*overview/i.test(t) || /^(learning\s+)?objectives?$/i.test(t.trim())) {
+      return false;
+    }
+    return true;
+  });
   onPhase?.('done');
   let report = mergeReports(structural, aiIssues, totalSlides);
   if (aiScanFailed) {
@@ -281,23 +287,42 @@ Rules:
 - Use 3–6 items/events/cards/options unless the schema implies otherwise
 - Write in clear, professional English
 - For matching: every item id must appear as a key in correctAnswers mapping to a target id
+- For drop-targets: every item must have a category that exactly matches one entry in categories[]
+- For sorting: correctOrder must list every item id in the intended sequence; items should NOT already be in correctOrder
 - For content with bullets: return { "bullets": ["...", "..."] }
 - Do NOT include markdown, backticks, or any explanation — pure JSON only`;
 
-  const res = await fetch(`${API_BASE}/api/ai`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt, complexity: 'simple' }),
-  });
-
-  if (!res.ok) throw new Error(`Regeneration API error: ${res.status}`);
-
-  const aiRes = await res.json();
-  const text: string = aiRes.content?.[0]?.text ?? aiRes.text ?? '';
-
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error('AI did not return valid JSON');
-  const parsed = JSON.parse(jsonMatch[0]);
+  let lastErr: any = null;
+  let parsed: any = null;
+  for (let attempt = 0; attempt < 3 && !parsed; attempt++) {
+    try {
+      if (attempt > 0) await new Promise(r => setTimeout(r, 1500 * attempt));
+      const res = await fetch(`${API_BASE}/api/ai`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, complexity: 'simple' }),
+      });
+      if (!res.ok) throw new Error(`Regeneration API error: ${res.status}`);
+      const aiRes = await res.json();
+      const text: string = aiRes.content?.[0]?.text ?? aiRes.text ?? '';
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error('AI did not return valid JSON');
+      parsed = JSON.parse(jsonMatch[0]);
+    } catch (err: any) {
+      lastErr = err;
+      const msg = String(err?.message || '');
+      if (!/failed to fetch|networkerror|load failed|timeout|API error: 5/i.test(msg) && attempt === 0) {
+        break;
+      }
+    }
+  }
+  if (!parsed) {
+    const msg = String(lastErr?.message || 'Regeneration failed');
+    if (/failed to fetch/i.test(msg)) {
+      throw new Error('Failed to fetch — API may be cold-starting. Wait ~20s and try again.');
+    }
+    throw lastErr || new Error(msg);
+  }
 
   if (type === 'content') {
     const bullets: string[] = Array.isArray(parsed.bullets)

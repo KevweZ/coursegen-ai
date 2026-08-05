@@ -23,6 +23,7 @@ interface Props {
   onTabView?: (tabId: string) => void;
   /** Fired only on user click (not mount) — use for per-tab audio cutover */
   onTabAudio?: (tabId: string) => void;
+  introContent?: string;
 }
 
 const ACCENT_COLORS = [
@@ -38,23 +39,23 @@ function cn(...classes: (string | false | undefined | null)[]): string {
   return classes.filter(Boolean).join(' ');
 }
 
-export default function TabbedContentVertical({ tabs = [], title, theme = 'light', onTabView, onTabAudio }: Props) {
+export default function TabbedContentVertical({ tabs = [], title, theme = 'light', onTabView, onTabAudio, introContent }: Props) {
   const normalized = useMemo(
     () => (tabs || []).map((t, i) => ({ ...t, id: (t?.id != null && String(t.id).trim()) ? String(t.id) : `tab-${i}` })),
     [tabs]
   );
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [activeIndex, setActiveIndex] = useState(-1);
 
   useEffect(() => {
-    if (normalized[0]?.id) onTabView?.(normalized[0].id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setActiveIndex(-1);
   }, [normalized.map(t => t.id).join('|')]);
 
   if (!normalized.length) return null;
 
   const isLight = theme === 'light';
-  const activeTab = normalized[Math.min(activeIndex, normalized.length - 1)];
-  const accent = ACCENT_COLORS[activeIndex % ACCENT_COLORS.length];
+  const inIntro = activeIndex < 0;
+  const activeTab = inIntro ? null : normalized[Math.min(activeIndex, normalized.length - 1)];
+  const accent = ACCENT_COLORS[Math.max(0, activeIndex) % ACCENT_COLORS.length];
 
   const selectTab = (i: number) => {
     setActiveIndex(i);
@@ -101,26 +102,48 @@ export default function TabbedContentVertical({ tabs = [], title, theme = 'light
         <div className={cn('flex-1 min-w-0 relative overflow-hidden rounded-2xl border', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-800/60 border-slate-700')}>
           <AnimatePresence mode="wait">
             <motion.div
-              key={activeTab.id}
+              key={inIntro ? '__intro__' : activeTab!.id}
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
               transition={{ duration: 0.25, ease: 'easeOut' }}
               className="absolute inset-0 p-6 overflow-y-auto custom-scrollbar"
             >
-              <div className="flex items-center gap-2 mb-4">
-                <div className={`w-1 h-8 rounded-full ${accent.bg}`} />
-                <h3 className={cn('font-extrabold text-lg', isLight ? accent.textLight : accent.text)} dangerouslySetInnerHTML={{ __html: markdownToHtml(activeTab.label) }} />
-              </div>
-              <div className={cn('text-sm leading-relaxed', isLight ? 'text-slate-700' : 'text-slate-200')} dangerouslySetInnerHTML={{ __html: markdownToHtml(activeTab.content) }} />
-              {activeTab.imageUrl && (
-                <div className="mt-5 rounded-xl overflow-hidden border border-slate-200/80 shadow-sm max-w-md">
-                  <img
-                    src={activeTab.imageUrl}
-                    alt=""
-                    className="w-full h-auto max-h-48 object-cover"
+              {inIntro ? (
+                <>
+                  <p className={cn('text-xs font-bold uppercase tracking-widest mb-3', isLight ? 'text-slate-400' : 'text-slate-500')}>
+                    Introduction
+                  </p>
+                  <div
+                    className={cn('text-sm leading-relaxed', isLight ? 'text-slate-700' : 'text-slate-200')}
+                    dangerouslySetInnerHTML={{
+                      __html: markdownToHtml(
+                        (introContent || '').trim() ||
+                        'Choose a topic on the left to explore. Listen to the introduction, then select a tab.'
+                      ),
+                    }}
                   />
-                </div>
+                  <p className={cn('mt-6 text-xs font-semibold', isLight ? 'text-indigo-600' : 'text-indigo-300')}>
+                    Select a tab to continue →
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className={`w-1 h-8 rounded-full ${accent.bg}`} />
+                    <h3 className={cn('font-extrabold text-lg', isLight ? accent.textLight : accent.text)} dangerouslySetInnerHTML={{ __html: markdownToHtml(activeTab!.label) }} />
+                  </div>
+                  <div className={cn('text-sm leading-relaxed', isLight ? 'text-slate-700' : 'text-slate-200')} dangerouslySetInnerHTML={{ __html: markdownToHtml(activeTab!.content) }} />
+                  {activeTab!.imageUrl && (
+                    <div className="mt-5 rounded-xl overflow-hidden border border-slate-200/80 shadow-sm max-w-md">
+                      <img
+                        src={activeTab!.imageUrl}
+                        alt=""
+                        className="w-full h-auto max-h-48 object-cover"
+                      />
+                    </div>
+                  )}
+                </>
               )}
             </motion.div>
           </AnimatePresence>
