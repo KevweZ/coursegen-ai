@@ -49,10 +49,31 @@ const THEME_STRIP: Record<Theme, string> = {
   unified: '#312e81',
 };
 
+/**
+ * Split course title into bold headline + lighter subtitle.
+ * Prefer "Subject: Rest…" so "Pumps: Principles, Types, and Components"
+ * becomes ["Pumps:", "Principles, Types, and Components"] — not a naive
+ * two-word cut that leaves "Principles," on the bold line.
+ */
 function splitTitle(title: string): [string, string] {
-  const words = title.trim().split(/\s+/).filter(Boolean);
+  const t = title.trim().replace(/\s+/g, ' ');
+  if (!t) return ['', ''];
+
+  const colonIdx = t.indexOf(':');
+  if (colonIdx > 0 && colonIdx < t.length - 1) {
+    const before = t.slice(0, colonIdx).trim();
+    const after = t.slice(colonIdx + 1).trim();
+    if (before && after) return [`${before}:`, after];
+  }
+
+  const dash = t.match(/^(.+?)\s+[—–]\s+(.+)$/);
+  if (dash?.[1] && dash?.[2]) return [dash[1].trim(), dash[2].trim()];
+
+  const words = t.split(' ').filter(Boolean);
   if (words.length <= 2) return [words.join(' '), ''];
-  return [words.slice(0, 2).join(' '), words.slice(2).join(' ')];
+  // Balanced fallback for titles without a colon
+  const n = Math.min(Math.max(1, Math.ceil(words.length * 0.4)), 3);
+  return [words.slice(0, n).join(' '), words.slice(n).join(' ')];
 }
 
 export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({

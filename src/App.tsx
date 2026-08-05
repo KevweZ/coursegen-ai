@@ -6243,6 +6243,12 @@ export default function App() {
                     )}
 
                   {editDrawerTab === 'regenerate' && editingSlide && (() => {
+                    const slideId = String(editingSlide.id || '');
+                    const isCoverOrTitle =
+                      slideId === '__cover__' ||
+                      editingSlide.type === 'cover' ||
+                      editingSlide.type === 'title';
+                    const isSynthetic = slideId.startsWith('__');
                     const intendedType = normalizeRegenSlideType(editingSlide);
                     const isKc =
                       KNOWLEDGE_CHECK_TYPES.has(editingSlide.type as string) ||
@@ -6268,10 +6274,67 @@ export default function App() {
                       { id: 'multiple-answers', label: 'Multiple Answers' },
                       { id: 'true-false', label: 'True / False' },
                     ];
-                    // Prefer showing the section that matches the intended type; always allow switching
                     const primaryOptions = isKc ? kcOptions : contentOptions;
                     const secondaryOptions = isKc ? contentOptions : kcOptions;
                     const effectiveType = regenNoInteraction ? 'content' : regenTargetType;
+
+                    if (isCoverOrTitle) {
+                      return (
+                        <div className="space-y-4">
+                          <div className="p-3 bg-amber-900/20 border border-amber-700/30 rounded-xl text-xs text-amber-200 leading-relaxed">
+                            This is the course title slide. Title layout (bold subject / lighter subtitle) is applied automatically from the course title — edit the title under <strong>Edit Text</strong>, then regenerate the cover image here if you want a new visual.
+                          </div>
+                          <button
+                            disabled={isRegenSlideRunning || isGeneratingImages}
+                            onClick={async () => {
+                              if (!editingSlide || !course) return;
+                              setIsRegenSlideRunning(true);
+                              try {
+                                const nextTitle = (editingSlide.title || course.title || '').trim();
+                                pushUndo();
+                                setCourse((prev: any) => prev ? {
+                                  ...prev,
+                                  title: nextTitle || prev.title,
+                                  description: (editingSlide.content || prev.description || '').trim() || prev.description,
+                                } : prev);
+                                showDraftMessage('Updating title slide…');
+                                const { generateCourseCoverImage } = await import('./services/imageService');
+                                setIsGeneratingImages(true);
+                                try {
+                                  const cover = await generateCourseCoverImage(
+                                    nextTitle || course.title || 'Course',
+                                    editingSlide.content || course.description || ''
+                                  );
+                                  if (cover) {
+                                    setCourse((prev: any) => prev ? { ...prev, coverImage: cover } : prev);
+                                    setCourseBg(cover);
+                                  }
+                                  showDraftMessage('Title slide updated ✓');
+                                } finally {
+                                  setIsGeneratingImages(false);
+                                }
+                                editingSlideRef.current = null;
+                                setEditingSlide(null);
+                              } catch (err: any) {
+                                console.error('[Edit Slide] Cover regenerate failed:', err);
+                                showDraftMessage(err?.message || 'Could not regenerate title slide.');
+                                alert(err?.message || 'Could not regenerate title slide.');
+                              } finally {
+                                setIsRegenSlideRunning(false);
+                              }
+                            }}
+                            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-sm transition-all disabled:opacity-50"
+                          >
+                            {isRegenSlideRunning || isGeneratingImages ? (
+                              <><Loader2 className="w-4 h-4 animate-spin" /> Regenerating…</>
+                            ) : (
+                              <><RefreshCw className="w-4 h-4" /> Regenerate Cover Image</>
+                            )}
+                          </button>
+                        </div>
+                      );
+                    }
+
                     return (
                       <div className="space-y-4">
                         <div className="p-3 bg-amber-900/20 border border-amber-700/30 rounded-xl text-xs text-amber-200 leading-relaxed">
@@ -6350,11 +6413,21 @@ export default function App() {
                             if (!editingSlide || !course) return;
                             setIsRegenSlideRunning(true);
                             try {
+                              if (isSynthetic) {
+                                showDraftMessage('This system slide can’t be regenerated as an interaction. Edit its text under Edit Text, or use Media tools for audio.');
+                                return;
+                              }
                               const result = await regenerateSlideData(
                                 editingSlide,
                                 course.title ?? '',
                                 effectiveType
                               );
+                              const slideExists = (course.modules || []).some((m: any) =>
+                                (m.slides || []).some((s: any) => s.id === editingSlide.id)
+                              );
+                              if (!slideExists) {
+                                throw new Error('Could not find this slide in the course to update. Try closing Edit and opening the slide again.');
+                              }
                               pushUndo();
                               setCourse((prev: any) => {
                                 if (!prev) return prev;
