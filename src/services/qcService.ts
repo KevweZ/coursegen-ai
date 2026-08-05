@@ -7,7 +7,8 @@
 import { QCIssue, QCReport, IssueSeverity, IssueType, FixAction, validateCourse, applyFixes } from './structuralValidator';
 
 const BATCH_SIZE = 5;
-const API_BASE = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:3001';
+/** Always use same-origin /api/* (Cloudflare Worker → Render). Never localhost in production. */
+const API_BASE = '';
 
 // ── Types re-exported for consumers ─────────────────────────────────────────
 export type { QCIssue, QCReport, IssueSeverity, IssueType, FixAction };

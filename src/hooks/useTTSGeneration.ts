@@ -50,6 +50,7 @@ export function useTTSGeneration() {
     setCourse: SetCourse,
     voice: string = 'alloy',
     onSlideProgress?: (current: number, total: number, title: string) => void,
+    opts?: { onlyMissing?: boolean },
   ) => {
     if (!course?.modules) return;
 
@@ -60,9 +61,19 @@ export function useTTSGeneration() {
       }
     }
 
-    const narratableSlides = allSlides.filter(({ slide }) =>
-      !!(slide.voiceOverText || slide.narration || slide.content)
-    );
+    const narratableSlides = allSlides.filter(({ slide }) => {
+      if (!(slide.voiceOverText || slide.narration || slide.content)) return false;
+      if (opts?.onlyMissing && slide.voiceOverUrl) {
+        // Still include if any tab is missing audio
+        const isTabbed = slide.type === 'tabbed-horizontal' || slide.type === 'tabbed-vertical';
+        const tabs: any[] = slide.data?.tabs || slide.data?.items || [];
+        if (isTabbed && tabs.some((t: any) => (t?.voiceOverText || '').trim() && !t.voiceOverUrl)) {
+          return true;
+        }
+        return false;
+      }
+      return true;
+    });
 
     if (narratableSlides.length === 0) {
       setProgress(prev => ({ ...prev, isDone: true }));
@@ -99,22 +110,27 @@ export function useTTSGeneration() {
       onSlideProgress?.(i + 1, narratableSlides.length, title);
 
       try {
-        const blobUrl = await generateSlideTTS(narrationText, { voice: voice as any });
-        successCount++;
+        const skipMain = !!(opts?.onlyMissing && slide.voiceOverUrl);
+        if (!skipMain) {
+          const blobUrl = await generateSlideTTS(narrationText, { voice: voice as any });
+          successCount++;
 
-        // Merge into latest course — never replace with a pre-imagery clone
-        setCourse((prev: any) => {
-          if (!prev?.modules) return prev;
-          return {
-            ...prev,
-            modules: prev.modules.map((m: any) => ({
-              ...m,
-              slides: (m.slides || []).map((s: any) =>
-                s.id === slideId ? { ...s, voiceOverUrl: blobUrl } : s
-              ),
-            })),
-          };
-        });
+          // Merge into latest course — never replace with a pre-imagery clone
+          setCourse((prev: any) => {
+            if (!prev?.modules) return prev;
+            return {
+              ...prev,
+              modules: prev.modules.map((m: any) => ({
+                ...m,
+                slides: (m.slides || []).map((s: any) =>
+                  s.id === slideId ? { ...s, voiceOverUrl: blobUrl } : s
+                ),
+              })),
+            };
+          });
+        } else {
+          successCount++;
+        }
 
         // Per-tab narration (tabbed-horizontal / tabbed-vertical)
         const isTabbed = slide.type === 'tabbed-horizontal' || slide.type === 'tabbed-vertical';
@@ -125,6 +141,7 @@ export function useTTSGeneration() {
             const tab = tabs[ti];
             const tabText = (tab?.voiceOverText || '').trim();
             if (!tabText) continue;
+            if (opts?.onlyMissing && tab.voiceOverUrl) continue;
             try {
               const tabUrl = await generateSlideTTS(tabText, { voice: voice as any });
               setCourse((prev: any) => {

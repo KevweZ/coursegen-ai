@@ -61,3 +61,79 @@ export function revokeTTSUrl(url: string): void {
     URL.revokeObjectURL(url);
   }
 }
+
+/** Convert a blob: (or http) URL to a durable data: URL for draft persistence. */
+export async function urlToDataUrl(url: string): Promise<string> {
+  if (!url) return url;
+  if (url.startsWith('data:')) return url;
+  const res = await fetch(url);
+  const blob = await res.blob();
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('Failed to read audio blob'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Walk course slides (and nested tabs) converting blob:/http voiceOverUrl → data: URLs
+ * so drafts can persist narration the same way they persist images.
+ */
+export async function persistCourseAudioUrls(course: any): Promise<any> {
+  if (!course?.modules) return course;
+  const modules = [];
+  for (const m of course.modules) {
+    const slides = [];
+    for (const s of m.slides || []) {
+      let slide = { ...s };
+      if (typeof slide.voiceOverUrl === 'string' && !slide.voiceOverUrl.startsWith('data:')) {
+        try {
+          slide.voiceOverUrl = await urlToDataUrl(slide.voiceOverUrl);
+        } catch (e) {
+          console.warn('[TTS] Could not persist slide audio', slide.id, e);
+          delete slide.voiceOverUrl;
+        }
+      }
+      if (slide.data && typeof slide.data === 'object') {
+        const data = { ...slide.data };
+        for (const key of ['tabs', 'items'] as const) {
+          if (!Array.isArray(data[key])) continue;
+          data[key] = await Promise.all(
+            data[key].map(async (item: any) => {
+              if (!item || typeof item.voiceOverUrl !== 'string' || item.voiceOverUrl.startsWith('data:')) {
+                return item;
+              }
+              try {
+                return { ...item, voiceOverUrl: await urlToDataUrl(item.voiceOverUrl) };
+              } catch {
+                const { voiceOverUrl: _drop, ...rest } = item;
+                return rest;
+              }
+            })
+          );
+        }
+        slide = { ...slide, data };
+      }
+      slides.push(slide);
+    }
+    modules.push({ ...m, slides });
+  }
+  return { ...course, modules };
+}
+
+/** Persist synthetic cover/objectives/module audio map for draft save. */
+export async function persistSyntheticAudioMap(
+  map: Record<string, string>
+): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  for (const [id, url] of Object.entries(map || {})) {
+    if (!url) continue;
+    try {
+      out[id] = url.startsWith('data:') ? url : await urlToDataUrl(url);
+    } catch (e) {
+      console.warn('[TTS] Could not persist synthetic audio', id, e);
+    }
+  }
+  return out;
+}

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, ChevronLeft, ChevronRight, Monitor, Settings2, Edit3, Upload,
-  Undo2, RotateCcw, Shield, Save, Rocket,
+  Undo2, RotateCcw, Shield, Save, Rocket, Music2,
 } from 'lucide-react';
 
 export const DEV_TOUR_KEY = 'nexcourse_dev_tour_dismissed';
@@ -28,6 +28,11 @@ const STEPS = [
     icon: Upload,
     title: 'Upload Image',
     body: 'Add your own images onto the current slide as floating media you can move and crop.',
+  },
+  {
+    icon: Music2,
+    title: 'Media',
+    body: 'Regenerate all narration (needed for older drafts that didn’t store audio), generate AI images for empty slides, or clear slide images across the course.',
   },
   {
     icon: Undo2,

@@ -696,6 +696,7 @@ export default function App() {
         const updated = await draftManager.replacePreviewDraft(activeDraftId, course, playerConfig, theme, {
           learningObjectives,
           syntheticSlideOverrides,
+          syntheticAudioMap,
         });
         showDraftMessage(updated.message);
         if (updated.success) navigateTo(ROUTES.preview(activeDraftId), true);
@@ -705,6 +706,7 @@ export default function App() {
       const result = await draftManager.savePreviewDraft(course, playerConfig, theme, {
         learningObjectives,
         syntheticSlideOverrides,
+        syntheticAudioMap,
       });
       showDraftMessage(result.message);
       if (result.success && result.id) {
@@ -810,6 +812,7 @@ export default function App() {
     if (snapshot.syntheticSlideOverrides && typeof snapshot.syntheticSlideOverrides === 'object') {
       setSyntheticSlideOverrides(snapshot.syntheticSlideOverrides);
     }
+    setSyntheticAudioMap({});
     // Authoring preview: always allow free navigation so drafts aren't "frozen"
     // (linear/restricted + interaction gates make the player feel like a screenshot).
     setNavigationMode('free');
@@ -834,14 +837,39 @@ export default function App() {
     navigateTo(ROUTES.preview(id));
     showDraftMessage('Draft loaded ✓');
 
-    // Images after first paint — idle so Nav/Next stay responsive
+    // Images + audio after first paint — idle so Nav/Next stay responsive
     const attachImages = async () => {
       try {
         await new Promise<void>(r => setTimeout(r, 100));
         const stored = await draftManager.loadDraftAssets(id);
         const media = mediaRecordToMap(stored);
         legacyMedia.forEach((v, k) => { if (!media.has(k)) media.set(k, v); });
-        if (!media.size) return;
+
+        // Synthetic cover/objectives/module audio lives under __synthetic__.* keys
+        const synthRestored: Record<string, string> = {};
+        for (const [k, v] of [...media.entries()]) {
+          if (k.startsWith('__synthetic__.')) {
+            synthRestored[k.slice('__synthetic__.'.length)] = v;
+            media.delete(k);
+          }
+        }
+        if (Object.keys(synthRestored).length) {
+          setSyntheticAudioMap(synthRestored);
+        }
+
+        if (!media.size) {
+          const missingAudio = (shell.modules || []).some((m: any) =>
+            (m.slides || []).some((s: any) =>
+              (s.voiceOverText || s.narration) && !s.voiceOverUrl
+            )
+          );
+          if (missingAudio && voiceOverEnabled) {
+            showDraftMessage(
+              'Draft loaded — narration was not saved with this draft. Use Media → Regenerate all narration to restore audio.'
+            );
+          }
+          return;
+        }
 
         const keys = [...media.keys()];
         let working = shell;
@@ -866,9 +894,20 @@ export default function App() {
           if (working.coverImage) setCourseBg(working.coverImage);
           await new Promise<void>(r => setTimeout(r, 32));
         }
-        console.log(`[Drafts] Attached ${media.size} image(s) after preview open`);
+        console.log(`[Drafts] Attached ${media.size} media asset(s) after preview open`);
+
+        const missingAudio = (working.modules || []).some((m: any) =>
+          (m.slides || []).some((s: any) =>
+            (s.voiceOverText || s.narration) && !s.voiceOverUrl
+          )
+        );
+        if (missingAudio && voiceOverEnabled && !Object.keys(synthRestored).length) {
+          showDraftMessage(
+            'Draft loaded — some narration is missing. Use Media → Regenerate all narration to restore audio.'
+          );
+        }
       } catch (e) {
-        console.warn('[Drafts] Image attach after open failed:', e);
+        console.warn('[Drafts] Media attach after open failed:', e);
       }
     };
     void attachImages();
@@ -1019,6 +1058,7 @@ export default function App() {
   const [settingsSavedFlash, setSettingsSavedFlash] = useState(false);
   const [lastUploadPath, setLastUploadPath] = useState<UploadPathChoice | null>(null);
   const [regeneratingSlideId, setRegeneratingSlideId] = useState<string | null>(null);
+  const [showMediaMenu, setShowMediaMenu] = useState(false);
   /** Ref so runAnalysis (defined earlier) can call finalize after hydrate */
   const finalizeGeneratedCourseRef = useRef<(course: any) => Promise<void>>(async () => {});
   
@@ -2989,7 +3029,8 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
 
       let parsed: any = null;
       let lastErr: any = null;
-      const apiBase = (import.meta as any).env?.VITE_SERVER_URL || '';
+      // Same-origin /api/* via Cloudflare Worker — never localhost in production
+      const apiBase = '';
       for (let attempt = 0; attempt < 3 && !parsed; attempt++) {
         try {
           if (attempt > 0) {
@@ -3062,6 +3103,138 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
       });
     } finally {
       setRegeneratingSlideId(null);
+    }
+  };
+
+  /** Rebuild TTS for every narratable slide + synthetic cover/objectives/module audio. */
+  const regenerateAllNarration = async () => {
+    if (!course?.modules) return;
+    if (ttsProgress.isRunning) {
+      showDraftMessage('Narration is already generating…');
+      return;
+    }
+    setShowMediaMenu(false);
+    showDraftMessage('Regenerating all narration…');
+    try {
+      await generateTTS(course, setCourse, ttsVoice);
+      const { generateSlideTTS: genSlideTTS } = await import('./services/ttsService');
+      const syntheticJobs: Array<{ id: string; text: string }> = [
+        { id: '__cover__', text: `Welcome to ${course.title}. ${course.description || ''}`.trim() },
+        { id: '__player-tour__', text: 'Before we begin, take a moment to explore the player controls. Hover over each card to see the corresponding element highlighted in the player preview.' },
+        { id: '__course-objectives__', text: 'These are the learning objectives for this course. Review each one so you know what you will be able to do when you finish.' },
+      ];
+      const moduleSynthetics: Array<{ id: string; text: string }> = (course.modules || []).flatMap(
+        (m: any, idx: number) => {
+          const modNum = idx + 1;
+          const ct = (m.title || `Module ${modNum}`).replace(/^Module\s+\d+\s*[\u2014\-]\s*/i, '').trim();
+          const items: Array<{ id: string; text: string }> = [];
+          if (includeModuleTitleSlides) {
+            items.push({
+              id: `__module-cover-${modNum}__`,
+              text: `Module ${modNum}: ${ct}.${m.description ? ' ' + m.description : ''}`.trim(),
+            });
+          }
+          if (includeModuleOverviewSlides) {
+            items.push({
+              id: `__module-overview-${modNum}__`,
+              text: includeModuleTitleSlides
+                ? `Let's revisit the specific objectives for this module.${m.description ? ' ' + m.description : ''}`.trim()
+                : `Module ${modNum}: ${ct}. Let's revisit the specific objectives for this module.${m.description ? ' ' + m.description : ''}`.trim(),
+            });
+          }
+          return items;
+        }
+      );
+      const allJobs = [...syntheticJobs, ...moduleSynthetics];
+      for (const { id, text } of allJobs) {
+        try {
+          const url = await genSlideTTS(text, { voice: ttsVoice as any });
+          setSyntheticAudioMap(prev => ({ ...prev, [id]: url }));
+        } catch (e) {
+          console.warn('[TTS] Synthetic regen failed', id, e);
+        }
+        await new Promise(r => setTimeout(r, 250));
+      }
+      setVoiceOverEnabled(true);
+      showDraftMessage('All narration regenerated. Save the draft to keep audio for next time.');
+    } catch (err: any) {
+      console.error('[TTS] Regenerate all failed:', err);
+      showDraftMessage(err?.message || 'Failed to regenerate narration.');
+    }
+  };
+
+  /** Strip slide imageUrl / coverImage / nested tab images (keeps course cover optional). */
+  const clearCourseImages = () => {
+    if (!course?.modules) return;
+    if (!window.confirm('Remove images from all slides? (Course cover is kept. You can re-add via Upload or regenerate AI images later.)')) {
+      return;
+    }
+    setShowMediaMenu(false);
+    pushUndo();
+    setCourse(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        modules: (prev.modules || []).map((m: any) => ({
+          ...m,
+          slides: (m.slides || []).map((s: any) => {
+            const next = { ...s };
+            delete next.imageUrl;
+            delete next.coverImage;
+            if (next.data && typeof next.data === 'object') {
+              const data = { ...next.data };
+              delete data.imageUrl;
+              for (const key of ['tabs', 'items', 'cards'] as const) {
+                if (!Array.isArray(data[key])) continue;
+                data[key] = data[key].map((item: any) => {
+                  if (!item || typeof item !== 'object') return item;
+                  const copy = { ...item };
+                  delete copy.imageUrl;
+                  return copy;
+                });
+              }
+              next.data = data;
+            }
+            return next;
+          }),
+        })),
+      };
+    });
+    setFloatingImagesMap({});
+    showDraftMessage('Slide images cleared. Save the draft when ready.');
+  };
+
+  /** Re-run AI content slide images for slides that lack imageUrl. */
+  const regenerateAiImages = async () => {
+    if (!course?.modules) return;
+    setShowMediaMenu(false);
+    setIsGeneratingImages(true);
+    showDraftMessage('Generating AI images for slides without visuals…');
+    try {
+      const { generateContentSlideImages, generateCourseCoverImage } = await import('./services/imageService');
+      let working: any = course;
+      if (!working.coverImage) {
+        try {
+          const cover = await generateCourseCoverImage(working.title || 'Course', working.description || '');
+          if (cover) {
+            working = { ...working, coverImage: cover };
+            setCourse(working);
+            setCourseBg(cover);
+          }
+        } catch (e) {
+          console.warn('[Images] Cover regen failed', e);
+        }
+      }
+      working = await generateContentSlideImages(working, (done, total) => {
+        showDraftMessage(`Generating AI images… ${done}/${total}`);
+      });
+      setCourse(working);
+      showDraftMessage('AI images updated. Save the draft to keep them.');
+    } catch (err: any) {
+      console.error('[Images] Regen failed:', err);
+      showDraftMessage(err?.message || 'Failed to regenerate AI images.');
+    } finally {
+      setIsGeneratingImages(false);
     }
   };
 
@@ -4323,7 +4496,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                     </div>
                   )}
 
-                  {/* Single unified toolbar — L→R: Desktop, Player Props, Edit, Upload, Undo, Reset, Quality, Save, Publish */}
+                  {/* Single unified toolbar — L→R: Desktop, Player Props, Edit, Upload, Media, Undo, Reset, Quality, Save, Publish */}
                   <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
                     <button
                       title={viewMode === 'desktop' ? 'Switch to mobile landscape preview' : 'Switch to desktop preview'}
@@ -4391,6 +4564,59 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                         }}
                       />
                     </label>
+
+                    <div className="relative">
+                      <button
+                        title="Media — regenerate narration or manage course images"
+                        onClick={() => setShowMediaMenu(v => !v)}
+                        className="flex items-center gap-1 px-2 py-1 rounded-md border border-teal-700/50 hover:bg-teal-800/20 text-teal-300 text-[11px] font-semibold"
+                      >
+                        <Music2 className="w-3 h-3" /><span className="hidden lg:inline">Media</span>
+                        <ChevronDown className="w-3 h-3 opacity-70" />
+                      </button>
+                      {showMediaMenu && (
+                        <>
+                          <div className="fixed inset-0 z-[60]" onClick={() => setShowMediaMenu(false)} />
+                          <div className="absolute right-0 top-full mt-1 z-[70] w-64 rounded-lg border border-slate-700 bg-slate-900 shadow-xl py-1 text-[12px]">
+                            <button
+                              type="button"
+                              disabled={ttsProgress.isRunning}
+                              onClick={() => void regenerateAllNarration()}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-800 text-teal-200 disabled:opacity-40 flex items-start gap-2"
+                            >
+                              <Volume2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                              <span>
+                                <span className="font-semibold block">Regenerate all narration</span>
+                                <span className="text-slate-500 text-[10px]">Rebuild TTS for every slide (use after opening old drafts)</span>
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isGeneratingImages}
+                              onClick={() => void regenerateAiImages()}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-800 text-violet-200 disabled:opacity-40 flex items-start gap-2"
+                            >
+                              <ImageIcon className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                              <span>
+                                <span className="font-semibold block">Generate AI images</span>
+                                <span className="text-slate-500 text-[10px]">Fill slides that don’t have an image yet</span>
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={clearCourseImages}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-800 text-rose-200 flex items-start gap-2"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                              <span>
+                                <span className="font-semibold block">Clear slide images</span>
+                                <span className="text-slate-500 text-[10px]">Remove visuals across the course (keeps cover)</span>
+                              </span>
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
 
                     <button
                       title={undoHistory.length > 0 ? `Undo (${undoHistory.length})` : 'Nothing to undo'}
