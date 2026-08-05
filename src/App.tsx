@@ -191,6 +191,7 @@ import { MarketingHomepage } from './components/marketing/MarketingHomepage';
 import { MethodologyPage } from './components/marketing/MethodologyPage';
 import { ExamplesPage } from './components/marketing/ExamplesPage';
 import { HelpWidget } from './components/HelpWidget';
+import { WelcomeTourModal, shouldShowWelcomeTour } from './components/WelcomeTourModal';
 
 const renderInstructionalText = (children: React.ReactNode, theme: string, isList: boolean = false) => {
   let textToParse = '';
@@ -995,6 +996,7 @@ export default function App() {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [pendingUploadFile, setPendingUploadFile] = useState<File | null>(null);
   const [showUploadPathModal, setShowUploadPathModal] = useState(false);
+  const [showWelcomeTour, setShowWelcomeTour] = useState(false);
   /** defaults = profile menu; session = after customize upload; quick = one-click build */
   const [settingsMode, setSettingsMode] = useState<'defaults' | 'session' | 'quick'>('session');
   const [isGeneratingOutline, setIsGeneratingOutline] = useState(false);
@@ -1906,6 +1908,12 @@ export default function App() {
   /** When set, shows a non-error warm-up UI and auto-retries analysis at 0 */
   const [coldStartCountdown, setColdStartCountdown] = useState<number | null>(null);
   const coldStartTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // First-visit welcome tour on the upload home (dismissible)
+  useEffect(() => {
+    if (!user || step !== 'home' || isAnalyzing || coldStartCountdown != null) return;
+    if (shouldShowWelcomeTour()) setShowWelcomeTour(true);
+  }, [user?.id, step, isAnalyzing, coldStartCountdown]);
 
   const clearColdStartCountdown = () => {
     if (coldStartTimerRef.current) {
@@ -5956,6 +5964,11 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
             </div>
           )}
         </AnimatePresence>
+
+        <WelcomeTourModal
+          open={showWelcomeTour}
+          onClose={() => setShowWelcomeTour(false)}
+        />
 
         {/* ★ Player Properties Modal ★ */}
         <AnimatePresence>
