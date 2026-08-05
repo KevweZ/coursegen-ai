@@ -80,7 +80,7 @@ import { DEFAULT_SCENARIO_CONFIG } from './types/scenario';
 
 import { AccordionDarkWrapper } from './components/AccordionDarkWrapper';
 import { QCTrackChangesModal } from './components/QCTrackChangesModal';
-import { runFullQC, runStructuralQC, autoFixCourse, applyConfirmedFixes, simplifySlide, regenerateSlideData, QCReport } from './services/qcService';
+import { runFullQC, runStructuralQC, autoFixCourse, applyConfirmedFixes, simplifySlide, regenerateSlideData, normalizeRegenSlideType, QCReport } from './services/qcService';
 
 import { OutlinePreview } from './components/builder/OutlinePreview';
 import { CourseSettingsPage } from './components/builder/CourseSettingsPage';
@@ -3015,94 +3015,98 @@ export default function App() {
     if (!course || !slide?.id) return;
     setRegeneratingSlideId(slide.id);
     try {
-      const modIdx = course.modules.findIndex(m => m.slides.some(s => s.id === slide.id));
-      const moduleTitle = modIdx >= 0 ? course.modules[modIdx].title : course.title;
+      const targetType = normalizeRegenSlideType(slide);
       const isTakeaway = slide.type === 'key-takeaways' || /key\s*takeaway/i.test(slide.title || '');
-      const promptText = isTakeaway
-        ? `Regenerate a key-takeaways slide titled "${slide.title}" for the module "${moduleTitle}" in the course "${course.title}".
-Return ONLY JSON: { "content": "## Key Takeaways\\n\\n- bullet1\\n- bullet2...", "voiceOverText": "2-3 sentences", "data": { "objectives": [{ "id": "1", "label": "short takeaway", "content": "" }] } }
-Rules: 4-6 short action-verb bullets (5-8 words), no mid-bullet bold, data.objectives required.`
-        : `Regenerate a ${slide.type} slide titled "${slide.title}" for the module "${moduleTitle}" in the course "${course.title}".
-Return ONLY JSON: { "content": "markdown with short bullets", "voiceOverText": "2-4 spoken sentences" }
-Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold** in bullets).`;
-
-      let parsed: any = null;
-      let lastErr: any = null;
-      // Same-origin /api/* via Cloudflare Worker — never localhost in production
-      const apiBase = '';
-      for (let attempt = 0; attempt < 3 && !parsed; attempt++) {
-        try {
-          if (attempt > 0) {
-            showDraftMessage(`Retrying regenerate (attempt ${attempt + 1}/3)…`);
-            await new Promise(r => setTimeout(r, 1500 * attempt));
+      try {
+        const result = await regenerateSlideData(
+          slide,
+          course.title ?? '',
+          isTakeaway ? 'content' : targetType
+        );
+        pushUndo();
+        setCourse(prev => {
+          if (!prev) return prev;
+          const cloned = JSON.parse(JSON.stringify(prev));
+          for (const mod of cloned.modules) {
+            const idx = mod.slides.findIndex((s: any) => s.id === slide.id);
+            if (idx >= 0) {
+              mod.slides[idx] = {
+                ...mod.slides[idx],
+                type: isTakeaway ? 'key-takeaways' : result.type,
+                content: result.content ?? mod.slides[idx].content,
+                voiceOverText: result.voiceOverText || mod.slides[idx].voiceOverText,
+                narration: result.voiceOverText || mod.slides[idx].narration,
+                data: result.data !== undefined
+                  ? (isTakeaway && !result.data
+                      ? {
+                          objectives: [
+                            { id: '1', label: `Review ${slide.title}`, content: '' },
+                            { id: '2', label: 'Apply the core module practices', content: '' },
+                            { id: '3', label: 'Confirm understanding before moving on', content: '' },
+                            { id: '4', label: 'Follow up with next steps', content: '' },
+                          ],
+                        }
+                      : result.data)
+                  : mod.slides[idx].data,
+              };
+              break;
+            }
           }
-          const res = await fetch(`${apiBase}/api/ai`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: promptText, complexity: 'simple' }),
-          });
-          if (!res.ok) throw new Error(`API ${res.status}`);
-          const aiRes = await res.json();
-          const text: string = aiRes.content?.[0]?.text ?? aiRes.text ?? '';
-          const jsonMatch = text.match(/\{[\s\S]*\}/);
-          if (!jsonMatch) throw new Error('No JSON in AI response');
-          parsed = JSON.parse(jsonMatch[0]);
-        } catch (err: any) {
-          lastErr = err;
-          const msg = String(err?.message || err || '');
-          const isFetchFail = /failed to fetch|networkerror|load failed|timeout/i.test(msg);
-          console.warn(`[regenerateBlankSlide] attempt ${attempt + 1} failed:`, err);
-          if (!isFetchFail && attempt === 0) break; // non-network: don't burn retries
-        }
-      }
-      if (!parsed) {
-        console.warn('[regenerateBlankSlide] AI failed, using title-derived fallback', lastErr);
-        const fetchHint = /failed to fetch/i.test(String(lastErr?.message || ''))
+          return cloned;
+        });
+        showDraftMessage('Slide regenerated ✓');
+      } catch (err: any) {
+        console.warn('[regenerateBlankSlide] AI failed, using title-derived fallback', err);
+        const fetchHint = /failed to fetch|API error: 5/i.test(String(err?.message || ''))
           ? ' (API unreachable — often a cold start; try again in ~30s)'
           : '';
         showDraftMessage(`Regenerate failed${fetchHint}. Using a placeholder — edit or retry.`);
-        parsed = {
-          content: isTakeaway
-            ? `## Key Takeaways\n\n- Review ${slide.title}\n- Apply the core module practices\n- Confirm understanding before moving on\n- Follow up with next steps`
-            : `## ${slide.title}\n\n- Key point related to ${slide.title}\n- Practical application for learners\n- Common pitfall to avoid\n- Next step to take`,
-          voiceOverText: `Let's review the key points for ${slide.title}.`,
-          data: isTakeaway
-            ? {
-                objectives: [
-                  { id: '1', label: `Review ${slide.title}`, content: '' },
-                  { id: '2', label: 'Apply the core module practices', content: '' },
-                  { id: '3', label: 'Confirm understanding before moving on', content: '' },
-                  { id: '4', label: 'Follow up with next steps', content: '' },
-                ],
-              }
-            : undefined,
-        };
-      }
-
-      pushUndo();
-      setCourse(prev => {
-        if (!prev) return prev;
-        const cloned = JSON.parse(JSON.stringify(prev));
-        for (const mod of cloned.modules) {
-          const idx = mod.slides.findIndex((s: any) => s.id === slide.id);
-          if (idx >= 0) {
-            mod.slides[idx] = {
-              ...mod.slides[idx],
-              content: parsed.content || mod.slides[idx].content,
-              voiceOverText: parsed.voiceOverText || mod.slides[idx].voiceOverText,
-              narration: parsed.voiceOverText || mod.slides[idx].narration,
-              data: parsed.data
-                ? { ...(mod.slides[idx].data || {}), ...parsed.data }
-                : mod.slides[idx].data,
-            };
-            break;
+        pushUndo();
+        setCourse(prev => {
+          if (!prev) return prev;
+          const cloned = JSON.parse(JSON.stringify(prev));
+          for (const mod of cloned.modules) {
+            const idx = mod.slides.findIndex((s: any) => s.id === slide.id);
+            if (idx >= 0) {
+              mod.slides[idx] = {
+                ...mod.slides[idx],
+                content: isTakeaway
+                  ? `## Key Takeaways\n\n- Review ${slide.title}\n- Apply the core module practices\n- Confirm understanding before moving on\n- Follow up with next steps`
+                  : `## ${slide.title}\n\n- Key point related to ${slide.title}\n- Practical application for learners\n- Common pitfall to avoid\n- Next step to take`,
+                voiceOverText: `Let's review the key points for ${slide.title}.`,
+                data: isTakeaway
+                  ? {
+                      objectives: [
+                        { id: '1', label: `Review ${slide.title}`, content: '' },
+                        { id: '2', label: 'Apply the core module practices', content: '' },
+                        { id: '3', label: 'Confirm understanding before moving on', content: '' },
+                        { id: '4', label: 'Follow up with next steps', content: '' },
+                      ],
+                    }
+                  : mod.slides[idx].data,
+              };
+              break;
+            }
           }
-        }
-        return cloned;
-      });
+          return cloned;
+        });
+      }
     } finally {
       setRegeneratingSlideId(null);
     }
+  };
+
+  /** Open Edit Slide drawer on Regenerate tab with intended type preselected. */
+  const openRegenerateSlideDrawer = (slide?: Slide | null) => {
+    const s = slide || currentSlide;
+    if (!s) return;
+    const normalized = normalizeRegenSlideType(s);
+    editingSlideRef.current = s;
+    setEditingSlide(s);
+    setEditDrawerOpen(true);
+    setEditDrawerTab('regenerate');
+    setRegenTargetType(normalized);
+    setRegenNoInteraction(normalized === 'content' || s.type === 'summary' || s.type === 'key-takeaways');
   };
 
   /** Rebuild TTS for every narratable slide + synthetic cover/objectives/module audio. */
@@ -4000,21 +4004,29 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
               const slide = course?.modules?.[moduleIndex]?.slides?.[slideIndex];
               if (!slide) return;
               try {
-                const result = await regenerateSlideData(slide, course.title ?? '');
+                const result = await regenerateSlideData(slide, course.title ?? '', normalizeRegenSlideType(slide));
                 const cloned = JSON.parse(JSON.stringify(course));
                 const target = cloned.modules[moduleIndex].slides[slideIndex];
                 target.type = result.type;
-                target.data = result.data;
+                if (result.data !== undefined) target.data = result.data;
                 if (result.content != null) target.content = result.content;
+                if (result.voiceOverText) {
+                  target.voiceOverText = result.voiceOverText;
+                  target.narration = result.voiceOverText;
+                }
                 pushUndo(); setCourse(cloned);
                 setQcReport(prev => prev ? {
                   ...prev,
-                  issues: prev.issues.filter(i => !(i.slideId === slideId && i.type === 'interaction_empty')),
+                  issues: prev.issues.filter(i =>
+                    !(i.slideId === slideId && (i.type === 'interaction_empty' || i.fixActions?.includes('regenerate')))
+                  ),
                   totalIssues: Math.max(0, prev.totalIssues - 1),
                   errors: Math.max(0, prev.errors - 1),
                 } : null);
-              } catch (err) {
+                showDraftMessage('Slide regenerated ✓');
+              } catch (err: any) {
                 console.error('[QC] Regeneration failed:', err);
+                showDraftMessage(err?.message || 'Regeneration failed. Please try again.');
               }
             }}
             onRunScan={async () => {
@@ -4539,8 +4551,9 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                 setEditingSlide(currentSlide);
                                 setEditDrawerOpen(true);
                                 setEditDrawerTab('text');
-                                setRegenTargetType((currentSlide?.type as string) || 'content');
-                                setRegenNoInteraction(currentSlide?.type === 'content' || currentSlide?.type === 'summary');
+                                const n = normalizeRegenSlideType(currentSlide);
+                                setRegenTargetType(n);
+                                setRegenNoInteraction(n === 'content' || currentSlide?.type === 'summary');
                               }}
                               className="w-full text-left px-3 py-2 hover:bg-slate-800 text-indigo-200 flex items-start gap-2"
                             >
@@ -4548,6 +4561,20 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                               <span>
                                 <span className="font-semibold block">Edit Slide</span>
                                 <span className="text-slate-500 text-[10px]">Text, narration, and regenerate this slide</span>
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowEditMenu(false);
+                                openRegenerateSlideDrawer(currentSlide);
+                              }}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-800 text-amber-200 flex items-start gap-2"
+                            >
+                              <RefreshCw className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                              <span>
+                                <span className="font-semibold block">Regenerate slide</span>
+                                <span className="text-slate-500 text-[10px]">Rebuild this slide’s interaction or content</span>
                               </span>
                             </button>
                             <button
@@ -5984,10 +6011,10 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                       onClick={() => {
                         setEditDrawerTab(tab.id as any);
                         if (tab.id === 'regenerate' && editingSlide) {
-                          const t = (editingSlide.type as string) || 'content';
-                          const plain = t === 'content' || t === 'summary' || t === 'key-takeaways';
+                          const n = normalizeRegenSlideType(editingSlide);
+                          const plain = n === 'content' || editingSlide.type === 'summary' || editingSlide.type === 'key-takeaways';
                           setRegenNoInteraction(plain);
-                          setRegenTargetType(plain ? 'content' : t);
+                          setRegenTargetType(plain ? 'content' : n);
                         }
                       }}
                       className={`flex-1 flex items-center justify-center gap-1 px-2 py-3 text-[11px] sm:text-sm font-bold border-b-2 transition-all ${editDrawerTab === tab.id ? tab.activeColor : 'border-transparent text-slate-500 hover:text-slate-300'}`}
@@ -6135,15 +6162,61 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                               disabled={regenSlideId === editingSlide?.id}
                               onClick={async () => {
                                 if (!editingSlide) return;
-                                const text = editingSlide.voiceOverText || editingSlide.narration || editingSlide.content || '';
-                                if (!text) return;
+                                const mainText = editingSlide.voiceOverText || editingSlide.narration || editingSlide.content || '';
+                                const listKey = Array.isArray(editingSlide.data?.tabs)
+                                  ? 'tabs'
+                                  : Array.isArray(editingSlide.data?.items)
+                                    ? 'items'
+                                    : null;
+                                const tabs: any[] = listKey ? [...(editingSlide.data?.[listKey] || [])] : [];
+                                const tabJobs = tabs
+                                  .map((t, i) => ({ t, i, text: (t?.voiceOverText || '').trim() }))
+                                  .filter(j => j.text);
+                                if (!mainText && !tabJobs.length) {
+                                  alert('No narration text to regenerate.');
+                                  return;
+                                }
                                 setRegenSlideId(editingSlide.id);
                                 try {
                                   const { generateSlideTTS: genTTS } = await import('./services/ttsService');
-                                  const blobUrl = await genTTS(text, { voice: ttsVoice as any });
-                                  handleUpdateSlideMedia(editingSlide.id, { voiceOverUrl: blobUrl });
-                                  // Update editingSlide so the audio editor reflects the change
-                                  setEditingSlide({ ...editingSlide, voiceOverUrl: blobUrl });
+                                  let nextSlide = { ...editingSlide };
+                                  if (mainText) {
+                                    showDraftMessage('Generating main slide audio…');
+                                    const blobUrl = await genTTS(mainText, { voice: ttsVoice as any });
+                                    nextSlide = { ...nextSlide, voiceOverUrl: blobUrl };
+                                    handleUpdateSlideMedia(editingSlide.id, { voiceOverUrl: blobUrl });
+                                  }
+                                  if (listKey && tabJobs.length) {
+                                    const nextTabs = [...tabs];
+                                    for (let n = 0; n < tabJobs.length; n++) {
+                                      const job = tabJobs[n];
+                                      showDraftMessage(`Generating tab audio ${n + 1}/${tabJobs.length}…`);
+                                      const tabUrl = await genTTS(job.text, { voice: ttsVoice as any });
+                                      nextTabs[job.i] = { ...nextTabs[job.i], voiceOverUrl: tabUrl };
+                                      await new Promise(r => setTimeout(r, 200));
+                                    }
+                                    nextSlide = {
+                                      ...nextSlide,
+                                      data: { ...(nextSlide.data || {}), [listKey]: nextTabs },
+                                    };
+                                    setCourse(prev => {
+                                      if (!prev) return prev;
+                                      return {
+                                        ...prev,
+                                        modules: prev.modules.map((m: any) => ({
+                                          ...m,
+                                          slides: m.slides.map((s: any) =>
+                                            s.id === editingSlide.id
+                                              ? { ...s, voiceOverUrl: nextSlide.voiceOverUrl ?? s.voiceOverUrl, data: nextSlide.data }
+                                              : s
+                                          ),
+                                        })),
+                                      };
+                                    });
+                                  }
+                                  editingSlideRef.current = nextSlide;
+                                  setEditingSlide(nextSlide);
+                                  showDraftMessage('Audio regenerated for all narration sections ✓');
                                 } catch (err: any) {
                                   alert(`TTS error: ${err.message}`);
                                 } finally {
@@ -6170,10 +6243,15 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                     )}
 
                   {editDrawerTab === 'regenerate' && editingSlide && (() => {
-                    const slideType = (editingSlide.type as string) || 'content';
-                    const isKc = KNOWLEDGE_CHECK_TYPES.has(slideType);
+                    const intendedType = normalizeRegenSlideType(editingSlide);
+                    const isKc =
+                      KNOWLEDGE_CHECK_TYPES.has(editingSlide.type as string) ||
+                      KNOWLEDGE_CHECK_TYPES.has(intendedType) ||
+                      /^knowledge\s*check/i.test(String(editingSlide.title || '')) ||
+                      ['matching', 'sorting', 'drop-targets', 'quiz', 'multiple-answers', 'true-false'].includes(intendedType);
                     const contentOptions = [
                       { id: 'content', label: 'Plain content' },
+                      { id: 'diagram', label: 'Diagram' },
                       { id: 'tabbed-horizontal', label: 'Tabs (Horizontal)' },
                       { id: 'tabbed-vertical', label: 'Tabs (Vertical)' },
                       { id: 'click-reveal', label: 'Click & Reveal' },
@@ -6190,12 +6268,15 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                       { id: 'multiple-answers', label: 'Multiple Answers' },
                       { id: 'true-false', label: 'True / False' },
                     ];
-                    const options = isKc ? kcOptions : contentOptions;
+                    // Prefer showing the section that matches the intended type; always allow switching
+                    const primaryOptions = isKc ? kcOptions : contentOptions;
+                    const secondaryOptions = isKc ? contentOptions : kcOptions;
                     const effectiveType = regenNoInteraction ? 'content' : regenTargetType;
                     return (
                       <div className="space-y-4">
                         <div className="p-3 bg-amber-900/20 border border-amber-700/30 rounded-xl text-xs text-amber-200 leading-relaxed">
-                          Regenerate only this slide. Choose an interaction type (or plain content), then click Regenerate.
+                          Regenerate only this slide. Intended type: <strong className="text-amber-100">{intendedType}</strong>.
+                          Confirm or change it below, then click Regenerate.
                         </div>
                         <label className="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-700 bg-slate-950 cursor-pointer">
                           <div>
@@ -6213,28 +6294,55 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                           />
                         </label>
                         {!regenNoInteraction && (
-                          <div className="space-y-2">
-                            <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">
-                              {isKc ? 'Knowledge check type' : 'Interactive element'}
-                            </p>
-                            <div className="grid grid-cols-2 gap-2">
-                              {options.map(opt => (
-                                <button
-                                  key={opt.id}
-                                  type="button"
-                                  onClick={() => setRegenTargetType(opt.id)}
-                                  className={cn(
-                                    'px-3 py-2.5 rounded-xl border text-left text-xs font-bold transition-all',
-                                    regenTargetType === opt.id
-                                      ? 'border-amber-500 bg-amber-500/10 text-amber-200'
-                                      : 'border-slate-700 bg-slate-950 text-slate-400 hover:border-slate-500'
-                                  )}
-                                >
-                                  {opt.label}
-                                </button>
-                              ))}
+                          <>
+                            <div className="space-y-2">
+                              <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">
+                                {isKc ? 'Knowledge check type' : 'Interactive element'}
+                              </p>
+                              <div className="grid grid-cols-2 gap-2">
+                                {primaryOptions.map(opt => (
+                                  <button
+                                    key={opt.id}
+                                    type="button"
+                                    onClick={() => setRegenTargetType(opt.id)}
+                                    className={cn(
+                                      'px-3 py-2.5 rounded-xl border text-left text-xs font-bold transition-all',
+                                      regenTargetType === opt.id
+                                        ? 'border-amber-500 bg-amber-500/10 text-amber-200'
+                                        : 'border-slate-700 bg-slate-950 text-slate-400 hover:border-slate-500'
+                                    )}
+                                  >
+                                    {opt.label}
+                                    {intendedType === opt.id && regenTargetType !== opt.id ? (
+                                      <span className="block text-[9px] font-normal text-slate-500 mt-0.5">current</span>
+                                    ) : null}
+                                  </button>
+                                ))}
+                              </div>
                             </div>
-                          </div>
+                            <div className="space-y-2">
+                              <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">
+                                {isKc ? 'Or switch to interactive element' : 'Or switch to knowledge check'}
+                              </p>
+                              <div className="grid grid-cols-2 gap-2">
+                                {secondaryOptions.map(opt => (
+                                  <button
+                                    key={opt.id}
+                                    type="button"
+                                    onClick={() => setRegenTargetType(opt.id)}
+                                    className={cn(
+                                      'px-3 py-2.5 rounded-xl border text-left text-xs font-bold transition-all',
+                                      regenTargetType === opt.id
+                                        ? 'border-amber-500 bg-amber-500/10 text-amber-200'
+                                        : 'border-slate-700 bg-slate-950 text-slate-400 hover:border-slate-500'
+                                    )}
+                                  >
+                                    {opt.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </>
                         )}
                         <button
                           disabled={isRegenSlideRunning}
@@ -6259,8 +6367,10 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                       return {
                                         ...s,
                                         type: result.type,
-                                        data: result.data,
+                                        data: result.data !== undefined ? result.data : s.data,
                                         content: result.content != null ? result.content : s.content,
+                                        voiceOverText: result.voiceOverText || s.voiceOverText,
+                                        narration: result.voiceOverText || s.narration,
                                       };
                                     }),
                                   })),
@@ -6269,14 +6379,18 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                               const updated = {
                                 ...editingSlide,
                                 type: result.type as any,
-                                data: result.data,
+                                data: result.data !== undefined ? result.data : editingSlide.data,
                                 content: result.content != null ? result.content : editingSlide.content,
+                                voiceOverText: result.voiceOverText || editingSlide.voiceOverText,
                               };
                               editingSlideRef.current = updated;
                               setEditingSlide(updated);
+                              setRegenTargetType(normalizeRegenSlideType(updated));
                               setQcReport(prev => prev ? {
                                 ...prev,
-                                issues: prev.issues.filter(i => !(i.slideId === editingSlide.id && i.type === 'interaction_empty')),
+                                issues: prev.issues.filter(i =>
+                                  !(i.slideId === editingSlide.id && (i.type === 'interaction_empty' || i.fixActions?.includes('regenerate')))
+                                ),
                               } : null);
                               showDraftMessage('Slide regenerated ✓');
                             } catch (err: any) {

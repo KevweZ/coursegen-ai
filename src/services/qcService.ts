@@ -256,10 +256,28 @@ const SCHEMA_HINTS: Record<string, string> = {
   diagram:         '{ "mermaidCode": "flowchart TD\\n  A[Start] --> B[Step]\\n  B --> C[End]", "caption": "optional short caption" }',
   'carousel-panel':'{ "cards": [{ "id": "string", "label": "string", "color": "#6366f1", "description": "string", "expandedContent": "string" }] }',
   'click-reveal':  '{ "items": [{ "id": "string", "term": "string", "definition": "string" }] }',
-  'tabbed-horizontal': '{ "tabs": [{ "id": "string", "label": "string", "content": "- short bullet", "voiceOverText": "spoken elaboration" }] }',
-  'tabbed-vertical':   '{ "tabs": [{ "id": "string", "label": "string", "content": "- short bullet", "voiceOverText": "spoken elaboration" }] }',
+  'tabbed-horizontal': '{ "introContent": "2-4 short educational sentences about the topic (NOT click instructions alone)", "tabs": [{ "id": "string", "label": "string", "content": "- short bullet", "voiceOverText": "spoken elaboration" }] }',
+  'tabbed-vertical':   '{ "introContent": "2-4 short educational sentences about the topic (NOT click instructions alone)", "tabs": [{ "id": "string", "label": "string", "content": "- short bullet", "voiceOverText": "spoken elaboration" }] }',
   hotspot:         '{ "hotspots": [{ "id": "string", "x": 30, "y": 40, "label": "string", "content": "string" }], "imageUrl": "" }',
 };
+
+/** Normalize slide type aliases used by outline/hydrate into canonical regen types. */
+export function normalizeRegenSlideType(slide: any, preferred?: string): string {
+  const raw = String(preferred || slide?.type || 'content').toLowerCase();
+  if (raw === 'drag-drop' || raw === 'drag-drop-activity') return 'drop-targets';
+  if (raw === 'multiple-choice') return 'quiz';
+  if (raw === 'multiple-answer') return 'multiple-answers';
+  if (raw === 'knowledge-check') {
+    const d = slide?.data || {};
+    if (Array.isArray(d.targets) || Array.isArray(d.pairs) || d.correctAnswers) return 'matching';
+    if (Array.isArray(d.correctOrder)) return 'sorting';
+    if (Array.isArray(d.categories) || (Array.isArray(d.items) && d.items.some((it: any) => it?.category))) return 'drop-targets';
+    return 'quiz';
+  }
+  if (SCHEMA_HINTS[raw]) return raw;
+  if (/^knowledge\s*check/i.test(String(slide?.title || ''))) return 'quiz';
+  return raw || 'content';
+}
 
 /**
  * Regenerates a single slide's interaction data by sending a focused prompt to
@@ -270,16 +288,15 @@ export async function regenerateSlideData(
   slide: any,
   courseTopic: string,
   targetType?: string
-): Promise<{ type: string; data: any; content?: string }> {
-  const type = targetType || slide.type || 'content';
+): Promise<{ type: string; data: any; content?: string; voiceOverText?: string }> {
+  const type = normalizeRegenSlideType(slide, targetType);
   const schema = SCHEMA_HINTS[type] ?? SCHEMA_HINTS.content;
-  const prompt = `You are an expert eLearning content author.
-
-Regenerate rich, educational content for this "${type}" slide.
+  const isTabbed = type === 'tabbed-horizontal' || type === 'tabbed-vertical';
+  const prompt = `Regenerate rich, educational content for this "${type}" slide.
 
 Slide title: "${slide.title}"
 Course topic: "${courseTopic}"
-${slide.content ? `Existing slide text (for context): "${String(slide.content).slice(0, 300)}"` : ''}
+${slide.content ? `Existing slide text (for context): "${String(slide.content).slice(0, 400)}"` : ''}
 
 Return ONLY a valid JSON object matching this exact schema for the "${type}" type:
 ${schema}
@@ -291,6 +308,8 @@ Rules:
 - For drop-targets: every item must have a category that exactly matches one entry in categories[]
 - For sorting: correctOrder must list every item id in the intended sequence; items should NOT already be in correctOrder
 - For content with bullets: return { "bullets": ["...", "..."] }
+- For diagram: return valid mermaidCode (flowchart/sequence) that illustrates the slide title
+${isTabbed ? '- For tabbed slides: include "introContent" with 2–4 short educational sentences about the topic. Do NOT make introContent only a click instruction. You may end with "Select a tab to continue →".' : ''}
 - Do NOT include markdown, backticks, or any explanation — pure JSON only`;
 
   let lastErr: any = null;
@@ -301,18 +320,23 @@ Rules:
       const res = await fetch(`${API_BASE}/api/ai`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, complexity: 'simple' }),
+        body: JSON.stringify({
+          model: 'bulk',
+          system: 'You are an expert eLearning content author. Return ONLY valid JSON matching the requested schema. No markdown fences, no explanation.',
+          user: prompt,
+          maxTokens: 4096,
+        }),
       });
       if (!res.ok) throw new Error(`Regeneration API error: ${res.status}`);
       const aiRes = await res.json();
-      const text: string = aiRes.content?.[0]?.text ?? aiRes.text ?? '';
+      const text: string = aiRes.text ?? aiRes.content?.[0]?.text ?? '';
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (!jsonMatch) throw new Error('AI did not return valid JSON');
       parsed = JSON.parse(jsonMatch[0]);
     } catch (err: any) {
       lastErr = err;
       const msg = String(err?.message || '');
-      if (!/failed to fetch|networkerror|load failed|timeout|API error: 5/i.test(msg) && attempt === 0) {
+      if (!/failed to fetch|networkerror|load failed|timeout|API error: [45]/i.test(msg) && attempt === 0) {
         break;
       }
     }
@@ -334,7 +358,7 @@ Rules:
     const content = bullets.length
       ? bullets.map(b => `- ${b}`).join('\n')
       : (parsed.content || slide.content || `Key points for: ${slide.title}`);
-    return { type: 'content', data: undefined, content };
+    return { type: 'content', data: undefined, content, voiceOverText: parsed.voiceOverText };
   }
 
   // Normalize matching pairs → items/targets if model returns pairs
@@ -350,10 +374,34 @@ Rules:
     const correctAnswers = Object.fromEntries(
       items.map((it: any, i: number) => [it.id, targets[i].id])
     );
-    return { type, data: { items, targets, correctAnswers } };
+    return { type, data: { items, targets, correctAnswers }, voiceOverText: parsed.voiceOverText };
   }
 
-  return { type, data: parsed };
+  if (type === 'diagram') {
+    return {
+      type: 'diagram',
+      data: {
+        mermaidCode: parsed.mermaidCode || parsed.code || '',
+        caption: parsed.caption || '',
+      },
+      content: parsed.content || slide.content,
+      voiceOverText: parsed.voiceOverText,
+    };
+  }
+
+  if (isTabbed) {
+    const tabs = parsed.tabs || parsed.items || [];
+    const introContent = parsed.introContent || parsed.content || '';
+    const dataKey = Array.isArray(parsed.tabs) ? 'tabs' : 'items';
+    return {
+      type,
+      data: { [dataKey]: tabs },
+      content: introContent || slide.content,
+      voiceOverText: parsed.voiceOverText,
+    };
+  }
+
+  return { type, data: parsed, content: parsed.content, voiceOverText: parsed.voiceOverText };
 }
 
 /**

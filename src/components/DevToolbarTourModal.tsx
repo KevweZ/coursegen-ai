@@ -22,7 +22,7 @@ const STEPS = [
   {
     icon: Edit3,
     title: 'Edit',
-    body: 'Edit the current slide’s text and narration, regenerate all course narration, generate AI images for empty slides, or clear slide images across the course.',
+    body: 'Edit the current slide, regenerate a single slide that failed to generate, rebuild all narration, generate AI images, or clear slide images.',
   },
   {
     icon: Upload,

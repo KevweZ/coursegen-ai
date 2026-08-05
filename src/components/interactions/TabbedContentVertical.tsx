@@ -117,10 +117,15 @@ export default function TabbedContentVertical({ tabs = [], title, theme = 'light
                   <div
                     className={cn('text-sm leading-relaxed', isLight ? 'text-slate-700' : 'text-slate-200')}
                     dangerouslySetInnerHTML={{
-                      __html: markdownToHtml(
-                        (introContent || '').trim() ||
-                        'Choose a topic on the left to explore. Listen to the introduction, then select a tab.'
-                      ),
+                      __html: markdownToHtml((() => {
+                        const raw = (introContent || '').trim();
+                        const instructionOnly = raw && /^(select|choose|click|tap)\b/i.test(raw)
+                          && raw.split(/\n/).filter(Boolean).length <= 2
+                          && !/[.!?].*[.!?]/s.test(raw.replace(/select a tab.*/i, ''));
+                        if (raw && !instructionOnly) return raw;
+                        const topic = (title || 'this topic').replace(/^Knowledge Check:\s*/i, '').trim();
+                        return `This section introduces ${topic}. Review the key ideas here, then open each tab to explore the details.`;
+                      })()),
                     }}
                   />
                   <p className={cn('mt-6 text-xs font-semibold', isLight ? 'text-indigo-600' : 'text-indigo-300')}>

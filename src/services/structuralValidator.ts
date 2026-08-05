@@ -243,16 +243,24 @@ function checkNarration(slide: any, modIdx: number, slideIdx: number, modTitle: 
 
 const QUIZ_TYPES = new Set([
   'quiz', 'multiple-answer', 'multiple-choice', 'multiple-answers', 'true-false',
-  'sorting', 'matching', 'drop-targets', 'knowledge-check',
+  'sorting', 'matching', 'drop-targets', 'drag-drop', 'drag-drop-activity', 'knowledge-check',
 ]);
 
+function normalizeQuizType(type: string): string {
+  if (type === 'drag-drop' || type === 'drag-drop-activity') return 'drop-targets';
+  if (type === 'multiple-choice') return 'quiz';
+  if (type === 'multiple-answer') return 'multiple-answers';
+  return type;
+}
+
 function checkQuiz(slide: any, modIdx: number, slideIdx: number, modTitle: string): QCIssue[] {
-  if (!QUIZ_TYPES.has(slide.type)) return [];
+  if (!QUIZ_TYPES.has(slide.type) && !/^knowledge\s*check/i.test(String(slide.title || ''))) return [];
   const issues: QCIssue[] = [];
   const data = slide.data || slide.interactions?.[0] || {};
+  const qType = normalizeQuizType(slide.type);
 
   // Sorting / matching / drop-targets: require items (covered also by INTERACTION_TYPES empty check)
-  if (slide.type === 'sorting') {
+  if (qType === 'sorting') {
     if (!Array.isArray(data.items) || data.items.length < 2) {
       issues.push(baseIssue(slide, modIdx, slideIdx, modTitle, {
         field: 'data.items',
@@ -262,12 +270,12 @@ function checkQuiz(slide: any, modIdx: number, slideIdx: number, modTitle: strin
         originalText: '',
         suggestion: 'Add at least 2 sortable items.',
         autoFixable: false,
-        fixActions: ['regenerate'],
+        fixActions: ['regenerate', 'simplify'],
       }));
     }
     return issues;
   }
-  if (slide.type === 'matching') {
+  if (qType === 'matching') {
     const pairs = Array.isArray(data.pairs) ? data.pairs : [];
     const items = Array.isArray(data.items) ? data.items : [];
     const targets = Array.isArray(data.targets) ? data.targets : [];
@@ -280,12 +288,12 @@ function checkQuiz(slide: any, modIdx: number, slideIdx: number, modTitle: strin
         originalText: '',
         suggestion: 'Add matching items and targets.',
         autoFixable: false,
-        fixActions: ['regenerate'],
+        fixActions: ['regenerate', 'simplify'],
       }));
     }
     return issues;
   }
-  if (slide.type === 'drop-targets') {
+  if (qType === 'drop-targets') {
     if (!Array.isArray(data.items) || data.items.length < 2) {
       issues.push(baseIssue(slide, modIdx, slideIdx, modTitle, {
         field: 'data.items',
@@ -295,7 +303,7 @@ function checkQuiz(slide: any, modIdx: number, slideIdx: number, modTitle: strin
         originalText: '',
         suggestion: 'Add items and categories.',
         autoFixable: false,
-        fixActions: ['regenerate'],
+        fixActions: ['regenerate', 'simplify'],
       }));
     }
     return issues;
@@ -557,8 +565,22 @@ const INTERACTION_TYPES: Record<string, (slide: any) => boolean> = {
     if (items.length > 0 && targets.length > 0) return false;
     return true;
   },
-  sorting:          s => !s.data?.items      || s.data.items.length      === 0,
-  'drop-targets':   s => !s.data?.items      || s.data.items.length      === 0,
+  sorting:          s => {
+    const d = s.data || s.interactions?.[0] || {};
+    return !Array.isArray(d.items) || d.items.length === 0;
+  },
+  'drop-targets':   s => {
+    const d = s.data || s.interactions?.[0] || {};
+    return !Array.isArray(d.items) || d.items.length === 0;
+  },
+  'drag-drop':      s => {
+    const d = s.data || s.interactions?.[0] || {};
+    return !Array.isArray(d.items) || d.items.length === 0;
+  },
+  'drag-drop-activity': s => {
+    const d = s.data || s.interactions?.[0] || {};
+    return !Array.isArray(d.items) || d.items.length === 0;
+  },
   hotspot:          s => !s.data?.hotspots   || s.data.hotspots.length   === 0,
   scenario:         s => !s.data?.scenes     || s.data.scenes.length     === 0,
   'carousel-panel': s => {

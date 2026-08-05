@@ -66,7 +66,15 @@ function IssueCard({
   const [regenerating, setRegenerating] = useState(false);
   const cfg = SEVERITY_CONFIG[issue.severity];
   const Icon = cfg.icon;
-  const isEmptyInteraction = issue.type === 'interaction_empty';
+  const actions = issue.fixActions ?? [];
+  const canRegenerate = actions.includes('regenerate') || issue.type === 'interaction_empty';
+  const canSimplify = actions.includes('simplify') || issue.type === 'interaction_empty';
+  const canConfirmFix =
+    !canRegenerate &&
+    !!issue.suggestion &&
+    issue.suggestion !== issue.originalText &&
+    (actions.includes('fix_color') || issue.type === 'color_contrast' || issue.autoFixable ||
+      ['spelling', 'grammar', 'clarity', 'consistency', 'title_length', 'content_length'].includes(issue.type));
 
   return (
     <div
@@ -148,16 +156,18 @@ function IssueCard({
           <ExternalLink className="w-3 h-3" /> View Slide
         </button>
 
-        {/* Right: special actions for empty interactions */}
-        {isEmptyInteraction ? (
+        {/* Right: actions driven by issue.fixActions */}
+        {canRegenerate ? (
           <div className="flex gap-2">
-            <button
-              onClick={onSimplify}
-              title="Replace with a simple content slide — no AI credits needed"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white transition-all"
-            >
-              <FileText className="w-3 h-3" /> Use Simple Layout
-            </button>
+            {canSimplify && (
+              <button
+                onClick={onSimplify}
+                title="Replace with a simple content slide — no AI credits needed"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white transition-all"
+              >
+                <FileText className="w-3 h-3" /> Use Simple Layout
+              </button>
+            )}
             <button
               onClick={async () => {
                 setRegenerating(true);
@@ -173,7 +183,6 @@ function IssueCard({
             </button>
           </div>
         ) : (
-          /* Right: standard decline / confirm for all other types */
           <div className="flex gap-2">
             <button
               onClick={onDecline}
@@ -185,19 +194,30 @@ function IssueCard({
             >
               <XCircle className="w-3 h-3" /> Decline
             </button>
-            <button
-              onClick={onConfirm}
-              disabled={confirmed || issue.suggestion === issue.originalText || !issue.suggestion}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border
-                ${confirmed
-                  ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300 cursor-default'
-                  : issue.type === 'color_contrast'
-                  ? 'bg-amber-500/20 border-amber-500/40 text-amber-200 hover:bg-amber-500/30'
-                  : 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/30'}`}
-            >
-              <CheckCircle2 className="w-3 h-3" />
-              {confirmed ? 'Applied' : issue.type === 'color_contrast' ? 'Apply Dark Color' : 'Confirm Fix'}
-            </button>
+            {canConfirmFix ? (
+              <button
+                onClick={onConfirm}
+                disabled={confirmed}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border
+                  ${confirmed
+                    ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300 cursor-default'
+                    : issue.type === 'color_contrast'
+                    ? 'bg-amber-500/20 border-amber-500/40 text-amber-200 hover:bg-amber-500/30'
+                    : 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/30'}`}
+              >
+                <CheckCircle2 className="w-3 h-3" />
+                {confirmed ? 'Applied' : issue.type === 'color_contrast' ? 'Apply Dark Color' : 'Confirm Fix'}
+              </button>
+            ) : (
+              <button
+                onClick={onDecline}
+                disabled={declined}
+                title="No automatic text fix for this issue — open the slide to edit or regenerate"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-600 text-slate-400 hover:bg-slate-700 hover:text-slate-200 transition-all"
+              >
+                Dismiss
+              </button>
+            )}
           </div>
         )}
       </div>

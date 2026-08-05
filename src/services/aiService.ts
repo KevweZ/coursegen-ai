@@ -659,14 +659,17 @@ export async function hydrateCourseContent(
   TABBED-HORIZONTAL (type: "tabbed-horizontal"):
   - data.tabs: array of 2-5 tab objects
   - Each tab: { "id": "t1", "label": "Tab Label", "color": "#6366f1", "content": "- Short bullet\\n- Another point", "voiceOverText": "2-4 spoken sentences elaborating this tab", "expandedContent": "optional extra detail" }
-  - On-screen tab content MUST be SHORT BULLETS only (3–5 bullets, 5–8 words each). Put explanations in the tab's voiceOverText (and the slide-level voiceOverText for the intro).
+  - On-screen tab content MUST be SHORT BULLETS only (3–5 bullets, 5–8 words each). Put explanations in the tab's voiceOverText.
+  - Slide-level "content" is the INTRODUCTION on-screen text shown before any tab is selected. It MUST be 2–4 short educational sentences/bullets about the topic (aligned with slide-level voiceOverText). Do NOT use only a click instruction (e.g. "Select a tab…") as the entire intro — include real topic content first, then you may end with "Select a tab to continue →".
+  - Slide-level voiceOverText narrates that introduction.
   - Color must be a valid hex color. Use different colors per tab.
   - FAIL CONDITION: fewer than 2 tabs, or missing content -> regenerate
 
   TABBED-VERTICAL (type: "tabbed-vertical"):
   - data.tabs: array of 2-6 tab objects
   - Each tab: { "id": "t1", "label": "Topic Name", "content": "- Bullet one\\n- Bullet two", "voiceOverText": "2-4 spoken sentences for this tab" }
-  - On-screen content: SHORT BULLETS (3–5, 5–8 words). Narration goes in voiceOverText per tab.
+  - On-screen tab content: SHORT BULLETS (3–5, 5–8 words). Narration goes in voiceOverText per tab.
+  - Slide-level "content" is the INTRODUCTION OST (same rules as tabbed-horizontal): educational topic content first, optional CTA last — never CTA-only.
   - FAIL CONDITION: fewer than 2 tabs, or missing content -> regenerate
 
   FOLDER-EXPLORER (type: "folder-explorer"):
@@ -760,6 +763,7 @@ export async function hydrateCourseContent(
   - timeline: { events: [{ id: string, year: string, title: string, content: string }] }
   - sorting: { items: [{ id: string, content: string }], correctOrder: string[] }
   - matching: { items: [{ id: string, content: string }], targets: [{ id: string, content: string }], correctAnswers: { [itemId]: targetId } } — NEVER use 'pairs'. Always include correctAnswers mapping every item id to its target id.
+  - drop-targets: { items: [{ id: string, content: string, category: string }], categories: string[] } — every item.category must exactly match one entry in categories[]
   - quiz interactions: [{ type: 'multiple-choice', questionText: string, options: [{ id, text, isCorrect: boolean }], feedback: string }]
   - jeopardy: { templateType: 'jeopardy', instructions: string, categories: [{ id, name, questions: [{ id, value: number, prompt: string, correctAnswer: string, isDailyDouble: boolean }] }] }
   - millionaire: { templateType: 'millionaire', instructions: string, questions: [{ id, difficulty: number, prompt: string, options: string[], correctAnswer: string, isSafeHaven: boolean }] }
