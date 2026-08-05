@@ -12,6 +12,10 @@ interface Props {
   isAuthoring: boolean;
   onChange: (images: FloatingImage[]) => void;
   onRemove: (id: string) => void;
+  /** Active tab on tabbed slides — filters which tab-scoped images are visible */
+  activeTabId?: string | null;
+  /** Called while dragging so parent can highlight tab drop zones */
+  onDragOverTab?: (tabId: string | null) => void;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -240,42 +244,83 @@ function CropModal({ imageUrl, onClose, onSave }: CropModalProps) {
   );
 }
 
+function tabIdFromPoint(clientX: number, clientY: number): string | null {
+  const stack = (document.elementsFromPoint?.(clientX, clientY) || []) as HTMLElement[];
+  for (const el of stack) {
+    if (el.closest?.('.floating-image')) continue;
+    const zone = el.closest?.('[data-tab-drop-zone]') as HTMLElement | null;
+    if (zone) {
+      const id = zone.getAttribute('data-tab-drop-zone');
+      if (id) return id;
+    }
+  }
+  return null;
+}
+
+function clampSize(w: number, h: number, maxW = 720, maxH = 560, min = 80) {
+  let width = Math.max(min, Math.min(maxW, w));
+  let height = Math.max(min, Math.min(maxH, h));
+  return { width, height };
+}
+
 // ─────────────────────────────────────────────────────────────
 // FloatingImageCanvas
 // ─────────────────────────────────────────────────────────────
-export function FloatingImageCanvas({ images, isAuthoring, onChange, onRemove }: Props) {
+export function FloatingImageCanvas({
+  images,
+  isAuthoring,
+  onChange,
+  onRemove,
+  activeTabId = null,
+  onDragOverTab,
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const latestImages = useRef(images);
   const latestOnChange = useRef(onChange);
+  const latestHover = useRef(onDragOverTab);
   const [cropTarget, setCropTarget] = useState<FloatingImage | null>(null);
+
+  const visibleImages = images.filter(img => {
+    if (!img.tabId) return true;
+    if (!activeTabId) return false; // tab-scoped hidden on intro / no active tab
+    return img.tabId === activeTabId;
+  });
 
   useEffect(() => {
     latestImages.current = images;
     latestOnChange.current = onChange;
-  }, [images, onChange]);
+    latestHover.current = onDragOverTab;
+  }, [images, onChange, onDragOverTab]);
 
   useEffect(() => {
     if (!isAuthoring) return;
 
     const interactable = interact('.floating-image').draggable({
-      inertia: true,
+      inertia: false,
       autoScroll: true,
       listeners: {
         move(event) {
-          const target = event.target;
-          const x = (parseFloat(target.getAttribute('data-x')) || 0) + event.dx;
-          const y = (parseFloat(target.getAttribute('data-y')) || 0) + event.dy;
+          const target = event.target as HTMLElement;
+          const x = (parseFloat(target.getAttribute('data-x') || '0') || 0) + event.dx;
+          const y = (parseFloat(target.getAttribute('data-y') || '0') || 0) + event.dy;
           target.style.transform = `translate(${x}px, ${y}px)`;
-          target.setAttribute('data-x', x);
-          target.setAttribute('data-y', y);
+          target.setAttribute('data-x', String(x));
+          target.setAttribute('data-y', String(y));
+          const tab = tabIdFromPoint(event.clientX, event.clientY);
+          latestHover.current?.(tab);
+          if (tab) target.setAttribute('data-over-tab', tab);
+          else target.removeAttribute('data-over-tab');
         },
         end(event) {
-          const target = event.target;
+          const target = event.target as HTMLElement;
           const id = target.getAttribute('data-id');
-          const x = parseFloat(target.getAttribute('data-x')) || 0;
-          const y = parseFloat(target.getAttribute('data-y')) || 0;
+          const x = parseFloat(target.getAttribute('data-x') || '0') || 0;
+          const y = parseFloat(target.getAttribute('data-y') || '0') || 0;
+          const tab = tabIdFromPoint(event.clientX, event.clientY);
+          latestHover.current?.(null);
+          target.removeAttribute('data-over-tab');
           const updatedImages = latestImages.current.map(img =>
-            img.id === id ? { ...img, x, y } : img
+            img.id === id ? { ...img, x, y, tabId: tab || null } : img
           );
           latestOnChange.current(updatedImages);
         }
@@ -283,30 +328,37 @@ export function FloatingImageCanvas({ images, isAuthoring, onChange, onRemove }:
     }).resizable({
       edges: { left: true, right: true, bottom: true, top: true },
       modifiers: [
-        interact.modifiers.restrictSize({ min: { width: 100, height: 100 } })
+        interact.modifiers.aspectRatio({ ratio: 'preserve' }),
+        interact.modifiers.restrictSize({
+          min: { width: 80, height: 80 },
+          max: { width: 720, height: 560 },
+        }),
       ],
       listeners: {
         move(event) {
-          const target = event.target;
-          let x = (parseFloat(target.getAttribute('data-x')) || 0);
-          let y = (parseFloat(target.getAttribute('data-y')) || 0);
+          const target = event.target as HTMLElement;
+          let x = parseFloat(target.getAttribute('data-x') || '0') || 0;
+          let y = parseFloat(target.getAttribute('data-y') || '0') || 0;
           x += event.deltaRect.left;
           y += event.deltaRect.top;
+          const { width, height } = clampSize(event.rect.width, event.rect.height);
           Object.assign(target.style, {
-            width: `${event.rect.width}px`,
-            height: `${event.rect.height}px`,
-            transform: `translate(${x}px, ${y}px)`
+            width: `${width}px`,
+            height: `${height}px`,
+            transform: `translate(${x}px, ${y}px)`,
           });
-          target.setAttribute('data-x', x);
-          target.setAttribute('data-y', y);
+          target.setAttribute('data-x', String(x));
+          target.setAttribute('data-y', String(y));
         },
         end(event) {
-          const target = event.target;
+          const target = event.target as HTMLElement;
           const id = target.getAttribute('data-id');
-          const x = parseFloat(target.getAttribute('data-x')) || 0;
-          const y = parseFloat(target.getAttribute('data-y')) || 0;
-          const width = parseFloat(target.style.width) || 320;
-          const height = parseFloat(target.style.height) || 240;
+          const x = parseFloat(target.getAttribute('data-x') || '0') || 0;
+          const y = parseFloat(target.getAttribute('data-y') || '0') || 0;
+          const { width, height } = clampSize(
+            parseFloat(target.style.width) || 320,
+            parseFloat(target.style.height) || 240
+          );
           const updatedImages = latestImages.current.map(img =>
             img.id === id ? { ...img, x, y, width, height } : img
           );
@@ -316,49 +368,58 @@ export function FloatingImageCanvas({ images, isAuthoring, onChange, onRemove }:
     });
 
     return () => interactable.unset();
-  }, [isAuthoring]);
+  }, [isAuthoring, visibleImages.map(i => i.id).join('|')]);
 
-  if (images.length === 0) return null;
+  if (visibleImages.length === 0) return null;
 
   return (
     <>
       <div className="absolute inset-0 z-20 pointer-events-none" ref={containerRef}>
-        {images.map(img => (
+        {visibleImages.map(img => (
           <div
             key={img.id}
             data-id={img.id}
             data-x={img.x}
             data-y={img.y}
-            className={`floating-image absolute shadow-2xl rounded-xl border border-white/20 overflow-hidden bg-slate-900 group ${isAuthoring ? 'pointer-events-auto cursor-move' : 'pointer-events-auto'}`}
+            className={`floating-image absolute rounded-xl overflow-visible group ${
+              isAuthoring ? 'pointer-events-auto cursor-move' : 'pointer-events-auto'
+            } ${img.tabId ? 'ring-2 ring-indigo-400/70 ring-offset-1' : ''}`}
             style={{
               width: img.width ? `${img.width}px` : '320px',
               height: img.height ? `${img.height}px` : '240px',
               transform: `translate(${img.x}px, ${img.y}px)`,
-              touchAction: 'none'
+              touchAction: 'none',
+              background: 'transparent',
             }}
+            title={img.tabId ? `Tab image (${img.tabId}) — drag outside tabs to make slide-wide` : 'Slide-wide image — drag onto a tab panel to scope it'}
           >
             <img
               src={img.url}
               alt="Floating layout"
-              className="w-full h-full object-contain bg-slate-800/50 select-none"
+              className="w-full h-full object-contain select-none rounded-lg shadow-lg"
+              style={{ background: 'transparent' }}
               draggable={false}
               onDragStart={e => e.preventDefault()}
             />
 
+            {isAuthoring && img.tabId && (
+              <span className="absolute -top-2 left-2 px-1.5 py-0.5 rounded bg-indigo-600 text-white text-[9px] font-bold shadow opacity-90">
+                Tab
+              </span>
+            )}
+
             {isAuthoring && (
               <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-50">
-                {/* Crop button */}
                 <button
                   onClick={e => { e.stopPropagation(); setCropTarget(img); }}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-full p-1.5 shadow-[0_0_15px_rgba(99,102,241,0.5)] cursor-pointer"
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-full p-1.5 shadow cursor-pointer"
                   title="Crop image"
                 >
                   <Crop className="w-3.5 h-3.5" />
                 </button>
-                {/* Delete button */}
                 <button
                   onClick={e => { e.stopPropagation(); onRemove(img.id); }}
-                  className="bg-red-500 hover:bg-red-400 text-white rounded-full p-1.5 shadow-[0_0_15px_rgba(239,68,68,0.5)] cursor-pointer"
+                  className="bg-red-500 hover:bg-red-400 text-white rounded-full p-1.5 shadow cursor-pointer"
                   title="Remove image"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -366,20 +427,18 @@ export function FloatingImageCanvas({ images, isAuthoring, onChange, onRemove }:
               </div>
             )}
 
-            {/* Corner resize handles */}
             {isAuthoring && (
               <>
-                <div className="absolute top-0 left-0 w-4 h-4 bg-indigo-500 shadow-md border-2 border-white cursor-nwse-resize opacity-0 group-hover:opacity-100 transition-opacity" />
-                <div className="absolute top-0 right-0 w-4 h-4 bg-indigo-500 shadow-md border-2 border-white cursor-nesw-resize opacity-0 group-hover:opacity-100 transition-opacity" />
-                <div className="absolute bottom-0 left-0 w-4 h-4 bg-indigo-500 shadow-md border-2 border-white cursor-nesw-resize opacity-0 group-hover:opacity-100 transition-opacity" />
-                <div className="absolute bottom-0 right-0 w-4 h-4 bg-indigo-500 shadow-md border-2 border-white cursor-nwse-resize opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="absolute top-0 left-0 w-3.5 h-3.5 bg-indigo-500 border-2 border-white rounded-sm cursor-nwse-resize opacity-0 group-hover:opacity-100" />
+                <div className="absolute top-0 right-0 w-3.5 h-3.5 bg-indigo-500 border-2 border-white rounded-sm cursor-nesw-resize opacity-0 group-hover:opacity-100" />
+                <div className="absolute bottom-0 left-0 w-3.5 h-3.5 bg-indigo-500 border-2 border-white rounded-sm cursor-nesw-resize opacity-0 group-hover:opacity-100" />
+                <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-indigo-500 border-2 border-white rounded-sm cursor-nwse-resize opacity-0 group-hover:opacity-100" />
               </>
             )}
           </div>
         ))}
       </div>
 
-      {/* ── Crop Modal ── */}
       {cropTarget && (
         <CropModal
           imageUrl={cropTarget.url}

@@ -443,7 +443,8 @@ export async function generateCourseOutline(
      CRITICAL — QUIZ-ONLY TYPES: Never use sorting, matching, drop-targets, multiple-choice, or multiple-answers as regular content slides. Those belong ONLY under Knowledge Checks (see #4).
   4. ${kcDirective}
      Knowledge Check slides teach nothing new — they assess. Allowed Knowledge Check types: ${uniqueQuizActivities.join(', ')}.
-     Prefer spreading different quiz activity types (quiz MC, sorting, matching) across checks when multiple are allowed.
+     Prefer spreading different quiz activity types (quiz MC, sorting, matching, drop-targets) across checks when multiple are allowed.
+     Interaction pick rules: sorting = arrange steps/phases/order; drop-targets = categorize into bins (multi-bin or one bin + distractors); matching = pair terms; quiz = MC. Never use drop-targets for sequencing.
   5. ${configParams.includeSummarySlides !== false ? 'Module Summary / Key Takeaways slide (type: "key-takeaways") — REQUIRED at end of each module. Use type key-takeaways with data.objectives array of {id,label,content}. Do NOT use plain content/summary markdown bullets for module summaries.' : 'NO summary slide'}
   
   CRITICAL: The course player automatically injects a Cover/Introduction slide before all modules${configParams.includeModuleTitleSlides !== false || configParams.includeModuleOverviewSlides !== false ? `, plus per-module structural slides (${[configParams.includeModuleTitleSlides !== false ? 'Module Title' : null, configParams.includeModuleOverviewSlides !== false ? 'Module Overview' : null].filter(Boolean).join(' + ')})` : ''}. Do NOT create any intro, overview, title, welcome, OR objectives/learning-objectives slide for ANY module. All modules must start directly with their first content or interaction slide.
@@ -628,10 +629,18 @@ export async function hydrateCourseContent(
   - If you would have used accordion, emit type "click-reveal" with items: [{ id, term, definition }]
   - term = section header; definition = bullet content (<= 4 bullets)
 
-  DRAG & DROP:
-  - All drop targets MUST use accepts: ["*"] -- NEVER restrict by ID
-  - Every item must have a corresponding correct target via id matching
-  - Min 3, max 6 items
+  SORTING (sequence / order — prefer this for phases, steps, cycles):
+  - Use when the learner must arrange items in a correct operational or chronological order
+  - Schema: { items: [{ id, content }], correctOrder: [id, ...] } — correctOrder lists item ids from first to last
+  - NEVER use drop-targets for "arrange in order / sequence / phases" questions
+
+  DROP-TARGETS (categorization bins):
+  - Use ONLY when the learner must choose which bin each item belongs to
+  - Valid patterns: (a) 2+ labeled categories, OR (b) 1 category with distractors that must stay in the bank
+  - Schema: { items: [{ id, content, category }], categories: string[] }
+  - category = exact category label for correct items; use "" (empty) for distractors that do NOT belong in any bin
+  - FORBIDDEN: one category with every item assigned to it and no distractors (that is sorting — use sorting instead)
+  - Min 3, max 8 items
 
   MATCHING:
   - Items and targets must be parallel in structure. Max 5 pairs.
@@ -761,9 +770,9 @@ export async function hydrateCourseContent(
   - carousel-panel: { cards: [{ id: string, label: string, color: string, description: string, expandedContent: string }] }
   - click-reveal: { items: [{ id: string, term: string, definition: string }] }
   - timeline: { events: [{ id: string, year: string, title: string, content: string }] }
-  - sorting: { items: [{ id: string, content: string }], correctOrder: string[] }
+  - sorting: { items: [{ id: string, content: string }], correctOrder: string[] } — use for sequence/order/phases; correctOrder is item ids first→last
   - matching: { items: [{ id: string, content: string }], targets: [{ id: string, content: string }], correctAnswers: { [itemId]: targetId } } — NEVER use 'pairs'. Always include correctAnswers mapping every item id to its target id.
-  - drop-targets: { items: [{ id: string, content: string, category: string }], categories: string[] } — every item.category must exactly match one entry in categories[]
+  - drop-targets: { items: [{ id: string, content: string, category: string }], categories: string[] } — category must match a categories[] entry, OR be "" for distractors. Require 2+ categories OR 1 category with at least one distractor. Never use for pure sequencing.
   - quiz interactions: [{ type: 'multiple-choice', questionText: string, options: [{ id, text, isCorrect: boolean }], feedback: string }]
   - jeopardy: { templateType: 'jeopardy', instructions: string, categories: [{ id, name, questions: [{ id, value: number, prompt: string, correctAnswer: string, isDailyDouble: boolean }] }] }
   - millionaire: { templateType: 'millionaire', instructions: string, questions: [{ id, difficulty: number, prompt: string, options: string[], correctAnswer: string, isSafeHaven: boolean }] }
@@ -860,6 +869,34 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
       // Diagram slide with no mermaid code — degrade gracefully to content
       slide.type = 'content';
       slide.content = slide.content || `Process diagram for: ${slide.title}`;
+    }
+
+    // Sequence questions mis-typed as drop-targets → coerce to sorting
+    if (slide.type === 'drop-targets' || slide.type === 'memory-match') {
+      const raw = slide.data || slide.interactions?.[0] || {};
+      const items = Array.isArray(raw.items) ? raw.items : [];
+      const cats = Array.isArray(raw.categories) ? raw.categories.map((c: any) => String(c)) : [];
+      const uniqueCats = [...new Set(items.map((i: any) => String(i.category || i.correctCategory || '').trim()).filter(Boolean))];
+      const hasDistractors = items.some((i: any) => !String(i.category || i.correctCategory || '').trim());
+      const text = `${slide.title || ''} ${slide.content || ''}`;
+      const sequenceCue = /order|sequence|arrange|phases?|steps?|chronolog|operational order|correct order/i.test(text);
+      const singleBinNoChoice = uniqueCats.length <= 1 && cats.length <= 1 && !hasDistractors;
+      if (items.length >= 2 && (sequenceCue || singleBinNoChoice)) {
+        const sortedItems = items.map((it: any, i: number) => ({
+          id: String(it.id || `s-${i}`),
+          content: String(it.content || it.text || it.label || ''),
+        })).filter((it: any) => it.content);
+        slide.type = 'sorting';
+        slide.data = {
+          items: sortedItems,
+          correctOrder: Array.isArray(raw.correctOrder) && raw.correctOrder.length
+            ? raw.correctOrder.map(String)
+            : sortedItems.map((it: any) => it.id),
+        };
+        if (Array.isArray(slide.interactions)) {
+          slide.interactions = [{ type: 'sorting', ...slide.data }];
+        }
+      }
     }
     // Scenario slides — data will be populated async; skip sync validation here
 

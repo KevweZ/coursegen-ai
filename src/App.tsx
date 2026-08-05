@@ -1553,6 +1553,10 @@ export default function App() {
   );
   /** Per-tab narration override while on a tabbed slide (cleared on slide change) */
   const [activeTabAudioUrl, setActiveTabAudioUrl] = useState<string | null>(null);
+  /** Active content tab id for tab-scoped floating images (null = intro / non-tab slide) */
+  const [activeTabForImages, setActiveTabForImages] = useState<string | null>(null);
+  /** Tab id under the pointer while dragging a floating image */
+  const [dragOverTabId, setDragOverTabId] = useState<string | null>(null);
   const [generatedCourseTitle, setGeneratedCourseTitle] = useState('');
   const [qcFocusSlideId, setQcFocusSlideId] = useState<string | null>(null);
 
@@ -1907,9 +1911,11 @@ export default function App() {
   // the current slide over and over, resetting playback mid-sentence.
   const currentSyntheticUrl = syntheticAudioMap[currentSlide?.id ?? ''] ?? null;
 
-  // Clear per-tab audio when leaving a slide
+  // Clear per-tab audio / tab-image scope when leaving a slide
   useEffect(() => {
     setActiveTabAudioUrl(null);
+    setActiveTabForImages(null);
+    setDragOverTabId(null);
   }, [currentSlide?.id]);
 
   useEffect(() => {
@@ -3292,13 +3298,25 @@ export default function App() {
   };
 
   const handleUpdateSlideMedia = (slideId: string, updates: any) => {
-    if (!course) return;
-    const newCourse = { ...course };
-    for (const mod of newCourse.modules) {
-      const slide = mod.slides.find((s: any) => s.id === slideId);
-      if (slide) Object.assign(slide, updates);
-    }
-    setCourse(newCourse);
+    setCourse(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        modules: (prev.modules || []).map((mod: any) => ({
+          ...mod,
+          slides: (mod.slides || []).map((s: any) =>
+            s.id === slideId ? { ...s, ...updates } : s
+          ),
+        })),
+      };
+    });
+  };
+
+  /** Keep floatingImagesMap and course.floatingMedia in sync (drafts / SCORM). */
+  const syncFloatingImages = (slideId: string, imgs: FloatingImage[]) => {
+    if (!slideId) return;
+    setFloatingImagesMap(prev => ({ ...prev, [slideId]: imgs }));
+    handleUpdateSlideMedia(slideId, { floatingMedia: imgs });
   };
 
   const handleUpdateSlide = (updated: Slide) => {
@@ -3863,13 +3881,11 @@ export default function App() {
             theme={theme}
             onInsert={(url) => {
               if (!currentSlide) return;
-              setFloatingImagesMap(prev => ({
-                ...prev,
-                [currentSlide.id]: [
-                  ...(prev[currentSlide.id] || []),
-                  { id: `fi-lib-${Date.now()}`, url, x: 40, y: 40, width: 320, height: 240 },
-                ],
-              }));
+              pushUndo();
+              syncFloatingImages(currentSlide.id, [
+                ...(floatingImagesMap[currentSlide.id] || []),
+                { id: `fi-lib-${Date.now()}`, url, x: 40, y: 40, width: 320, height: 240, tabId: activeTabForImages || null },
+              ]);
             }}
           />
 
@@ -4635,13 +4651,16 @@ export default function App() {
                       <Upload className="w-3 h-3" /><span className="hidden lg:inline">Upload Image</span>
                       <input id="topbar-img-upload" type="file" accept="image/*" multiple className="hidden"
                         onChange={e => {
-                          if (e.target.files?.length) {
+                          if (e.target.files?.length && currentSlide?.id) {
                             const newImgs: FloatingImage[] = Array.from(e.target.files).map((f, i) => ({
                               id: `fi-${Date.now()}-${i}`,
                               url: URL.createObjectURL(f),
                               x: 40 + i * 20, y: 40 + i * 20, width: 320, height: 240,
+                              // Scope to active tab when uploading while a tab is open; otherwise slide-wide
+                              tabId: activeTabForImages || null,
                             }));
-                            pushUndo(); setFloatingImagesMap(prev => ({ ...prev, [currentSlide?.id]: [...(prev[currentSlide?.id] || []), ...newImgs] }));
+                            pushUndo();
+                            syncFloatingImages(currentSlide.id, [...(floatingImagesMap[currentSlide.id] || []), ...newImgs]);
                             e.target.value = '';
                           }
                         }}
@@ -5492,6 +5511,8 @@ export default function App() {
                                        tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []}
                                        theme={theme as any}
                                        introContent={currentSlide.content || ''}
+                                       onActiveTabChange={setActiveTabForImages}
+                                       highlightTabId={dragOverTabId}
                                        onTabView={(id) => markInteractionExplored(currentSlide.id, id)}
                                        onTabAudio={(id) => {
                                          if (!voiceOverEnabled) return;
@@ -5514,6 +5535,8 @@ export default function App() {
                                      tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []}
                                      theme={theme}
                                      introContent={currentSlide.content || ''}
+                                     onActiveTabChange={setActiveTabForImages}
+                                     highlightTabId={dragOverTabId}
                                      onTabView={(id) => markInteractionExplored(currentSlide.id, id)}
                                      onTabAudio={(id) => {
                                        if (!voiceOverEnabled) return;
@@ -5731,6 +5754,30 @@ export default function App() {
                                       ) as string[];
                                     }
                                   }
+                                  // Sequence / single-bin-no-choice → sorting (up/down), not drop bins
+                                  const uniqueCats = [...new Set(items.map((it: any) => String(it.category || '').trim()).filter(Boolean))];
+                                  const hasDistractors = items.some((it: any) => !String(it.category || '').trim());
+                                  const text = `${currentSlide.title || ''} ${currentSlide.content || ''}`;
+                                  const sequenceCue = /order|sequence|arrange|phases?|steps?|chronolog|operational order|correct order/i.test(text);
+                                  const singleBinNoChoice = uniqueCats.length <= 1 && categories.length <= 1 && !hasDistractors;
+                                  if (items.length >= 2 && (sequenceCue || singleBinNoChoice)) {
+                                    const sortItems = items.map((it: any, i: number) => ({
+                                      id: String(it.id || `s-${i}`),
+                                      content: String(it.content || it.text || it.label || ''),
+                                    })).filter((it: any) => it.content);
+                                    const correctOrder = Array.isArray(raw.correctOrder) && raw.correctOrder.length
+                                      ? raw.correctOrder.map(String)
+                                      : sortItems.map((it: any) => it.id);
+                                    return (
+                                      <div className="space-y-6 w-full">
+                                        <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
+                                        <SmartContent content={sanitizeContent(currentSlide.content) + '\n\nDrag items or use ↑ ↓ arrows to reorder.'} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
+                                        <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
+                                          <CustomSortingActivity items={sortItems} correctOrder={correctOrder} theme={theme} onChecked={() => markKcChecked(currentSlide.id)} />
+                                        </div>
+                                      </div>
+                                    );
+                                  }
                                   return (
                                   <div className="space-y-6 w-full">
                                      <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
@@ -5776,7 +5823,13 @@ export default function App() {
 
                              {currentSlide?.floatingMedia && currentSlide.floatingMedia.length > 0 && viewMode === 'desktop' && (
                                <div className="hidden md:block w-[40%] max-w-[500px] shrink-0 pointer-events-none z-[60]">
-                                 <FloatingImageCanvas isAuthoring={false} onChange={() => {}} onRemove={() => {}} images={currentSlide.floatingMedia} />
+                                 <FloatingImageCanvas
+                                   isAuthoring={false}
+                                   onChange={() => {}}
+                                   onRemove={() => {}}
+                                   images={currentSlide.floatingMedia}
+                                   activeTabId={activeTabForImages}
+                                 />
                                </div>
                              )}
 
@@ -5826,11 +5879,10 @@ export default function App() {
                                         id: `fi-placeholder-${Date.now()}`,
                                         url,
                                         x: 40, y: 40, width: 320, height: 240,
+                                        tabId: activeTabForImages || null,
                                       };
-                                      pushUndo(); setFloatingImagesMap(prev => ({
-                                        ...prev,
-                                        [currentSlide.id]: [...(prev[currentSlide.id] || []), newImg],
-                                      }));
+                                      pushUndo();
+                                      syncFloatingImages(currentSlide.id, [...(floatingImagesMap[currentSlide.id] || []), newImg]);
                                       // Clear the placeholder flag so the dashed box disappears
                                       handleUpdateSlideMedia(currentSlide.id, { imagePlaceholder: false });
                                       e.target.value = '';
@@ -5853,11 +5905,18 @@ export default function App() {
                        <FloatingImageCanvas
                          images={floatingImagesMap[currentSlide?.id] || []}
                          isAuthoring={true}
-                         onChange={(imgs) => setFloatingImagesMap(prev => ({ ...prev, [currentSlide?.id]: imgs }))}
-                         onRemove={(id) => { pushUndo(); setFloatingImagesMap(prev => ({
-                           ...prev,
-                           [currentSlide?.id]: (prev[currentSlide?.id] || []).filter(i => i.id !== id)
-                         })); }}
+                         activeTabId={activeTabForImages}
+                         onDragOverTab={setDragOverTabId}
+                         onChange={(imgs) => {
+                           if (!currentSlide?.id) return;
+                           syncFloatingImages(currentSlide.id, imgs);
+                         }}
+                         onRemove={(id) => {
+                           if (!currentSlide?.id) return;
+                           pushUndo();
+                           const next = (floatingImagesMap[currentSlide.id] || []).filter(i => i.id !== id);
+                           syncFloatingImages(currentSlide.id, next);
+                         }}
                        />
                         </motion.div>
                        </AnimatePresence>
@@ -5950,11 +6009,10 @@ export default function App() {
                           id: `fi-src-${Date.now()}`,
                           url: img.dataUrl || img.url,
                           x: 40, y: 40, width: 320, height: 240,
+                          tabId: activeTabForImages || null,
                         };
-                        pushUndo(); setFloatingImagesMap(prev => ({
-                          ...prev,
-                          [slideId]: [...(prev[slideId] || []), newImg],
-                        }));
+                        pushUndo();
+                        syncFloatingImages(slideId, [...(floatingImagesMap[slideId] || []), newImg]);
                         // Clear placeholder flag if present
                         handleUpdateSlideMedia(slideId, { imagePlaceholder: false });
                         setShowImageGalleryForSlide(null);

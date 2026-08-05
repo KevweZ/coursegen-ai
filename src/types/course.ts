@@ -77,6 +77,11 @@ export interface FloatingImage {
   y: number;
   width: number;
   height: number;
+  /**
+   * When set on a tabbed slide, the image only appears while that tab is active.
+   * null/undefined = slide-level (visible on every tab / intro).
+   */
+  tabId?: string | null;
 }
 
 export interface Slide {

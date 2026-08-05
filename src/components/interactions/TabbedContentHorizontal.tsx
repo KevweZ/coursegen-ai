@@ -27,6 +27,10 @@ interface Props {
   onTabAudio?: (tabId: string) => void;
   /** Intro panel copy while no tab is selected (opening narration OST) */
   introContent?: string;
+  /** Notify parent of active tab (null = intro) for tab-scoped floating images */
+  onActiveTabChange?: (tabId: string | null) => void;
+  /** While dragging a floating image over a tab zone, highlight it */
+  highlightTabId?: string | null;
 }
 
 const ACCENT_COLORS = [
@@ -40,7 +44,16 @@ function normalizeTabs(tabs: HorizontalTab[]): HorizontalTab[] {
   }));
 }
 
-export default function TabbedContentHorizontal({ tabs = [], title, theme = 'light', onTabView, onTabAudio, introContent }: Props) {
+export default function TabbedContentHorizontal({
+  tabs = [],
+  title,
+  theme = 'light',
+  onTabView,
+  onTabAudio,
+  introContent,
+  onActiveTabChange,
+  highlightTabId = null,
+}: Props) {
   const normalized = useMemo(() => normalizeTabs(tabs), [tabs]);
   /** -1 = intro state (slide opening lines); no content tab selected yet */
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -50,6 +63,16 @@ export default function TabbedContentHorizontal({ tabs = [], title, theme = 'lig
   useEffect(() => {
     setActiveIndex(-1);
   }, [normalized.map(t => t.id).join('|')]);
+
+  const inIntro = activeIndex < 0;
+  const activeTab = inIntro || !normalized.length
+    ? null
+    : normalized[Math.min(activeIndex, normalized.length - 1)];
+
+  useEffect(() => {
+    onActiveTabChange?.(activeTab?.id ?? null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- only when tab id changes
+  }, [activeTab?.id]);
 
   if (!normalized.length) return null;
 
@@ -62,9 +85,9 @@ export default function TabbedContentHorizontal({ tabs = [], title, theme = 'lig
     }
   };
 
-  const inIntro = activeIndex < 0;
-  const activeTab = inIntro ? null : normalized[Math.min(activeIndex, normalized.length - 1)];
   const activeColor = activeTab?.color || ACCENT_COLORS[Math.max(0, activeIndex) % ACCENT_COLORS.length];
+  const dropZoneId = activeTab?.id || '';
+  const panelHighlighted = !!(highlightTabId && dropZoneId && highlightTabId === dropZoneId);
 
   return (
     <div className="w-full flex flex-col gap-0 select-none">
@@ -75,11 +98,17 @@ export default function TabbedContentHorizontal({ tabs = [], title, theme = 'lig
       )}
 
       <div
-        className={`relative overflow-hidden rounded-t-2xl border border-b-0 ${
+        data-tab-drop-zone={dropZoneId || undefined}
+        className={`relative overflow-hidden rounded-t-2xl border border-b-0 transition-all ${
           isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-800/60 border-slate-700'
-        }`}
+        } ${panelHighlighted ? 'ring-4 ring-indigo-400/80 ring-inset bg-indigo-50/40' : ''}`}
         style={{ minHeight: 'min(55vh, 460px)' }}
       >
+        {panelHighlighted && (
+          <div className="absolute inset-x-0 top-0 z-10 px-3 py-1.5 text-center text-[11px] font-bold text-white bg-indigo-600/90 pointer-events-none">
+            Drop here to attach image to this tab
+          </div>
+        )}
         <AnimatePresence mode="wait">
           <motion.div
             key={inIntro ? '__intro__' : activeTab!.id}
@@ -157,10 +186,12 @@ export default function TabbedContentHorizontal({ tabs = [], title, theme = 'lig
         {normalized.map((tab, i) => {
           const isActive = i === activeIndex;
           const color = tab.color || ACCENT_COLORS[i % ACCENT_COLORS.length];
+          const isDropTarget = highlightTabId === tab.id;
           return (
             <button
               key={tab.id}
               type="button"
+              data-tab-drop-zone={tab.id}
               onClick={() => selectTab(i)}
               className={`flex-1 relative px-3 py-3.5 text-xs font-bold transition-all text-center border-r last:border-r-0 ${
                 isLight ? 'border-slate-200' : 'border-slate-700/60'
@@ -170,8 +201,8 @@ export default function TabbedContentHorizontal({ tabs = [], title, theme = 'lig
                   : isLight
                   ? 'text-slate-500 hover:text-slate-800 hover:bg-white'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
-              }`}
-              style={isActive ? { background: color } : {}}
+              } ${isDropTarget ? 'ring-2 ring-indigo-400 ring-inset z-10' : ''}`}
+              style={isActive ? { background: color } : isDropTarget ? { background: 'rgba(99,102,241,0.15)' } : {}}
             >
               <span className="relative z-10" dangerouslySetInnerHTML={{ __html: markdownToHtml(tab.label) }} />
             </button>

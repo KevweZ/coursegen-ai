@@ -24,6 +24,10 @@ interface Props {
   /** Fired only on user click (not mount) — use for per-tab audio cutover */
   onTabAudio?: (tabId: string) => void;
   introContent?: string;
+  /** Notify parent of active tab (null = intro) for tab-scoped floating images */
+  onActiveTabChange?: (tabId: string | null) => void;
+  /** While dragging a floating image over a tab zone, highlight it */
+  highlightTabId?: string | null;
 }
 
 const ACCENT_COLORS = [
@@ -39,7 +43,16 @@ function cn(...classes: (string | false | undefined | null)[]): string {
   return classes.filter(Boolean).join(' ');
 }
 
-export default function TabbedContentVertical({ tabs = [], title, theme = 'light', onTabView, onTabAudio, introContent }: Props) {
+export default function TabbedContentVertical({
+  tabs = [],
+  title,
+  theme = 'light',
+  onTabView,
+  onTabAudio,
+  introContent,
+  onActiveTabChange,
+  highlightTabId = null,
+}: Props) {
   const normalized = useMemo(
     () => (tabs || []).map((t, i) => ({ ...t, id: (t?.id != null && String(t.id).trim()) ? String(t.id) : `tab-${i}` })),
     [tabs]
@@ -50,12 +63,19 @@ export default function TabbedContentVertical({ tabs = [], title, theme = 'light
     setActiveIndex(-1);
   }, [normalized.map(t => t.id).join('|')]);
 
-  if (!normalized.length) return null;
-
   const isLight = theme === 'light';
-  const inIntro = activeIndex < 0;
+  const inIntro = activeIndex < 0 || !normalized.length;
   const activeTab = inIntro ? null : normalized[Math.min(activeIndex, normalized.length - 1)];
   const accent = ACCENT_COLORS[Math.max(0, activeIndex) % ACCENT_COLORS.length];
+  const dropZoneId = activeTab?.id || '';
+  const panelHighlighted = !!(highlightTabId && dropZoneId && highlightTabId === dropZoneId);
+
+  useEffect(() => {
+    onActiveTabChange?.(activeTab?.id ?? null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- only when tab id changes
+  }, [activeTab?.id]);
+
+  if (!normalized.length) return null;
 
   const selectTab = (i: number) => {
     setActiveIndex(i);
@@ -77,10 +97,12 @@ export default function TabbedContentVertical({ tabs = [], title, theme = 'light
           {normalized.map((tab, i) => {
             const isActive = i === activeIndex;
             const color = ACCENT_COLORS[i % ACCENT_COLORS.length];
+            const isDropTarget = highlightTabId === tab.id;
             return (
               <button
                 key={tab.id}
                 type="button"
+                data-tab-drop-zone={tab.id}
                 onClick={() => selectTab(i)}
                 className={cn(
                   'flex items-center gap-2 w-full text-left px-3 py-2.5 rounded-xl font-bold text-sm transition-all border',
@@ -88,7 +110,8 @@ export default function TabbedContentVertical({ tabs = [], title, theme = 'light
                     ? `${color.bg} text-white border-transparent shadow-lg ring-2 ${color.ring}`
                     : isLight
                     ? 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-800'
-                    : 'bg-slate-800/60 text-slate-400 border-slate-700 hover:bg-slate-700/60 hover:text-slate-200'
+                    : 'bg-slate-800/60 text-slate-400 border-slate-700 hover:bg-slate-700/60 hover:text-slate-200',
+                  isDropTarget && 'ring-2 ring-indigo-400 ring-offset-1'
                 )}
               >
                 {tab.icon && <span className="text-base shrink-0">{tab.icon}</span>}
@@ -99,7 +122,19 @@ export default function TabbedContentVertical({ tabs = [], title, theme = 'light
           })}
         </div>
 
-        <div className={cn('flex-1 min-w-0 relative overflow-hidden rounded-2xl border', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-800/60 border-slate-700')}>
+        <div
+          data-tab-drop-zone={dropZoneId || undefined}
+          className={cn(
+            'flex-1 min-w-0 relative overflow-hidden rounded-2xl border transition-all',
+            isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-800/60 border-slate-700',
+            panelHighlighted && 'ring-4 ring-indigo-400/80 ring-inset bg-indigo-50/40'
+          )}
+        >
+          {panelHighlighted && (
+            <div className="absolute inset-x-0 top-0 z-10 px-3 py-1.5 text-center text-[11px] font-bold text-white bg-indigo-600/90 pointer-events-none">
+              Drop here to attach image to this tab
+            </div>
+          )}
           <AnimatePresence mode="wait">
             <motion.div
               key={inIntro ? '__intro__' : activeTab!.id}

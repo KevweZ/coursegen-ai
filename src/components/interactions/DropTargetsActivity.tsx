@@ -1,7 +1,7 @@
 /**
  * DropTargetsActivity — categorize items into labeled bins (knowledge check).
  * Schema: { items: [{ id, content, category }], categories: string[] }
- * Also accepts { items: [{ id, text, category }], targets: [{ id, label }] }.
+ * Items with an empty/missing category are distractors (should stay in the bank).
  */
 import React, { useMemo, useState } from 'react';
 import { CheckCircle2, AlertCircle, RotateCcw } from 'lucide-react';
@@ -14,7 +14,7 @@ function cn(...c: (string | false | undefined | null)[]) {
 export interface DropTargetItem {
   id: string;
   content: string;
-  /** Correct category label */
+  /** Correct category label — empty/missing = distractor (does not belong in any bin) */
   category?: string;
 }
 
@@ -71,23 +71,17 @@ export function DropTargetsActivity({
   const [bankOrder] = useState(() => shuffle(normalized.map(i => i.id)));
   const [placed, setPlaced] = useState<Record<string, string>>({}); // itemId -> category
   const [checked, setChecked] = useState(false);
-  const [wrongFlash, setWrongFlash] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
 
   const bank = bankOrder
     .map(id => normalized.find(i => i.id === id)!)
     .filter(it => it && !placed[it.id]);
 
+  const anyPlaced = Object.keys(placed).length > 0;
+
   const placeItem = (itemId: string, zone: string) => {
-    const correct = correctMap[itemId];
-    // Soft-correct mode: flash wrong, only accept correct (same as preview UX)
-    // But for learning, allow place-then-check. Prefer check-at-end for KC.
     setPlaced(prev => ({ ...prev, [itemId]: zone }));
     setChecked(false);
-    if (correct && correct !== zone) {
-      setWrongFlash(zone);
-      setTimeout(() => setWrongFlash(null), 450);
-    }
   };
 
   const handleDrop = (e: React.DragEvent, zone: string) => {
@@ -108,8 +102,21 @@ export function DropTargetsActivity({
     setChecked(false);
   };
 
-  const allPlaced = normalized.length > 0 && normalized.every(i => placed[i.id]);
-  const allCorrect = allPlaced && normalized.every(i => !correctMap[i.id] || placed[i.id] === correctMap[i.id]);
+  const isItemOk = (id: string) => {
+    const zone = placed[id];
+    const correct = correctMap[id];
+    if (!zone) return !correct; // unplaced distractor OK; unplaced required item incomplete
+    if (!correct) return false; // distractor must not be in a zone
+    return zone === correct;
+  };
+
+  const categorizedIds = normalized.filter(i => i.category).map(i => i.id);
+  const allCategorizedPlacedCorrectly = categorizedIds.every(id => placed[id] && placed[id] === correctMap[id]);
+  const noDistractorsPlaced = normalized
+    .filter(i => !i.category)
+    .every(i => !placed[i.id]);
+  const allCorrect = anyPlaced && allCategorizedPlacedCorrectly && noDistractorsPlaced
+    && categorizedIds.every(id => !!placed[id]);
 
   if (!normalized.length) {
     return (
@@ -123,6 +130,10 @@ export function DropTargetsActivity({
       </div>
     );
   }
+
+  const chipBank = isLight
+    ? 'bg-indigo-50 text-indigo-900 border border-indigo-200 hover:bg-indigo-100'
+    : 'bg-indigo-900/30 text-indigo-100 border border-indigo-500/30 hover:bg-indigo-900/50';
 
   return (
     <div className="w-full select-none space-y-4">
@@ -140,7 +151,7 @@ export function DropTargetsActivity({
             }}
             className={cn(
               'px-4 py-2 rounded-lg text-sm font-bold shadow-sm cursor-grab active:cursor-grabbing',
-              isLight ? 'bg-indigo-600 text-white hover:bg-indigo-500' : 'bg-indigo-500 text-white hover:bg-indigo-400'
+              chipBank
             )}
             dangerouslySetInnerHTML={{ __html: markdownToHtml(item.content) }}
           />
@@ -152,6 +163,12 @@ export function DropTargetsActivity({
         )}
       </div>
 
+      {categories.length === 1 && normalized.some(i => !i.category) && (
+        <p className={cn('text-xs font-medium', isLight ? 'text-slate-500' : 'text-slate-400')}>
+          Tip: Not every item belongs in the bin — leave distractors in the pool.
+        </p>
+      )}
+
       <div className={cn('grid gap-3', categories.length <= 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3')}>
         {categories.map((zone) => {
           const inZone = normalized.filter(i => placed[i.id] === zone);
@@ -162,11 +179,9 @@ export function DropTargetsActivity({
               onDrop={(e) => handleDrop(e, zone)}
               className={cn(
                 'p-4 rounded-xl border-2 border-dashed min-h-[140px] flex flex-col gap-2 transition-all',
-                wrongFlash === zone
-                  ? 'border-red-500 bg-red-50'
-                  : isLight
-                    ? 'border-slate-300 bg-white hover:border-indigo-400'
-                    : 'border-slate-600 bg-slate-800/40 hover:border-indigo-400'
+                isLight
+                  ? 'border-slate-300 bg-white hover:border-indigo-300'
+                  : 'border-slate-600 bg-slate-800/40 hover:border-indigo-400'
               )}
             >
               <span className={cn('text-xs font-bold uppercase tracking-wider', isLight ? 'text-slate-500' : 'text-slate-400')}>
@@ -174,7 +189,7 @@ export function DropTargetsActivity({
               </span>
               <div className="w-full mt-1 space-y-1.5 flex-1">
                 {inZone.map(i => {
-                  const ok = !checked || !correctMap[i.id] || placed[i.id] === correctMap[i.id];
+                  const ok = isItemOk(i.id);
                   return (
                     <button
                       type="button"
@@ -193,9 +208,7 @@ export function DropTargetsActivity({
                           ? ok
                             ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
                             : 'bg-red-100 text-red-900 border border-red-300'
-                          : isLight
-                            ? 'bg-indigo-50 text-indigo-900 border border-indigo-200'
-                            : 'bg-indigo-900/40 text-indigo-100 border border-indigo-500/40'
+                          : chipBank
                       )}
                       dangerouslySetInnerHTML={{ __html: markdownToHtml(i.content) }}
                     />
@@ -210,7 +223,7 @@ export function DropTargetsActivity({
       <div className="flex flex-wrap items-center gap-2 pt-1">
         <button
           type="button"
-          disabled={!allPlaced}
+          disabled={!anyPlaced}
           onClick={handleCheck}
           className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-bold text-sm"
         >
@@ -229,7 +242,9 @@ export function DropTargetsActivity({
         {checked && (
           <span className={cn('flex items-center gap-1.5 text-sm font-bold', allCorrect ? 'text-emerald-600' : 'text-amber-600')}>
             {allCorrect ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-            {allCorrect ? 'Correct!' : 'Some items are in the wrong category.'}
+            {allCorrect
+              ? 'Correct!'
+              : 'Not quite — check which items belong in each category (and which should stay out).'}
           </span>
         )}
       </div>
