@@ -593,7 +593,7 @@ app.post('/api/ai', aiRateLimit, async (req, res) => {
   let trialSupaClient = null;
   let trialUserId = null;
   const isComplexCall = (model === 'complex');
-  const TRIAL_AI_LIMIT = 5; // matches TrialInvitePanel copy
+  const TRIAL_AI_LIMIT = 30; // complex AI calls per rolling 7 days (pilot-friendly)
 
   if (jwt) {
     try {

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, ChevronLeft, ChevronRight, Monitor, Settings2, Edit3, Upload,
-  Undo2, RotateCcw, Shield, Save, Rocket, Music2,
+  Undo2, RotateCcw, Shield, Save, Rocket,
 } from 'lucide-react';
 
 export const DEV_TOUR_KEY = 'nexcourse_dev_tour_dismissed';
@@ -21,18 +21,13 @@ const STEPS = [
   },
   {
     icon: Edit3,
-    title: 'Edit Slide',
-    body: 'Edit on-screen text, narration, and regenerate this slide’s interaction without rebuilding the whole course.',
+    title: 'Edit',
+    body: 'Edit the current slide’s text and narration, regenerate all course narration, generate AI images for empty slides, or clear slide images across the course.',
   },
   {
     icon: Upload,
     title: 'Upload Image',
     body: 'Add your own images onto the current slide as floating media you can move and crop.',
-  },
-  {
-    icon: Music2,
-    title: 'Media',
-    body: 'Regenerate all narration (needed for older drafts that didn’t store audio), generate AI images for empty slides, or clear slide images across the course.',
   },
   {
     icon: Undo2,
@@ -52,7 +47,7 @@ const STEPS = [
   {
     icon: Rocket,
     title: 'Publish Course',
-    body: 'Export a SCORM package for your LMS when you’re ready (trial accounts use a limited publish path).',
+    body: 'Export a SCORM package for your LMS when you’re ready. Trial accounts can build and preview but cannot export SCORM until upgraded.',
   },
 ] as const;
 

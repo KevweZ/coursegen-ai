@@ -229,9 +229,10 @@ export function TrialInvitePanel({ onClose, apiBase, accessToken }: Props) {
               {[
                 ['✅', 'Demo Course sandbox — full access'],
                 ['✅', 'Upload a file & build a course'],
-                ['⚠️', 'AI course generation — max 5 per week'],
-                ['❌', 'Export SCORM (popup explains this)'],
-                ['❌', 'Admin / QC features hidden'],
+                ['✅', 'Edit slides, narration, Quality scan, save drafts (3 slots)'],
+                ['⚠️', 'AI course generation — max 30 complex AI calls / week'],
+                ['❌', 'Export SCORM (Publish is blocked with upgrade prompt)'],
+                ['❌', 'Admin / invite tools hidden'],
                 ['❌', 'Access ends automatically at expiry'],
               ].map(([icon, text], i) => (
                 <li key={i} className="text-xs text-slate-400 flex items-center gap-2">

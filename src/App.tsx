@@ -44,7 +44,6 @@ import {
   Move,
   Mic,
   Volume2 as Volume2Icon,
-  Music2,
   Settings2 as PlayerIcon,
   Shield,
   ChevronDown,
@@ -865,7 +864,7 @@ export default function App() {
           );
           if (missingAudio && voiceOverEnabled) {
             showDraftMessage(
-              'Draft loaded — narration was not saved with this draft. Use Media → Regenerate all narration to restore audio.'
+              'Draft loaded — narration was not saved with this draft. Use Edit → Regenerate all narration to restore audio.'
             );
           }
           return;
@@ -903,7 +902,7 @@ export default function App() {
         );
         if (missingAudio && voiceOverEnabled && !Object.keys(synthRestored).length) {
           showDraftMessage(
-            'Draft loaded — some narration is missing. Use Media → Regenerate all narration to restore audio.'
+            'Draft loaded — some narration is missing. Use Edit → Regenerate all narration to restore audio.'
           );
         }
       } catch (e) {
@@ -1058,7 +1057,7 @@ export default function App() {
   const [settingsSavedFlash, setSettingsSavedFlash] = useState(false);
   const [lastUploadPath, setLastUploadPath] = useState<UploadPathChoice | null>(null);
   const [regeneratingSlideId, setRegeneratingSlideId] = useState<string | null>(null);
-  const [showMediaMenu, setShowMediaMenu] = useState(false);
+  const [showEditMenu, setShowEditMenu] = useState(false);
   /** Ref so runAnalysis (defined earlier) can call finalize after hydrate */
   const finalizeGeneratedCourseRef = useRef<(course: any) => Promise<void>>(async () => {});
   
@@ -3113,7 +3112,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
       showDraftMessage('Narration is already generating…');
       return;
     }
-    setShowMediaMenu(false);
+    setShowEditMenu(false);
     showDraftMessage('Regenerating all narration…');
     try {
       await generateTTS(course, setCourse, ttsVoice);
@@ -3169,7 +3168,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
     if (!window.confirm('Remove images from all slides? (Course cover is kept. You can re-add via Upload or regenerate AI images later.)')) {
       return;
     }
-    setShowMediaMenu(false);
+    setShowEditMenu(false);
     pushUndo();
     setCourse(prev => {
       if (!prev) return prev;
@@ -3207,7 +3206,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
   /** Re-run AI content slide images for slides that lack imageUrl. */
   const regenerateAiImages = async () => {
     if (!course?.modules) return;
-    setShowMediaMenu(false);
+    setShowEditMenu(false);
     setIsGeneratingImages(true);
     showDraftMessage('Generating AI images for slides without visuals…');
     try {
@@ -4496,7 +4495,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                     </div>
                   )}
 
-                  {/* Single unified toolbar — L→R: Desktop, Player Props, Edit, Upload, Media, Undo, Reset, Quality, Save, Publish */}
+                  {/* Single unified toolbar — L→R: Desktop, Player Props, Edit, Upload, Undo, Reset, Quality, Save, Publish */}
                   <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
                     <button
                       title={viewMode === 'desktop' ? 'Switch to mobile landscape preview' : 'Switch to desktop preview'}
@@ -4519,20 +4518,77 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                       <Settings2 className="w-3 h-3" /><span className="hidden lg:inline">Player Props</span>
                     </button>
 
-                    <button
-                      title="Edit Slide"
-                      onClick={() => {
-                        editingSlideRef.current = currentSlide;
-                        setEditingSlide(currentSlide);
-                        setEditDrawerOpen(true);
-                        setEditDrawerTab('text');
-                        setRegenTargetType((currentSlide?.type as string) || 'content');
-                        setRegenNoInteraction(currentSlide?.type === 'content' || currentSlide?.type === 'summary');
-                      }}
-                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-indigo-700/50 hover:bg-indigo-800/20 text-indigo-300 text-[11px] font-semibold"
-                    >
-                      <Edit3 className="w-3 h-3" /><span className="hidden lg:inline">Edit Slide</span>
-                    </button>
+                    <div className="relative">
+                      <button
+                        title="Edit — slide text, narration, and course media"
+                        onClick={() => setShowEditMenu(v => !v)}
+                        className="flex items-center gap-1 px-2 py-1 rounded-md border border-indigo-700/50 hover:bg-indigo-800/20 text-indigo-300 text-[11px] font-semibold"
+                      >
+                        <Edit3 className="w-3 h-3" /><span className="hidden lg:inline">Edit</span>
+                        <ChevronDown className="w-3 h-3 opacity-70" />
+                      </button>
+                      {showEditMenu && (
+                        <>
+                          <div className="fixed inset-0 z-[60]" onClick={() => setShowEditMenu(false)} />
+                          <div className="absolute right-0 top-full mt-1 z-[70] w-64 rounded-lg border border-slate-700 bg-slate-900 shadow-xl py-1 text-[12px]">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowEditMenu(false);
+                                editingSlideRef.current = currentSlide;
+                                setEditingSlide(currentSlide);
+                                setEditDrawerOpen(true);
+                                setEditDrawerTab('text');
+                                setRegenTargetType((currentSlide?.type as string) || 'content');
+                                setRegenNoInteraction(currentSlide?.type === 'content' || currentSlide?.type === 'summary');
+                              }}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-800 text-indigo-200 flex items-start gap-2"
+                            >
+                              <Edit3 className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                              <span>
+                                <span className="font-semibold block">Edit Slide</span>
+                                <span className="text-slate-500 text-[10px]">Text, narration, and regenerate this slide</span>
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={ttsProgress.isRunning}
+                              onClick={() => void regenerateAllNarration()}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-800 text-teal-200 disabled:opacity-40 flex items-start gap-2"
+                            >
+                              <Volume2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                              <span>
+                                <span className="font-semibold block">Regenerate all narration</span>
+                                <span className="text-slate-500 text-[10px]">Rebuild TTS for every slide</span>
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isGeneratingImages}
+                              onClick={() => void regenerateAiImages()}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-800 text-violet-200 disabled:opacity-40 flex items-start gap-2"
+                            >
+                              <ImageIcon className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                              <span>
+                                <span className="font-semibold block">Generate AI images</span>
+                                <span className="text-slate-500 text-[10px]">Fill slides that don’t have an image yet</span>
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={clearCourseImages}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-800 text-rose-200 flex items-start gap-2"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                              <span>
+                                <span className="font-semibold block">Clear slide images</span>
+                                <span className="text-slate-500 text-[10px]">Remove visuals across the course (keeps cover)</span>
+                              </span>
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
 
                     {(currentSlide?.type === 'scenario' || currentSlide?.type === 'game-template' || ['knowledge-check', 'mastery-exam'].includes(currentSlide?.type ?? '')) && (
                       <button
@@ -4564,59 +4620,6 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                         }}
                       />
                     </label>
-
-                    <div className="relative">
-                      <button
-                        title="Media — regenerate narration or manage course images"
-                        onClick={() => setShowMediaMenu(v => !v)}
-                        className="flex items-center gap-1 px-2 py-1 rounded-md border border-teal-700/50 hover:bg-teal-800/20 text-teal-300 text-[11px] font-semibold"
-                      >
-                        <Music2 className="w-3 h-3" /><span className="hidden lg:inline">Media</span>
-                        <ChevronDown className="w-3 h-3 opacity-70" />
-                      </button>
-                      {showMediaMenu && (
-                        <>
-                          <div className="fixed inset-0 z-[60]" onClick={() => setShowMediaMenu(false)} />
-                          <div className="absolute right-0 top-full mt-1 z-[70] w-64 rounded-lg border border-slate-700 bg-slate-900 shadow-xl py-1 text-[12px]">
-                            <button
-                              type="button"
-                              disabled={ttsProgress.isRunning}
-                              onClick={() => void regenerateAllNarration()}
-                              className="w-full text-left px-3 py-2 hover:bg-slate-800 text-teal-200 disabled:opacity-40 flex items-start gap-2"
-                            >
-                              <Volume2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                              <span>
-                                <span className="font-semibold block">Regenerate all narration</span>
-                                <span className="text-slate-500 text-[10px]">Rebuild TTS for every slide (use after opening old drafts)</span>
-                              </span>
-                            </button>
-                            <button
-                              type="button"
-                              disabled={isGeneratingImages}
-                              onClick={() => void regenerateAiImages()}
-                              className="w-full text-left px-3 py-2 hover:bg-slate-800 text-violet-200 disabled:opacity-40 flex items-start gap-2"
-                            >
-                              <ImageIcon className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                              <span>
-                                <span className="font-semibold block">Generate AI images</span>
-                                <span className="text-slate-500 text-[10px]">Fill slides that don’t have an image yet</span>
-                              </span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={clearCourseImages}
-                              className="w-full text-left px-3 py-2 hover:bg-slate-800 text-rose-200 flex items-start gap-2"
-                            >
-                              <Trash2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                              <span>
-                                <span className="font-semibold block">Clear slide images</span>
-                                <span className="text-slate-500 text-[10px]">Remove visuals across the course (keeps cover)</span>
-                              </span>
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
 
                     <button
                       title={undoHistory.length > 0 ? `Undo (${undoHistory.length})` : 'Nothing to undo'}
