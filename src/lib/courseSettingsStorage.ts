@@ -19,6 +19,8 @@ export interface SavedCourseSettings {
   slideCount: number;
   /** Multimedia: none | ai | source | ai-and-source (legacy ai-title* accepted) */
   imageMode: CourseImageMode;
+  /** Hotspot backdrop AI when global AI/source images are off */
+  hotspotGenerateBackdrop?: boolean;
 }
 
 const STORAGE_KEY = 'nexcourse.courseSettings.v1';
@@ -53,6 +55,8 @@ export const DEFAULT_COURSE_SETTINGS: SavedCourseSettings = {
   includeSummarySlides: true,
   slideCount: 14,
   imageMode: 'none',
+  /** When hotspot is on but Multimedia AI/source are off, still AI-generate hotspot backdrops */
+  hotspotGenerateBackdrop: false,
 };
 
 function storageKey(userId?: string | null): string {

@@ -115,6 +115,44 @@ export function useTTSGeneration() {
             })),
           };
         });
+
+        // Per-tab narration (tabbed-horizontal / tabbed-vertical)
+        const isTabbed = slide.type === 'tabbed-horizontal' || slide.type === 'tabbed-vertical';
+        const tabs: any[] = slide.data?.tabs || slide.data?.items || [];
+        if (isTabbed && Array.isArray(tabs) && tabs.length) {
+          for (let ti = 0; ti < tabs.length; ti++) {
+            if (cancelRef.current) break;
+            const tab = tabs[ti];
+            const tabText = (tab?.voiceOverText || '').trim();
+            if (!tabText) continue;
+            try {
+              const tabUrl = await generateSlideTTS(tabText, { voice: voice as any });
+              setCourse((prev: any) => {
+                if (!prev?.modules) return prev;
+                return {
+                  ...prev,
+                  modules: prev.modules.map((m: any) => ({
+                    ...m,
+                    slides: (m.slides || []).map((s: any) => {
+                      if (s.id !== slideId) return s;
+                      const data = { ...(s.data || {}) };
+                      const listKey = Array.isArray(data.tabs) ? 'tabs' : Array.isArray(data.items) ? 'items' : 'tabs';
+                      const list = Array.isArray(data[listKey]) ? [...data[listKey]] : [...tabs];
+                      const idx = list.findIndex((t: any) => t.id === tab.id);
+                      const at = idx >= 0 ? idx : ti;
+                      if (at < 0 || at >= list.length) return s;
+                      list[at] = { ...list[at], voiceOverUrl: tabUrl };
+                      return { ...s, data: { ...data, [listKey]: list } };
+                    }),
+                  })),
+                };
+              });
+              await new Promise(r => setTimeout(r, 250));
+            } catch (tabErr: any) {
+              console.warn(`[TTS] Tab audio failed on "${slide.title}" tab ${ti}:`, tabErr?.message);
+            }
+          }
+        }
       } catch (err: any) {
         console.warn(`[TTS] Failed for slide "${slide.title}":`, err.message);
         setProgress(prev => ({

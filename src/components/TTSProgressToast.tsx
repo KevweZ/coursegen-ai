@@ -1,12 +1,12 @@
 /**
  * TTSProgressToast.tsx
  * Non-blocking floating toast that shows TTS generation progress.
- * Appears at the bottom-right during generation, auto-hides after completion.
+ * Bottom-center so it does not cover player Next/Prev controls.
  */
 
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mic, CheckCircle2, XCircle, X, Loader2 } from 'lucide-react';
+import { CheckCircle2, XCircle, X, Loader2 } from 'lucide-react';
 import { TTSProgress } from '../hooks/useTTSGeneration';
 
 interface Props {
@@ -21,7 +21,6 @@ export const TTSProgressToast: React.FC<Props> = ({ progress, onDismiss }) => {
   useEffect(() => {
     if (progress.isRunning || progress.isDone) {
       setVisible(true);
-      // Auto-dismiss 5 seconds after completion
       if (progress.isDone && !progress.isRunning) {
         const t = setTimeout(() => {
           setVisible(false);
@@ -54,11 +53,10 @@ export const TTSProgressToast: React.FC<Props> = ({ progress, onDismiss }) => {
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 24, scale: 0.95 }}
           transition={{ duration: 0.3, ease: 'easeOut' }}
-          className="fixed bottom-6 right-6 z-[9999] w-80 bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden"
+          className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[9999] w-[min(20rem,calc(100vw-2rem))] bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden"
           role="status"
           aria-live="polite"
         >
-          {/* Progress bar at top */}
           <div className="h-[3px] w-full bg-slate-800 relative overflow-hidden">
             <motion.div
               className={`absolute left-0 top-0 h-full transition-all duration-500 ${
@@ -75,7 +73,6 @@ export const TTSProgressToast: React.FC<Props> = ({ progress, onDismiss }) => {
 
           <div className="p-4">
             <div className="flex items-start gap-3">
-              {/* Icon */}
               <div className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
                 progress.isDone && !progress.error
                   ? 'bg-emerald-500/20'
@@ -92,12 +89,11 @@ export const TTSProgressToast: React.FC<Props> = ({ progress, onDismiss }) => {
                 )}
               </div>
 
-              {/* Text */}
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-white leading-tight">
                   {progress.isDone && !progress.isRunning
-                    ? '🎙 Audio generation complete'
-                    : '🎙 Generating narration audio'}
+                    ? 'Audio generation complete'
+                    : 'Generating narration audio'}
                 </p>
                 {progress.isRunning && (
                   <p className="text-xs text-slate-400 mt-0.5 truncate">
@@ -107,17 +103,16 @@ export const TTSProgressToast: React.FC<Props> = ({ progress, onDismiss }) => {
                 )}
                 {progress.isDone && !progress.isRunning && (
                   <p className="text-xs text-emerald-400 mt-0.5">
-                    {progress.currentSlide} slide{progress.currentSlide !== 1 ? 's' : ''} ready · click play on any slide
+                    {progress.currentSlide} slide{progress.currentSlide !== 1 ? 's' : ''} ready
                   </p>
                 )}
                 {progress.error && (
                   <p className="text-xs text-red-400 mt-0.5 line-clamp-2">
-                    ⚠ {progress.error}
+                    {progress.error}
                   </p>
                 )}
               </div>
 
-              {/* Dismiss */}
               <button
                 onClick={handleDismiss}
                 className="shrink-0 p-1 -mt-0.5 rounded-md text-slate-500 hover:text-white hover:bg-slate-800 transition-colors"
@@ -127,10 +122,9 @@ export const TTSProgressToast: React.FC<Props> = ({ progress, onDismiss }) => {
               </button>
             </div>
 
-            {/* Progress label */}
             {progress.isRunning && (
               <div className="mt-3 flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                <span>OpenAI TTS · tts-1 · alloy</span>
+                <span>Narration</span>
                 <span className="text-indigo-400">{pct}%</span>
               </div>
             )}

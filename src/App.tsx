@@ -514,23 +514,9 @@ const SlideContent = ({ content, theme, accentColor }: { content: string; theme:
  * Existing courses that were generated with "**Keyword** rest of sentence"
  * patterns get cleaned at render time — no re-generation required.
  */
+/** Preserve author bold in preview (HTML <strong>/<b> and markdown **). */
 function stripBulletBold(raw: string): string {
-  if (!raw) return raw;
-  // Skip if it's already HTML from the rich-text editor
-  if (/<[a-z][\s\S]*>/i.test(raw)) {
-    // Soften <strong>/<b> inside list items only
-    return raw.replace(/<(ul|ol)[\s\S]*?<\/\1>/gi, (block) =>
-      block.replace(/<\/?(strong|b)\b[^>]*>/gi, '')
-    );
-  }
-  return raw
-    .split('\n')
-    .map(line => {
-      // Only touch bullet / numbered lines — leave headings & paragraphs alone
-      if (!/^\s*([-*+]|\d+\.)\s+/.test(line)) return line;
-      return line.replace(/\*\*(.+?)\*\*/g, '$1').replace(/__(.+?)__/g, '$1');
-    })
-    .join('\n');
+  return raw || '';
 }
 
 /**
@@ -705,13 +691,19 @@ export default function App() {
       // Prefer async payload (sync cache may be empty after refresh)
       const existing = await draftManager.loadDraftAsync(activeDraftId);
       if (existing?.phase === 'preview') {
-        const updated = await draftManager.replacePreviewDraft(activeDraftId, course, playerConfig, theme);
+        const updated = await draftManager.replacePreviewDraft(activeDraftId, course, playerConfig, theme, {
+          learningObjectives,
+          syntheticSlideOverrides,
+        });
         showDraftMessage(updated.message);
         if (updated.success) navigateTo(ROUTES.preview(activeDraftId), true);
         return;
       }
     }
-      const result = await draftManager.savePreviewDraft(course, playerConfig, theme);
+      const result = await draftManager.savePreviewDraft(course, playerConfig, theme, {
+        learningObjectives,
+        syntheticSlideOverrides,
+      });
       showDraftMessage(result.message);
       if (result.success && result.id) {
         setActiveDraftId(result.id);
@@ -805,6 +797,17 @@ export default function App() {
 
     setPlayerConfig(cfg);
     setTheme((snapshot.theme as any) || 'light');
+    // Restore objectives / VO overrides so Course Objectives & module overview rebuild
+    const restoredObjectives =
+      snapshot.learningObjectives ||
+      shell.learningObjectives ||
+      null;
+    if (Array.isArray(restoredObjectives) && restoredObjectives.length) {
+      setLearningObjectives(restoredObjectives);
+    }
+    if (snapshot.syntheticSlideOverrides && typeof snapshot.syntheticSlideOverrides === 'object') {
+      setSyntheticSlideOverrides(snapshot.syntheticSlideOverrides);
+    }
     // Authoring preview: always allow free navigation so drafts aren't "frozen"
     // (linear/restricted + interaction gates make the player feel like a screenshot).
     setNavigationMode('free');
@@ -938,8 +941,18 @@ export default function App() {
   
   const [step, setStep] = useState<AppStep>(isScormPlayer ? 'preview' : 'home');
 
+  /** Filled after usePlayer() — used by goHome before player is in scope */
+  const playerCtlRef = useRef<{ pause: () => void; clearAudio: () => void }>({
+    pause: () => {},
+    clearAudio: () => {},
+  });
+
   /** In-app home — Course upload / builder dashboard */
   const goHome = () => {
+    try {
+      playerCtlRef.current.pause();
+      playerCtlRef.current.clearAudio();
+    } catch { /* ignore */ }
     setShowPlayerProperties(false);
     setStep('home');
     setMobileDesignDemo(false);
@@ -1492,6 +1505,12 @@ export default function App() {
   const [includeSummarySlides, setIncludeSummarySlides] = useState(DEFAULT_COURSE_SETTINGS.includeSummarySlides);
   const [includeModuleTitleSlides, setIncludeModuleTitleSlides] = useState(DEFAULT_COURSE_SETTINGS.includeModuleTitleSlides);
   const [imageMode, setImageMode] = useState<CourseImageMode>(DEFAULT_COURSE_SETTINGS.imageMode);
+  /** When Hotspot is on but Multimedia AI/source are off, still AI-generate hotspot backdrops */
+  const [hotspotGenerateBackdrop, setHotspotGenerateBackdrop] = useState(
+    !!DEFAULT_COURSE_SETTINGS.hotspotGenerateBackdrop
+  );
+  /** Per-tab narration override while on a tabbed slide (cleared on slide change) */
+  const [activeTabAudioUrl, setActiveTabAudioUrl] = useState<string | null>(null);
   const [generatedCourseTitle, setGeneratedCourseTitle] = useState('');
   const [qcFocusSlideId, setQcFocusSlideId] = useState<string | null>(null);
 
@@ -1585,6 +1604,10 @@ export default function App() {
 
   // Player Audio/Refs
   const player = usePlayer();
+  playerCtlRef.current = {
+    pause: () => player.pause(),
+    clearAudio: () => player.loadSlide('', null, null),
+  };
   const { progress: ttsProgress, generateTTS, resetTTS } = useTTSGeneration();
 
   // Virtual exam slides appended after all content slides.
@@ -1613,8 +1636,8 @@ export default function App() {
           // Module Overview (e.g. 1.1, 2.1): objectives accordion after the title slide.
           // If the title slide is present, narration continues without re-announcing the name.
           const overviewVo = includeModuleTitleSlides
-            ? (m.description ? `Here's what you'll cover: ${m.description}` : "Let's look at the learning objectives for this module.")
-            : `Module ${modNum}: ${cleanTitle}. ${m.description ? `Here's what you'll cover: ${m.description}` : "Let's look at the learning objectives for this module."}`.trim();
+            ? `Let's revisit the objectives for this module.${m.description ? ' ' + m.description : ''}`.trim()
+            : `Module ${modNum}: ${cleanTitle}. Let's revisit the objectives for this module.${m.description ? ' ' + m.description : ''}`.trim();
           synthetics.push({
             id: `__module-overview-${modNum}__`,
             title: `Module ${modNum} — Overview`,
@@ -1659,7 +1682,15 @@ export default function App() {
   ] : [closingVirtualSlide];
   // Cover slide + 2 synthetic pre-content slides (Player Tour + Course Objectives)
   const playerTourSlide: Slide = course ? { id: '__player-tour__', title: 'Player Navigation Guide', type: 'player-tour' as any, content: '', narration: 'Before we begin, take a moment to explore the player controls. Hover over each card on the right to see the corresponding element highlighted in the player preview on the left.', voiceOverText: 'Before we begin, take a moment to explore the player controls. Hover over each card to see the corresponding element highlighted.' } as Slide : null as any;
-  const courseObjectivesSlide: Slide = course ? { id: '__course-objectives__', title: 'Course Objectives', type: 'course-objectives' as any, content: '', _objectives: learningObjectives || [] } as Slide : null as any;
+  const courseObjectivesSlide: Slide = course ? {
+    id: '__course-objectives__',
+    title: 'Course Objectives',
+    type: 'course-objectives' as any,
+    content: '',
+    voiceOverText: syntheticSlideOverrides['__objectives__']?.voiceOverText
+      ?? 'These are the objectives for this course. Review each one so you know what you will be able to do when you finish.',
+    _objectives: learningObjectives || [],
+  } as Slide : null as any;
   const PRE_CONTENT = 3; // cover + player-tour + course-objectives
   const allSlides: Slide[] = course ? [coverSlide, playerTourSlide, courseObjectivesSlide, ...contentSlides, ...examVirtualSlides] : [];
   // Compute which module the current slide belongs to (for accent color)
@@ -1836,19 +1867,24 @@ export default function App() {
   // the current slide over and over, resetting playback mid-sentence.
   const currentSyntheticUrl = syntheticAudioMap[currentSlide?.id ?? ''] ?? null;
 
+  // Clear per-tab audio when leaving a slide
   useEffect(() => {
-    if (currentSlide) {
-      player.loadSlide(
-        currentSlide.id,
-        // AI audio only — never fall back to browser TTS
-        voiceOverEnabled
-          ? (currentSlide.voiceOverUrl || (currentSlide as any).audioUrl || currentSyntheticUrl || null)
-          : null,
-        null  // ttsText always null: slides are silent while AI audio loads, then auto-play
-      );
-    }
+    setActiveTabAudioUrl(null);
+  }, [currentSlide?.id]);
+
+  useEffect(() => {
+    // Only load/play audio while the course player is visible — never during generate/upload
+    if (step !== 'preview' || !currentSlide) return;
+    player.loadSlide(
+      currentSlide.id,
+      // AI audio only — never fall back to browser TTS
+      voiceOverEnabled
+        ? (activeTabAudioUrl || currentSlide.voiceOverUrl || (currentSlide as any).audioUrl || currentSyntheticUrl || null)
+        : null,
+      null  // ttsText always null: slides are silent while AI audio loads, then auto-play
+    );
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentSlide?.id, currentSlide?.voiceOverUrl, voiceOverEnabled, currentSyntheticUrl]);
+  }, [step, currentSlide?.id, currentSlide?.voiceOverUrl, voiceOverEnabled, currentSyntheticUrl, activeTabAudioUrl]);
 
 
   // Extract images
@@ -1894,14 +1930,14 @@ export default function App() {
   const playerPlayRef = useRef<() => void>(() => {});
   useEffect(() => { playerPlayRef.current = player.play; }, [player.play]);
   useEffect(() => {
-    if (!voiceOverEnabled) return;
+    if (step !== 'preview' || !voiceOverEnabled) return;
     const timer = setTimeout(() => {
       // Call via ref — guaranteed to use state from the most recent render
       playerPlayRef.current();
     }, 400);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentSlide?.id, player.hasAudio, voiceOverEnabled]);
+  }, [step, currentSlide?.id, player.hasAudio, voiceOverEnabled, activeTabAudioUrl]);
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
@@ -1983,6 +2019,7 @@ export default function App() {
     setIncludeSummarySlides(saved.includeSummarySlides ?? true);
     setSlideCount(saved.slideCount);
     setImageMode(normalizeImageMode(saved.imageMode));
+    setHotspotGenerateBackdrop(!!saved.hotspotGenerateBackdrop);
   };
 
   const collectCurrentSettings = (): SavedCourseSettings => ({
@@ -2000,6 +2037,7 @@ export default function App() {
     includeSummarySlides,
     slideCount,
     imageMode,
+    hotspotGenerateBackdrop,
   });
 
   const persistCourseSettings = () => {
@@ -2039,6 +2077,7 @@ export default function App() {
         quizActivityTypes: (examConfig.knowledgeCheckQuestionTypes || examConfig.questionTypes || []).filter(t =>
           ['sorting', 'matching', 'drop-targets', 'mc', 'ma', 'tf'].includes(t)
         ),
+        objectiveFormat,
       }
     );
   };
@@ -2139,6 +2178,7 @@ export default function App() {
               knowledgeCheckMode: outlineExamCfg.knowledgeCheckMode || 'per-module',
               knowledgeCheckCount: outlineExamCfg.knowledgeCheckCount ?? 1,
               quizActivityTypes: outlineExamCfg.knowledgeCheckQuestionTypes || outlineExamCfg.questionTypes,
+              objectiveFormat: settingsOverride?.objectiveFormat ?? objectiveFormat,
             }
           );
           setOutlineDraft(draft);
@@ -2149,6 +2189,7 @@ export default function App() {
             {
               courseType: outlineCourseType,
               scenarioConfig: outlineInteractions.includes('scenario') ? scenarioConfig : undefined,
+              interactionTypes: outlineInteractions,
             },
             // Leave 55–100% for images + audio in finalize
             (pct) => setProgress(20 + Math.round(pct * 0.35))
@@ -2196,6 +2237,7 @@ export default function App() {
             knowledgeCheckMode: outlineExamCfg.knowledgeCheckMode || 'per-module',
             knowledgeCheckCount: outlineExamCfg.knowledgeCheckCount ?? 1,
             quizActivityTypes: outlineExamCfg.knowledgeCheckQuestionTypes || outlineExamCfg.questionTypes,
+            objectiveFormat: settingsOverride?.objectiveFormat ?? objectiveFormat,
           }
         );
         setOutlineDraft(draft);
@@ -2574,6 +2616,7 @@ export default function App() {
           knowledgeCheckMode: examConfig.knowledgeCheckMode || 'per-module',
           knowledgeCheckCount: examConfig.knowledgeCheckCount ?? 1,
           quizActivityTypes: examConfig.knowledgeCheckQuestionTypes || examConfig.questionTypes,
+          objectiveFormat,
         }
       );
       setOutlineDraft(draft);
@@ -2582,7 +2625,11 @@ export default function App() {
         const finalCourse = await hydrateCourseContent(
           draft,
           prompt,
-          { courseType, scenarioConfig: interactionTypes.includes('scenario') ? scenarioConfig : undefined },
+          {
+            courseType,
+            scenarioConfig: interactionTypes.includes('scenario') ? scenarioConfig : undefined,
+            interactionTypes: contentInteractions,
+          },
           (pct) => setProgress(45 + Math.round(pct * 0.1))
         );
         // Wait for images + audio before opening Course Development
@@ -2625,7 +2672,7 @@ export default function App() {
     setActiveDraftId(null);
     setIsSandboxMode(false);
     setMobileDesignDemo(false);
-    // Do NOT open Course Development until images + audio below finish
+    // Do NOT wait for narration — open Course Development after images + QC; TTS runs in background
 
     // Pre-generate mastery quiz in parallel (does not gate the preview)
     if (examConfig.enabled) {
@@ -2650,7 +2697,12 @@ export default function App() {
     const sourceSnapshot = sourceImages;
     const voiceSnapshot = voiceOverEnabled;
     const voiceIdSnapshot = ttsVoice;
+    const hotspotBackdropSnapshot = hotspotGenerateBackdrop;
     const { ai: wantsAi, source: wantsSource } = imageModeFlags(modeSnapshot);
+    const wantsHotspotBackdrop =
+      hotspotBackdropSnapshot &&
+      (interactionTypes || []).includes('hotspot');
+    const runImagery = wantsAi || wantsSource || wantsHotspotBackdrop;
 
     const seedFloatingFromCourse = (c: any) => {
       const map: Record<string, FloatingImage[]> = {};
@@ -2720,7 +2772,7 @@ export default function App() {
     let coverUrl: string | null = null;
 
     // ── Images (55–78%) ──────────────────────────────────────────────
-    if (wantsAi || wantsSource) {
+    if (runImagery) {
       setIsGeneratingImages(true);
       setProgress(56);
       try {
@@ -2767,8 +2819,9 @@ export default function App() {
         try {
           const { enrichHotspotAndCarouselImages } = await import('./services/imageService');
           working = await enrichHotspotAndCarouselImages(working, imgs, {
-            generateAi: wantsAi,
+            generateAi: wantsAi || wantsHotspotBackdrop,
             useSource: wantsSource,
+            hotspotOnly: !wantsAi && wantsHotspotBackdrop,
           });
           if (coverUrl) working = { ...working, coverImage: coverUrl };
           seedFloatingFromCourse(working);
@@ -2820,69 +2873,84 @@ export default function App() {
       setIsRunningQC(false);
       setQcPhase(null);
     }
-    setProgress(82);
-
-    // ── Audio (82–98%) ───────────────────────────────────────────────
-    if (voiceSnapshot) {
-      try {
-        await generateTTS(working, setCourse, voiceIdSnapshot, (current, total) => {
-          setProgress(82 + Math.round((current / Math.max(1, total)) * 12));
-        });
-      } catch (err) {
-        console.warn('[TTS] Slide narration generation failed:', err);
-      }
-
-      try {
-        const { generateSlideTTS: genSlideTTS } = await import('./services/ttsService');
-        const syntheticJobs: Array<{ id: string; text: string }> = [
-          { id: '__cover__', text: `Welcome to ${working.title}. ${working.description || ''}`.trim() },
-          { id: '__player-tour__', text: 'Before we begin, take a moment to explore the player controls. Hover over each card to see the corresponding element highlighted in the player preview.' },
-        ];
-        const moduleSynthetics: Array<{ id: string; text: string }> = (working.modules || []).flatMap(
-          (m: any, idx: number) => {
-            const modNum = idx + 1;
-            const ct = (m.title || `Module ${modNum}`).replace(/^Module\s+\d+\s*[\u2014\-]\s*/i, '').trim();
-            const items: Array<{ id: string; text: string }> = [];
-            if (includeModuleTitleSlides) {
-              items.push({
-                id: `__module-cover-${modNum}__`,
-                text: `Module ${modNum}: ${ct}.${m.description ? ' ' + m.description : ''}`.trim(),
-              });
-            }
-            if (includeModuleOverviewSlides) {
-              items.push({
-                id: `__module-overview-${modNum}__`,
-                text: includeModuleTitleSlides
-                  ? (m.description
-                    ? `Here's what you'll cover: ${m.description}`
-                    : "Let's look at the learning objectives for this module.")
-                  : `Module ${modNum}: ${ct}. ${m.description ? `Here's what you'll cover: ${m.description}` : "Let's look at the learning objectives for this module."}`.trim(),
-              });
-            }
-            return items;
-          }
-        );
-        const allSynthetic = [...syntheticJobs, ...moduleSynthetics].filter(j => j.text.trim());
-        for (let i = 0; i < allSynthetic.length; i++) {
-          const { id, text } = allSynthetic[i];
+    // Optional: pre-warm Mermaid renders so diagram slides open faster in preview
+    try {
+      const diagramSlides = (working.modules || []).flatMap((m: any) =>
+        (m.slides || []).filter((s: any) => s.type === 'diagram' && s.data?.mermaidCode)
+      );
+      if (diagramSlides.length) {
+        const mermaid = (await import('mermaid')).default;
+        mermaid.initialize({ startOnLoad: false, theme: 'base', securityLevel: 'loose' });
+        for (const s of diagramSlides.slice(0, 8)) {
           try {
-            const url = await genSlideTTS(text, { voice: voiceIdSnapshot as any });
-            setSyntheticAudioMap(prev => ({ ...prev, [id]: url }));
+            await mermaid.render(`prewarm-${s.id}-${Date.now()}`, String(s.data.mermaidCode));
           } catch { /* non-fatal */ }
-          setProgress(94 + Math.round(((i + 1) / Math.max(1, allSynthetic.length)) * 4));
-          if (i < allSynthetic.length - 1) await new Promise(r => setTimeout(r, 300));
         }
-      } catch { /* silently ignore */ }
-    }
+      }
+    } catch { /* mermaid optional */ }
 
-    // Course is complete — open Development preview
+    setProgress(95);
+
+    // Open preview as soon as structure + images + QC are ready.
+    // Do NOT await TTS here — that blocked users and a later setCourse(working)
+    // wiped blob voiceOverUrls patched by generateTTS.
     if (coverUrl) working = { ...working, coverImage: coverUrl };
     setCourse(working);
     setOriginalCourse(working);
     setProgress(100);
-    await new Promise(r => setTimeout(r, 250));
     setStep('preview');
     navigateTo(ROUTES.courseDevelopment);
+
+    // ── Audio in background (toast shows progress; does not block preview) ─
+    if (voiceSnapshot) {
+      void (async () => {
+        try {
+          await generateTTS(working, setCourse, voiceIdSnapshot);
+        } catch (err) {
+          console.warn('[TTS] Slide narration generation failed:', err);
+        }
+
+        try {
+          const { generateSlideTTS: genSlideTTS } = await import('./services/ttsService');
+          const syntheticJobs: Array<{ id: string; text: string }> = [
+            { id: '__cover__', text: `Welcome to ${working.title}. ${working.description || ''}`.trim() },
+            { id: '__player-tour__', text: 'Before we begin, take a moment to explore the player controls. Hover over each card to see the corresponding element highlighted in the player preview.' },
+            { id: '__objectives__', text: 'These are the learning objectives for this course. Review each one so you know what you will be able to do when you finish.' },
+          ];
+          const moduleSynthetics: Array<{ id: string; text: string }> = (working.modules || []).flatMap(
+            (m: any, idx: number) => {
+              const modNum = idx + 1;
+              const ct = (m.title || `Module ${modNum}`).replace(/^Module\s+\d+\s*[\u2014\-]\s*/i, '').trim();
+              const items: Array<{ id: string; text: string }> = [];
+              if (includeModuleTitleSlides) {
+                items.push({
+                  id: `__module-cover-${modNum}__`,
+                  text: `Module ${modNum}: ${ct}.${m.description ? ' ' + m.description : ''}`.trim(),
+                });
+              }
+              if (includeModuleOverviewSlides) {
+                items.push({
+                  id: `__module-overview-${modNum}__`,
+                  text: includeModuleTitleSlides
+                    ? `Let's revisit the specific objectives for this module.${m.description ? ' ' + m.description : ''}`.trim()
+                    : `Module ${modNum}: ${ct}. Let's revisit the specific objectives for this module.${m.description ? ' ' + m.description : ''}`.trim(),
+                });
+              }
+              return items;
+            }
+          );
+          const allSynthetic = [...syntheticJobs, ...moduleSynthetics].filter(j => j.text.trim());
+          for (let i = 0; i < allSynthetic.length; i++) {
+            const { id, text } = allSynthetic[i];
+            try {
+              const url = await genSlideTTS(text, { voice: voiceIdSnapshot as any });
+              setSyntheticAudioMap(prev => ({ ...prev, [id]: url }));
+            } catch { /* non-fatal */ }
+            if (i < allSynthetic.length - 1) await new Promise(r => setTimeout(r, 300));
+          }
+        } catch { /* silently ignore */ }
+      })();
+    }
   };
   finalizeGeneratedCourseRef.current = finalizeGeneratedCourse;
 
@@ -2903,21 +2971,39 @@ Return ONLY JSON: { "content": "markdown with short bullets", "voiceOverText": "
 Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold** in bullets).`;
 
       let parsed: any = null;
-      try {
-        const apiBase = (import.meta as any).env?.VITE_SERVER_URL || '';
-        const res = await fetch(`${apiBase}/api/ai`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: promptText, complexity: 'simple' }),
-        });
-        if (!res.ok) throw new Error(`API ${res.status}`);
-        const aiRes = await res.json();
-        const text: string = aiRes.content?.[0]?.text ?? aiRes.text ?? '';
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) throw new Error('No JSON in AI response');
-        parsed = JSON.parse(jsonMatch[0]);
-      } catch (err) {
-        console.warn('[regenerateBlankSlide] AI failed, using title-derived fallback', err);
+      let lastErr: any = null;
+      const apiBase = (import.meta as any).env?.VITE_SERVER_URL || '';
+      for (let attempt = 0; attempt < 3 && !parsed; attempt++) {
+        try {
+          if (attempt > 0) {
+            showDraftMessage(`Retrying regenerate (attempt ${attempt + 1}/3)…`);
+            await new Promise(r => setTimeout(r, 1500 * attempt));
+          }
+          const res = await fetch(`${apiBase}/api/ai`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: promptText, complexity: 'simple' }),
+          });
+          if (!res.ok) throw new Error(`API ${res.status}`);
+          const aiRes = await res.json();
+          const text: string = aiRes.content?.[0]?.text ?? aiRes.text ?? '';
+          const jsonMatch = text.match(/\{[\s\S]*\}/);
+          if (!jsonMatch) throw new Error('No JSON in AI response');
+          parsed = JSON.parse(jsonMatch[0]);
+        } catch (err: any) {
+          lastErr = err;
+          const msg = String(err?.message || err || '');
+          const isFetchFail = /failed to fetch|networkerror|load failed|timeout/i.test(msg);
+          console.warn(`[regenerateBlankSlide] attempt ${attempt + 1} failed:`, err);
+          if (!isFetchFail && attempt === 0) break; // non-network: don't burn retries
+        }
+      }
+      if (!parsed) {
+        console.warn('[regenerateBlankSlide] AI failed, using title-derived fallback', lastErr);
+        const fetchHint = /failed to fetch/i.test(String(lastErr?.message || ''))
+          ? ' (API unreachable — often a cold start; try again in ~30s)'
+          : '';
+        showDraftMessage(`Regenerate failed${fetchHint}. Using a placeholder — edit or retry.`);
         parsed = {
           content: isTakeaway
             ? `## Key Takeaways\n\n- Review ${slide.title}\n- Apply the core module practices\n- Confirm understanding before moving on\n- Follow up with next steps`
@@ -2967,7 +3053,15 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
     setProgress(10);
     try {
       const finalCourse = await hydrateCourseContent(
-        outlineDraft!, prompt, { courseType, scenarioConfig: interactionTypes.includes('scenario') ? scenarioConfig : undefined },
+        outlineDraft!,
+        prompt,
+        {
+          courseType,
+          scenarioConfig: interactionTypes.includes('scenario') ? scenarioConfig : undefined,
+          interactionTypes: (interactionTypes || []).filter(
+            t => !['sorting', 'matching', 'drop-targets', 'multiple-choice', 'multiple-answers', 'quiz'].includes(t)
+          ),
+        },
         // Leave 55–100% for images + audio in finalize
         (pct) => setProgress(Math.round(pct * 0.55))
       );
@@ -4037,6 +4131,8 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                         subscriptionPlan={userPlan}
                         imageMode={imageMode}
                         setImageMode={setImageMode}
+                        hotspotGenerateBackdrop={hotspotGenerateBackdrop}
+                        setHotspotGenerateBackdrop={setHotspotGenerateBackdrop}
                         previewingVoice={previewingVoice}
                         onPreviewVoice={previewVoice}
                         outlineDraft={outlineDraft}
@@ -4106,6 +4202,8 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                 subscriptionPlan={userPlan}
                 imageMode={imageMode}
                 setImageMode={setImageMode}
+                hotspotGenerateBackdrop={hotspotGenerateBackdrop}
+                setHotspotGenerateBackdrop={setHotspotGenerateBackdrop}
                 previewingVoice={previewingVoice}
                 onPreviewVoice={previewVoice}
                 outlineDraft={outlineDraft}
@@ -4786,8 +4884,8 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                  return (
                                    <div className="space-y-5 w-full">
                                      <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                     <p className={cn('font-bold text-lg', theme === 'light' ? 'text-slate-800' : 'text-slate-100')}>{quiz.questionText || quiz.prompt || quiz.question}</p>
-                                     <div className="space-y-2.5 w-full">
+                                     <p className={cn('font-bold text-xl lg:text-2xl leading-snug', theme === 'light' ? 'text-slate-800' : 'text-slate-100')}>{quiz.questionText || quiz.prompt || quiz.question}</p>
+                                     <div className="space-y-3 w-full max-w-4xl">
                                        {quiz.options.map((opt: any, i: number) => {
                                          const label = opt.text || opt.label || opt;
                                          const isSelected = qs.selectedIdx === i;
@@ -4807,7 +4905,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                              <div className={cn('w-5 h-5 rounded-full border-2 shrink-0 mt-0.5 flex items-center justify-center', isSelected ? 'border-indigo-500 bg-indigo-500' : 'border-gray-300')}>
                                                {isSelected && <div className="w-2 h-2 bg-white rounded-full" />}
                                              </div>
-                                             <span className="flex-1 leading-snug text-sm">{label}</span>
+                                             <span className="flex-1 leading-snug text-base">{label}</span>
                                              {qs.submitted && isCorrect && <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />}
                                            </button>
                                          );
@@ -5122,6 +5220,17 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                        tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []}
                                        theme={theme as any}
                                        onTabView={(id) => markInteractionExplored(currentSlide.id, id)}
+                                       onTabAudio={(id) => {
+                                         if (!voiceOverEnabled) return;
+                                         const tabs = currentSlide.data?.tabs || currentSlide.data?.items || [];
+                                         const tab = (tabs || []).find((t: any) => t.id === id);
+                                         if (tab?.voiceOverUrl) setActiveTabAudioUrl(tab.voiceOverUrl);
+                                         else {
+                                           // Stop slide intro so it doesn't overlap while tab audio is missing
+                                           player.pause();
+                                           setActiveTabAudioUrl(null);
+                                         }
+                                       }}
                                      />
                                    </div>
                                  </div>
@@ -5134,6 +5243,16 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                                      tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []}
                                      theme={theme}
                                      onTabView={(id) => markInteractionExplored(currentSlide.id, id)}
+                                     onTabAudio={(id) => {
+                                       if (!voiceOverEnabled) return;
+                                       const tabs = currentSlide.data?.tabs || currentSlide.data?.items || [];
+                                       const tab = (tabs || []).find((t: any) => t.id === id);
+                                       if (tab?.voiceOverUrl) setActiveTabAudioUrl(tab.voiceOverUrl);
+                                       else {
+                                         player.pause();
+                                         setActiveTabAudioUrl(null);
+                                       }
+                                     }}
                                    />
                                  </div>
                                )}
@@ -5493,7 +5612,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                           !isCurrentSlideInteractionsComplete()
                         }
                         disableNextReason={interactionProgressLabel}
-                        disablePrev={currentSlide?.type === 'mastery-exam'}
+                        disablePrev={currentSlide?.type === 'mastery-exam' || currentSlide?.type === 'exam-results'}
                         volume={player.volume}
                         onVolumeChange={player.setVolume}
                         showCC={showCC}
@@ -5657,7 +5776,7 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                       </div>
                       <div className="space-y-2">
                         <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest flex items-center justify-between">
-                          <span>Audio Narration Script</span>
+                          <span>Main Slide Audio Narration</span>
                           <span className={`normal-case font-normal ${voiceOverEnabled ? 'text-emerald-400' : 'text-slate-600'}`}>
                             {voiceOverEnabled ? '🔊 Voice-Over Enabled' : '🔇 Voice-Over Off'}
                           </span>
@@ -5683,6 +5802,40 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
                            );
                          })()}
                        </div>
+                       {(editingSlide.type === 'tabbed-horizontal' || editingSlide.type === 'tabbed-vertical') && (() => {
+                         const tabs: any[] = editingSlide.data?.tabs || editingSlide.data?.items || [];
+                         if (!tabs.length) return null;
+                         const listKey = Array.isArray(editingSlide.data?.tabs) ? 'tabs' : 'items';
+                         return (
+                           <div className="space-y-3 pt-2 border-t border-slate-800">
+                             <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">
+                               Per-tab interaction audio
+                             </p>
+                             {tabs.map((tab: any, ti: number) => (
+                               <div key={tab.id || ti} className="space-y-1.5">
+                                 <label className="text-xs font-bold text-emerald-300/90">
+                                   Tab: {tab.label || `Tab ${ti + 1}`}
+                                 </label>
+                                 <textarea
+                                   rows={3}
+                                   value={tab.voiceOverText || ''}
+                                   onChange={(e) => {
+                                     const nextTabs = tabs.map((t: any, i: number) =>
+                                       i === ti ? { ...t, voiceOverText: e.target.value } : t
+                                     );
+                                     setEditingSlide({
+                                       ...editingSlide,
+                                       data: { ...(editingSlide.data || {}), [listKey]: nextTabs },
+                                     });
+                                   }}
+                                   className="w-full bg-slate-950 border border-emerald-700/30 rounded-xl px-3 py-2 text-emerald-100/90 focus:border-emerald-500 outline-none text-sm resize-none"
+                                   placeholder={`Narration when learner opens “${tab.label || `Tab ${ti + 1}`}”…`}
+                                 />
+                               </div>
+                             ))}
+                           </div>
+                         );
+                       })()}
                         {/* Per-slide voice picker + regenerate */}
                         {voiceOverEnabled && (
                           <div className="space-y-3 pt-1">
@@ -5996,13 +6149,11 @@ Rules: MAXIMUM 6 short bullets for summary/content lists; plain text (no **bold*
           )}
         </AnimatePresence>
 
-        {/* TTS toast only after generation — initial audio is on the main progress bar */}
-        {!(isGenerating || isHydrating) && (
-          <TTSProgressToast
-            progress={ttsProgress}
-            onDismiss={resetTTS}
-          />
-        )}
+        {/* Media progress — bottom-center; visible during preview while TTS runs */}
+        <TTSProgressToast
+          progress={ttsProgress}
+          onDismiss={resetTTS}
+        />
 
         {/* Interaction Preview Modal */}
 

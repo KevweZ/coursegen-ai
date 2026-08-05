@@ -175,7 +175,7 @@ export const MasteryExamSlide: React.FC<Props> = ({
 
     return (
       <div className="h-full overflow-y-auto p-6 bg-white">
-        <div className="max-w-2xl mx-auto space-y-8 pb-32">
+        <div className="max-w-4xl mx-auto space-y-8 pb-32">
           <div className="text-center space-y-1">
             <h2 className="text-2xl font-extrabold text-slate-900">Mastery Quiz</h2>
             <p className="text-sm text-slate-500">{answeredCount} of {questions.length} answered</p>
@@ -221,7 +221,7 @@ export const MasteryExamSlide: React.FC<Props> = ({
   return (
     <div className="h-full flex flex-col bg-white">
       <div className="flex-1 overflow-y-auto p-6">
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-4xl mx-auto">
           <AnimatePresence mode="wait">
             <motion.div
               key={currentQuestionIdx}

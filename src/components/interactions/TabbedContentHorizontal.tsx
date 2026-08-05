@@ -10,6 +10,10 @@ export interface HorizontalTab {
   expandedContent?: string;
   /** Optional AI/source image shown below tab text (does not cover copy) */
   imageUrl?: string;
+  /** Per-tab narration script */
+  voiceOverText?: string;
+  /** Generated TTS URL for this tab */
+  voiceOverUrl?: string;
 }
 
 type THTheme = 'light' | 'dark' | 'unified';
@@ -19,6 +23,8 @@ interface Props {
   title?: string;
   theme?: THTheme;
   onTabView?: (tabId: string) => void;
+  /** Fired only on user click (not mount) — use for per-tab audio cutover */
+  onTabAudio?: (tabId: string) => void;
 }
 
 const ACCENT_COLORS = [
@@ -32,7 +38,7 @@ function normalizeTabs(tabs: HorizontalTab[]): HorizontalTab[] {
   }));
 }
 
-export default function TabbedContentHorizontal({ tabs = [], title, theme = 'light', onTabView }: Props) {
+export default function TabbedContentHorizontal({ tabs = [], title, theme = 'light', onTabView, onTabAudio }: Props) {
   const normalized = useMemo(() => normalizeTabs(tabs), [tabs]);
   const [activeIndex, setActiveIndex] = useState(0);
   const isLight = theme === 'light';
@@ -47,7 +53,10 @@ export default function TabbedContentHorizontal({ tabs = [], title, theme = 'lig
   const selectTab = (i: number) => {
     setActiveIndex(i);
     const id = normalized[i]?.id;
-    if (id) onTabView?.(id);
+    if (id) {
+      onTabView?.(id);
+      onTabAudio?.(id);
+    }
   };
 
   const activeTab = normalized[Math.min(activeIndex, normalized.length - 1)];

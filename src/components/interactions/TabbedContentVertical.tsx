@@ -10,6 +10,8 @@ export interface VerticalTab {
   content: string;
   /** Optional AI/source image shown below tab text (does not cover copy) */
   imageUrl?: string;
+  voiceOverText?: string;
+  voiceOverUrl?: string;
 }
 
 type TVTheme = 'light' | 'dark' | 'unified';
@@ -19,6 +21,8 @@ interface Props {
   title?: string;
   theme?: TVTheme;
   onTabView?: (tabId: string) => void;
+  /** Fired only on user click (not mount) — use for per-tab audio cutover */
+  onTabAudio?: (tabId: string) => void;
 }
 
 const ACCENT_COLORS = [
@@ -34,7 +38,7 @@ function cn(...classes: (string | false | undefined | null)[]): string {
   return classes.filter(Boolean).join(' ');
 }
 
-export default function TabbedContentVertical({ tabs = [], title, theme = 'light', onTabView }: Props) {
+export default function TabbedContentVertical({ tabs = [], title, theme = 'light', onTabView, onTabAudio }: Props) {
   const normalized = useMemo(
     () => (tabs || []).map((t, i) => ({ ...t, id: (t?.id != null && String(t.id).trim()) ? String(t.id) : `tab-${i}` })),
     [tabs]
@@ -55,7 +59,10 @@ export default function TabbedContentVertical({ tabs = [], title, theme = 'light
   const selectTab = (i: number) => {
     setActiveIndex(i);
     const id = normalized[i]?.id;
-    if (id) onTabView?.(id);
+    if (id) {
+      onTabView?.(id);
+      onTabAudio?.(id);
+    }
   };
 
   return (

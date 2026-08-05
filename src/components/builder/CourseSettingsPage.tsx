@@ -108,6 +108,9 @@ export interface CourseSettingsPageProps {
   subscriptionPlan?: string | null;
   imageMode: CourseImageMode;
   setImageMode: (m: CourseImageMode) => void;
+  /** When Hotspot is selected but Multimedia AI/source are off */
+  hotspotGenerateBackdrop?: boolean;
+  setHotspotGenerateBackdrop?: (v: boolean) => void;
   previewingVoice: string | null;
   onPreviewVoice: (id: string) => void;
 
@@ -905,6 +908,30 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
               {props.interactionTypes.includes('scenario') && (
                 <ScenarioBuilderPanel config={props.scenarioConfig} onChange={props.setScenarioConfig} />
               )}
+
+              {props.interactionTypes.includes('hotspot') && (() => {
+                const { ai: aiOn, source: srcOn } = imageModeFlags(props.imageMode);
+                if (aiOn || srcOn) return null;
+                return (
+                  <div className="bg-slate-900/80 rounded-2xl border border-amber-500/30 p-5 space-y-3">
+                    <p className="text-sm text-amber-200/90 leading-relaxed">
+                      Hotspot slides need a backdrop image. Multimedia images are off — enable a backdrop for hotspot slides only.
+                    </p>
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={!!props.hotspotGenerateBackdrop}
+                        onChange={(e) => props.setHotspotGenerateBackdrop?.(e.target.checked)}
+                        className="mt-1 w-4 h-4 rounded border-slate-600 text-amber-500 focus:ring-amber-500/40 bg-slate-900"
+                      />
+                      <div>
+                        <p className="text-sm font-bold text-white">Generate a backdrop image for hotspot slides only</p>
+                        <p className="text-xs text-slate-500 mt-0.5">Uses AI for hotspot backdrops without turning on global course images.</p>
+                      </div>
+                    </label>
+                  </div>
+                );
+              })()}
 
               {props.interactionTypes.length > 4 && (
                 <div className="flex items-start gap-3 p-4 rounded-xl border border-amber-500/30 bg-amber-500/10">

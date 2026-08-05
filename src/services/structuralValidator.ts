@@ -213,11 +213,12 @@ function checkContentLength(slide: any, modIdx: number, slideIdx: number, modTit
   return [];
 }
 
-function checkNarration(slide: any, modIdx: number, slideIdx: number, modTitle: string, narrationEnabled: boolean): QCIssue[] {
+function checkNarration(slide: any, modIdx: number, slideIdx: number, modTitle: string, narrationEnabled: boolean, expectAudioUrls = false): QCIssue[] {
   if (!narrationEnabled) return [];
+  const issues: QCIssue[] = [];
   if (!slide.voiceOverText || slide.voiceOverText.trim() === '') {
     const fallback = slide.narration?.trim() ?? '';
-    return [baseIssue(slide, modIdx, slideIdx, modTitle, {
+    issues.push(baseIssue(slide, modIdx, slideIdx, modTitle, {
       field: 'voiceOverText',
       type: 'narration_gap',
       severity: 'warning',
@@ -225,27 +226,95 @@ function checkNarration(slide: any, modIdx: number, slideIdx: number, modTitle: 
       originalText: '',
       suggestion: fallback || 'Add voiceover text for this slide.',
       autoFixable: !!fallback,
-    })];
+    }));
+  } else if (expectAudioUrls && !slide.voiceOverUrl && !slide.audioUrl) {
+    issues.push(baseIssue(slide, modIdx, slideIdx, modTitle, {
+      field: 'voiceOverUrl',
+      type: 'narration_gap',
+      severity: 'warning',
+      message: 'Narration text exists but audio has not been generated for this slide.',
+      originalText: slide.voiceOverText.slice(0, 120),
+      suggestion: 'Regenerate narration audio for this slide.',
+      autoFixable: false,
+    }));
   }
-  return [];
+  return issues;
 }
 
-function checkQuiz(slide: any, modIdx: number, slideIdx: number, modTitle: string): QCIssue[] {
-  if (slide.type !== 'quiz' && slide.type !== 'multiple-answer') return [];
-  const issues: QCIssue[] = [];
-  // Quiz data lives in slide.data (dummy course) OR slide.interactions[0] (AI-generated)
-  const data = slide.data || slide.interactions?.[0] || {};
-  const options: any[] = data.options ?? [];
+const QUIZ_TYPES = new Set([
+  'quiz', 'multiple-answer', 'multiple-choice', 'multiple-answers', 'true-false',
+  'sorting', 'matching', 'drop-targets', 'knowledge-check',
+]);
 
-  if (!data.questionText || data.questionText.trim() === '') {
+function checkQuiz(slide: any, modIdx: number, slideIdx: number, modTitle: string): QCIssue[] {
+  if (!QUIZ_TYPES.has(slide.type)) return [];
+  const issues: QCIssue[] = [];
+  const data = slide.data || slide.interactions?.[0] || {};
+
+  // Sorting / matching / drop-targets: require items (covered also by INTERACTION_TYPES empty check)
+  if (slide.type === 'sorting') {
+    if (!Array.isArray(data.items) || data.items.length < 2) {
+      issues.push(baseIssue(slide, modIdx, slideIdx, modTitle, {
+        field: 'data.items',
+        type: 'quiz_integrity',
+        severity: 'error',
+        message: 'Sorting knowledge check has no items to reorder.',
+        originalText: '',
+        suggestion: 'Add at least 2 sortable items.',
+        autoFixable: false,
+        fixActions: ['regenerate'],
+      }));
+    }
+    return issues;
+  }
+  if (slide.type === 'matching') {
+    const pairs = Array.isArray(data.pairs) ? data.pairs : [];
+    const items = Array.isArray(data.items) ? data.items : [];
+    const targets = Array.isArray(data.targets) ? data.targets : [];
+    if (pairs.length === 0 && (items.length === 0 || targets.length === 0)) {
+      issues.push(baseIssue(slide, modIdx, slideIdx, modTitle, {
+        field: 'data',
+        type: 'quiz_integrity',
+        severity: 'error',
+        message: 'Matching knowledge check is empty (no pairs/items).',
+        originalText: '',
+        suggestion: 'Add matching items and targets.',
+        autoFixable: false,
+        fixActions: ['regenerate'],
+      }));
+    }
+    return issues;
+  }
+  if (slide.type === 'drop-targets') {
+    if (!Array.isArray(data.items) || data.items.length < 2) {
+      issues.push(baseIssue(slide, modIdx, slideIdx, modTitle, {
+        field: 'data.items',
+        type: 'quiz_integrity',
+        severity: 'error',
+        message: 'Drop-targets knowledge check has no draggable items.',
+        originalText: '',
+        suggestion: 'Add items and categories.',
+        autoFixable: false,
+        fixActions: ['regenerate'],
+      }));
+    }
+    return issues;
+  }
+
+  // MC / MA / TF / quiz
+  const options: any[] = data.options ?? [];
+  const questionText = data.questionText || data.question || data.prompt || '';
+
+  if (!questionText || String(questionText).trim() === '') {
     issues.push(baseIssue(slide, modIdx, slideIdx, modTitle, {
       field: 'data.questionText',
       type: 'empty_field',
       severity: 'error',
-      message: 'Quiz question text is missing.',
+      message: 'Quiz / knowledge-check question text is missing.',
       originalText: '',
-      suggestion: 'Add a question for this quiz slide.',
+      suggestion: 'Add a question for this slide.',
       autoFixable: false,
+      fixActions: ['regenerate'],
     }));
   }
   if (options.length < 2) {
@@ -257,19 +326,24 @@ function checkQuiz(slide: any, modIdx: number, slideIdx: number, modTitle: strin
       originalText: JSON.stringify(options),
       suggestion: 'Add more answer options.',
       autoFixable: false,
+      fixActions: ['regenerate'],
     }));
   }
-  const correctCount = options.filter((o: any) => o.isCorrect).length;
-  if (correctCount === 0 && options.length > 0) {
-    issues.push(baseIssue(slide, modIdx, slideIdx, modTitle, {
-      field: 'data.options',
-      type: 'quiz_integrity',
-      severity: 'error',
-      message: 'No correct answer is marked for this quiz.',
-      originalText: JSON.stringify(options.map((o: any) => ({ id: o.id, text: o.text, isCorrect: o.isCorrect }))),
-      suggestion: 'Mark at least one option as correct.',
-      autoFixable: false,
-    }));
+  const correctCount = options.filter((o: any) => o.isCorrect || o.correct).length;
+  if (correctCount === 0 && options.length > 0 && slide.type !== 'true-false') {
+    // TF may encode correctAnswer as index
+    const hasIndexed = data.correctAnswer !== undefined && data.correctAnswer !== null;
+    if (!hasIndexed) {
+      issues.push(baseIssue(slide, modIdx, slideIdx, modTitle, {
+        field: 'data.options',
+        type: 'quiz_integrity',
+        severity: 'error',
+        message: 'No correct answer is marked for this quiz.',
+        originalText: JSON.stringify(options.map((o: any) => ({ id: o.id, text: o.text, isCorrect: o.isCorrect }))),
+        suggestion: 'Mark at least one option as correct.',
+        autoFixable: false,
+      }));
+    }
   }
   return issues;
 }
@@ -625,6 +699,11 @@ export function validateCourse(course: any, narrationEnabled = false): QCReport 
   const issues: QCIssue[] = [];
   let totalSlides = 0;
 
+  // If any slide already has generated audio, expect the rest with VO text to have URLs too
+  const anyAudioUrl = (course.modules ?? []).some((m: any) =>
+    (m.slides ?? []).some((s: any) => !!(s.voiceOverUrl || s.audioUrl))
+  );
+
   (course.modules ?? []).forEach((mod: any, modIdx: number) => {
     const modTitle = mod.title ?? `Module ${modIdx + 1}`;
     (mod.slides ?? []).forEach((slide: any, slideIdx: number) => {
@@ -633,7 +712,7 @@ export function validateCourse(course: any, narrationEnabled = false): QCReport 
       issues.push(...checkTitleLength(slide, modIdx, slideIdx, modTitle));
       issues.push(...checkContentEmpty(slide, modIdx, slideIdx, modTitle));
       issues.push(...checkContentLength(slide, modIdx, slideIdx, modTitle));
-      issues.push(...checkNarration(slide, modIdx, slideIdx, modTitle, narrationEnabled));
+      issues.push(...checkNarration(slide, modIdx, slideIdx, modTitle, narrationEnabled, anyAudioUrl));
       issues.push(...checkQuiz(slide, modIdx, slideIdx, modTitle));
       issues.push(...checkAccordion(slide, modIdx, slideIdx, modTitle));
       issues.push(...checkFlashcards(slide, modIdx, slideIdx, modTitle));

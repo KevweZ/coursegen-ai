@@ -80,6 +80,9 @@ export interface PreviewDraftSnapshot {
   course: any;
   playerConfig: any;
   theme: string;
+  /** Restored so Course Objectives / module overview rebuild correctly */
+  learningObjectives?: any[];
+  syntheticSlideOverrides?: Record<string, { content?: string; voiceOverText?: string }>;
 }
 
 export type DraftSnapshot = DesignDraftSnapshot | PreviewDraftSnapshot;
@@ -413,6 +416,22 @@ function stripEphemeralMedia(course: any): any {
         if (typeof next.audioUrl === 'string' && next.audioUrl.startsWith('blob:')) {
           delete next.audioUrl;
         }
+        // Also strip blob URLs nested in tab / card lists
+        if (next.data && typeof next.data === 'object') {
+          const data = { ...next.data };
+          for (const key of ['tabs', 'items', 'cards'] as const) {
+            if (!Array.isArray(data[key])) continue;
+            data[key] = data[key].map((item: any) => {
+              if (!item || typeof item !== 'object') return item;
+              const copy = { ...item };
+              if (typeof copy.voiceOverUrl === 'string' && copy.voiceOverUrl.startsWith('blob:')) {
+                delete copy.voiceOverUrl;
+              }
+              return copy;
+            });
+          }
+          next.data = data;
+        }
         return next;
       }),
     })),
@@ -450,7 +469,12 @@ export interface UseDraftCoursesReturn {
   slotsUsed: number;
   slotsTotal: number;
   refreshDrafts: () => Promise<void>;
-  savePreviewDraft: (course: any, playerConfig: any, theme: string) => Promise<{ success: boolean; message: string; id?: string }>;
+  savePreviewDraft: (
+    course: any,
+    playerConfig: any,
+    theme: string,
+    extras?: { learningObjectives?: any[]; syntheticSlideOverrides?: Record<string, any> }
+  ) => Promise<{ success: boolean; message: string; id?: string }>;
   saveDesignDraft: (design: Omit<DesignDraftSnapshot, 'phase'>) => Promise<{ success: boolean; message: string; id?: string }>;
   /** Sync peek from in-memory cache only — prefer loadDraftAsync */
   loadDraft: (id: string) => DraftSnapshot | null;
@@ -462,10 +486,27 @@ export interface UseDraftCoursesReturn {
   /** Heavy data-URL images for a draft (may be empty for legacy inline payloads) */
   loadDraftAssets: (id: string) => Promise<Record<string, string>>;
   deleteDraft: (id: string) => Promise<void>;
-  replacePreviewDraft: (id: string, course: any, playerConfig: any, theme: string) => Promise<{ success: boolean; message: string }>;
+  replacePreviewDraft: (
+    id: string,
+    course: any,
+    playerConfig: any,
+    theme: string,
+    extras?: { learningObjectives?: any[]; syntheticSlideOverrides?: Record<string, any> }
+  ) => Promise<{ success: boolean; message: string }>;
   replaceDesignDraft: (id: string, design: Omit<DesignDraftSnapshot, 'phase'>) => Promise<{ success: boolean; message: string }>;
-  saveDraft: (course: any, playerConfig: any, theme: string) => Promise<{ success: boolean; message: string; id?: string }>;
-  replaceDraft: (id: string, course: any, playerConfig: any, theme: string) => Promise<{ success: boolean; message: string }>;
+  saveDraft: (
+    course: any,
+    playerConfig: any,
+    theme: string,
+    extras?: { learningObjectives?: any[]; syntheticSlideOverrides?: Record<string, any> }
+  ) => Promise<{ success: boolean; message: string; id?: string }>;
+  replaceDraft: (
+    id: string,
+    course: any,
+    playerConfig: any,
+    theme: string,
+    extras?: { learningObjectives?: any[]; syntheticSlideOverrides?: Record<string, any> }
+  ) => Promise<{ success: boolean; message: string }>;
 }
 
 export function useDraftCourses(
@@ -565,7 +606,13 @@ export function useDraftCourses(
   const canSave = !!userId && slotsUsed < slotsTotal;
 
   /** Clone course lightly for save, strip blob URLs + extract heavy data-URLs to assets store */
-  const preparePreviewSnapshot = (course: any, playerConfig: any, theme: string, draftId: string) => {
+  const preparePreviewSnapshot = (
+    course: any,
+    playerConfig: any,
+    theme: string,
+    draftId: string,
+    extras?: { learningObjectives?: any[]; syntheticSlideOverrides?: Record<string, any> }
+  ) => {
     // structuredClone keeps us from mutating the live editor course
     let working: any;
     try {
@@ -583,7 +630,14 @@ export function useDraftCourses(
       `[DraftCourses] Media split for save: ${media.size} asset(s), ` +
       `${Math.round(before / 1024)}KB → ${Math.round(after / 1024)}KB shell`
     );
-    const snapshot: PreviewDraftSnapshot = { phase: 'preview', course: working, playerConfig, theme };
+    const snapshot: PreviewDraftSnapshot = {
+      phase: 'preview',
+      course: working,
+      playerConfig,
+      theme,
+      learningObjectives: extras?.learningObjectives,
+      syntheticSlideOverrides: extras?.syntheticSlideOverrides,
+    };
     const assets = mediaMapToRecord(media);
     return { snapshot, assets, draftId };
   };
@@ -651,7 +705,12 @@ export function useDraftCourses(
     }
   };
 
-  const savePreviewDraft = useCallback(async (course: any, playerConfig: any, theme: string) => {
+  const savePreviewDraft = useCallback(async (
+    course: any,
+    playerConfig: any,
+    theme: string,
+    extras?: { learningObjectives?: any[]; syntheticSlideOverrides?: Record<string, any> }
+  ) => {
     if (!userId) return { success: false, message: 'Sign in to save drafts.' };
     if (draftsRef.current.length >= slotsTotal) {
       return {
@@ -664,7 +723,7 @@ export function useDraftCourses(
     }
 
     const id = makeDraftId();
-    const { snapshot, assets } = preparePreviewSnapshot(course, playerConfig, theme, id);
+    const { snapshot, assets } = preparePreviewSnapshot(course, playerConfig, theme, id, extras);
     const meta: CourseDraft = {
       id,
       savedAt: new Date().toISOString(),
@@ -875,9 +934,15 @@ export function useDraftCourses(
     }
   }, [userId]);
 
-  const replacePreviewDraft = useCallback(async (id: string, course: any, playerConfig: any, theme: string) => {
+  const replacePreviewDraft = useCallback(async (
+    id: string,
+    course: any,
+    playerConfig: any,
+    theme: string,
+    extras?: { learningObjectives?: any[]; syntheticSlideOverrides?: Record<string, any> }
+  ) => {
     if (!userId) return { success: false, message: 'Sign in to save drafts.' };
-    const { snapshot, assets } = preparePreviewSnapshot(course, playerConfig, theme, id);
+    const { snapshot, assets } = preparePreviewSnapshot(course, playerConfig, theme, id, extras);
     const result = await persistReplace(id, {
       savedAt: new Date().toISOString(),
       courseTitle: snapshot.course.title || 'Untitled Course',

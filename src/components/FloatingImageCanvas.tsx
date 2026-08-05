@@ -25,33 +25,43 @@ interface CropModalProps {
 
 function CropModal({ imageUrl, onClose, onSave }: CropModalProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const previewRef = useRef<HTMLCanvasElement>(null);
-  const [cropRect, setCropRect] = useState({ x: 0.1, y: 0.1, w: 0.8, h: 0.8 }); // normalized 0-1
+  const [cropRect, setCropRect] = useState({ x: 0.05, y: 0.05, w: 0.9, h: 0.9 }); // normalized 0-1
   const [dragging, setDragging] = useState<{ handle: string; startX: number; startY: number; startCrop: typeof cropRect } | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [canvasSize, setCanvasSize] = useState({ w: 600, h: 400 });
 
   useEffect(() => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
       imgRef.current = img;
-      drawOverlay();
+      // Match canvas aspect to image — avoids letterbox dark side bars
+      const maxW = 640;
+      const maxH = 480;
+      const aspect = img.naturalWidth / Math.max(1, img.naturalHeight);
+      let w = maxW;
+      let h = Math.round(w / aspect);
+      if (h > maxH) {
+        h = maxH;
+        w = Math.round(h * aspect);
+      }
+      setCanvasSize({ w, h });
+      requestAnimationFrame(() => drawOverlay());
     };
     img.src = imageUrl;
   }, [imageUrl]);
 
   useEffect(() => {
     drawOverlay();
-  }, [cropRect]);
+  }, [cropRect, canvasSize]);
 
   function drawOverlay() {
     const canvas = canvasRef.current;
     if (!canvas || !imgRef.current) return;
     const img = imgRef.current;
-    const ctx = canvas.getContext('2d')!;
+    const ctx = canvas.getContext('2d', { alpha: true })!;
 
-    // Scale to fit canvas
     const canvasW = canvas.width;
     const canvasH = canvas.height;
     ctx.clearRect(0, 0, canvasW, canvasH);
@@ -63,7 +73,7 @@ function CropModal({ imageUrl, onClose, onSave }: CropModalProps) {
     const cw = cropRect.w * canvasW;
     const ch = cropRect.h * canvasH;
 
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
     ctx.fillRect(0, 0, canvasW, cy);                       // top
     ctx.fillRect(0, cy + ch, canvasW, canvasH - cy - ch);  // bottom
     ctx.fillRect(0, cy, cx, ch);                            // left
@@ -157,9 +167,11 @@ function CropModal({ imageUrl, onClose, onSave }: CropModalProps) {
     const img = imgRef.current;
     if (!img) return;
     const out = document.createElement('canvas');
-    out.width = Math.round(img.naturalWidth * cropRect.w);
-    out.height = Math.round(img.naturalHeight * cropRect.h);
-    const ctx = out.getContext('2d')!;
+    out.width = Math.max(1, Math.round(img.naturalWidth * cropRect.w));
+    out.height = Math.max(1, Math.round(img.naturalHeight * cropRect.h));
+    const ctx = out.getContext('2d', { alpha: true })!;
+    // Transparent clear — preserve PNG alpha (no black letterbox bake-in)
+    ctx.clearRect(0, 0, out.width, out.height);
     ctx.drawImage(
       img,
       img.naturalWidth * cropRect.x,
@@ -168,7 +180,7 @@ function CropModal({ imageUrl, onClose, onSave }: CropModalProps) {
       img.naturalHeight * cropRect.h,
       0, 0, out.width, out.height
     );
-    onSave(out.toDataURL('image/png', 0.95));
+    onSave(out.toDataURL('image/png'));
   }
 
   return (
@@ -199,13 +211,20 @@ function CropModal({ imageUrl, onClose, onSave }: CropModalProps) {
           </div>
         </div>
 
-        {/* Canvas */}
-        <div className="p-4 bg-slate-950 flex items-center justify-center" ref={containerRef}>
+        {/* Checkerboard so PNG transparency is visible (no dark letterbox frame) */}
+        <div
+          className="p-4 flex items-center justify-center"
+          ref={containerRef}
+          style={{
+            background:
+              'repeating-conic-gradient(#334155 0% 25%, #1e293b 0% 50%) 50% / 16px 16px',
+          }}
+        >
           <canvas
             ref={canvasRef}
-            width={600}
-            height={400}
-            className="max-w-full object-contain cursor-crosshair rounded-lg"
+            width={canvasSize.w}
+            height={canvasSize.h}
+            className="max-w-full cursor-crosshair rounded-lg"
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
@@ -214,7 +233,7 @@ function CropModal({ imageUrl, onClose, onSave }: CropModalProps) {
         </div>
 
         <p className="text-xs text-slate-500 text-center pb-3">
-          Drag corners to resize crop area · Drag inside to move · Click Apply to save
+          Drag corners freely · Drag inside to move · PNG transparency preserved
         </p>
       </div>
     </div>

@@ -22,6 +22,55 @@ export interface CourseOutlineDraft {
   }[];
 }
 
+/** Content interaction types that may appear as slide.type (not quiz/KC). */
+const CONTENT_INTERACTION_TYPES = new Set([
+  'content', 'diagram', 'key-takeaways', 'summary', 'title',
+  'flashcards', 'timeline', 'hotspot', 'scenario',
+  'tabbed-horizontal', 'tabbed-vertical', 'folder-explorer',
+  'carousel-panel', 'click-reveal', 'accordion',
+]);
+
+const QUIZ_SLIDE_TYPES = new Set([
+  'quiz', 'sorting', 'matching', 'drop-targets',
+  'multiple-choice', 'multiple-answers', 'knowledge-check',
+]);
+
+/**
+ * Hard-enforce Course Settings interaction whitelist on outline/hydrated slides.
+ * Disallowed content interactions become plain "content" (quiz/KC types left alone).
+ */
+export function coerceInteractionTypes(
+  modules: Array<{ slides?: Array<{ type?: string; [k: string]: any }> }>,
+  allowed: string[],
+): typeof modules {
+  const allow = new Set(
+    (allowed || [])
+      .filter(t => !QUIZ_SLIDE_TYPES.has(t))
+      .map(t => (t === 'accordion' ? 'click-reveal' : t))
+  );
+  // Always allow structural content types
+  allow.add('content');
+  allow.add('diagram');
+  allow.add('key-takeaways');
+  allow.add('summary');
+  allow.add('title');
+
+  const fallback =
+    [...allow].find(t => t === 'click-reveal' || t.startsWith('tabbed')) || 'content';
+
+  return (modules || []).map(mod => ({
+    ...mod,
+    slides: (mod.slides || []).map(s => {
+      const raw = s.type === 'accordion' ? 'click-reveal' : (s.type || 'content');
+      if (QUIZ_SLIDE_TYPES.has(raw)) return s.type === 'accordion' ? { ...s, type: 'click-reveal' } : s;
+      if (!CONTENT_INTERACTION_TYPES.has(raw) || allow.has(raw)) {
+        return raw === s.type ? s : { ...s, type: raw };
+      }
+      return { ...s, type: fallback };
+    }),
+  }));
+}
+
 function extractJsonFromText(rawText: string): string {
   let text = rawText.trim();
 
@@ -345,6 +394,8 @@ export async function generateCourseOutline(
     isSourceConversion?: boolean;
     sourceContent?: string;
     conversionPreferences?: string[];
+    /** AB | ABC | ABCD — used when drafting objectives-aligned module titles */
+    objectiveFormat?: string;
   }
 ): Promise<CourseOutlineDraft> {
   // Games temporarily disabled at product level — ignore any passed IDs
@@ -364,6 +415,13 @@ export async function generateCourseOutline(
     ? `Exactly ${kcCount} Knowledge Check slide(s) per module (type must be one of: ${uniqueQuizActivities.join(', ')}). Title MUST start with "Knowledge Check:".`
     : `About ${kcCount} Knowledge Check slides total across the course (type must be one of: ${uniqueQuizActivities.join(', ')}). Title MUST start with "Knowledge Check:".`;
 
+  const allowedTypesForSchema = [
+    'content', 'diagram', 'key-takeaways',
+    ...contentInteractions.filter(t => !['content', 'diagram', 'key-takeaways'].includes(t)),
+    ...uniqueQuizActivities,
+  ];
+  const schemaTypeEnum = [...new Set(allowedTypesForSchema)].join('|') || 'content|quiz';
+
   const systemInstruction = `You are an Expert Senior Corporate Instructional Designer.
   Your ONLY job right now is to draft the TABLE OF CONTENTS (Outline) for a course. Do NOT write the actual content yet.
   
@@ -376,6 +434,7 @@ export async function generateCourseOutline(
      Do NOT generate title, intro, overview, or objectives slides for any module. Each module must start directly with its first content or interaction slide.
   2. NO objectives slide — FORBIDDEN. Do NOT create any slide titled "Learning Objectives", "Module Objectives", "Objectives", or similar. Do NOT use click-reveal (or any other type) to restate objectives.${configParams.includeModuleOverviewSlides !== false ? ' The auto-injected Module Overview already shows this module\'s objective and sub-objectives from the canonical Learning Objectives list.' : ''}
   3. Content & Interaction Slides — ONLY use these content interaction types as slide 'type': ${contentInteractions.join(', ') || 'content'}.
+     HARD RULE: Do NOT use hotspot, carousel-panel, flashcards, timeline, scenario, or folder-explorer unless that exact type is listed above.
      Map them like this:
      - flashcards, timeline, hotspot, scenario, tabbed-horizontal, tabbed-vertical, folder-explorer, carousel-panel, click-reveal -> use the exact string as the slide 'type'
      - Do NOT use type "accordion" — use "click-reveal" instead (same progressive-disclosure pattern)
@@ -402,7 +461,7 @@ export async function generateCourseOutline(
         "id": "uuid",
         "title": "Module Title",
         "slides": [
-          { "id": "uuid", "type": "content|quiz|flashcards|timeline|hotspot|sorting|matching|diagram|tabbed-horizontal|tabbed-vertical|folder-explorer|carousel-panel|click-reveal|key-takeaways", "title": "Slide Title" }
+          { "id": "uuid", "type": "${schemaTypeEnum}", "title": "Slide Title" }
         ]
       }
     ]
@@ -417,6 +476,7 @@ export async function generateCourseOutline(
 
     const userPrompt = `Draft the outline for a Corporate Training Course. Topic: "${prompt}".
     Learning Objectives: ${JSON.stringify(objectives)}
+    Objective format for this course: ${configParams.objectiveFormat || 'AB'} (respect this structure when aligning modules to objectives).
     Total Target Slide Count: ~${configParams.slideCount || 10}
     AVAILABLE VISUAL THEMES: ${availableThemes.length > 0 ? availableThemes.join(", ") : "Neutral"}
     IMPORTANT AI DIRECTIVE: You must ONLY select a visualTheme if the course topic has a STRONG, LITERAL semantic match to that specific theme (e.g. use "Rigs" only for oil/gas/industrial topics, use "Forest" only for nature topics). If there is NO strong semantic match, you MUST default to "Neutral". Do not guess or select unrelated themes!
@@ -455,6 +515,11 @@ export async function generateCourseOutline(
     }));
   }
 
+  // Hard whitelist — never trust the model to stay inside Course Settings interactions
+  if (Array.isArray(parsedOutline.modules)) {
+    parsedOutline.modules = coerceInteractionTypes(parsedOutline.modules, contentInteractions) as any;
+  }
+
   return parsedOutline;
 }
 
@@ -467,6 +532,8 @@ export async function hydrateCourseContent(
     sourceContent?: string;
     conversionPreferences?: string[];
     scenarioConfig?: ScenarioConfigForGeneration;
+    /** Whitelist from Course Settings — coerced after hydrate */
+    interactionTypes?: string[];
   },
   onProgress?: (pct: number) => void
 ): Promise<CourseOutline> {
@@ -497,6 +564,9 @@ export async function hydrateCourseContent(
   - MODULE SUMMARY / KEY TAKEAWAYS SPECIFICALLY: never write one bullet per topic taught in the module. Instead select
     ONLY the 4-6 most important, highest-value takeaways across the WHOLE module. The narration should give a big-picture
     synthesis of why these matter together — ideally ending on a short, memorable line — NOT a recap of every slide.
+  - TABBED CONTENT (tabbed-horizontal / tabbed-vertical) — STRICT: each tab's on-screen content must be SHORT BULLETS
+    (3–5 bullets, 5–8 words each). Put explanations in voiceOverText and (when present) each tab's voiceOverText field.
+    Never put a thick paragraph inside a tab panel.
 
   ========================================
   ISD BEST PRACTICES (MANDATORY)
@@ -588,15 +658,15 @@ export async function hydrateCourseContent(
 
   TABBED-HORIZONTAL (type: "tabbed-horizontal"):
   - data.tabs: array of 2-5 tab objects
-  - Each tab: { "id": "t1", "label": "Tab Label", "color": "#6366f1", "content": "Main content text", "expandedContent": "Additional detail shown when MORE is clicked" }
+  - Each tab: { "id": "t1", "label": "Tab Label", "color": "#6366f1", "content": "- Short bullet\\n- Another point", "voiceOverText": "2-4 spoken sentences elaborating this tab", "expandedContent": "optional extra detail" }
+  - On-screen tab content MUST be SHORT BULLETS only (3–5 bullets, 5–8 words each). Put explanations in the tab's voiceOverText (and the slide-level voiceOverText for the intro).
   - Color must be a valid hex color. Use different colors per tab.
-  - content: 2-4 sentences summarizing the topic. expandedContent: 3-6 sentences with more detail.
   - FAIL CONDITION: fewer than 2 tabs, or missing content -> regenerate
 
   TABBED-VERTICAL (type: "tabbed-vertical"):
   - data.tabs: array of 2-6 tab objects
-  - Each tab: { "id": "t1", "label": "Topic Name", "content": "Rich text for this topic. Use \\n\\n for paragraphs." }
-  - content should be 3-5 sentences per tab. Use varied informative labels.
+  - Each tab: { "id": "t1", "label": "Topic Name", "content": "- Bullet one\\n- Bullet two", "voiceOverText": "2-4 spoken sentences for this tab" }
+  - On-screen content: SHORT BULLETS (3–5, 5–8 words). Narration goes in voiceOverText per tab.
   - FAIL CONDITION: fewer than 2 tabs, or missing content -> regenerate
 
   FOLDER-EXPLORER (type: "folder-explorer"):
@@ -635,8 +705,9 @@ export async function hydrateCourseContent(
     Plain labels with only letters/numbers/spaces/hyphens do NOT need quotes.
   - Decision branches: always label arrows with -->|Yes| and -->|No| or -->|Approve| and -->|Reject|
   - Max 10 nodes for clarity on a slide
-  - Prefer NO custom classDef. If you style a node, use light fills only (e.g. fill:#eef2ff,stroke:#6366f1,color:#1e293b) — NEVER dark slate fills. The player renders diagrams on a white slide canvas.
-  - Example mermaidCode: "flowchart TD\n  A(\"Start\") --> B[\"Identify Risk\"]\n  B --> C{\"Severity?\"}\n  C -->|High| D[\"Escalate to Manager\"]\n  C -->|Low| E[\"Log & Monitor\"]\n  D --> F(\"End\")\n  E --> F"
+  - Prefer colorful classDef fills for contrast (e.g. fill:#dbeafe,stroke:#2563eb; fill:#fce7f3,stroke:#db2777; fill:#d1fae5,stroke:#059669; fill:#fef3c7,stroke:#d97706) — NEVER dark slate fills. The player renders diagrams on a white slide canvas.
+  - Use at least 2–3 distinct node fill colors in flowcharts so steps are visually distinct.
+  - Example mermaidCode: "flowchart TD\\n  A([Start]) --> B[Identify Risk]\\n  B --> C{Severity?}\\n  C -->|High| D[Escalate to Manager]\\n  C -->|Low| E[Log & Monitor]\\n  D --> F([End])\\n  E --> F\\n  classDef blue fill:#dbeafe,stroke:#2563eb,color:#0f172a\\n  classDef pink fill:#fce7f3,stroke:#db2777,color:#0f172a\\n  classDef green fill:#d1fae5,stroke:#059669,color:#0f172a\\n  class B,D blue\\n  class E green\\n  class C pink"
   - content: 1-2 sentence description of what the diagram illustrates (shown as a caption)
   - data.caption: optional short caption string (alternative to content for the label below diagram)
   - FAIL CONDITION: empty or syntactically invalid mermaidCode → change type to "content" instead
@@ -965,6 +1036,10 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     const cleanedSlides = hydratedSlides.filter(s => !OBJECTIVES_TITLE.test((s.title || '').trim()));
 
     fullCourse.modules.push({ ...emptyModule, slides: cleanedSlides } as any);
+  }
+
+  if (configParams.interactionTypes?.length) {
+    fullCourse.modules = coerceInteractionTypes(fullCourse.modules as any, configParams.interactionTypes) as any;
   }
 
   return fullCourse;

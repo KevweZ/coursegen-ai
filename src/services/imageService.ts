@@ -182,7 +182,7 @@ export function attachSourceImagesToCourse(
 export async function enrichHotspotAndCarouselImages(
   course: any,
   sourceImages: Array<{ dataUrl: string; width: number; height: number }>,
-  opts: { generateAi: boolean; useSource: boolean }
+  opts: { generateAi: boolean; useSource: boolean; hotspotOnly?: boolean }
 ): Promise<any> {
   if (!course?.modules?.length) return course;
   let srcIdx = 0;
@@ -223,7 +223,7 @@ export async function enrichHotspotAndCarouselImages(
         }
       }
 
-      if (slide.type === 'carousel-panel') {
+      if (!opts.hotspotOnly && slide.type === 'carousel-panel') {
         const cards = slide.data?.cards || slide.data?.items || [];
         if (Array.isArray(cards) && cards.length) {
           const nextCards = [];

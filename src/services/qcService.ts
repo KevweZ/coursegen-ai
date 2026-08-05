@@ -179,7 +179,34 @@ export async function runFullQC(
 
   const aiIssues = aiIssuesToQCIssues(rawAIIssues, course);
   onPhase?.('done');
-  const report = mergeReports(structural, aiIssues, totalSlides);
+  let report = mergeReports(structural, aiIssues, totalSlides);
+  if (aiScanFailed) {
+    const scanIssue: QCIssue = {
+      id: 'qc-ai-scan-unavailable',
+      slideId: '',
+      slideTitle: 'Course QC',
+      moduleTitle: 'Quality Check',
+      moduleIndex: -1,
+      slideIndex: -1,
+      field: 'ai_scan',
+      type: 'consistency',
+      severity: 'warning',
+      message: 'AI content scan unavailable — score reflects structural checks only (incomplete QC).',
+      originalText: '',
+      suggestion: 'Re-run QC when the API is reachable for a full review.',
+      autoFixable: false,
+    };
+    const issues = [...report.issues, scanIssue];
+    // Cap score so a failed AI scan never looks like a perfect 100
+    const capped = Math.min(report.score, 85);
+    report = {
+      ...report,
+      issues,
+      totalIssues: issues.length,
+      warnings: issues.filter(i => i.severity === 'warning').length,
+      score: capped,
+    };
+  }
   // Attach a flag so the UI can show a note when AI scan was skipped
   return { ...report, aiScanFailed } as QCReport;
 }
@@ -222,8 +249,8 @@ const SCHEMA_HINTS: Record<string, string> = {
   diagram:         '{ "mermaidCode": "flowchart TD\\n  A[Start] --> B[Step]\\n  B --> C[End]", "caption": "optional short caption" }',
   'carousel-panel':'{ "cards": [{ "id": "string", "label": "string", "color": "#6366f1", "description": "string", "expandedContent": "string" }] }',
   'click-reveal':  '{ "items": [{ "id": "string", "term": "string", "definition": "string" }] }',
-  'tabbed-horizontal': '{ "tabs": [{ "id": "string", "label": "string", "content": "string" }] }',
-  'tabbed-vertical':   '{ "tabs": [{ "id": "string", "label": "string", "content": "string" }] }',
+  'tabbed-horizontal': '{ "tabs": [{ "id": "string", "label": "string", "content": "- short bullet", "voiceOverText": "spoken elaboration" }] }',
+  'tabbed-vertical':   '{ "tabs": [{ "id": "string", "label": "string", "content": "- short bullet", "voiceOverText": "spoken elaboration" }] }',
   hotspot:         '{ "hotspots": [{ "id": "string", "x": 30, "y": 40, "label": "string", "content": "string" }], "imageUrl": "" }',
 };
 
