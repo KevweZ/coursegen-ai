@@ -1667,12 +1667,15 @@ export default function App() {
 
         if (includeModuleTitleSlides) {
           // Full-bleed Module Title — announces module number + name.
+          const coverId = `__module-cover-${modNum}__`;
+          const coverVo = `Module ${modNum}: ${cleanTitle}.${m.description ? ' ' + m.description : ''}`.trim();
           synthetics.push({
-            id: `__module-cover-${modNum}__`,
+            id: coverId,
             title: m.title || `Module ${modNum}`,
             type: 'module-cover' as any,
-            content: '',
-            voiceOverText: `Module ${modNum}: ${cleanTitle}.${m.description ? ' ' + m.description : ''}`.trim(),
+            content: syntheticSlideOverrides[coverId]?.content ?? '',
+            voiceOverText: syntheticSlideOverrides[coverId]?.voiceOverText ?? coverVo,
+            voiceOverUrl: syntheticAudioMap[coverId] || undefined,
             // Title slides: no body OST — description is narration only
             _moduleNumber: modNum,
             _moduleTitle: m.title || `Module ${modNum}`,
@@ -1682,15 +1685,17 @@ export default function App() {
         if (includeModuleOverviewSlides) {
           // Module Overview (e.g. 1.1, 2.1): objectives accordion after the title slide.
           // If the title slide is present, narration continues without re-announcing the name.
+          const overviewId = `__module-overview-${modNum}__`;
           const overviewVo = includeModuleTitleSlides
             ? `Let's revisit the objectives for this module.${m.description ? ' ' + m.description : ''}`.trim()
             : `Module ${modNum}: ${cleanTitle}. Let's revisit the objectives for this module.${m.description ? ' ' + m.description : ''}`.trim();
           synthetics.push({
-            id: `__module-overview-${modNum}__`,
+            id: overviewId,
             title: `Module ${modNum} — Overview`,
             type: 'module-overview' as any,
-            content: syntheticSlideOverrides[`__module-overview-${modNum}__`]?.content ?? (m.description || ''),
-            voiceOverText: syntheticSlideOverrides[`__module-overview-${modNum}__`]?.voiceOverText ?? overviewVo,
+            content: syntheticSlideOverrides[overviewId]?.content ?? (m.description || ''),
+            voiceOverText: syntheticSlideOverrides[overviewId]?.voiceOverText ?? overviewVo,
+            voiceOverUrl: syntheticAudioMap[overviewId] || undefined,
             _moduleNumber: modNum,
             _moduleTitle: m.title || `Module ${modNum}`,
             _objectives: moduleObj ? [moduleObj] : [],
@@ -1701,13 +1706,15 @@ export default function App() {
       })
     : [];
   // Item 12: Title slides — OST is title only; description is narration/CC, not on-screen
+  const coverDefaultVo = course ? `Welcome to ${course.title}. ${course.description || ''}`.trim() : '';
   const coverSlide: Slide = course ? {
     id: '__cover__',
     title: course.title,
     type: 'cover' as any,
-    content: '',
-    narration: `Welcome to ${course.title}. ${course.description || ''}`.trim(),
-    voiceOverText: `Welcome to ${course.title}. ${course.description || ''}`.trim(),
+    content: syntheticSlideOverrides['__cover__']?.content ?? '',
+    narration: syntheticSlideOverrides['__cover__']?.voiceOverText ?? coverDefaultVo,
+    voiceOverText: syntheticSlideOverrides['__cover__']?.voiceOverText ?? coverDefaultVo,
+    voiceOverUrl: syntheticAudioMap['__cover__'] || undefined,
     // Only the AI/user cover — never stock photo archive (courseBg)
     coverImage: (course as any).coverImage || undefined,
   } as Slide : null as any;
@@ -1724,15 +1731,28 @@ export default function App() {
     closingVirtualSlide,
   ] : [closingVirtualSlide];
   // Cover slide + 2 synthetic pre-content slides (Player Tour + Course Objectives)
-  const playerTourSlide: Slide = course ? { id: '__player-tour__', title: 'Player Navigation Guide', type: 'player-tour' as any, content: '', narration: 'Before we begin, take a moment to explore the player controls. Hover over each card on the right to see the corresponding element highlighted in the player preview on the left.', voiceOverText: 'Before we begin, take a moment to explore the player controls. Hover over each card to see the corresponding element highlighted.' } as Slide : null as any;
+  const playerTourDefaultVo = 'Before we begin, take a moment to explore the player controls. Hover over each card to see the corresponding element highlighted.';
+  const playerTourSlide: Slide = course ? {
+    id: '__player-tour__',
+    title: 'Player Navigation Guide',
+    type: 'player-tour' as any,
+    content: syntheticSlideOverrides['__player-tour__']?.content ?? '',
+    narration: syntheticSlideOverrides['__player-tour__']?.voiceOverText ?? playerTourDefaultVo,
+    voiceOverText: syntheticSlideOverrides['__player-tour__']?.voiceOverText ?? playerTourDefaultVo,
+    voiceOverUrl: syntheticAudioMap['__player-tour__'] || undefined,
+  } as Slide : null as any;
+  const courseObjectivesDefaultVo = 'These are the objectives for this course. Review each one so you know what you will be able to do when you finish.';
   const courseObjectivesSlide: Slide = course ? {
     id: '__course-objectives__',
     title: 'Course Objectives',
     type: 'course-objectives' as any,
-    content: '',
+    content: syntheticSlideOverrides['__course-objectives__']?.content
+      ?? syntheticSlideOverrides['__objectives__']?.content
+      ?? '',
     voiceOverText: syntheticSlideOverrides['__course-objectives__']?.voiceOverText
       ?? syntheticSlideOverrides['__objectives__']?.voiceOverText
-      ?? 'These are the objectives for this course. Review each one so you know what you will be able to do when you finish.',
+      ?? courseObjectivesDefaultVo,
+    voiceOverUrl: syntheticAudioMap['__course-objectives__'] || undefined,
     _objectives: learningObjectives || [],
   } as Slide : null as any;
   const PRE_CONTENT = 3; // cover + player-tour + course-objectives
@@ -2759,6 +2779,9 @@ export default function App() {
     const sourceSnapshot = sourceImages;
     const voiceSnapshot = voiceOverEnabled;
     const voiceIdSnapshot = ttsVoice;
+    const includeModuleTitlesSnapshot = includeModuleTitleSlides;
+    const includeModuleOverviewsSnapshot = includeModuleOverviewSlides;
+    const syntheticOverridesSnapshot = syntheticSlideOverrides;
     const hotspotBackdropSnapshot = hotspotGenerateBackdrop;
     const { ai: wantsAi, source: wantsSource } = imageModeFlags(modeSnapshot);
     const wantsHotspotBackdrop =
@@ -2973,29 +2996,46 @@ export default function App() {
         }
 
         try {
-          const { generateSlideTTS: genSlideTTS } = await import('./services/ttsService');
+          const { generateSlideTTS: genSlideTTS, urlToDataUrl } = await import('./services/ttsService');
+          const ov = syntheticOverridesSnapshot || {};
           const syntheticJobs: Array<{ id: string; text: string }> = [
-            { id: '__cover__', text: `Welcome to ${working.title}. ${working.description || ''}`.trim() },
-            { id: '__player-tour__', text: 'Before we begin, take a moment to explore the player controls. Hover over each card to see the corresponding element highlighted in the player preview.' },
-            { id: '__course-objectives__', text: 'These are the learning objectives for this course. Review each one so you know what you will be able to do when you finish.' },
+            {
+              id: '__cover__',
+              text: (ov['__cover__']?.voiceOverText || `Welcome to ${working.title}. ${working.description || ''}`).trim(),
+            },
+            {
+              id: '__player-tour__',
+              text: (ov['__player-tour__']?.voiceOverText
+                || 'Before we begin, take a moment to explore the player controls. Hover over each card to see the corresponding element highlighted in the player preview.').trim(),
+            },
+            {
+              id: '__course-objectives__',
+              text: (ov['__course-objectives__']?.voiceOverText
+                || ov['__objectives__']?.voiceOverText
+                || 'These are the learning objectives for this course. Review each one so you know what you will be able to do when you finish.').trim(),
+            },
           ];
           const moduleSynthetics: Array<{ id: string; text: string }> = (working.modules || []).flatMap(
             (m: any, idx: number) => {
               const modNum = idx + 1;
               const ct = (m.title || `Module ${modNum}`).replace(/^Module\s+\d+\s*[\u2014\-]\s*/i, '').trim();
               const items: Array<{ id: string; text: string }> = [];
-              if (includeModuleTitleSlides) {
+              if (includeModuleTitlesSnapshot) {
+                const id = `__module-cover-${modNum}__`;
                 items.push({
-                  id: `__module-cover-${modNum}__`,
-                  text: `Module ${modNum}: ${ct}.${m.description ? ' ' + m.description : ''}`.trim(),
+                  id,
+                  text: (ov[id]?.voiceOverText
+                    || `Module ${modNum}: ${ct}.${m.description ? ' ' + m.description : ''}`).trim(),
                 });
               }
-              if (includeModuleOverviewSlides) {
+              if (includeModuleOverviewsSnapshot) {
+                const id = `__module-overview-${modNum}__`;
+                const fallback = includeModuleTitlesSnapshot
+                  ? `Let's revisit the objectives for this module.${m.description ? ' ' + m.description : ''}`.trim()
+                  : `Module ${modNum}: ${ct}. Let's revisit the objectives for this module.${m.description ? ' ' + m.description : ''}`.trim();
                 items.push({
-                  id: `__module-overview-${modNum}__`,
-                  text: includeModuleTitleSlides
-                    ? `Let's revisit the specific objectives for this module.${m.description ? ' ' + m.description : ''}`.trim()
-                    : `Module ${modNum}: ${ct}. Let's revisit the specific objectives for this module.${m.description ? ' ' + m.description : ''}`.trim(),
+                  id,
+                  text: (ov[id]?.voiceOverText || fallback).trim(),
                 });
               }
               return items;
@@ -3005,12 +3045,18 @@ export default function App() {
           for (let i = 0; i < allSynthetic.length; i++) {
             const { id, text } = allSynthetic[i];
             try {
-              const url = await genSlideTTS(text, { voice: voiceIdSnapshot as any });
-              setSyntheticAudioMap(prev => ({ ...prev, [id]: url }));
-            } catch { /* non-fatal */ }
+              const blobUrl = await genSlideTTS(text, { voice: voiceIdSnapshot as any });
+              let durable = blobUrl;
+              try { durable = await urlToDataUrl(blobUrl); } catch { /* keep blob */ }
+              setSyntheticAudioMap(prev => ({ ...prev, [id]: durable }));
+            } catch (e) {
+              console.warn('[TTS] Synthetic narration failed during finalize', id, e);
+            }
             if (i < allSynthetic.length - 1) await new Promise(r => setTimeout(r, 300));
           }
-        } catch { /* silently ignore */ }
+        } catch (e) {
+          console.warn('[TTS] Synthetic narration batch failed:', e);
+        }
       })();
     }
   };
@@ -3115,6 +3161,48 @@ export default function App() {
     setRegenNoInteraction(normalized === 'content' || s.type === 'summary' || s.type === 'key-takeaways');
   };
 
+  const isSyntheticSlideId = (id?: string | null) =>
+    typeof id === 'string' && id.startsWith('__') && id.endsWith('__');
+
+  /** Jobs for injected slides (cover / tour / objectives / module title+overview) currently in the player. */
+  const collectSyntheticNarrationJobs = (slides: Slide[] = allSlides): Array<{ id: string; text: string }> =>
+    slides
+      .filter(s => isSyntheticSlideId(s?.id) && !['__closing__', '__exam-intro__', '__mastery-exam__', '__exam-results__'].includes(String(s.id)))
+      .map(s => ({
+        id: String(s.id),
+        text: String(s.voiceOverText || s.narration || '').trim(),
+      }))
+      .filter(j => j.text.length > 0);
+
+  /** Generate TTS for synthetic slides and store durable URLs in syntheticAudioMap. */
+  const generateSyntheticNarration = async (
+    jobs: Array<{ id: string; text: string }>,
+    voice: string = ttsVoice,
+  ) => {
+    if (!jobs.length) return 0;
+    const { generateSlideTTS: genSlideTTS, urlToDataUrl } = await import('./services/ttsService');
+    let ok = 0;
+    for (let i = 0; i < jobs.length; i++) {
+      const { id, text } = jobs[i];
+      try {
+        const blobUrl = await genSlideTTS(text, { voice: voice as any });
+        // Prefer durable data: URLs so audio survives re-renders / draft save
+        let durable = blobUrl;
+        try {
+          durable = await urlToDataUrl(blobUrl);
+        } catch {
+          /* keep blob if conversion fails */
+        }
+        setSyntheticAudioMap(prev => ({ ...prev, [id]: durable }));
+        ok++;
+      } catch (e) {
+        console.warn('[TTS] Synthetic narration failed', id, e);
+      }
+      if (i < jobs.length - 1) await new Promise(r => setTimeout(r, 250));
+    }
+    return ok;
+  };
+
   /** Rebuild TTS for every narratable slide + synthetic cover/objectives/module audio. */
   const regenerateAllNarration = async () => {
     if (!course?.modules) return;
@@ -3126,46 +3214,15 @@ export default function App() {
     showDraftMessage('Regenerating all narration…');
     try {
       await generateTTS(course, setCourse, ttsVoice);
-      const { generateSlideTTS: genSlideTTS } = await import('./services/ttsService');
-      const syntheticJobs: Array<{ id: string; text: string }> = [
-        { id: '__cover__', text: `Welcome to ${course.title}. ${course.description || ''}`.trim() },
-        { id: '__player-tour__', text: 'Before we begin, take a moment to explore the player controls. Hover over each card to see the corresponding element highlighted in the player preview.' },
-        { id: '__course-objectives__', text: 'These are the learning objectives for this course. Review each one so you know what you will be able to do when you finish.' },
-      ];
-      const moduleSynthetics: Array<{ id: string; text: string }> = (course.modules || []).flatMap(
-        (m: any, idx: number) => {
-          const modNum = idx + 1;
-          const ct = (m.title || `Module ${modNum}`).replace(/^Module\s+\d+\s*[\u2014\-]\s*/i, '').trim();
-          const items: Array<{ id: string; text: string }> = [];
-          if (includeModuleTitleSlides) {
-            items.push({
-              id: `__module-cover-${modNum}__`,
-              text: `Module ${modNum}: ${ct}.${m.description ? ' ' + m.description : ''}`.trim(),
-            });
-          }
-          if (includeModuleOverviewSlides) {
-            items.push({
-              id: `__module-overview-${modNum}__`,
-              text: includeModuleTitleSlides
-                ? `Let's revisit the specific objectives for this module.${m.description ? ' ' + m.description : ''}`.trim()
-                : `Module ${modNum}: ${ct}. Let's revisit the specific objectives for this module.${m.description ? ' ' + m.description : ''}`.trim(),
-            });
-          }
-          return items;
-        }
-      );
-      const allJobs = [...syntheticJobs, ...moduleSynthetics];
-      for (const { id, text } of allJobs) {
-        try {
-          const url = await genSlideTTS(text, { voice: ttsVoice as any });
-          setSyntheticAudioMap(prev => ({ ...prev, [id]: url }));
-        } catch (e) {
-          console.warn('[TTS] Synthetic regen failed', id, e);
-        }
-        await new Promise(r => setTimeout(r, 250));
-      }
+      // Use the same narration text the player shows (includes edits / overrides)
+      const syntheticJobs = collectSyntheticNarrationJobs(allSlides);
+      const synthOk = await generateSyntheticNarration(syntheticJobs, ttsVoice);
       setVoiceOverEnabled(true);
-      showDraftMessage('All narration regenerated. Save the draft to keep audio for next time.');
+      showDraftMessage(
+        synthOk > 0
+          ? `All narration regenerated (${synthOk} system slides). Save the draft to keep audio for next time.`
+          : 'Content narration regenerated. No system-slide narration text was found — check Edit → Audio on module title/overview slides.'
+      );
     } catch (err: any) {
       console.error('[TTS] Regenerate all failed:', err);
       showDraftMessage(err?.message || 'Failed to regenerate narration.');
@@ -6130,7 +6187,11 @@ export default function App() {
                         <textarea
                           rows={8}
                           value={editingSlide.voiceOverText || ''}
-                          onChange={(e) => setEditingSlide({ ...editingSlide, voiceOverText: e.target.value })}
+                          onChange={(e) => {
+                            const updated = { ...(editingSlideRef.current ?? editingSlide), voiceOverText: e.target.value };
+                            editingSlideRef.current = updated;
+                            setEditingSlide(updated);
+                          }}
                           className="w-full bg-slate-950 border border-emerald-700/40 rounded-xl px-4 py-3 text-emerald-100 focus:border-emerald-500 outline-none transition-all font-medium resize-none text-sm leading-relaxed"
                           placeholder="Write the narration script here. The AI voice will read this text while the slide is displayed..."
                         />
@@ -6220,7 +6281,7 @@ export default function App() {
                               disabled={regenSlideId === editingSlide?.id}
                               onClick={async () => {
                                 if (!editingSlide) return;
-                                const mainText = editingSlide.voiceOverText || editingSlide.narration || editingSlide.content || '';
+                                const mainText = (editingSlide.voiceOverText || editingSlide.narration || editingSlide.content || '').trim();
                                 const listKey = Array.isArray(editingSlide.data?.tabs)
                                   ? 'tabs'
                                   : Array.isArray(editingSlide.data?.items)
@@ -6236,20 +6297,39 @@ export default function App() {
                                 }
                                 setRegenSlideId(editingSlide.id);
                                 try {
-                                  const { generateSlideTTS: genTTS } = await import('./services/ttsService');
+                                  const { generateSlideTTS: genTTS, urlToDataUrl } = await import('./services/ttsService');
+                                  const toDurable = async (blobUrl: string) => {
+                                    try { return await urlToDataUrl(blobUrl); } catch { return blobUrl; }
+                                  };
                                   let nextSlide = { ...editingSlide };
+                                  const synthetic = isSyntheticSlideId(editingSlide.id);
+
                                   if (mainText) {
                                     showDraftMessage('Generating main slide audio…');
                                     const blobUrl = await genTTS(mainText, { voice: ttsVoice as any });
-                                    nextSlide = { ...nextSlide, voiceOverUrl: blobUrl };
-                                    handleUpdateSlideMedia(editingSlide.id, { voiceOverUrl: blobUrl });
+                                    const durable = await toDurable(blobUrl);
+                                    nextSlide = { ...nextSlide, voiceOverUrl: durable };
+                                    if (synthetic) {
+                                      // Injected slides are not in course.modules — persist via syntheticAudioMap
+                                      setSyntheticAudioMap(prev => ({ ...prev, [editingSlide.id]: durable }));
+                                      setSyntheticSlideOverrides(prev => ({
+                                        ...prev,
+                                        [editingSlide.id]: {
+                                          ...(prev[editingSlide.id] || {}),
+                                          content: nextSlide.content,
+                                          voiceOverText: mainText,
+                                        },
+                                      }));
+                                    } else {
+                                      handleUpdateSlideMedia(editingSlide.id, { voiceOverUrl: durable });
+                                    }
                                   }
-                                  if (listKey && tabJobs.length) {
+                                  if (!synthetic && listKey && tabJobs.length) {
                                     const nextTabs = [...tabs];
                                     for (let n = 0; n < tabJobs.length; n++) {
                                       const job = tabJobs[n];
                                       showDraftMessage(`Generating tab audio ${n + 1}/${tabJobs.length}…`);
-                                      const tabUrl = await genTTS(job.text, { voice: ttsVoice as any });
+                                      const tabUrl = await toDurable(await genTTS(job.text, { voice: ttsVoice as any }));
                                       nextTabs[job.i] = { ...nextTabs[job.i], voiceOverUrl: tabUrl };
                                       await new Promise(r => setTimeout(r, 200));
                                     }
@@ -6292,7 +6372,7 @@ export default function App() {
                           </div>
                         )}
                         {/* Audio URL if available */}
-                        {(editingSlide?.voiceOverUrl || editingSlide?.audioUrl) && (
+                        {(editingSlide?.voiceOverUrl || editingSlide?.audioUrl || (editingSlide?.id && syntheticAudioMap[editingSlide.id])) && (
                           <div className="p-3 bg-slate-800 rounded-xl border border-slate-700">
                             <p className="text-xs text-emerald-400 font-bold">✅ Audio ready for this slide</p>
                           </div>
@@ -6563,11 +6643,15 @@ export default function App() {
                       if (editingSlideRef.current) {
                         const latest = editingSlideRef.current;
                         pushUndo();
-                        if (latest.id?.match(/^__module-overview-\d+__$/)) {
+                        if (isSyntheticSlideId(latest.id)) {
+                          // Cover / module title / overview / tour / objectives are injected — not in course.modules
                           setSyntheticSlideOverrides(prev => ({
                             ...prev,
                             [latest.id]: { content: latest.content, voiceOverText: latest.voiceOverText },
                           }));
+                          if (latest.voiceOverUrl) {
+                            setSyntheticAudioMap(prev => ({ ...prev, [latest.id]: latest.voiceOverUrl as string }));
+                          }
                         } else {
                           setCourse((prevCourse: any) => {
                             if (!prevCourse) return prevCourse;
