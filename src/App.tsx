@@ -5568,11 +5568,17 @@ export default function App() {
                                        tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []}
                                        theme={theme as any}
                                        introContent={currentSlide.content || ''}
+                                       introVoiceOver={currentSlide.voiceOverText || currentSlide.narration || ''}
                                        onActiveTabChange={setActiveTabForImages}
                                        highlightTabId={dragOverTabId}
-                                       onTabView={(id) => markInteractionExplored(currentSlide.id, id)}
+                                       onTabView={(id) => { if (id !== '__intro__') markInteractionExplored(currentSlide.id, id); }}
                                        onTabAudio={(id) => {
                                          if (!voiceOverEnabled) return;
+                                         if (id === '__intro__') {
+                                           // Return to slide-level intro narration
+                                           setActiveTabAudioUrl(null);
+                                           return;
+                                         }
                                          const tabs = currentSlide.data?.tabs || currentSlide.data?.items || [];
                                          const tab = (tabs || []).find((t: any) => t.id === id);
                                          if (tab?.voiceOverUrl) setActiveTabAudioUrl(tab.voiceOverUrl);
@@ -5592,11 +5598,16 @@ export default function App() {
                                      tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []}
                                      theme={theme}
                                      introContent={currentSlide.content || ''}
+                                     introVoiceOver={currentSlide.voiceOverText || currentSlide.narration || ''}
                                      onActiveTabChange={setActiveTabForImages}
                                      highlightTabId={dragOverTabId}
-                                     onTabView={(id) => markInteractionExplored(currentSlide.id, id)}
+                                     onTabView={(id) => { if (id !== '__intro__') markInteractionExplored(currentSlide.id, id); }}
                                      onTabAudio={(id) => {
                                        if (!voiceOverEnabled) return;
+                                       if (id === '__intro__') {
+                                         setActiveTabAudioUrl(null);
+                                         return;
+                                       }
                                        const tabs = currentSlide.data?.tabs || currentSlide.data?.items || [];
                                        const tab = (tabs || []).find((t: any) => t.id === id);
                                        if (tab?.voiceOverUrl) setActiveTabAudioUrl(tab.voiceOverUrl);
@@ -5878,7 +5889,8 @@ export default function App() {
                                </SlideErrorBoundary>
                              </div>
 
-                             {currentSlide?.floatingMedia && currentSlide.floatingMedia.length > 0 && viewMode === 'desktop' && (
+                             {/* Authoring uses floatingImagesMap canvas below — avoid a second copy from course.floatingMedia (caused inseparable duplicates). */}
+                             {isScormPlayer && currentSlide?.floatingMedia && currentSlide.floatingMedia.length > 0 && viewMode === 'desktop' && (
                                <div className="hidden md:block w-[40%] max-w-[500px] shrink-0 pointer-events-none z-[60]">
                                  <FloatingImageCanvas
                                    isAuthoring={false}

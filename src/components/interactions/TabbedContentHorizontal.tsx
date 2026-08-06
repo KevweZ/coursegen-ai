@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { markdownToHtml } from '../../lib/markdownInline';
+import { formatTabIntroOst } from '../../lib/formatTabIntroOst';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export interface HorizontalTab {
@@ -23,10 +24,12 @@ interface Props {
   title?: string;
   theme?: THTheme;
   onTabView?: (tabId: string) => void;
-  /** Fired only on user click (not mount) — use for per-tab audio cutover */
+  /** Fired only on user click (not mount) — use for per-tab audio cutover. Pass "__intro__" for intro. */
   onTabAudio?: (tabId: string) => void;
   /** Intro panel copy while no tab is selected (opening narration OST) */
   introContent?: string;
+  /** Slide-level narration — used to enrich thin intro OST into short bullets */
+  introVoiceOver?: string;
   /** Notify parent of active tab (null = intro) for tab-scoped floating images */
   onActiveTabChange?: (tabId: string | null) => void;
   /** While dragging a floating image over a tab zone, highlight it */
@@ -36,6 +39,7 @@ interface Props {
 const ACCENT_COLORS = [
   '#6366f1', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#f43f5e',
 ];
+const INTRO_COLOR = '#6366f1';
 
 function normalizeTabs(tabs: HorizontalTab[]): HorizontalTab[] {
   return (tabs || []).map((t, i) => ({
@@ -51,6 +55,7 @@ export default function TabbedContentHorizontal({
   onTabView,
   onTabAudio,
   introContent,
+  introVoiceOver,
   onActiveTabChange,
   highlightTabId = null,
 }: Props) {
@@ -69,12 +74,23 @@ export default function TabbedContentHorizontal({
     ? null
     : normalized[Math.min(activeIndex, normalized.length - 1)];
 
+  const introOst = useMemo(
+    () => formatTabIntroOst({ introContent, voiceOverText: introVoiceOver, title }),
+    [introContent, introVoiceOver, title]
+  );
+
   useEffect(() => {
     onActiveTabChange?.(activeTab?.id ?? null);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- only when tab id changes
   }, [activeTab?.id]);
 
   if (!normalized.length) return null;
+
+  const selectIntro = () => {
+    setActiveIndex(-1);
+    onTabView?.('__intro__');
+    onTabAudio?.('__intro__');
+  };
 
   const selectTab = (i: number) => {
     setActiveIndex(i);
@@ -85,7 +101,9 @@ export default function TabbedContentHorizontal({
     }
   };
 
-  const activeColor = activeTab?.color || ACCENT_COLORS[Math.max(0, activeIndex) % ACCENT_COLORS.length];
+  const activeColor = inIntro
+    ? INTRO_COLOR
+    : (activeTab?.color || ACCENT_COLORS[Math.max(0, activeIndex) % ACCENT_COLORS.length]);
   const dropZoneId = activeTab?.id || '';
   const panelHighlighted = !!(highlightTabId && dropZoneId && highlightTabId === dropZoneId);
 
@@ -120,25 +138,18 @@ export default function TabbedContentHorizontal({
           >
             {inIntro ? (
               <>
-                <p className={`text-xs font-bold uppercase tracking-widest mb-3 ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>
-                  Introduction
-                </p>
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-1 h-8 rounded-full shrink-0" style={{ background: INTRO_COLOR }} />
+                  <h3 className="font-extrabold text-lg" style={{ color: INTRO_COLOR }}>
+                    Introduction
+                  </h3>
+                </div>
                 <div
                   className={`text-sm leading-relaxed ${isLight ? 'text-slate-700' : 'text-slate-200'}`}
-                  dangerouslySetInnerHTML={{
-                    __html: markdownToHtml((() => {
-                      const raw = (introContent || '').trim();
-                      const instructionOnly = raw && /^(select|choose|click|tap)\b/i.test(raw)
-                        && raw.split(/\n/).filter(Boolean).length <= 2
-                        && !/[.!?].*[.!?]/s.test(raw.replace(/select a tab.*/i, ''));
-                      if (raw && !instructionOnly) return raw;
-                      const topic = (title || 'this topic').replace(/^Knowledge Check:\s*/i, '').trim();
-                      return `This section introduces ${topic}. Review the key ideas here, then open each tab to explore the details.`;
-                    })()),
-                  }}
+                  dangerouslySetInnerHTML={{ __html: markdownToHtml(introOst) }}
                 />
                 <p className={`mt-6 text-xs font-semibold ${isLight ? 'text-indigo-600' : 'text-indigo-300'}`}>
-                  Select a tab below to continue →
+                  Select a topic tab below to continue →
                 </p>
               </>
             ) : (
@@ -183,6 +194,23 @@ export default function TabbedContentHorizontal({
           isLight ? 'border-slate-200 bg-slate-50' : 'border-slate-700 bg-slate-900/80'
         }`}
       >
+        <button
+          type="button"
+          onClick={selectIntro}
+          className={`shrink-0 px-3 py-3.5 text-xs font-bold transition-all text-center border-r ${
+            isLight ? 'border-slate-200' : 'border-slate-700/60'
+          } ${
+            inIntro
+              ? 'text-white'
+              : isLight
+              ? 'text-slate-500 hover:text-slate-800 hover:bg-white'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+          }`}
+          style={inIntro ? { background: INTRO_COLOR } : {}}
+          title="Return to opening introduction"
+        >
+          Intro
+        </button>
         {normalized.map((tab, i) => {
           const isActive = i === activeIndex;
           const color = tab.color || ACCENT_COLORS[i % ACCENT_COLORS.length];

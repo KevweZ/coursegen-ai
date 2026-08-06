@@ -62,7 +62,7 @@ function IssueCard({
   onRegenerate: () => Promise<void>;
   highlighted?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(!!issue.suggestion && issue.suggestion !== issue.originalText);
   const [regenerating, setRegenerating] = useState(false);
   const cfg = SEVERITY_CONFIG[issue.severity];
   const Icon = cfg.icon;
@@ -75,6 +75,12 @@ function IssueCard({
     issue.suggestion !== issue.originalText &&
     (actions.includes('fix_color') || issue.type === 'color_contrast' || issue.autoFixable ||
       ['spelling', 'grammar', 'clarity', 'consistency', 'title_length', 'content_length'].includes(issue.type));
+
+  const confirmLabel = confirmed
+    ? 'Applied'
+    : issue.type === 'color_contrast'
+    ? 'Apply Dark Color'
+    : 'Confirm Fix';
 
   return (
     <div
@@ -106,18 +112,28 @@ function IssueCard({
           </div>
           <p className="text-sm text-slate-200 font-medium mt-0.5">{issue.message}</p>
           <p className="text-[11px] text-slate-500 mt-0.5 font-mono">{issue.field}</p>
+          {/* Always-visible fix preview so Confirm Fix is meaningful without expanding */}
+          {canConfirmFix && issue.suggestion && !confirmed && (
+            <p className="mt-2 text-[11px] text-emerald-300/90 leading-snug">
+              <span className="font-bold text-emerald-400">Suggested fix: </span>
+              <span className="text-emerald-200/90">{issue.suggestion.length > 140 ? `${issue.suggestion.slice(0, 140)}…` : issue.suggestion}</span>
+            </p>
+          )}
         </div>
-        <button
-          onClick={() => setExpanded(e => !e)}
-          className="shrink-0 p-1 rounded hover:bg-slate-700/50 text-slate-500 hover:text-slate-300 transition-colors"
-        >
-          {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-        </button>
+        {(issue.originalText || issue.suggestion) && (
+          <button
+            onClick={() => setExpanded(e => !e)}
+            className="shrink-0 p-1 rounded hover:bg-slate-700/50 text-slate-500 hover:text-slate-300 transition-colors"
+            title={expanded ? 'Hide details' : 'Show full before/after'}
+          >
+            {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+          </button>
+        )}
       </div>
 
       {/* Diff view */}
       <AnimatePresence>
-        {expanded && (
+        {expanded && (issue.originalText || issue.suggestion) && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
@@ -147,7 +163,6 @@ function IssueCard({
 
       {/* Actions */}
       <div className="flex items-center justify-between gap-2 px-4 pb-3">
-        {/* Left: go to slide */}
         <button
           onClick={onGoToSlide}
           title="Go to this slide in the course preview"
@@ -156,7 +171,6 @@ function IssueCard({
           <ExternalLink className="w-3 h-3" /> View Slide
         </button>
 
-        {/* Right: actions driven by issue.fixActions */}
         {canRegenerate ? (
           <div className="flex gap-2">
             {canSimplify && (
@@ -182,11 +196,12 @@ function IssueCard({
                 : <><Wand2 className="w-3 h-3" /> Regenerate</>}
             </button>
           </div>
-        ) : (
+        ) : canConfirmFix ? (
           <div className="flex gap-2">
             <button
               onClick={onDecline}
               disabled={declined}
+              title="Skip this suggested change — leave the content as-is"
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border
                 ${declined
                   ? 'border-slate-700 text-slate-600 cursor-not-allowed'
@@ -194,31 +209,33 @@ function IssueCard({
             >
               <XCircle className="w-3 h-3" /> Decline
             </button>
-            {canConfirmFix ? (
-              <button
-                onClick={onConfirm}
-                disabled={confirmed}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border
-                  ${confirmed
-                    ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300 cursor-default'
-                    : issue.type === 'color_contrast'
-                    ? 'bg-amber-500/20 border-amber-500/40 text-amber-200 hover:bg-amber-500/30'
-                    : 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/30'}`}
-              >
-                <CheckCircle2 className="w-3 h-3" />
-                {confirmed ? 'Applied' : issue.type === 'color_contrast' ? 'Apply Dark Color' : 'Confirm Fix'}
-              </button>
-            ) : (
-              <button
-                onClick={onDecline}
-                disabled={declined}
-                title="No automatic text fix for this issue — open the slide to edit or regenerate"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-600 text-slate-400 hover:bg-slate-700 hover:text-slate-200 transition-all"
-              >
-                Dismiss
-              </button>
-            )}
+            <button
+              onClick={onConfirm}
+              disabled={confirmed}
+              title={issue.suggestion ? `Apply: ${issue.suggestion.slice(0, 80)}` : 'Apply the suggested fix'}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border
+                ${confirmed
+                  ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300 cursor-default'
+                  : issue.type === 'color_contrast'
+                  ? 'bg-amber-500/20 border-amber-500/40 text-amber-200 hover:bg-amber-500/30'
+                  : 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/30'}`}
+            >
+              <CheckCircle2 className="w-3 h-3" />
+              {confirmLabel}
+            </button>
           </div>
+        ) : (
+          <button
+            onClick={onDecline}
+            disabled={declined}
+            title="Acknowledge and hide this warning — no automatic fix is available"
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all
+              ${declined
+                ? 'border-slate-700 text-slate-600 cursor-not-allowed'
+                : 'border-slate-600 text-slate-400 hover:bg-slate-700 hover:text-slate-200'}`}
+          >
+            <XCircle className="w-3 h-3" /> {declined ? 'Dismissed' : 'Dismiss'}
+          </button>
         )}
       </div>
     </div>
@@ -378,13 +395,16 @@ export function QCTrackChangesModal({
                   <div className="flex gap-2 ml-auto">
                     <button
                       onClick={() => onDeclineAll(filteredIssues.map(i => i.id))}
+                      title="Dismiss or decline every listed item (skip applying fixes)"
                       className="text-xs text-slate-400 hover:text-slate-200 font-bold px-2 py-1 rounded hover:bg-slate-800 transition-all"
                     >
-                      Decline all
+                      Dismiss all
                     </button>
                     <button
                       onClick={() => onConfirmAll(confirmable.map(i => i.id))}
-                      className="text-xs text-indigo-300 hover:text-indigo-100 font-bold px-2 py-1 rounded hover:bg-indigo-500/10 transition-all flex items-center gap-1"
+                      disabled={confirmable.length === 0}
+                      title={confirmable.length ? `Queue ${confirmable.length} suggested text fix(es)` : 'No auto-fixable items in this list'}
+                      className="text-xs text-indigo-300 hover:text-indigo-100 font-bold px-2 py-1 rounded hover:bg-indigo-500/10 transition-all flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       <CheckCheck className="w-3 h-3" /> Fix All
                     </button>
@@ -449,7 +469,7 @@ export function QCTrackChangesModal({
               <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-slate-800 bg-slate-900/60 shrink-0">
                 <div className="flex flex-col gap-0.5">
                   <p className="text-xs text-slate-500">
-                    {confirmed.size} fix{confirmed.size !== 1 ? 'es' : ''} confirmed · {declined.size} declined
+                    {confirmed.size} fix{confirmed.size !== 1 ? 'es' : ''} confirmed · {declined.size} dismissed
                     {pendingCount > 0 && <span className="text-amber-400 ml-1">· {pendingCount} pending</span>}
                   </p>
                   {pendingCount === 0 && report.totalIssues > 0 && (
