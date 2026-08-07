@@ -85,6 +85,8 @@ export interface PreviewDraftSnapshot {
   syntheticSlideOverrides?: Record<string, { content?: string; voiceOverText?: string }>;
   /** Keys for synthetic cover/objectives/module audio stored in the assets map */
   syntheticAudioIds?: string[];
+  /** Pre-built mastery quiz questions — restored so Begin never regenerates */
+  examQuestions?: any[];
 }
 
 export type DraftSnapshot = DesignDraftSnapshot | PreviewDraftSnapshot;
@@ -480,6 +482,7 @@ export interface UseDraftCoursesReturn {
       learningObjectives?: any[];
       syntheticSlideOverrides?: Record<string, any>;
       syntheticAudioMap?: Record<string, string>;
+      examQuestions?: any[];
     }
   ) => Promise<{ success: boolean; message: string; id?: string }>;
   saveDesignDraft: (design: Omit<DesignDraftSnapshot, 'phase'>) => Promise<{ success: boolean; message: string; id?: string }>;
@@ -502,6 +505,7 @@ export interface UseDraftCoursesReturn {
       learningObjectives?: any[];
       syntheticSlideOverrides?: Record<string, any>;
       syntheticAudioMap?: Record<string, string>;
+      examQuestions?: any[];
     }
   ) => Promise<{ success: boolean; message: string }>;
   replaceDesignDraft: (id: string, design: Omit<DesignDraftSnapshot, 'phase'>) => Promise<{ success: boolean; message: string }>;
@@ -513,6 +517,7 @@ export interface UseDraftCoursesReturn {
       learningObjectives?: any[];
       syntheticSlideOverrides?: Record<string, any>;
       syntheticAudioMap?: Record<string, string>;
+      examQuestions?: any[];
     }
   ) => Promise<{ success: boolean; message: string; id?: string }>;
   replaceDraft: (
@@ -524,6 +529,7 @@ export interface UseDraftCoursesReturn {
       learningObjectives?: any[];
       syntheticSlideOverrides?: Record<string, any>;
       syntheticAudioMap?: Record<string, string>;
+      examQuestions?: any[];
     }
   ) => Promise<{ success: boolean; message: string }>;
 }
@@ -634,6 +640,7 @@ export function useDraftCourses(
       learningObjectives?: any[];
       syntheticSlideOverrides?: Record<string, any>;
       syntheticAudioMap?: Record<string, string>;
+      examQuestions?: any[];
     }
   ) => {
     // structuredClone keeps us from mutating the live editor course
@@ -644,6 +651,11 @@ export function useDraftCourses(
         : JSON.parse(JSON.stringify(course));
     } catch {
       working = JSON.parse(JSON.stringify(course));
+    }
+
+    // Persist mastery quiz with the course shell so Begin never regenerates
+    if (Array.isArray(extras?.examQuestions) && extras!.examQuestions!.length) {
+      working.examQuestions = extras!.examQuestions;
     }
 
     // Convert in-memory blob: TTS URLs → durable data: URLs before strip/detach
@@ -687,6 +699,7 @@ export function useDraftCourses(
       learningObjectives: extras?.learningObjectives,
       syntheticSlideOverrides: extras?.syntheticSlideOverrides,
       syntheticAudioIds,
+      examQuestions: Array.isArray(extras?.examQuestions) ? extras!.examQuestions : working.examQuestions,
     };
     const assets = mediaMapToRecord(media);
     return { snapshot, assets, draftId };
@@ -763,6 +776,7 @@ export function useDraftCourses(
       learningObjectives?: any[];
       syntheticSlideOverrides?: Record<string, any>;
       syntheticAudioMap?: Record<string, string>;
+      examQuestions?: any[];
     }
   ) => {
     if (!userId) return { success: false, message: 'Sign in to save drafts.' };
@@ -997,6 +1011,7 @@ export function useDraftCourses(
       learningObjectives?: any[];
       syntheticSlideOverrides?: Record<string, any>;
       syntheticAudioMap?: Record<string, string>;
+      examQuestions?: any[];
     }
   ) => {
     if (!userId) return { success: false, message: 'Sign in to save drafts.' };

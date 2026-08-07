@@ -698,6 +698,7 @@ export default function App() {
           learningObjectives,
           syntheticSlideOverrides,
           syntheticAudioMap,
+          examQuestions,
         });
         showDraftMessage(updated.message);
         if (updated.success) navigateTo(ROUTES.preview(activeDraftId), true);
@@ -708,6 +709,7 @@ export default function App() {
         learningObjectives,
         syntheticSlideOverrides,
         syntheticAudioMap,
+        examQuestions,
       });
       showDraftMessage(result.message);
       if (result.success && result.id) {
@@ -833,6 +835,21 @@ export default function App() {
     // One commit with the full lean course — progressive stub hydration left a non-interactive shell
     setCourse(shell);
     setOriginalCourse(shell);
+    // Restore pre-built mastery quiz questions (never regenerate on Begin)
+    const restoredExamQs =
+      (Array.isArray((shell as any).examQuestions) && (shell as any).examQuestions) ||
+      (snapshot.phase === 'preview' && Array.isArray((snapshot as any).examQuestions)
+        ? (snapshot as any).examQuestions
+        : null);
+    if (Array.isArray(restoredExamQs) && restoredExamQs.length) {
+      setExamQuestions(restoredExamQs);
+      setExamError(null);
+    } else {
+      setExamQuestions([]);
+    }
+    setExamPhase('idle');
+    setIsGeneratingExam(false);
+    examGenPromiseRef.current = null;
     setStep('preview');
     setActiveDraftId(id);
     navigateTo(ROUTES.preview(id));
@@ -1590,6 +1607,8 @@ export default function App() {
     passed: null,
   });
   const [isGeneratingExam, setIsGeneratingExam] = useState(false);
+  /** In-flight mastery quiz generation — Begin Quiz awaits this instead of starting a new job */
+  const examGenPromiseRef = useRef<Promise<ExamQuestion[]> | null>(null);
 
   // Navigation restriction state
   const [navigationMode, setNavigationMode] = useState<NavigationMode>(DEFAULT_COURSE_SETTINGS.navigationMode);
@@ -2796,22 +2815,30 @@ export default function App() {
     setMobileDesignDemo(false);
     // Do NOT wait for narration — open Course Development after images + QC; TTS runs in background
 
-    // Pre-generate mastery quiz in parallel (does not gate the preview)
+    // Pre-generate mastery quiz in parallel with imagery/QC — we await it
+    // before opening preview so Begin Quiz never kicks off a second generation.
     if (examConfig.enabled) {
       setIsGeneratingExam(true);
       setExamError(null);
-      generateMasteryExam(stamped, examConfig)
+      const examCfg = examConfig;
+      examGenPromiseRef.current = generateMasteryExam(stamped, examCfg)
         .then((questions) => {
-          if (questions?.length) setExamQuestions(questions);
-          else setExamError('No quiz questions could be generated. You can retry from the Mastery Quiz intro.');
+          if (questions?.length) {
+            setExamQuestions(questions);
+            return questions;
+          }
+          setExamError('No quiz questions could be generated. You can retry from the Mastery Quiz intro.');
+          return [] as ExamQuestion[];
         })
         .catch((err: any) => {
           console.error('[Mastery Quiz] Pre-generation failed:', err);
           setExamError(err?.message || 'Quiz generation failed.');
-        })
-        .finally(() => setIsGeneratingExam(false));
+          return [] as ExamQuestion[];
+        });
     } else {
       setExamQuestions([]);
+      examGenPromiseRef.current = null;
+      setIsGeneratingExam(false);
     }
 
     const modeSnapshot = imageMode;
@@ -3018,7 +3045,22 @@ export default function App() {
 
     setProgress(95);
 
-    // Open preview as soon as structure + images + QC are ready.
+    // Ensure mastery quiz is ready before Course Development opens — Begin must not generate.
+    if (examGenPromiseRef.current) {
+      try {
+        const qs = await examGenPromiseRef.current;
+        if (qs?.length) {
+          working = { ...working, examQuestions: qs };
+        }
+      } catch (e) {
+        console.warn('[Mastery Quiz] Await pre-generation failed:', e);
+      } finally {
+        setIsGeneratingExam(false);
+        examGenPromiseRef.current = null;
+      }
+    }
+
+    // Open preview as soon as structure + images + QC (+ quiz) are ready.
     // Do NOT await TTS here — that blocked users and a later setCourse(working)
     // wiped blob voiceOverUrls patched by generateTTS.
     if (coverUrl) working = { ...working, coverImage: coverUrl };
@@ -5738,7 +5780,8 @@ export default function App() {
                                  <ExamIntroSlide
                                    examConfig={examConfig}
                                    courseTitle={course?.title}
-                                   isGenerating={isGeneratingExam}
+                                   isGenerating={isGeneratingExam && examQuestions.length === 0}
+                                   questionsReady={examQuestions.length > 0}
                                    errorMessage={examError}
                                    onBegin={async () => {
                                      setExamError(null);
@@ -5747,17 +5790,25 @@ export default function App() {
                                        return;
                                      }
 
-                                     // Resolve the quiz slide by id — more reliable than arithmetic
-                                     // indices when synthetic slides are injected around content.
                                      const qIdx = allSlides.findIndex(s => (s as any).id === '__mastery-exam__');
                                      if (qIdx < 0) {
                                        setExamError('Quiz Questions slide is missing. Enable Mastery Quiz in course settings and regenerate.');
                                        return;
                                      }
 
+                                     // Prefer questions already built at course finalize / draft load
                                      let questions = examQuestions;
+                                     if ((!questions || questions.length === 0) && examGenPromiseRef.current) {
+                                       setIsGeneratingExam(true);
+                                       try {
+                                         questions = await examGenPromiseRef.current;
+                                       } finally {
+                                         setIsGeneratingExam(false);
+                                         examGenPromiseRef.current = null;
+                                       }
+                                     }
                                      if (!questions || questions.length === 0) {
-                                       // Fallback only if pre-generation failed or was skipped
+                                       // Last-resort retry only when pre-build truly failed
                                        setIsGeneratingExam(true);
                                        try {
                                          questions = await generateMasteryExam(course, examConfig);
@@ -5766,6 +5817,7 @@ export default function App() {
                                            return;
                                          }
                                          setExamQuestions(questions);
+                                         setCourse(prev => prev ? { ...prev, examQuestions: questions } : prev);
                                        } catch (err: any) {
                                          console.error('[Mastery Quiz] Generation failed:', err);
                                          setExamError(err?.message || 'Quiz generation failed. Please try again.');

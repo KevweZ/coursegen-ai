@@ -7,8 +7,10 @@ interface Props {
   examConfig: ExamConfig;
   courseTitle?: string;
   onBegin: () => void;
-  /** True while quiz questions are being generated after the learner clicks Begin */
+  /** True while quiz questions are still being prepared from course build */
   isGenerating?: boolean;
+  /** True when questions are already available — Begin should not regenerate */
+  questionsReady?: boolean;
   /** Shown when generation/navigation fails so the learner isn't left wondering */
   errorMessage?: string | null;
 }
@@ -24,6 +26,7 @@ export const ExamIntroSlide: React.FC<Props> = ({
   courseTitle,
   onBegin,
   isGenerating = false,
+  questionsReady = false,
   errorMessage = null,
 }) => {
   const totalQuestions =
@@ -102,13 +105,13 @@ export const ExamIntroSlide: React.FC<Props> = ({
         {/* Begin button — dark slate, not indigo */}
         <motion.button
           type="button"
-          whileHover={isGenerating ? undefined : { scale: 1.02 }}
-          whileTap={isGenerating ? undefined : { scale: 0.98 }}
-          onClick={() => { if (!isGenerating) onBegin(); }}
-          disabled={isGenerating}
+          whileHover={isGenerating && !questionsReady ? undefined : { scale: 1.02 }}
+          whileTap={isGenerating && !questionsReady ? undefined : { scale: 0.98 }}
+          onClick={() => { if (!(isGenerating && !questionsReady)) onBegin(); }}
+          disabled={isGenerating && !questionsReady}
           className="w-full py-4 bg-slate-900 hover:bg-slate-800 disabled:opacity-70 disabled:cursor-wait text-white font-extrabold text-lg rounded-2xl transition-colors shadow-lg shadow-slate-900/20 flex items-center justify-center gap-3"
         >
-          {isGenerating ? (
+          {isGenerating && !questionsReady ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
               Preparing quiz…
@@ -120,6 +123,9 @@ export const ExamIntroSlide: React.FC<Props> = ({
             </>
           )}
         </motion.button>
+        {questionsReady && (
+          <p className="text-center text-xs text-emerald-600 font-semibold">Quiz ready — questions were prepared with your course.</p>
+        )}
       </div>
     </motion.div>
   );
