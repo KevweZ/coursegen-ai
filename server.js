@@ -202,7 +202,13 @@ const ttsRateLimit = rateLimit({
   max:              400,
   standardHeaders:  true,
   legacyHeaders:    false,
-  message: { error: 'Too many TTS requests. Please wait 15 minutes.' },
+  handler: (req, res) => {
+    res.status(429).json({
+      error: 'Too many TTS requests from this network. Please wait a few minutes and retry.',
+      code: 'TTS_RATE_LIMIT',
+      retryAfterMs: 60000,
+    });
+  },
 });
 
 const supportRateLimit = rateLimit({
@@ -1136,6 +1142,11 @@ app.post('/api/admin/revoke', async (req, res) => {
 let ttsQueue = Promise.resolve();
 let ttsLastStartedAt = 0;
 const TTS_MIN_GAP_MS = 700;
+/** Soft per-user concurrency — blocks multi-tab stampede without blocking sequential course gen. */
+const ttsInFlightByUser = new Map();
+const TTS_USER_MAX_IN_FLIGHT = 2;
+/** Trial soft cap: enough for a few full courses / week, shared OpenAI key protected. */
+const TRIAL_TTS_LIMIT = 200;
 
 function parseOpenAiErrorBody(errText) {
   const raw = String(errText || '');
@@ -1159,7 +1170,7 @@ function classifyTtsFailure(status, errText) {
     if (/quota|billing|exceeded your current quota|insufficient_quota/i.test(lower)) {
       return {
         code: 'TTS_QUOTA',
-        message: 'OpenAI TTS quota exceeded. Check the OpenAI project billing/quota, then retry narration.',
+        message: 'OpenAI TTS quota exceeded on the server key. Check OpenAI billing/quota, then retry narration.',
         retryAfterMs: 0,
       };
     }
@@ -1183,6 +1194,226 @@ function classifyTtsFailure(status, errText) {
   };
 }
 
+async function consumeTtsCreditOptimistic(supabase, table, idField, id, current) {
+  if (current <= 0) return false;
+  const { data } = await supabase
+    .from(table)
+    .update({
+      credits_tts: current - 1,
+      updated_at: new Date().toISOString(),
+    })
+    .eq(idField, id)
+    .eq('credits_tts', current)
+    .select('credits_tts')
+    .maybeSingle();
+  return !!data;
+}
+
+/**
+ * Resolve who is calling /api/tts and whether they may spend a narration credit.
+ * Trial → weekly soft cap via ai_usage(type=tts). Paid/team → credits_tts pool.
+ */
+async function authorizeTtsRequest(req) {
+  const authHeader = req.headers.authorization ?? '';
+  const jwt = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!jwt) {
+    return {
+      ok: false,
+      status: 401,
+      body: {
+        error: 'Sign in required to generate narration.',
+        code: 'TTS_AUTH_REQUIRED',
+        retryAfterMs: 0,
+      },
+    };
+  }
+
+  let supabase;
+  try {
+    supabase = await getAdminSupabase();
+  } catch (err) {
+    return {
+      ok: false,
+      status: 503,
+      body: {
+        error: 'Auth service unavailable for narration.',
+        code: 'TTS_ERROR',
+        retryAfterMs: 5000,
+      },
+    };
+  }
+
+  const { data: { user }, error: userErr } = await supabase.auth.getUser(jwt);
+  if (userErr || !user) {
+    return {
+      ok: false,
+      status: 401,
+      body: {
+        error: 'Session expired. Sign in again to generate narration.',
+        code: 'TTS_AUTH_REQUIRED',
+        retryAfterMs: 0,
+      },
+    };
+  }
+
+  const email = (user.email || '').toLowerCase();
+  const isAdmin =
+    (ADMIN_EMAIL && email === ADMIN_EMAIL) ||
+    user.user_metadata?.role === 'admin';
+  const isTrial = user.user_metadata?.role === 'trial';
+
+  if (isAdmin) {
+    return {
+      ok: true,
+      supabase,
+      user,
+      billing: { mode: 'admin' },
+    };
+  }
+
+  if (isTrial) {
+    const expiresAt = user.user_metadata?.trial_expires_at;
+    if (expiresAt && new Date(expiresAt).getTime() <= Date.now()) {
+      return {
+        ok: false,
+        status: 403,
+        body: {
+          error: 'Your trial has expired. Contact us to upgrade your account.',
+          code: 'TRIAL_EXPIRED',
+          retryAfterMs: 0,
+        },
+      };
+    }
+
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { count, error: countErr } = await supabase
+      .from('ai_usage')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('type', 'tts')
+      .gte('created_at', weekAgo);
+
+    if (countErr) {
+      console.warn('[TTS] trial usage count failed:', countErr.message);
+    } else if (typeof count === 'number' && count >= TRIAL_TTS_LIMIT) {
+      return {
+        ok: false,
+        status: 429,
+        body: {
+          error: `Trial narration limit reached (${count}/${TRIAL_TTS_LIMIT} this week). Wait for the weekly reset or upgrade.`,
+          code: 'TRIAL_TTS_LIMIT',
+          retryAfterMs: 0,
+        },
+      };
+    }
+
+    return {
+      ok: true,
+      supabase,
+      user,
+      billing: { mode: 'trial', userId: user.id },
+    };
+  }
+
+  // Team workspace pool first
+  const membership = await getActiveTeamMembership(supabase, user.id, email);
+  const ws = membership?.workspaces;
+  if (ws?.status === 'active') {
+    const credits = ws.credits_tts ?? 0;
+    if (credits <= 0) {
+      return {
+        ok: false,
+        status: 402,
+        body: {
+          error: 'No narration credits left in your Team workspace. Ask the owner to upgrade or buy credits.',
+          code: 'TTS_NO_CREDITS',
+          retryAfterMs: 0,
+        },
+      };
+    }
+    return {
+      ok: true,
+      supabase,
+      user,
+      billing: {
+        mode: 'workspace',
+        workspaceId: ws.id,
+        credits,
+      },
+    };
+  }
+
+  const { data: ent } = await supabase
+    .from('user_entitlements')
+    .select('credits_tts, subscription')
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  const credits = ent?.credits_tts ?? 0;
+  if (credits <= 0) {
+    return {
+      ok: false,
+      status: 402,
+      body: {
+        error: 'No narration credits remaining. Upgrade your plan or purchase credits, then retry.',
+        code: 'TTS_NO_CREDITS',
+        retryAfterMs: 0,
+      },
+    };
+  }
+
+  return {
+    ok: true,
+    supabase,
+    user,
+    billing: {
+      mode: 'entitlement',
+      userId: user.id,
+      credits,
+    },
+  };
+}
+
+async function recordTtsSuccess(supabase, billing) {
+  try {
+    if (billing.mode === 'trial') {
+      await supabase.from('ai_usage').insert({ user_id: billing.userId, type: 'tts' });
+      return;
+    }
+    if (billing.mode === 'workspace') {
+      for (let i = 0; i < 3; i++) {
+        const { data: ws } = await supabase
+          .from('workspaces')
+          .select('credits_tts')
+          .eq('id', billing.workspaceId)
+          .maybeSingle();
+        const current = ws?.credits_tts ?? 0;
+        if (current <= 0) return;
+        if (await consumeTtsCreditOptimistic(supabase, 'workspaces', 'id', billing.workspaceId, current)) {
+          return;
+        }
+      }
+      return;
+    }
+    if (billing.mode === 'entitlement') {
+      for (let i = 0; i < 3; i++) {
+        const { data: ent } = await supabase
+          .from('user_entitlements')
+          .select('credits_tts')
+          .eq('user_id', billing.userId)
+          .maybeSingle();
+        const current = ent?.credits_tts ?? 0;
+        if (current <= 0) return;
+        if (await consumeTtsCreditOptimistic(supabase, 'user_entitlements', 'user_id', billing.userId, current)) {
+          return;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[TTS] credit/usage record failed (non-fatal):', err?.message || err);
+  }
+}
+
 app.post('/api/tts', ttsRateLimit, async (req, res) => {
   const { text, voice = 'alloy', model = 'tts-1', speed = 1.0 } = req.body;
 
@@ -1191,8 +1422,24 @@ app.post('/api/tts', ttsRateLimit, async (req, res) => {
   }
 
   if (!text || !text.trim()) {
-    return res.status(400).json({ error: 'Missing required field: text' });
+    return res.status(400).json({ error: 'Missing required field: text', code: 'TTS_ERROR' });
   }
+
+  const authz = await authorizeTtsRequest(req);
+  if (!authz.ok) {
+    return res.status(authz.status).json(authz.body);
+  }
+
+  const userId = authz.user.id;
+  const inFlight = ttsInFlightByUser.get(userId) || 0;
+  if (inFlight >= TTS_USER_MAX_IN_FLIGHT) {
+    return res.status(429).json({
+      error: 'Narration is already running in another tab/session. Wait for it to finish, then retry.',
+      code: 'TTS_CONCURRENCY',
+      retryAfterMs: 5000,
+    });
+  }
+  ttsInFlightByUser.set(userId, inFlight + 1);
 
   const run = async () => {
     const gap = TTS_MIN_GAP_MS - (Date.now() - ttsLastStartedAt);
@@ -1218,6 +1465,7 @@ app.post('/api/tts', ttsRateLimit, async (req, res) => {
       });
 
       if (response.ok) {
+        await recordTtsSuccess(authz.supabase, authz.billing);
         res.setHeader('Content-Type', 'audio/mpeg');
         const buffer = await response.arrayBuffer();
         return res.end(Buffer.from(buffer));
@@ -1227,7 +1475,6 @@ app.post('/api/tts', ttsRateLimit, async (req, res) => {
       lastBody = await response.text().catch(() => response.statusText);
       const classified = classifyTtsFailure(lastStatus, lastBody);
 
-      // Hard quota / auth — do not burn retries
       if (classified.code === 'TTS_QUOTA' || classified.code === 'TTS_AUTH') {
         return res.status(lastStatus).json({
           error: classified.message,
@@ -1254,7 +1501,6 @@ app.post('/api/tts', ttsRateLimit, async (req, res) => {
         });
       }
 
-      // Non-retryable client error
       const classifiedOnce = classifyTtsFailure(lastStatus, lastBody);
       return res.status(lastStatus).json({
         error: classifiedOnce.message,
@@ -1263,17 +1509,20 @@ app.post('/api/tts', ttsRateLimit, async (req, res) => {
       });
     }
 
-    return res.status(lastStatus).json({ error: lastBody.slice(0, 280), code: 'TTS_ERROR' });
+    return res.status(lastStatus).json({ error: String(lastBody).slice(0, 280), code: 'TTS_ERROR' });
   };
 
   try {
     const done = ttsQueue.then(run, run);
-    // Keep queue alive even if a job fails
     ttsQueue = done.catch(() => {});
     await done;
   } catch (err) {
     console.error('[TTS Proxy] Network error:', err.message);
     return res.status(502).json({ error: 'TTS proxy network error: ' + err.message, code: 'TTS_NETWORK' });
+  } finally {
+    const n = ttsInFlightByUser.get(userId) || 1;
+    if (n <= 1) ttsInFlightByUser.delete(userId);
+    else ttsInFlightByUser.set(userId, n - 1);
   }
 });
 

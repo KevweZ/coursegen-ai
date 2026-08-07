@@ -8,7 +8,7 @@
  */
 
 import { useState, useCallback, useRef } from 'react';
-import { generateSlideTTS, urlToDataUrl, TTSRequestError } from '../services/ttsService';
+import { generateSlideTTS, urlToDataUrl, TTSRequestError, TTS_FATAL_CODES, formatTtsErrorForUser } from '../services/ttsService';
 
 export interface TTSProgress {
   isRunning: boolean;
@@ -70,12 +70,13 @@ async function generateDurableSlideTTS(
       const code = isTtsErr ? err.code : '';
       const msg = String(err?.message || '');
 
-      if (code === 'TTS_QUOTA' || code === 'TTS_AUTH') {
+      if (code === 'TTS_QUOTA' || code === 'TTS_AUTH' || TTS_FATAL_CODES.has(code)) {
         throw err;
       }
 
       const retryable =
         code === 'TTS_RATE_LIMIT' ||
+        code === 'TTS_CONCURRENCY' ||
         code === 'TTS_NETWORK' ||
         /429|503|502|COLD_START|rate limit|warming up/i.test(msg);
 
@@ -85,11 +86,15 @@ async function generateDurableSlideTTS(
         90000,
         Math.max(
           isTtsErr && err.retryAfterMs ? err.retryAfterMs : 0,
-          8000 * (attempt + 1),
+          code === 'TTS_CONCURRENCY' ? 5000 : 8000 * (attempt + 1),
         ),
       );
       armCooldown(waitMs);
-      onWaiting?.(`Rate limited — waiting ${Math.ceil(waitMs / 1000)}s then retrying…`);
+      onWaiting?.(
+        code === 'TTS_CONCURRENCY'
+          ? 'Another narration job is running — waiting, then retrying…'
+          : `Rate limited — waiting ${Math.ceil(waitMs / 1000)}s then retrying…`,
+      );
       await sleep(waitMs);
     }
   }
@@ -249,7 +254,7 @@ export function useTTSGeneration() {
             } catch (tabErr: any) {
               failCount++;
               lastError = tabErr?.message || 'Tab audio failed';
-              if (tabErr instanceof TTSRequestError && (tabErr.code === 'TTS_QUOTA' || tabErr.code === 'TTS_AUTH')) {
+              if (tabErr instanceof TTSRequestError && TTS_FATAL_CODES.has(tabErr.code)) {
                 hardStop = true;
               }
               console.warn(`[TTS] Tab audio failed on "${slide.title}" tab ${ti}:`, tabErr?.message);
@@ -259,14 +264,14 @@ export function useTTSGeneration() {
       } catch (err: any) {
         if (!isActive(runId)) break;
         failCount++;
-        lastError = err?.message || 'TTS failed';
+        lastError = formatTtsErrorForUser(err);
         console.warn(`[TTS] Failed for slide "${slide.title}":`, err.message);
         setProgress(prev => ({
           ...prev,
-          error: `Slide "${slide.title}": ${err.message}`,
+          error: `Slide "${slide.title}": ${lastError}`,
         }));
 
-        if (err instanceof TTSRequestError && (err.code === 'TTS_QUOTA' || err.code === 'TTS_AUTH')) {
+        if (err instanceof TTSRequestError && TTS_FATAL_CODES.has(err.code)) {
           hardStop = true;
           break;
         }
@@ -295,7 +300,7 @@ export function useTTSGeneration() {
         isDone: true,
         currentSlide: successCount,
         error: allFailed
-          ? (lastError || 'Narration failed for every slide. If this mentions quota/rate limit, wait a few minutes or check OpenAI billing, then use Edit → Regenerate all narration.')
+          ? (lastError || 'Narration failed for every slide. Check credits, trial limits, or OpenAI quota — then use Edit → Regenerate all narration.')
           : failCount > 0
             ? `${successCount} ready, ${failCount} failed${lastError ? ` (last: ${lastError})` : ''}`
             : null,

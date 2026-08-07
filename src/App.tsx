@@ -3221,7 +3221,8 @@ export default function App() {
           await generateTTS(courseForTts, setCourse, voiceForTts);
         } catch (err) {
           console.warn('[TTS] Slide narration generation failed:', err);
-          showDraftMessage('Narration hit an error — use Edit → Regenerate all narration to retry.');
+          const { formatTtsErrorForUser } = await import('./services/ttsService');
+          showDraftMessage(`${formatTtsErrorForUser(err)} — use Edit → Regenerate all narration to retry.`);
         }
 
         try {
@@ -3460,7 +3461,8 @@ export default function App() {
       );
     } catch (err: any) {
       console.error('[TTS] Regenerate all failed:', err);
-      showDraftMessage(err?.message || 'Failed to regenerate narration.');
+      const { formatTtsErrorForUser } = await import('./services/ttsService');
+      showDraftMessage(formatTtsErrorForUser(err) || 'Failed to regenerate narration.');
     }
   };
 

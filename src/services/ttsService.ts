@@ -1,7 +1,7 @@
 /**
  * ttsService.ts
  * Calls the TTS API securely via the server-side proxy (/api/tts).
- * The OpenAI API key is NEVER exposed to the browser bundle — it lives in server.js only.
+ * Sends the Supabase JWT so the server can enforce credits / trial TTS caps.
  */
 
 const TTS_PROXY_URL = '/api/tts';
@@ -28,11 +28,46 @@ export class TTSRequestError extends Error {
   }
 }
 
+/** Hard-stop codes — do not keep retrying the rest of a course. */
+export const TTS_FATAL_CODES = new Set([
+  'TTS_NO_CREDITS',
+  'TTS_QUOTA',
+  'TTS_AUTH',
+  'TTS_AUTH_REQUIRED',
+  'TTS_NOT_CONFIGURED',
+  'TRIAL_EXPIRED',
+  'TRIAL_TTS_LIMIT',
+]);
+
+function getSupabaseAccessToken(): string | null {
+  try {
+    const key = Object.keys(localStorage).find(k =>
+      (k.startsWith('sb-') && k.includes('auth-token')) ||
+      (k.includes('supabase') && k.includes('auth'))
+    );
+    let token = key ? JSON.parse(localStorage.getItem(key) ?? '')?.access_token : null;
+    if (!token) {
+      for (const k of Object.keys(localStorage)) {
+        try {
+          const v = JSON.parse(localStorage.getItem(k) ?? '');
+          if (v?.access_token) { token = v.access_token; break; }
+        } catch { /* ignore */ }
+      }
+    }
+    return token || null;
+  } catch {
+    return null;
+  }
+}
+
 function parseProxyError(status: number, raw: string): TTSRequestError {
   try {
     const data = JSON.parse(raw);
-    const message = String(data?.error || raw).slice(0, 280);
-    const code = String(data?.code || (status === 429 ? 'TTS_RATE_LIMIT' : 'TTS_ERROR'));
+    const message = String(data?.error || raw).slice(0, 320);
+    const code = String(
+      data?.code ||
+      (status === 401 ? 'TTS_AUTH_REQUIRED' : status === 402 ? 'TTS_NO_CREDITS' : status === 429 ? 'TTS_RATE_LIMIT' : 'TTS_ERROR')
+    );
     const retryAfterMs = Number(data?.retryAfterMs) || (status === 429 ? 20000 : 0);
     return new TTSRequestError(message, { status, code, retryAfterMs });
   } catch {
@@ -42,6 +77,31 @@ function parseProxyError(status: number, raw: string): TTSRequestError {
       retryAfterMs: status === 429 ? 20000 : 0,
     });
   }
+}
+
+/** User-facing label for toast / draft messages. */
+export function formatTtsErrorForUser(err: unknown): string {
+  if (err instanceof TTSRequestError) {
+    switch (err.code) {
+      case 'TTS_NO_CREDITS':
+        return err.message || 'No narration credits remaining. Upgrade or buy credits, then retry.';
+      case 'TRIAL_TTS_LIMIT':
+        return err.message || 'Trial narration weekly limit reached. Upgrade or wait for reset.';
+      case 'TRIAL_EXPIRED':
+        return err.message || 'Your trial has expired.';
+      case 'TTS_QUOTA':
+        return 'Server OpenAI TTS quota exceeded. This is a platform billing issue — retry later or contact support.';
+      case 'TTS_RATE_LIMIT':
+        return 'Narration is rate-limited right now. The app will wait and retry automatically when possible.';
+      case 'TTS_CONCURRENCY':
+        return 'Narration is already running in another tab. Finish or close that run, then retry.';
+      case 'TTS_AUTH_REQUIRED':
+        return 'Sign in required to generate narration.';
+      default:
+        return err.message;
+    }
+  }
+  return err instanceof Error ? err.message : 'Narration failed';
 }
 
 /**
@@ -57,9 +117,13 @@ export async function generateSlideTTS(
     throw new Error('Cannot generate TTS for empty text.');
   }
 
+  const token = getSupabaseAccessToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
   const response = await fetch(TTS_PROXY_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({
       text: text.trim().slice(0, 4096),
       voice,

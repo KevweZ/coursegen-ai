@@ -231,6 +231,7 @@ export function TrialInvitePanel({ onClose, apiBase, accessToken }: Props) {
                 ['✅', 'Upload a file & build a course'],
                 ['✅', 'Edit slides, narration, Quality scan, save drafts (3 slots)'],
                 ['⚠️', 'AI course generation — max 30 complex AI calls / week'],
+                ['⚠️', 'Narration audio — max 200 TTS clips / week (shared platform limit)'],
                 ['❌', 'Export SCORM (Publish is blocked with upgrade prompt)'],
                 ['❌', 'Admin / invite tools hidden'],
                 ['❌', 'Access ends automatically at expiry'],
