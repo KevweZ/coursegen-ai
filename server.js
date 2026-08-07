@@ -1212,8 +1212,9 @@ async function consumeTtsCreditOptimistic(supabase, table, idField, id, current)
 /**
  * Resolve who is calling /api/tts and whether they may spend a narration credit.
  * Trial → weekly soft cap via ai_usage(type=tts). Paid/team → credits_tts pool.
+ * Identity-only helper used for job poll/cancel (no credit gate).
  */
-async function authorizeTtsRequest(req) {
+async function authorizeTtsIdentity(req) {
   const authHeader = req.headers.authorization ?? '';
   const jwt = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
   if (!jwt) {
@@ -1256,6 +1257,14 @@ async function authorizeTtsRequest(req) {
     };
   }
 
+  return { ok: true, supabase, user, jwt };
+}
+
+async function authorizeTtsRequest(req) {
+  const identity = await authorizeTtsIdentity(req);
+  if (!identity.ok) return identity;
+
+  const { supabase, user } = identity;
   const email = (user.email || '').toLowerCase();
   const isAdmin =
     (ADMIN_EMAIL && email === ADMIN_EMAIL) ||
@@ -1414,6 +1423,86 @@ async function recordTtsSuccess(supabase, billing) {
   }
 }
 
+/**
+ * Call OpenAI speech API with process-wide pacing + retries.
+ * Returns MP3 Buffer on success; throws { status, code, message, retryAfterMs }.
+ */
+async function synthesizeSpeechBuffer(text, { voice = 'alloy', model = 'tts-1', speed = 1.0 } = {}) {
+  const gap = TTS_MIN_GAP_MS - (Date.now() - ttsLastStartedAt);
+  if (gap > 0) await new Promise(r => setTimeout(r, gap));
+  ttsLastStartedAt = Date.now();
+
+  let lastStatus = 500;
+  let lastBody = 'TTS failed';
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const response = await fetch('https://api.openai.com/v1/audio/speech', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type':  'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        input: String(text || '').trim().slice(0, 4096),
+        voice,
+        speed,
+        response_format: 'mp3',
+      }),
+    });
+
+    if (response.ok) {
+      return Buffer.from(await response.arrayBuffer());
+    }
+
+    lastStatus = response.status;
+    lastBody = await response.text().catch(() => response.statusText);
+    const classified = classifyTtsFailure(lastStatus, lastBody);
+
+    if (classified.code === 'TTS_QUOTA' || classified.code === 'TTS_AUTH') {
+      const err = new Error(classified.message);
+      err.status = lastStatus;
+      err.code = classified.code;
+      err.retryAfterMs = 0;
+      throw err;
+    }
+
+    if (lastStatus === 429 || lastStatus >= 500) {
+      const headerRetry = Number(response.headers.get('retry-after'));
+      const waitMs = Number.isFinite(headerRetry) && headerRetry > 0
+        ? headerRetry * 1000
+        : Math.min(60000, (classified.retryAfterMs || 8000) * (attempt + 1));
+      console.warn(`[TTS] ${classified.code} attempt ${attempt + 1}/4 — waiting ${waitMs}ms`);
+      if (attempt < 3) {
+        await new Promise(r => setTimeout(r, waitMs));
+        continue;
+      }
+      const err = new Error(classified.message);
+      err.status = 429;
+      err.code = classified.code;
+      err.retryAfterMs = waitMs;
+      throw err;
+    }
+
+    const err = new Error(classified.message);
+    err.status = lastStatus;
+    err.code = classified.code;
+    err.retryAfterMs = 0;
+    throw err;
+  }
+
+  const err = new Error(String(lastBody).slice(0, 280));
+  err.status = lastStatus;
+  err.code = 'TTS_ERROR';
+  err.retryAfterMs = 0;
+  throw err;
+}
+
+function enqueueTtsWork(fn) {
+  const done = ttsQueue.then(fn, fn);
+  ttsQueue = done.catch(() => {});
+  return done;
+}
+
 app.post('/api/tts', ttsRateLimit, async (req, res) => {
   const { text, voice = 'alloy', model = 'tts-1', speed = 1.0 } = req.body;
 
@@ -1441,89 +1530,283 @@ app.post('/api/tts', ttsRateLimit, async (req, res) => {
   }
   ttsInFlightByUser.set(userId, inFlight + 1);
 
-  const run = async () => {
-    const gap = TTS_MIN_GAP_MS - (Date.now() - ttsLastStartedAt);
-    if (gap > 0) await new Promise(r => setTimeout(r, gap));
-    ttsLastStartedAt = Date.now();
-
-    let lastStatus = 500;
-    let lastBody = 'TTS failed';
-    for (let attempt = 0; attempt < 4; attempt++) {
-      const response = await fetch('https://api.openai.com/v1/audio/speech', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${OPENAI_API_KEY}`,
-          'Content-Type':  'application/json',
-        },
-        body: JSON.stringify({
-          model,
-          input: text.trim().slice(0, 4096),
-          voice,
-          speed,
-          response_format: 'mp3',
-        }),
-      });
-
-      if (response.ok) {
-        await recordTtsSuccess(authz.supabase, authz.billing);
-        res.setHeader('Content-Type', 'audio/mpeg');
-        const buffer = await response.arrayBuffer();
-        return res.end(Buffer.from(buffer));
-      }
-
-      lastStatus = response.status;
-      lastBody = await response.text().catch(() => response.statusText);
-      const classified = classifyTtsFailure(lastStatus, lastBody);
-
-      if (classified.code === 'TTS_QUOTA' || classified.code === 'TTS_AUTH') {
-        return res.status(lastStatus).json({
-          error: classified.message,
-          code: classified.code,
-          retryAfterMs: 0,
-        });
-      }
-
-      if (lastStatus === 429 || lastStatus >= 500) {
-        const headerRetry = Number(response.headers.get('retry-after'));
-        const waitMs = Number.isFinite(headerRetry) && headerRetry > 0
-          ? headerRetry * 1000
-          : Math.min(60000, (classified.retryAfterMs || 8000) * (attempt + 1));
-        console.warn(`[TTS Proxy] ${classified.code} attempt ${attempt + 1}/4 — waiting ${waitMs}ms`);
-        if (attempt < 3) {
-          await new Promise(r => setTimeout(r, waitMs));
-          continue;
-        }
-        res.setHeader('Retry-After', String(Math.ceil(waitMs / 1000)));
-        return res.status(429).json({
-          error: classified.message,
-          code: classified.code,
-          retryAfterMs: waitMs,
-        });
-      }
-
-      const classifiedOnce = classifyTtsFailure(lastStatus, lastBody);
-      return res.status(lastStatus).json({
-        error: classifiedOnce.message,
-        code: classifiedOnce.code,
-        retryAfterMs: 0,
-      });
-    }
-
-    return res.status(lastStatus).json({ error: String(lastBody).slice(0, 280), code: 'TTS_ERROR' });
-  };
-
   try {
-    const done = ttsQueue.then(run, run);
-    ttsQueue = done.catch(() => {});
-    await done;
+    await enqueueTtsWork(async () => {
+      const buffer = await synthesizeSpeechBuffer(text, { voice, model, speed });
+      await recordTtsSuccess(authz.supabase, authz.billing);
+      res.setHeader('Content-Type', 'audio/mpeg');
+      return res.end(buffer);
+    });
   } catch (err) {
-    console.error('[TTS Proxy] Network error:', err.message);
-    return res.status(502).json({ error: 'TTS proxy network error: ' + err.message, code: 'TTS_NETWORK' });
+    if (res.headersSent) return;
+    console.error('[TTS Proxy] Error:', err.message);
+    return res.status(err.status || 502).json({
+      error: err.message || 'TTS proxy network error',
+      code: err.code || 'TTS_NETWORK',
+      retryAfterMs: err.retryAfterMs || 0,
+    });
   } finally {
     const n = ttsInFlightByUser.get(userId) || 1;
     if (n <= 1) ttsInFlightByUser.delete(userId);
     else ttsInFlightByUser.set(userId, n - 1);
   }
+});
+
+// ─── 7b. Course narration jobs (server-side queue + client poll) ─────────────
+const ttsJobs = new Map(); // jobId -> job
+const ttsActiveJobByUser = new Map(); // userId -> jobId
+const TTS_JOB_TTL_MS = 2 * 60 * 60 * 1000; // 2h
+const TTS_JOB_MAX_ITEMS = 200;
+
+function cleanupTtsJobs() {
+  const now = Date.now();
+  for (const [id, job] of ttsJobs.entries()) {
+    if (now - job.createdAt > TTS_JOB_TTL_MS) {
+      ttsJobs.delete(id);
+      if (ttsActiveJobByUser.get(job.userId) === id) ttsActiveJobByUser.delete(job.userId);
+    }
+  }
+}
+setInterval(cleanupTtsJobs, 15 * 60 * 1000).unref?.();
+
+function publicTtsJob(job, { includeResults = true, consumeResults = false } = {}) {
+  const payload = {
+    jobId: job.id,
+    status: job.status,
+    current: job.current,
+    total: job.total,
+    successCount: job.successCount,
+    failCount: job.failCount,
+    currentTitle: job.currentTitle || '',
+    error: job.error || null,
+    code: job.code || null,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+  };
+  if (includeResults) {
+    payload.results = job.pendingResults.slice();
+    if (consumeResults) job.pendingResults = [];
+  }
+  return payload;
+}
+
+async function runTtsJob(job) {
+  job.status = 'running';
+  job.updatedAt = Date.now();
+
+  for (let i = 0; i < job.items.length; i++) {
+    if (job.cancelRequested) {
+      job.status = 'cancelled';
+      job.updatedAt = Date.now();
+      break;
+    }
+
+    const item = job.items[i];
+    job.current = i + 1;
+    job.currentTitle = item.title || item.id;
+    job.updatedAt = Date.now();
+
+    try {
+      // Re-check trial/credits periodically so a long job stops cleanly
+      if (i > 0 && i % 5 === 0 && job.billing.mode !== 'admin') {
+        const fakeReq = { headers: { authorization: `Bearer ${job.jwt}` } };
+        const authz = await authorizeTtsRequest(fakeReq);
+        if (!authz.ok) {
+          job.status = 'failed';
+          job.error = authz.body.error;
+          job.code = authz.body.code;
+          job.updatedAt = Date.now();
+          break;
+        }
+        job.billing = authz.billing;
+        job.supabase = authz.supabase;
+      }
+
+      const buffer = await enqueueTtsWork(() =>
+        synthesizeSpeechBuffer(item.text, {
+          voice: job.voice,
+          model: job.model,
+          speed: job.speed,
+        })
+      );
+      await recordTtsSuccess(job.supabase, job.billing);
+      job.successCount += 1;
+      job.pendingResults.push({
+        id: item.id,
+        target: item.target || 'slide',
+        slideId: item.slideId || null,
+        tabId: item.tabId || null,
+        listKey: item.listKey || null,
+        audioContentType: 'audio/mpeg',
+        audioBase64: buffer.toString('base64'),
+      });
+      job.updatedAt = Date.now();
+      await new Promise(r => setTimeout(r, 400));
+    } catch (err) {
+      job.failCount += 1;
+      job.error = err.message || 'TTS item failed';
+      job.code = err.code || 'TTS_ERROR';
+      job.updatedAt = Date.now();
+      console.warn(`[TTS Job ${job.id}] item ${item.id} failed:`, err.message);
+
+      if (err.code === 'TTS_QUOTA' || err.code === 'TTS_AUTH' || err.code === 'TTS_NO_CREDITS' || err.code === 'TRIAL_TTS_LIMIT' || err.code === 'TRIAL_EXPIRED') {
+        job.status = 'failed';
+        break;
+      }
+
+      if (err.code === 'TTS_RATE_LIMIT') {
+        const cool = Math.max(err.retryAfterMs || 20000, 20000);
+        await new Promise(r => setTimeout(r, cool));
+      }
+    }
+  }
+
+  if (job.status === 'running') {
+    job.status = job.successCount === 0 && job.total > 0 ? 'failed' : 'completed';
+    if (job.status === 'failed' && !job.error) {
+      job.error = 'Narration failed for every clip in this job.';
+      job.code = job.code || 'TTS_ERROR';
+    }
+    job.updatedAt = Date.now();
+  }
+
+  if (ttsActiveJobByUser.get(job.userId) === job.id) {
+    ttsActiveJobByUser.delete(job.userId);
+  }
+}
+
+app.post('/api/tts/jobs', ttsRateLimit, async (req, res) => {
+  if (!OPENAI_API_KEY) {
+    return res.status(503).json({ error: 'TTS is not configured on this server.', code: 'TTS_NOT_CONFIGURED' });
+  }
+
+  const authz = await authorizeTtsRequest(req);
+  if (!authz.ok) {
+    return res.status(authz.status).json(authz.body);
+  }
+
+  const {
+    voice = 'alloy',
+    model = 'tts-1',
+    speed = 1.0,
+    items = [],
+  } = req.body || {};
+
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'items[] required', code: 'TTS_ERROR' });
+  }
+  if (items.length > TTS_JOB_MAX_ITEMS) {
+    return res.status(400).json({
+      error: `Too many narration items (max ${TTS_JOB_MAX_ITEMS}).`,
+      code: 'TTS_ERROR',
+    });
+  }
+
+  const normalized = items
+    .map((it, idx) => ({
+      id: String(it?.id || `item-${idx}`),
+      text: String(it?.text || '').trim(),
+      title: String(it?.title || it?.id || `Item ${idx + 1}`),
+      target: it?.target === 'tab' || it?.target === 'synthetic' ? it.target : 'slide',
+      slideId: it?.slideId ? String(it.slideId) : null,
+      tabId: it?.tabId ? String(it.tabId) : null,
+      listKey: it?.listKey === 'items' ? 'items' : (it?.listKey === 'tabs' ? 'tabs' : null),
+    }))
+    .filter(it => it.text.length > 0);
+
+  if (!normalized.length) {
+    return res.status(400).json({ error: 'No narratable text in items[]', code: 'TTS_ERROR' });
+  }
+
+  const userId = authz.user.id;
+  const existingId = ttsActiveJobByUser.get(userId);
+  if (existingId && ttsJobs.has(existingId)) {
+    const existing = ttsJobs.get(existingId);
+    if (existing.status === 'queued' || existing.status === 'running') {
+      existing.cancelRequested = true;
+    }
+  }
+
+  const jwt = (req.headers.authorization || '').startsWith('Bearer ')
+    ? req.headers.authorization.slice(7)
+    : '';
+
+  const jobId = `tts_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  const job = {
+    id: jobId,
+    userId,
+    jwt,
+    supabase: authz.supabase,
+    billing: authz.billing,
+    voice,
+    model,
+    speed,
+    items: normalized,
+    status: 'queued',
+    current: 0,
+    total: normalized.length,
+    successCount: 0,
+    failCount: 0,
+    currentTitle: '',
+    error: null,
+    code: null,
+    pendingResults: [],
+    cancelRequested: false,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+
+  ttsJobs.set(jobId, job);
+  ttsActiveJobByUser.set(userId, jobId);
+
+  // Fire-and-forget worker — client polls for progress/results
+  setImmediate(() => {
+    runTtsJob(job).catch(err => {
+      console.error(`[TTS Job ${jobId}] crashed:`, err);
+      job.status = 'failed';
+      job.error = err.message || 'Narration job crashed';
+      job.code = err.code || 'TTS_ERROR';
+      job.updatedAt = Date.now();
+      if (ttsActiveJobByUser.get(userId) === jobId) ttsActiveJobByUser.delete(userId);
+    });
+  });
+
+  return res.status(202).json(publicTtsJob(job, { includeResults: false }));
+});
+
+app.get('/api/tts/jobs/:jobId', async (req, res) => {
+  const authz = await authorizeTtsIdentity(req);
+  if (!authz.ok) {
+    return res.status(authz.status).json(authz.body);
+  }
+
+  const job = ttsJobs.get(req.params.jobId);
+  if (!job || job.userId !== authz.user.id) {
+    return res.status(404).json({ error: 'Narration job not found.', code: 'TTS_JOB_NOT_FOUND' });
+  }
+
+  return res.json(publicTtsJob(job, { includeResults: true, consumeResults: true }));
+});
+
+app.delete('/api/tts/jobs/:jobId', async (req, res) => {
+  const authz = await authorizeTtsIdentity(req);
+  if (!authz.ok) {
+    return res.status(authz.status).json(authz.body);
+  }
+
+  const job = ttsJobs.get(req.params.jobId);
+  if (!job || job.userId !== authz.user.id) {
+    return res.status(404).json({ error: 'Narration job not found.', code: 'TTS_JOB_NOT_FOUND' });
+  }
+
+  job.cancelRequested = true;
+  if (job.status === 'queued') {
+    job.status = 'cancelled';
+    job.updatedAt = Date.now();
+    if (ttsActiveJobByUser.get(job.userId) === job.id) ttsActiveJobByUser.delete(job.userId);
+  }
+
+  return res.json(publicTtsJob(job, { includeResults: false }));
 });
 
 // ─── 8. Payment Routes ──────────────────────────────────────────────────────

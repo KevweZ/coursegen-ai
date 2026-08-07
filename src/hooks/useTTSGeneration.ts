@@ -1,14 +1,20 @@
 /**
  * useTTSGeneration.ts
- * React hook that drives the background TTS generation job.
- *
- * - Sequential slides with durable data: URLs
- * - Respects OpenAI 429 / quota errors with long backoff (does not stampede retries)
- * - Run ids so cancelled jobs cannot clobber newer progress
+ * Starts a server-side narration job and polls for progress/results.
+ * Audio generation continues on the server even if the browser is busy;
+ * the client applies completed clips as they arrive.
  */
 
 import { useState, useCallback, useRef } from 'react';
-import { generateSlideTTS, urlToDataUrl, TTSRequestError, TTS_FATAL_CODES, formatTtsErrorForUser } from '../services/ttsService';
+import {
+  createTtsJob,
+  pollTtsJob,
+  cancelTtsJob,
+  formatTtsErrorForUser,
+  TTSRequestError,
+  type TtsJobItem,
+  type TtsJobResultItem,
+} from '../services/ttsService';
 
 export interface TTSProgress {
   isRunning: boolean;
@@ -32,79 +38,158 @@ const DEFAULT_PROGRESS: TTSProgress = {
 
 type SetCourse = (updater: any) => void;
 
-/** Shared cooldown so overlapping regenerate + finalize cannot hammer OpenAI. */
-let globalTtsCooldownUntil = 0;
-
 function sleep(ms: number) {
   return new Promise(r => setTimeout(r, ms));
 }
 
-async function waitForCooldown() {
-  const wait = globalTtsCooldownUntil - Date.now();
-  if (wait > 0) await sleep(wait);
+function audioResultToDataUrl(result: TtsJobResultItem): string {
+  return `data:${result.audioContentType || 'audio/mpeg'};base64,${result.audioBase64}`;
 }
 
-function armCooldown(ms: number) {
-  globalTtsCooldownUntil = Math.max(globalTtsCooldownUntil, Date.now() + ms);
-}
+function applyJobResults(
+  results: TtsJobResultItem[],
+  setCourse: SetCourse,
+  setSyntheticAudioMap?: (updater: (prev: Record<string, string>) => Record<string, string>) => void,
+) {
+  if (!results?.length) return;
 
-async function generateDurableSlideTTS(
-  text: string,
-  voice: string,
-  onWaiting?: (message: string) => void,
-): Promise<string> {
-  let lastErr: any;
+  const slidePatches: TtsJobResultItem[] = [];
+  const tabPatches: TtsJobResultItem[] = [];
+  const syntheticPatches: TtsJobResultItem[] = [];
 
-  for (let attempt = 0; attempt < 5; attempt++) {
-    await waitForCooldown();
-    try {
-      const blobUrl = await generateSlideTTS(text, { voice: voice as any });
-      try {
-        return await urlToDataUrl(blobUrl);
-      } catch {
-        return blobUrl;
-      }
-    } catch (err: any) {
-      lastErr = err;
-      const isTtsErr = err instanceof TTSRequestError;
-      const code = isTtsErr ? err.code : '';
-      const msg = String(err?.message || '');
-
-      if (code === 'TTS_QUOTA' || code === 'TTS_AUTH' || TTS_FATAL_CODES.has(code)) {
-        throw err;
-      }
-
-      const retryable =
-        code === 'TTS_RATE_LIMIT' ||
-        code === 'TTS_CONCURRENCY' ||
-        code === 'TTS_NETWORK' ||
-        /429|503|502|COLD_START|rate limit|warming up/i.test(msg);
-
-      if (!retryable || attempt === 4) throw err;
-
-      const waitMs = Math.min(
-        90000,
-        Math.max(
-          isTtsErr && err.retryAfterMs ? err.retryAfterMs : 0,
-          code === 'TTS_CONCURRENCY' ? 5000 : 8000 * (attempt + 1),
-        ),
-      );
-      armCooldown(waitMs);
-      onWaiting?.(
-        code === 'TTS_CONCURRENCY'
-          ? 'Another narration job is running — waiting, then retrying…'
-          : `Rate limited — waiting ${Math.ceil(waitMs / 1000)}s then retrying…`,
-      );
-      await sleep(waitMs);
+  for (const r of results) {
+    if (r.target === 'synthetic' || (r.id.startsWith('__') && r.id.endsWith('__'))) {
+      syntheticPatches.push(r);
+    } else if (r.target === 'tab' || r.tabId) {
+      tabPatches.push(r);
+    } else {
+      slidePatches.push(r);
     }
   }
 
-  throw lastErr || new Error('TTS failed');
+  if (syntheticPatches.length && setSyntheticAudioMap) {
+    setSyntheticAudioMap(prev => {
+      const next = { ...prev };
+      for (const r of syntheticPatches) {
+        next[r.id] = audioResultToDataUrl(r);
+      }
+      return next;
+    });
+  }
+
+  if (slidePatches.length || tabPatches.length) {
+    setCourse((prev: any) => {
+      if (!prev?.modules) return prev;
+      return {
+        ...prev,
+        modules: prev.modules.map((m: any) => ({
+          ...m,
+          slides: (m.slides || []).map((s: any) => {
+            let slide = s;
+            for (const r of slidePatches) {
+              if (r.id === s.id || r.slideId === s.id) {
+                slide = { ...slide, voiceOverUrl: audioResultToDataUrl(r) };
+              }
+            }
+            for (const r of tabPatches) {
+              const slideId = r.slideId || r.id.split('::tab::')[0];
+              if (slide.id !== slideId) continue;
+              const data = { ...(slide.data || {}) };
+              const listKey =
+                r.listKey === 'items' || r.listKey === 'tabs'
+                  ? r.listKey
+                  : Array.isArray(data.tabs)
+                    ? 'tabs'
+                    : Array.isArray(data.items)
+                      ? 'items'
+                      : 'tabs';
+              const list = Array.isArray(data[listKey]) ? [...data[listKey]] : [];
+              const tabId = r.tabId || r.id.split('::tab::')[1];
+              const idx = list.findIndex((t: any) => t.id === tabId);
+              if (idx < 0) continue;
+              list[idx] = { ...list[idx], voiceOverUrl: audioResultToDataUrl(r) };
+              slide = { ...slide, data: { ...data, [listKey]: list } };
+            }
+            return slide;
+          }),
+        })),
+      };
+    });
+  }
+}
+
+/** Build narration job items from a hydrated course (+ optional synthetic clips). */
+export function buildCourseNarrationItems(
+  course: any,
+  opts?: {
+    onlyMissing?: boolean;
+    synthetic?: Array<{ id: string; text: string; title?: string }>;
+  },
+): { items: TtsJobItem[]; skipped: number } {
+  const items: TtsJobItem[] = [];
+  let skipped = 0;
+  if (!course?.modules) {
+    return { items, skipped };
+  }
+
+  for (const mod of course.modules) {
+    for (const slide of (mod.slides ?? [])) {
+      const text = String(slide.voiceOverText || slide.narration || slide.content || '').trim();
+      const hasMain = !!text;
+      const skipMain = !!(opts?.onlyMissing && slide.voiceOverUrl);
+
+      if (hasMain && !skipMain) {
+        items.push({
+          id: String(slide.id),
+          text,
+          title: slide.title || String(slide.id),
+          target: 'slide',
+          slideId: String(slide.id),
+        });
+      } else if (!hasMain) {
+        skipped += 1;
+      }
+
+      const isTabbed = slide.type === 'tabbed-horizontal' || slide.type === 'tabbed-vertical';
+      const listKey = Array.isArray(slide.data?.tabs) ? 'tabs' : Array.isArray(slide.data?.items) ? 'items' : null;
+      const tabs: any[] = listKey ? (slide.data?.[listKey] || []) : [];
+      if (isTabbed && tabs.length) {
+        for (const tab of tabs) {
+          const tabText = String(tab?.voiceOverText || '').trim();
+          if (!tabText) continue;
+          if (opts?.onlyMissing && tab.voiceOverUrl) continue;
+          items.push({
+            id: `${slide.id}::tab::${tab.id}`,
+            text: tabText,
+            title: `${slide.title || slide.id} / ${tab.label || tab.title || tab.id}`,
+            target: 'tab',
+            slideId: String(slide.id),
+            tabId: String(tab.id),
+            listKey,
+          });
+        }
+      }
+    }
+  }
+
+  for (const s of opts?.synthetic || []) {
+    const text = String(s.text || '').trim();
+    if (!text) continue;
+    items.push({
+      id: s.id,
+      text,
+      title: s.title || s.id,
+      target: 'synthetic',
+    });
+  }
+
+  return { items, skipped };
 }
 
 export function useTTSGeneration() {
   const [progress, setProgress] = useState<TTSProgress>(DEFAULT_PROGRESS);
   const runIdRef = useRef(0);
+  const activeJobIdRef = useRef<string | null>(null);
 
   const isActive = (runId: number) => runId === runIdRef.current;
 
@@ -113,33 +198,19 @@ export function useTTSGeneration() {
     setCourse: SetCourse,
     voice: string = 'alloy',
     onSlideProgress?: (current: number, total: number, title: string) => void,
-    opts?: { onlyMissing?: boolean },
+    opts?: {
+      onlyMissing?: boolean;
+      synthetic?: Array<{ id: string; text: string; title?: string }>;
+      setSyntheticAudioMap?: (updater: (prev: Record<string, string>) => Record<string, string>) => void;
+    },
   ) => {
-    if (!course?.modules) return;
-
-    const allSlides: Array<{ slide: any; moduleTitle: string }> = [];
-    for (const mod of course.modules) {
-      for (const slide of (mod.slides ?? [])) {
-        allSlides.push({ slide, moduleTitle: mod.title });
-      }
-    }
-
-    const narratableSlides = allSlides.filter(({ slide }) => {
-      if (!(slide.voiceOverText || slide.narration || slide.content)) return false;
-      if (opts?.onlyMissing && slide.voiceOverUrl) {
-        const isTabbed = slide.type === 'tabbed-horizontal' || slide.type === 'tabbed-vertical';
-        const tabs: any[] = slide.data?.tabs || slide.data?.items || [];
-        if (isTabbed && tabs.some((t: any) => (t?.voiceOverText || '').trim() && !t.voiceOverUrl)) {
-          return true;
-        }
-        return false;
-      }
-      return true;
+    const runId = ++runIdRef.current;
+    const { items, skipped } = buildCourseNarrationItems(course, {
+      onlyMissing: opts?.onlyMissing,
+      synthetic: opts?.synthetic,
     });
 
-    const runId = ++runIdRef.current;
-
-    if (narratableSlides.length === 0) {
+    if (items.length === 0) {
       if (isActive(runId)) {
         setProgress({
           isRunning: false,
@@ -148,7 +219,7 @@ export function useTTSGeneration() {
           totalSlides: 0,
           currentSlideTitle: '',
           error: 'No narratable slide text found',
-          skipped: allSlides.length,
+          skipped,
         });
       }
       return;
@@ -158,164 +229,92 @@ export function useTTSGeneration() {
       isRunning: true,
       isDone: false,
       currentSlide: 0,
-      totalSlides: narratableSlides.length,
+      totalSlides: items.length,
       currentSlideTitle: '',
       error: null,
-      skipped: allSlides.length - narratableSlides.length,
+      skipped,
     });
 
-    let successCount = 0;
-    let failCount = 0;
-    let lastError: string | null = null;
-    let hardStop = false;
-
-    for (let i = 0; i < narratableSlides.length; i++) {
-      if (!isActive(runId) || hardStop) break;
-
-      const { slide } = narratableSlides[i];
-      const narrationText = slide.voiceOverText || slide.narration || slide.content || '';
-      const slideId = slide.id;
-      const title = slide.title ?? `Slide ${i + 1}`;
-
-      if (isActive(runId)) {
-        setProgress(prev => ({
-          ...prev,
-          currentSlide: i + 1,
-          currentSlideTitle: title,
-          error: null,
-        }));
+    try {
+      const created = await createTtsJob({ voice, items });
+      if (!isActive(runId)) {
+        await cancelTtsJob(created.jobId).catch(() => {});
+        return;
       }
-      onSlideProgress?.(i + 1, narratableSlides.length, title);
+      activeJobIdRef.current = created.jobId;
 
-      try {
-        const skipMain = !!(opts?.onlyMissing && slide.voiceOverUrl);
-        if (!skipMain) {
-          const durableUrl = await generateDurableSlideTTS(
-            narrationText,
-            voice,
-            (waitMsg) => {
-              if (isActive(runId)) {
-                setProgress(prev => ({ ...prev, error: waitMsg }));
-              }
-            },
-          );
-          if (!isActive(runId)) break;
-          successCount++;
-
-          setCourse((prev: any) => {
-            if (!prev?.modules) return prev;
-            return {
-              ...prev,
-              modules: prev.modules.map((m: any) => ({
-                ...m,
-                slides: (m.slides || []).map((s: any) =>
-                  s.id === slideId ? { ...s, voiceOverUrl: durableUrl } : s
-                ),
-              })),
-            };
-          });
-        } else {
-          successCount++;
-        }
-
-        const isTabbed = slide.type === 'tabbed-horizontal' || slide.type === 'tabbed-vertical';
-        const tabs: any[] = slide.data?.tabs || slide.data?.items || [];
-        if (isTabbed && Array.isArray(tabs) && tabs.length) {
-          for (let ti = 0; ti < tabs.length; ti++) {
-            if (!isActive(runId) || hardStop) break;
-            const tab = tabs[ti];
-            const tabText = (tab?.voiceOverText || '').trim();
-            if (!tabText) continue;
-            if (opts?.onlyMissing && tab.voiceOverUrl) continue;
-            try {
-              const tabUrl = await generateDurableSlideTTS(tabText, voice);
-              if (!isActive(runId)) break;
-              setCourse((prev: any) => {
-                if (!prev?.modules) return prev;
-                return {
-                  ...prev,
-                  modules: prev.modules.map((m: any) => ({
-                    ...m,
-                    slides: (m.slides || []).map((s: any) => {
-                      if (s.id !== slideId) return s;
-                      const data = { ...(s.data || {}) };
-                      const listKey = Array.isArray(data.tabs) ? 'tabs' : Array.isArray(data.items) ? 'items' : 'tabs';
-                      const list = Array.isArray(data[listKey]) ? [...data[listKey]] : [...tabs];
-                      const idx = list.findIndex((t: any) => t.id === tab.id);
-                      const at = idx >= 0 ? idx : ti;
-                      if (at < 0 || at >= list.length) return s;
-                      list[at] = { ...list[at], voiceOverUrl: tabUrl };
-                      return { ...s, data: { ...data, [listKey]: list } };
-                    }),
-                  })),
-                };
-              });
-              await sleep(400);
-            } catch (tabErr: any) {
-              failCount++;
-              lastError = tabErr?.message || 'Tab audio failed';
-              if (tabErr instanceof TTSRequestError && TTS_FATAL_CODES.has(tabErr.code)) {
-                hardStop = true;
-              }
-              console.warn(`[TTS] Tab audio failed on "${slide.title}" tab ${ti}:`, tabErr?.message);
-            }
-          }
-        }
-      } catch (err: any) {
+      // Poll until terminal state
+      while (isActive(runId)) {
+        await sleep(1200);
         if (!isActive(runId)) break;
-        failCount++;
-        lastError = formatTtsErrorForUser(err);
-        console.warn(`[TTS] Failed for slide "${slide.title}":`, err.message);
+
+        const snap = await pollTtsJob(created.jobId);
+        if (!isActive(runId)) break;
+
+        applyJobResults(snap.results || [], setCourse, opts?.setSyntheticAudioMap);
+
         setProgress(prev => ({
           ...prev,
-          error: `Slide "${slide.title}": ${lastError}`,
+          isRunning: snap.status === 'queued' || snap.status === 'running',
+          currentSlide: snap.current || prev.currentSlide,
+          totalSlides: snap.total || prev.totalSlides,
+          currentSlideTitle: snap.currentTitle || prev.currentSlideTitle,
+          error: snap.error || null,
         }));
+        onSlideProgress?.(snap.current || 0, snap.total || items.length, snap.currentTitle || '');
 
-        if (err instanceof TTSRequestError && TTS_FATAL_CODES.has(err.code)) {
-          hardStop = true;
+        if (snap.status === 'completed' || snap.status === 'failed' || snap.status === 'cancelled') {
+          const success = snap.successCount ?? 0;
+          const failed = snap.failCount ?? 0;
+          setProgress(prev => ({
+            ...prev,
+            isRunning: false,
+            isDone: true,
+            currentSlide: success,
+            totalSlides: snap.total || prev.totalSlides,
+            error:
+              snap.status === 'cancelled'
+                ? 'Narration cancelled'
+                : success === 0
+                  ? (snap.error || 'Narration failed for every clip. Check credits, trial limits, or OpenAI quota.')
+                  : failed > 0
+                    ? `${success} ready, ${failed} failed${snap.error ? ` (last: ${snap.error})` : ''}`
+                    : null,
+          }));
           break;
         }
-
-        // After a hard rate-limit failure that exhausted retries, cool down before next slide
-        if (err instanceof TTSRequestError && err.code === 'TTS_RATE_LIMIT') {
-          const cool = Math.max(err.retryAfterMs || 20000, 20000);
-          armCooldown(cool);
-          await sleep(cool);
-        } else {
-          await sleep(1000);
-        }
       }
-
-      // Pace requests — OpenAI TTS RPM is easy to blow through on a full course
-      if (i < narratableSlides.length - 1 && !hardStop) {
-        await sleep(900);
-      }
-    }
-
-    if (isActive(runId)) {
-      const allFailed = successCount === 0 && narratableSlides.length > 0;
+    } catch (err: any) {
+      if (!isActive(runId)) return;
+      const message = formatTtsErrorForUser(err);
       setProgress(prev => ({
         ...prev,
         isRunning: false,
         isDone: true,
-        currentSlide: successCount,
-        error: allFailed
-          ? (lastError || 'Narration failed for every slide. Check credits, trial limits, or OpenAI quota — then use Edit → Regenerate all narration.')
-          : failCount > 0
-            ? `${successCount} ready, ${failCount} failed${lastError ? ` (last: ${lastError})` : ''}`
-            : null,
+        currentSlide: 0,
+        error: message,
       }));
+      if (err instanceof TTSRequestError) throw err;
+      throw new TTSRequestError(message, { status: 500, code: 'TTS_ERROR' });
+    } finally {
+      if (isActive(runId)) activeJobIdRef.current = null;
     }
   }, []);
 
   const cancelTTS = useCallback(() => {
     runIdRef.current += 1;
+    const jobId = activeJobIdRef.current;
+    activeJobIdRef.current = null;
     setProgress(prev => ({ ...prev, isRunning: false }));
+    if (jobId) cancelTtsJob(jobId).catch(() => {});
   }, []);
 
   const resetTTS = useCallback(() => {
     runIdRef.current += 1;
+    const jobId = activeJobIdRef.current;
+    activeJobIdRef.current = null;
     setProgress(DEFAULT_PROGRESS);
+    if (jobId) cancelTtsJob(jobId).catch(() => {});
   }, []);
 
   const clearTTSProgress = useCallback(() => {

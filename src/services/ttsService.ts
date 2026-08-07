@@ -104,6 +104,95 @@ export function formatTtsErrorForUser(err: unknown): string {
   return err instanceof Error ? err.message : 'Narration failed';
 }
 
+export type TtsJobItem = {
+  id: string;
+  text: string;
+  title?: string;
+  target?: 'slide' | 'tab' | 'synthetic';
+  slideId?: string;
+  tabId?: string;
+  listKey?: 'tabs' | 'items' | null;
+};
+
+export type TtsJobResultItem = {
+  id: string;
+  target?: 'slide' | 'tab' | 'synthetic';
+  slideId?: string | null;
+  tabId?: string | null;
+  listKey?: string | null;
+  audioContentType?: string;
+  audioBase64: string;
+};
+
+export type TtsJobSnapshot = {
+  jobId: string;
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | string;
+  current: number;
+  total: number;
+  successCount: number;
+  failCount: number;
+  currentTitle?: string;
+  error?: string | null;
+  code?: string | null;
+  results?: TtsJobResultItem[];
+};
+
+function authHeaders(): Record<string, string> {
+  const token = getSupabaseAccessToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
+
+/** Start a server-side narration job (fire-and-forget worker; poll for clips). */
+export async function createTtsJob(opts: {
+  voice?: string;
+  model?: string;
+  speed?: number;
+  items: TtsJobItem[];
+}): Promise<TtsJobSnapshot> {
+  const response = await fetch(`${TTS_PROXY_URL}/jobs`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({
+      voice: opts.voice || 'alloy',
+      model: opts.model || 'tts-1',
+      speed: opts.speed ?? 1.0,
+      items: opts.items,
+    }),
+  });
+  if (!response.ok) {
+    const errText = await response.text().catch(() => response.statusText);
+    throw parseProxyError(response.status, errText);
+  }
+  return response.json();
+}
+
+/** Poll job status and consume any newly finished audio clips. */
+export async function pollTtsJob(jobId: string): Promise<TtsJobSnapshot> {
+  const response = await fetch(`${TTS_PROXY_URL}/jobs/${encodeURIComponent(jobId)}`, {
+    method: 'GET',
+    headers: authHeaders(),
+  });
+  if (!response.ok) {
+    const errText = await response.text().catch(() => response.statusText);
+    throw parseProxyError(response.status, errText);
+  }
+  return response.json();
+}
+
+/** Request cancellation of a running/queued narration job. */
+export async function cancelTtsJob(jobId: string): Promise<void> {
+  const response = await fetch(`${TTS_PROXY_URL}/jobs/${encodeURIComponent(jobId)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!response.ok && response.status !== 404) {
+    const errText = await response.text().catch(() => response.statusText);
+    throw parseProxyError(response.status, errText);
+  }
+}
+
 /**
  * Generate TTS audio for a given text string.
  * Returns a Blob URL pointing to the MP3 audio.

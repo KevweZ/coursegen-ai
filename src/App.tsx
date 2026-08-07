@@ -3207,89 +3207,74 @@ export default function App() {
     // a cancelled flag racing a premature toast dismiss from the previous course).
     resetTTS();
 
-    // ── Audio in background (toast shows progress; does not block preview) ─
-    // Content slides FIRST (proven path), then synthetic cover/objectives/module
-    // slides. Must start AFTER the final setCourse(working) above.
+    // ── Audio in background (server job + poll; toast shows progress) ─────
+    // One job covers content slides, tabs, and synthetic cover/objectives/module
+    // clips so narration continues even if the browser tab is busy.
     if (voiceSnapshot) {
       const courseForTts = working;
       const voiceForTts = voiceIdSnapshot;
       const ov = syntheticOverridesSnapshot || {};
       const titlesOn = includeModuleTitlesSnapshot;
       const overviewsOn = includeModuleOverviewsSnapshot;
+      const syntheticJobs: Array<{ id: string; text: string; title?: string }> = [
+        {
+          id: '__cover__',
+          title: 'Course cover',
+          text: (ov['__cover__']?.voiceOverText || `Welcome to ${courseForTts.title}. ${courseForTts.description || ''}`).trim(),
+        },
+        {
+          id: '__player-tour__',
+          title: 'Player tour',
+          text: (ov['__player-tour__']?.voiceOverText
+            || 'Before we begin, take a moment to explore the player controls. Hover over each card to see the corresponding element highlighted in the player preview.').trim(),
+        },
+        {
+          id: '__course-objectives__',
+          title: 'Course objectives',
+          text: (ov['__course-objectives__']?.voiceOverText
+            || ov['__objectives__']?.voiceOverText
+            || 'These are the learning objectives for this course. Review each one so you know what you will be able to do when you finish.').trim(),
+        },
+      ];
+      const moduleSynthetics: Array<{ id: string; text: string; title?: string }> = (courseForTts.modules || []).flatMap(
+        (m: any, idx: number) => {
+          const modNum = idx + 1;
+          const ct = (m.title || `Module ${modNum}`).replace(/^Module\s+\d+\s*[\u2014\-]\s*/i, '').trim();
+          const items: Array<{ id: string; text: string; title?: string }> = [];
+          if (titlesOn) {
+            const id = `__module-cover-${modNum}__`;
+            items.push({
+              id,
+              title: `Module ${modNum} title`,
+              text: (ov[id]?.voiceOverText
+                || `Module ${modNum}: ${ct}.${m.description ? ' ' + m.description : ''}`).trim(),
+            });
+          }
+          if (overviewsOn) {
+            const id = `__module-overview-${modNum}__`;
+            const fallback = titlesOn
+              ? `Let's revisit the objectives for this module.${m.description ? ' ' + m.description : ''}`.trim()
+              : `Module ${modNum}: ${ct}. Let's revisit the objectives for this module.${m.description ? ' ' + m.description : ''}`.trim();
+            items.push({
+              id,
+              title: `Module ${modNum} overview`,
+              text: (ov[id]?.voiceOverText || fallback).trim(),
+            });
+          }
+          return items;
+        }
+      );
+      const allSynthetic = [...syntheticJobs, ...moduleSynthetics].filter(j => j.text.trim());
       void (async () => {
         try {
-          await generateTTS(courseForTts, setCourse, voiceForTts);
+          await generateTTS(courseForTts, setCourse, voiceForTts, undefined, {
+            synthetic: allSynthetic,
+            setSyntheticAudioMap,
+          });
         } catch (err) {
-          console.warn('[TTS] Slide narration generation failed:', err);
+          console.warn('[TTS] Narration job failed:', err);
           const { formatTtsErrorForUser } = await import('./services/ttsService');
           showDraftMessage(`${formatTtsErrorForUser(err)} — use Edit → Regenerate all narration to retry.`);
-        }
-
-        try {
-          const { generateSlideTTS: genSlideTTS, urlToDataUrl } = await import('./services/ttsService');
-          const syntheticJobs: Array<{ id: string; text: string }> = [
-            {
-              id: '__cover__',
-              text: (ov['__cover__']?.voiceOverText || `Welcome to ${courseForTts.title}. ${courseForTts.description || ''}`).trim(),
-            },
-            {
-              id: '__player-tour__',
-              text: (ov['__player-tour__']?.voiceOverText
-                || 'Before we begin, take a moment to explore the player controls. Hover over each card to see the corresponding element highlighted in the player preview.').trim(),
-            },
-            {
-              id: '__course-objectives__',
-              text: (ov['__course-objectives__']?.voiceOverText
-                || ov['__objectives__']?.voiceOverText
-                || 'These are the learning objectives for this course. Review each one so you know what you will be able to do when you finish.').trim(),
-            },
-          ];
-          const moduleSynthetics: Array<{ id: string; text: string }> = (courseForTts.modules || []).flatMap(
-            (m: any, idx: number) => {
-              const modNum = idx + 1;
-              const ct = (m.title || `Module ${modNum}`).replace(/^Module\s+\d+\s*[\u2014\-]\s*/i, '').trim();
-              const items: Array<{ id: string; text: string }> = [];
-              if (titlesOn) {
-                const id = `__module-cover-${modNum}__`;
-                items.push({
-                  id,
-                  text: (ov[id]?.voiceOverText
-                    || `Module ${modNum}: ${ct}.${m.description ? ' ' + m.description : ''}`).trim(),
-                });
-              }
-              if (overviewsOn) {
-                const id = `__module-overview-${modNum}__`;
-                const fallback = titlesOn
-                  ? `Let's revisit the objectives for this module.${m.description ? ' ' + m.description : ''}`.trim()
-                  : `Module ${modNum}: ${ct}. Let's revisit the objectives for this module.${m.description ? ' ' + m.description : ''}`.trim();
-                items.push({
-                  id,
-                  text: (ov[id]?.voiceOverText || fallback).trim(),
-                });
-              }
-              return items;
-            }
-          );
-          const allSynthetic = [...syntheticJobs, ...moduleSynthetics].filter(j => j.text.trim());
-          let synthOk = 0;
-          for (let i = 0; i < allSynthetic.length; i++) {
-            const { id, text } = allSynthetic[i];
-            try {
-              const blobUrl = await genSlideTTS(text, { voice: voiceForTts as any });
-              let durable = blobUrl;
-              try { durable = await urlToDataUrl(blobUrl); } catch { /* keep blob */ }
-              setSyntheticAudioMap(prev => ({ ...prev, [id]: durable }));
-              synthOk++;
-            } catch (e) {
-              console.warn('[TTS] Synthetic narration failed during finalize', id, e);
-            }
-            if (i < allSynthetic.length - 1) await new Promise(r => setTimeout(r, 300));
-          }
-          if (synthOk === 0 && allSynthetic.length > 0) {
-            showDraftMessage('System-slide narration failed — use Edit → Regenerate all narration to retry.');
-          }
-        } catch (e) {
-          console.warn('[TTS] Synthetic narration batch failed:', e);
         }
       })();
     } else {
@@ -3410,35 +3395,6 @@ export default function App() {
       }))
       .filter(j => j.text.length > 0);
 
-  /** Generate TTS for synthetic slides and store durable URLs in syntheticAudioMap. */
-  const generateSyntheticNarration = async (
-    jobs: Array<{ id: string; text: string }>,
-    voice: string = ttsVoice,
-  ) => {
-    if (!jobs.length) return 0;
-    const { generateSlideTTS: genSlideTTS, urlToDataUrl } = await import('./services/ttsService');
-    let ok = 0;
-    for (let i = 0; i < jobs.length; i++) {
-      const { id, text } = jobs[i];
-      try {
-        const blobUrl = await genSlideTTS(text, { voice: voice as any });
-        // Prefer durable data: URLs so audio survives re-renders / draft save
-        let durable = blobUrl;
-        try {
-          durable = await urlToDataUrl(blobUrl);
-        } catch {
-          /* keep blob if conversion fails */
-        }
-        setSyntheticAudioMap(prev => ({ ...prev, [id]: durable }));
-        ok++;
-      } catch (e) {
-        console.warn('[TTS] Synthetic narration failed', id, e);
-      }
-      if (i < jobs.length - 1) await new Promise(r => setTimeout(r, 250));
-    }
-    return ok;
-  };
-
   /** Rebuild TTS for every narratable slide + synthetic cover/objectives/module audio. */
   const regenerateAllNarration = async () => {
     if (!course?.modules) return;
@@ -3449,14 +3405,18 @@ export default function App() {
     setShowEditMenu(false);
     showDraftMessage('Regenerating all narration…');
     try {
-      // Content first (stable), then system slides
-      await generateTTS(course, setCourse, ttsVoice);
-      const syntheticJobs = collectSyntheticNarrationJobs(allSlides);
-      const synthOk = await generateSyntheticNarration(syntheticJobs, ttsVoice);
+      const syntheticJobs = collectSyntheticNarrationJobs(allSlides).map(j => ({
+        ...j,
+        title: j.id,
+      }));
+      await generateTTS(course, setCourse, ttsVoice, undefined, {
+        synthetic: syntheticJobs,
+        setSyntheticAudioMap,
+      });
       setVoiceOverEnabled(true);
       showDraftMessage(
-        synthOk > 0
-          ? `All narration regenerated (${synthOk} system slides). Save the draft to keep audio for next time.`
+        syntheticJobs.length > 0
+          ? 'All narration regenerated (content + system slides). Save the draft to keep audio for next time.'
           : 'Content narration regenerated. No system-slide narration text was found — check Edit → Audio on module title/overview slides.'
       );
     } catch (err: any) {
