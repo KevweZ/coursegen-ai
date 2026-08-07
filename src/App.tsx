@@ -3035,6 +3035,15 @@ export default function App() {
 
         if (wantsSource && imgs.length > 0) {
           working = attachSourceImagesToCourse(working, imgs);
+          // Prefer the largest extracted image as a temporary title cover until AI cover lands
+          if (!coverUrl && !working.coverImage) {
+            const best = [...imgs].sort((a, b) => (b.width * b.height) - (a.width * a.height))[0];
+            if (best?.dataUrl) {
+              coverUrl = best.dataUrl;
+              working = { ...working, coverImage: coverUrl };
+              setCourseBg(coverUrl);
+            }
+          }
           working = seedFloatingFromCourse(working) || working;
           setCourse(working);
           setOriginalCourse(working);
@@ -3043,7 +3052,8 @@ export default function App() {
 
         if (wantsAi) {
           try {
-            coverUrl = await generateCourseCoverImage(working.title || 'Course', working.description);
+            const aiCover = await generateCourseCoverImage(working.title || 'Course', working.description);
+            coverUrl = aiCover;
             working = { ...working, coverImage: coverUrl };
             setCourseBg(coverUrl);
             setCourse(working);
@@ -3052,8 +3062,9 @@ export default function App() {
           } catch (err: any) {
             console.warn('[ImageService] Cover generation failed, retrying once:', err);
             try {
-              await new Promise(r => setTimeout(r, 1500));
-              coverUrl = await generateCourseCoverImage(working.title || 'Course', working.description);
+              await new Promise(r => setTimeout(r, 2000));
+              const aiCover = await generateCourseCoverImage(working.title || 'Course', working.description);
+              coverUrl = aiCover;
               working = { ...working, coverImage: coverUrl };
               setCourseBg(coverUrl);
               setCourse(working);
@@ -3061,9 +3072,15 @@ export default function App() {
               showDraftMessage('AI cover image ready ✓');
             } catch (err2: any) {
               console.warn('[ImageService] Cover generation failed:', err2);
-              showDraftMessage(err2?.message || 'Cover image generation failed — add one via Upload Image or Edit → Generate AI images.');
+              if (coverUrl) {
+                showDraftMessage('AI cover failed — using an image from your upload on the title slide.');
+              } else {
+                showDraftMessage(err2?.message || 'Cover image generation failed — hover the title image panel to upload one, or Edit → Generate AI images.');
+              }
             }
           }
+        } else if (coverUrl) {
+          showDraftMessage('Title cover set from your uploaded file (AI Images is off).');
         }
         setProgress(68);
 

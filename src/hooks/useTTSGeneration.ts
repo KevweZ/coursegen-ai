@@ -2,24 +2,22 @@
  * useTTSGeneration.ts
  * React hook that drives the background TTS generation job.
  *
- * - Loops through all slides sequentially after course hydration
- * - Patches each slide's voiceOverUrl via functional setCourse (does not wipe cover/source images)
- * - Stores durable data: URLs (not ephemeral blob:) so audio survives re-renders / draft save
- * - Retries transient 429/503 failures
- * - Uses a run id so a cancelled/stale job cannot clobber a newer run's progress
+ * - Sequential slides with durable data: URLs
+ * - Respects OpenAI 429 / quota errors with long backoff (does not stampede retries)
+ * - Run ids so cancelled jobs cannot clobber newer progress
  */
 
 import { useState, useCallback, useRef } from 'react';
-import { generateSlideTTS, urlToDataUrl } from '../services/ttsService';
+import { generateSlideTTS, urlToDataUrl, TTSRequestError } from '../services/ttsService';
 
 export interface TTSProgress {
   isRunning: boolean;
   isDone: boolean;
-  currentSlide: number;    // 1-based index of slide currently being processed / success count when done
-  totalSlides: number;     // total slides that have narration text
+  currentSlide: number;
+  totalSlides: number;
   currentSlideTitle: string;
   error: string | null;
-  skipped: number;         // slides with no narration (skipped silently)
+  skipped: number;
 }
 
 const DEFAULT_PROGRESS: TTSProgress = {
@@ -34,9 +32,31 @@ const DEFAULT_PROGRESS: TTSProgress = {
 
 type SetCourse = (updater: any) => void;
 
-async function generateDurableSlideTTS(text: string, voice: string): Promise<string> {
+/** Shared cooldown so overlapping regenerate + finalize cannot hammer OpenAI. */
+let globalTtsCooldownUntil = 0;
+
+function sleep(ms: number) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+async function waitForCooldown() {
+  const wait = globalTtsCooldownUntil - Date.now();
+  if (wait > 0) await sleep(wait);
+}
+
+function armCooldown(ms: number) {
+  globalTtsCooldownUntil = Math.max(globalTtsCooldownUntil, Date.now() + ms);
+}
+
+async function generateDurableSlideTTS(
+  text: string,
+  voice: string,
+  onWaiting?: (message: string) => void,
+): Promise<string> {
   let lastErr: any;
-  for (let attempt = 0; attempt < 3; attempt++) {
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    await waitForCooldown();
     try {
       const blobUrl = await generateSlideTTS(text, { voice: voice as any });
       try {
@@ -46,24 +66,39 @@ async function generateDurableSlideTTS(text: string, voice: string): Promise<str
       }
     } catch (err: any) {
       lastErr = err;
+      const isTtsErr = err instanceof TTSRequestError;
+      const code = isTtsErr ? err.code : '';
       const msg = String(err?.message || '');
-      const retryable = /429|503|502|COLD_START|Too many TTS|warming up/i.test(msg);
-      if (!retryable || attempt === 2) throw err;
-      await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+
+      if (code === 'TTS_QUOTA' || code === 'TTS_AUTH') {
+        throw err;
+      }
+
+      const retryable =
+        code === 'TTS_RATE_LIMIT' ||
+        code === 'TTS_NETWORK' ||
+        /429|503|502|COLD_START|rate limit|warming up/i.test(msg);
+
+      if (!retryable || attempt === 4) throw err;
+
+      const waitMs = Math.min(
+        90000,
+        Math.max(
+          isTtsErr && err.retryAfterMs ? err.retryAfterMs : 0,
+          8000 * (attempt + 1),
+        ),
+      );
+      armCooldown(waitMs);
+      onWaiting?.(`Rate limited — waiting ${Math.ceil(waitMs / 1000)}s then retrying…`);
+      await sleep(waitMs);
     }
   }
+
   throw lastErr || new Error('TTS failed');
 }
 
-/**
- * Returns { progress, generateTTS, cancelTTS, resetTTS, clearTTSProgress }
- *
- * Call generateTTS(course, setCourse) AFTER the final setCourse(working) that
- * opens preview — a later setCourse(staleWorking) will wipe patched voiceOverUrls.
- */
 export function useTTSGeneration() {
   const [progress, setProgress] = useState<TTSProgress>(DEFAULT_PROGRESS);
-  /** Bumped to invalidate any in-flight generateTTS loop. */
   const runIdRef = useRef(0);
 
   const isActive = (runId: number) => runId === runIdRef.current;
@@ -127,9 +162,10 @@ export function useTTSGeneration() {
     let successCount = 0;
     let failCount = 0;
     let lastError: string | null = null;
+    let hardStop = false;
 
     for (let i = 0; i < narratableSlides.length; i++) {
-      if (!isActive(runId)) break;
+      if (!isActive(runId) || hardStop) break;
 
       const { slide } = narratableSlides[i];
       const narrationText = slide.voiceOverText || slide.narration || slide.content || '';
@@ -149,7 +185,15 @@ export function useTTSGeneration() {
       try {
         const skipMain = !!(opts?.onlyMissing && slide.voiceOverUrl);
         if (!skipMain) {
-          const durableUrl = await generateDurableSlideTTS(narrationText, voice);
+          const durableUrl = await generateDurableSlideTTS(
+            narrationText,
+            voice,
+            (waitMsg) => {
+              if (isActive(runId)) {
+                setProgress(prev => ({ ...prev, error: waitMsg }));
+              }
+            },
+          );
           if (!isActive(runId)) break;
           successCount++;
 
@@ -173,7 +217,7 @@ export function useTTSGeneration() {
         const tabs: any[] = slide.data?.tabs || slide.data?.items || [];
         if (isTabbed && Array.isArray(tabs) && tabs.length) {
           for (let ti = 0; ti < tabs.length; ti++) {
-            if (!isActive(runId)) break;
+            if (!isActive(runId) || hardStop) break;
             const tab = tabs[ti];
             const tabText = (tab?.voiceOverText || '').trim();
             if (!tabText) continue;
@@ -201,10 +245,13 @@ export function useTTSGeneration() {
                   })),
                 };
               });
-              await new Promise(r => setTimeout(r, 250));
+              await sleep(400);
             } catch (tabErr: any) {
               failCount++;
               lastError = tabErr?.message || 'Tab audio failed';
+              if (tabErr instanceof TTSRequestError && (tabErr.code === 'TTS_QUOTA' || tabErr.code === 'TTS_AUTH')) {
+                hardStop = true;
+              }
               console.warn(`[TTS] Tab audio failed on "${slide.title}" tab ${ti}:`, tabErr?.message);
             }
           }
@@ -218,11 +265,25 @@ export function useTTSGeneration() {
           ...prev,
           error: `Slide "${slide.title}": ${err.message}`,
         }));
-        await new Promise(r => setTimeout(r, 1200));
+
+        if (err instanceof TTSRequestError && (err.code === 'TTS_QUOTA' || err.code === 'TTS_AUTH')) {
+          hardStop = true;
+          break;
+        }
+
+        // After a hard rate-limit failure that exhausted retries, cool down before next slide
+        if (err instanceof TTSRequestError && err.code === 'TTS_RATE_LIMIT') {
+          const cool = Math.max(err.retryAfterMs || 20000, 20000);
+          armCooldown(cool);
+          await sleep(cool);
+        } else {
+          await sleep(1000);
+        }
       }
 
-      if (i < narratableSlides.length - 1) {
-        await new Promise(r => setTimeout(r, 300));
+      // Pace requests — OpenAI TTS RPM is easy to blow through on a full course
+      if (i < narratableSlides.length - 1 && !hardStop) {
+        await sleep(900);
       }
     }
 
@@ -234,7 +295,7 @@ export function useTTSGeneration() {
         isDone: true,
         currentSlide: successCount,
         error: allFailed
-          ? (lastError || 'Narration failed for every slide — check TTS server / rate limits, then use Edit → Regenerate all narration.')
+          ? (lastError || 'Narration failed for every slide. If this mentions quota/rate limit, wait a few minutes or check OpenAI billing, then use Edit → Regenerate all narration.')
           : failCount > 0
             ? `${successCount} ready, ${failCount} failed${lastError ? ` (last: ${lastError})` : ''}`
             : null,
@@ -247,13 +308,11 @@ export function useTTSGeneration() {
     setProgress(prev => ({ ...prev, isRunning: false }));
   }, []);
 
-  /** Cancel any in-flight job and clear progress (e.g. starting a new course). */
   const resetTTS = useCallback(() => {
     runIdRef.current += 1;
     setProgress(DEFAULT_PROGRESS);
   }, []);
 
-  /** Clear completed toast state without cancelling a running job. */
   const clearTTSProgress = useCallback(() => {
     setProgress(prev => {
       if (prev.isRunning) return prev;

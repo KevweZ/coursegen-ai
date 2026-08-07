@@ -213,9 +213,9 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
             ) : (
               <>
                 <ImageOff className="w-8 h-8 text-white/50" />
-                <p className="text-white/70 text-sm font-semibold">No AI cover yet</p>
+                <p className="text-white/70 text-sm font-semibold">No cover image yet</p>
                 <p className="text-white/45 text-xs max-w-[14rem]">
-                  Hover to upload, or enable AI images in Course Settings
+                  Hover to upload, or use Edit → Generate AI images
                 </p>
               </>
             )}

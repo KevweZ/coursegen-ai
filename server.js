@@ -1132,46 +1132,148 @@ app.post('/api/admin/revoke', async (req, res) => {
 
 
 // ─── 7. OpenAI TTS Proxy ────────────────────────────────────────────────────
+/** Serialize TTS calls process-wide so a full course cannot stampede OpenAI RPM limits. */
+let ttsQueue = Promise.resolve();
+let ttsLastStartedAt = 0;
+const TTS_MIN_GAP_MS = 700;
+
+function parseOpenAiErrorBody(errText) {
+  const raw = String(errText || '');
+  try {
+    const outer = JSON.parse(raw);
+    const nested = typeof outer?.error === 'string' ? outer.error : outer;
+    const parsed = typeof nested === 'string' ? JSON.parse(nested) : nested;
+    const msg = parsed?.error?.message || parsed?.message || raw;
+    const code = parsed?.error?.code || parsed?.code || '';
+    const type = parsed?.error?.type || parsed?.type || '';
+    return { message: String(msg), code: String(code), type: String(type) };
+  } catch {
+    return { message: raw.slice(0, 280), code: '', type: '' };
+  }
+}
+
+function classifyTtsFailure(status, errText) {
+  const { message, code, type } = parseOpenAiErrorBody(errText);
+  const lower = `${message} ${code} ${type}`.toLowerCase();
+  if (status === 429 || /rate_limit|rate limit|too many requests/i.test(lower)) {
+    if (/quota|billing|exceeded your current quota|insufficient_quota/i.test(lower)) {
+      return {
+        code: 'TTS_QUOTA',
+        message: 'OpenAI TTS quota exceeded. Check the OpenAI project billing/quota, then retry narration.',
+        retryAfterMs: 0,
+      };
+    }
+    return {
+      code: 'TTS_RATE_LIMIT',
+      message: 'OpenAI TTS rate limit hit. Waiting, then retrying automatically…',
+      retryAfterMs: 20000,
+    };
+  }
+  if (status === 401 || status === 403) {
+    return {
+      code: 'TTS_AUTH',
+      message: 'OpenAI TTS auth failed. Check OPENAI_API_KEY on the server.',
+      retryAfterMs: 0,
+    };
+  }
+  return {
+    code: 'TTS_ERROR',
+    message: message || `TTS failed (${status})`,
+    retryAfterMs: status >= 500 ? 5000 : 0,
+  };
+}
+
 app.post('/api/tts', ttsRateLimit, async (req, res) => {
   const { text, voice = 'alloy', model = 'tts-1', speed = 1.0 } = req.body;
 
   if (!OPENAI_API_KEY) {
-    return res.status(503).json({ error: 'TTS is not configured on this server.' });
+    return res.status(503).json({ error: 'TTS is not configured on this server.', code: 'TTS_NOT_CONFIGURED' });
   }
 
   if (!text || !text.trim()) {
     return res.status(400).json({ error: 'Missing required field: text' });
   }
 
-  try {
-    const response = await fetch('https://api.openai.com/v1/audio/speech', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
-        'Content-Type':  'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        input: text.trim().slice(0, 4096),
-        voice,
-        speed,
-        response_format: 'mp3',
-      }),
-    });
+  const run = async () => {
+    const gap = TTS_MIN_GAP_MS - (Date.now() - ttsLastStartedAt);
+    if (gap > 0) await new Promise(r => setTimeout(r, gap));
+    ttsLastStartedAt = Date.now();
 
-    if (!response.ok) {
-      const errText = await response.text().catch(() => response.statusText);
-      return res.status(response.status).json({ error: errText });
+    let lastStatus = 500;
+    let lastBody = 'TTS failed';
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const response = await fetch('https://api.openai.com/v1/audio/speech', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${OPENAI_API_KEY}`,
+          'Content-Type':  'application/json',
+        },
+        body: JSON.stringify({
+          model,
+          input: text.trim().slice(0, 4096),
+          voice,
+          speed,
+          response_format: 'mp3',
+        }),
+      });
+
+      if (response.ok) {
+        res.setHeader('Content-Type', 'audio/mpeg');
+        const buffer = await response.arrayBuffer();
+        return res.end(Buffer.from(buffer));
+      }
+
+      lastStatus = response.status;
+      lastBody = await response.text().catch(() => response.statusText);
+      const classified = classifyTtsFailure(lastStatus, lastBody);
+
+      // Hard quota / auth — do not burn retries
+      if (classified.code === 'TTS_QUOTA' || classified.code === 'TTS_AUTH') {
+        return res.status(lastStatus).json({
+          error: classified.message,
+          code: classified.code,
+          retryAfterMs: 0,
+        });
+      }
+
+      if (lastStatus === 429 || lastStatus >= 500) {
+        const headerRetry = Number(response.headers.get('retry-after'));
+        const waitMs = Number.isFinite(headerRetry) && headerRetry > 0
+          ? headerRetry * 1000
+          : Math.min(60000, (classified.retryAfterMs || 8000) * (attempt + 1));
+        console.warn(`[TTS Proxy] ${classified.code} attempt ${attempt + 1}/4 — waiting ${waitMs}ms`);
+        if (attempt < 3) {
+          await new Promise(r => setTimeout(r, waitMs));
+          continue;
+        }
+        res.setHeader('Retry-After', String(Math.ceil(waitMs / 1000)));
+        return res.status(429).json({
+          error: classified.message,
+          code: classified.code,
+          retryAfterMs: waitMs,
+        });
+      }
+
+      // Non-retryable client error
+      const classifiedOnce = classifyTtsFailure(lastStatus, lastBody);
+      return res.status(lastStatus).json({
+        error: classifiedOnce.message,
+        code: classifiedOnce.code,
+        retryAfterMs: 0,
+      });
     }
 
-    // Stream the MP3 binary directly back to the browser
-    res.setHeader('Content-Type', 'audio/mpeg');
-    const buffer = await response.arrayBuffer();
-    return res.end(Buffer.from(buffer));
+    return res.status(lastStatus).json({ error: lastBody.slice(0, 280), code: 'TTS_ERROR' });
+  };
 
+  try {
+    const done = ttsQueue.then(run, run);
+    // Keep queue alive even if a job fails
+    ttsQueue = done.catch(() => {});
+    await done;
   } catch (err) {
     console.error('[TTS Proxy] Network error:', err.message);
-    return res.status(502).json({ error: 'TTS proxy network error: ' + err.message });
+    return res.status(502).json({ error: 'TTS proxy network error: ' + err.message, code: 'TTS_NETWORK' });
   }
 });
 

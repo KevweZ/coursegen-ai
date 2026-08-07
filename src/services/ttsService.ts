@@ -2,11 +2,6 @@
  * ttsService.ts
  * Calls the TTS API securely via the server-side proxy (/api/tts).
  * The OpenAI API key is NEVER exposed to the browser bundle — it lives in server.js only.
- *
- * Usage:
- *   import { generateSlideTTS } from './ttsService';
- *   const blobUrl = await generateSlideTTS("Welcome to module one...");
- *   // blobUrl is a valid <audio src> that usePlayer can load directly
  */
 
 const TTS_PROXY_URL = '/api/tts';
@@ -19,10 +14,40 @@ interface TTSOptions {
   speed?: number; // 0.25 – 4.0
 }
 
+export class TTSRequestError extends Error {
+  status: number;
+  code: string;
+  retryAfterMs: number;
+
+  constructor(message: string, opts: { status: number; code?: string; retryAfterMs?: number }) {
+    super(message);
+    this.name = 'TTSRequestError';
+    this.status = opts.status;
+    this.code = opts.code || 'TTS_ERROR';
+    this.retryAfterMs = opts.retryAfterMs ?? 0;
+  }
+}
+
+function parseProxyError(status: number, raw: string): TTSRequestError {
+  try {
+    const data = JSON.parse(raw);
+    const message = String(data?.error || raw).slice(0, 280);
+    const code = String(data?.code || (status === 429 ? 'TTS_RATE_LIMIT' : 'TTS_ERROR'));
+    const retryAfterMs = Number(data?.retryAfterMs) || (status === 429 ? 20000 : 0);
+    return new TTSRequestError(message, { status, code, retryAfterMs });
+  } catch {
+    return new TTSRequestError(`TTS proxy error ${status}: ${String(raw).slice(0, 180)}`, {
+      status,
+      code: status === 429 ? 'TTS_RATE_LIMIT' : 'TTS_ERROR',
+      retryAfterMs: status === 429 ? 20000 : 0,
+    });
+  }
+}
+
 /**
  * Generate TTS audio for a given text string.
  * Returns a Blob URL pointing to the MP3 audio.
- * Throws on API or proxy error (caller should catch and handle gracefully).
+ * Throws TTSRequestError on API or proxy error.
  */
 export async function generateSlideTTS(
   text: string,
@@ -45,7 +70,12 @@ export async function generateSlideTTS(
 
   if (!response.ok) {
     const errText = await response.text().catch(() => response.statusText);
-    throw new Error(`TTS proxy error ${response.status}: ${errText}`);
+    const err = parseProxyError(response.status, errText);
+    const headerRetry = Number(response.headers.get('retry-after'));
+    if (Number.isFinite(headerRetry) && headerRetry > 0) {
+      err.retryAfterMs = Math.max(err.retryAfterMs, headerRetry * 1000);
+    }
+    throw err;
   }
 
   const audioBlob = await response.blob();
