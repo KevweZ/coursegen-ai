@@ -178,7 +178,11 @@ export const MasteryExamSlide: React.FC<Props> = ({
 
   const jumpToQuestion = useCallback((qId: string) => {
     const el = questionRefs.current[qId];
-    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const root = scrollRootRef.current;
+    if (!el || !root) return;
+    const elTop = el.getBoundingClientRect().top;
+    const rootTop = root.getBoundingClientRect().top;
+    root.scrollTo({ top: root.scrollTop + (elTop - rootTop) - 8, behavior: 'smooth' });
   }, []);
 
   // ── Scroll-all mode ─────────────────────────────────────────────────────────
@@ -224,10 +228,10 @@ export const MasteryExamSlide: React.FC<Props> = ({
     );
 
     return (
-      <div className="h-full flex flex-col bg-white relative overflow-hidden">
-        <div className="flex-1 min-h-0 flex">
-          {/* Questions scroll independently — overview is NOT inside this scroller */}
-          <div ref={scrollRootRef} className="flex-1 min-w-0 overflow-y-auto p-4 sm:p-6 pb-8">
+      <div className="h-full min-h-0 flex flex-col bg-white relative overflow-hidden">
+        <div className="flex-1 min-h-0 flex overflow-hidden">
+          {/* Only this column scrolls — overview stays locked on the right */}
+          <div ref={scrollRootRef} className="flex-1 min-w-0 min-h-0 overflow-y-auto p-4 sm:p-6 pb-8">
             <div className="max-w-3xl mx-auto space-y-6">
               <div className="text-center space-y-1 mb-2">
                 <h2 className="text-2xl font-extrabold text-slate-900">Mastery Quiz</h2>
@@ -254,9 +258,11 @@ export const MasteryExamSlide: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* Locked overview rail — always visible while questions scroll */}
-          <aside className="hidden md:flex w-[160px] shrink-0 border-l border-slate-200 bg-slate-50/80 p-3 overflow-y-auto">
-            {overviewPanel}
+          {/* Locked overview rail — outside the question scroller */}
+          <aside className="hidden md:flex w-[168px] shrink-0 flex-col border-l border-slate-200 bg-slate-50/90 p-3 overflow-hidden">
+            <div className="sticky top-0 shrink-0">
+              {overviewPanel}
+            </div>
           </aside>
         </div>
 

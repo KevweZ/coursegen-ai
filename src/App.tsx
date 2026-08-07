@@ -1827,7 +1827,7 @@ export default function App() {
   const examQIndex       = contentSlides.length + PRE_CONTENT + 1;
   const examResultsIndex = contentSlides.length + PRE_CONTENT + 2;
   const currentSlide = allSlides[currentSlideIndex];
-  const FULL_BLEED_TYPES = ['cover', 'title', 'module-cover', 'closing', 'key-takeaways', 'player-tour', 'course-objectives', 'module-overview'];
+  const FULL_BLEED_TYPES = ['cover', 'title', 'module-cover', 'closing', 'key-takeaways', 'player-tour', 'course-objectives', 'module-overview', 'mastery-exam', 'exam-intro', 'exam-results'];
   const isFullBleed = FULL_BLEED_TYPES.includes(currentSlide?.type as string);
 
   const KNOWLEDGE_CHECK_TYPES = new Set([
@@ -5972,6 +5972,7 @@ export default function App() {
                                      <p className="text-slate-500 text-sm">This may take up to 30 seconds</p>
                                    </div>
                                  ) : examPhase === 'active' && (examSession.questions.length > 0 || examQuestions.length > 0) ? (
+                                   <div className="w-full h-full min-h-0">
                                    <MasteryExamSlide
                                      questions={examSession.questions.length > 0 ? examSession.questions : examQuestions}
                                      examConfig={examConfig}
@@ -5986,6 +5987,7 @@ export default function App() {
                                        } else { setExamSession(newState); }
                                      }}
                                    />
+                                   </div>
                                  ) : examPhase === 'idle' ? (
                                    // Landed on mastery-exam slide without going through intro — redirect back
                                    <div className="flex flex-col items-center justify-center gap-4 h-full">
