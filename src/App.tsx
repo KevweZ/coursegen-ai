@@ -142,6 +142,7 @@ import { ModuleOverviewSlide, MODULE_COLORS } from './components/player/ModuleOv
 import { PlayerTourSlide }       from './components/player/PlayerTourSlide';
 import { WheelDiagram } from './components/interactions/WheelDiagram';
 import { MermaidDiagram } from './components/MermaidDiagram';
+import { MovableDiagramFrame } from './components/MovableDiagramFrame';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { CustomMatchingActivity } from './components/interactions/CustomMatchingActivity';
 import { CustomSortingActivity } from './components/interactions/CustomSortingActivity';
@@ -154,6 +155,7 @@ import { FloatingImageCanvas } from './components/FloatingImageCanvas';
 import { TrialInvitePanel } from './components/TrialInvitePanel';
 
 import { FloatingImage } from './types/course';
+import { promoteCourseImagesToFloating, floatingMapFromCourse } from './lib/promoteSlideImages';
 import TabbedHorizontal from './components/interactions/TabbedContentHorizontal';
 import TabbedVertical from './components/interactions/TabbedContentVertical';
 import FolderExplorer from './components/interactions/FolderExplorer';
@@ -894,6 +896,20 @@ export default function App() {
           await new Promise<void>(r => setTimeout(r, 32));
         }
         console.log(`[Drafts] Attached ${media.size} media asset(s) after preview open`);
+
+        // Promote static imageUrl → floating so drafts get movable/deletable images
+        try {
+          const promoted = promoteCourseImagesToFloating(working);
+          const fmap = floatingMapFromCourse(promoted);
+          if (Object.keys(fmap).length) {
+            setFloatingImagesMap(prev => ({ ...prev, ...fmap }));
+            working = promoted;
+            setCourse(working);
+            setOriginalCourse(working);
+          }
+        } catch (e) {
+          console.warn('[Drafts] Image promote failed:', e);
+        }
 
         const missingAudio = (working.modules || []).some((m: any) =>
           (m.slides || []).some((s: any) =>
@@ -2790,17 +2806,13 @@ export default function App() {
     const runImagery = wantsAi || wantsSource || wantsHotspotBackdrop;
 
     const seedFloatingFromCourse = (c: any) => {
-      const map: Record<string, FloatingImage[]> = {};
-      for (const m of c?.modules || []) {
-        for (const s of m.slides || []) {
-          if (Array.isArray(s.floatingMedia) && s.floatingMedia.length) {
-            map[s.id] = s.floatingMedia;
-          }
-        }
-      }
+      const promoted = promoteCourseImagesToFloating(c);
+      const map = floatingMapFromCourse(promoted);
       if (Object.keys(map).length) {
         setFloatingImagesMap(prev => ({ ...prev, ...map }));
       }
+      // Persist promotion back onto working course when images were only on imageUrl
+      return promoted;
     };
 
     const mergeImageryInto = (base: any, imagery: any, coverFallback: string | null) => {
@@ -2880,7 +2892,7 @@ export default function App() {
 
         if (wantsSource && imgs.length > 0) {
           working = attachSourceImagesToCourse(working, imgs);
-          seedFloatingFromCourse(working);
+          working = seedFloatingFromCourse(working) || working;
           setCourse(working);
           setOriginalCourse(working);
         }
@@ -2909,7 +2921,7 @@ export default function App() {
             hotspotOnly: !wantsAi && wantsHotspotBackdrop,
           });
           if (coverUrl) working = { ...working, coverImage: coverUrl };
-          seedFloatingFromCourse(working);
+          working = seedFloatingFromCourse(working) || working;
           setCourse(working);
           setOriginalCourse(working);
         } catch (err) {
@@ -2925,7 +2937,7 @@ export default function App() {
               if (done === total) showDraftMessage(`Content visuals ready (${total}) ✓`);
             });
             if (coverUrl) working = { ...working, coverImage: coverUrl };
-            seedFloatingFromCourse(working);
+            working = seedFloatingFromCourse(working) || working;
             setCourse(working);
             setOriginalCourse(working);
           } catch (err) {
@@ -2947,10 +2959,9 @@ export default function App() {
       if (report.issues.some(i => i.autoFixable)) {
         const { course: fixedCourse } = autoFixCourse(working, report);
         const merged = mergeImageryInto(fixedCourse, working, coverUrl);
-        seedFloatingFromCourse(merged);
-        setCourse(merged);
-        setOriginalCourse(merged);
-        working = merged;
+        working = seedFloatingFromCourse(merged) || merged;
+        setCourse(working);
+        setOriginalCourse(working);
       }
     } catch {
       // QC failure is non-fatal
@@ -2980,6 +2991,7 @@ export default function App() {
     // Do NOT await TTS here — that blocked users and a later setCourse(working)
     // wiped blob voiceOverUrls patched by generateTTS.
     if (coverUrl) working = { ...working, coverImage: coverUrl };
+    working = seedFloatingFromCourse(working) || working;
     setCourse(working);
     setOriginalCourse(working);
     setProgress(100);
@@ -2987,14 +2999,10 @@ export default function App() {
     navigateTo(ROUTES.courseDevelopment);
 
     // ── Audio in background (toast shows progress; does not block preview) ─
+    // Synthetic slides (cover, objectives, module title/overview) run FIRST so
+    // they are not starved by content+tab TTS volume / rate limits.
     if (voiceSnapshot) {
       void (async () => {
-        try {
-          await generateTTS(working, setCourse, voiceIdSnapshot);
-        } catch (err) {
-          console.warn('[TTS] Slide narration generation failed:', err);
-        }
-
         try {
           const { generateSlideTTS: genSlideTTS, urlToDataUrl } = await import('./services/ttsService');
           const ov = syntheticOverridesSnapshot || {};
@@ -3056,6 +3064,12 @@ export default function App() {
           }
         } catch (e) {
           console.warn('[TTS] Synthetic narration batch failed:', e);
+        }
+
+        try {
+          await generateTTS(working, setCourse, voiceIdSnapshot);
+        } catch (err) {
+          console.warn('[TTS] Slide narration generation failed:', err);
         }
       })();
     }
@@ -3213,10 +3227,10 @@ export default function App() {
     setShowEditMenu(false);
     showDraftMessage('Regenerating all narration…');
     try {
-      await generateTTS(course, setCourse, ttsVoice);
-      // Use the same narration text the player shows (includes edits / overrides)
+      // System slides first (objectives / module title / overview), then content
       const syntheticJobs = collectSyntheticNarrationJobs(allSlides);
       const synthOk = await generateSyntheticNarration(syntheticJobs, ttsVoice);
+      await generateTTS(course, setCourse, ttsVoice);
       setVoiceOverEnabled(true);
       showDraftMessage(
         synthOk > 0
@@ -3294,8 +3308,13 @@ export default function App() {
       working = await generateContentSlideImages(working, (done, total) => {
         showDraftMessage(`Generating AI images… ${done}/${total}`);
       });
+      working = promoteCourseImagesToFloating(working);
+      const fmap = floatingMapFromCourse(working);
+      if (Object.keys(fmap).length) {
+        setFloatingImagesMap(prev => ({ ...prev, ...fmap }));
+      }
       setCourse(working);
-      showDraftMessage('AI images updated. Save the draft to keep them.');
+      showDraftMessage('AI images updated. Drag to move or hover to delete. Save the draft to keep them.');
     } catch (err: any) {
       console.error('[Images] Regen failed:', err);
       showDraftMessage(err?.message || 'Failed to regenerate AI images.');
@@ -5136,8 +5155,11 @@ export default function App() {
                                  const typeLabel = currentSlide.type === 'summary' ? 'Summary' : 'Overview';
                                  const body = (currentSlide.content || '').trim();
                                  const isEmpty = body.length < 8;
-                                 // Source extraction places imageUrl; keep clear of floating overlays / interactions
-                                 const slideImg = (currentSlide as any).imageUrl || null;
+                                 // Promoted to FloatingImageCanvas — avoid a second static copy
+                                 const hasFloating = (floatingImagesMap[currentSlide.id] || []).length > 0;
+                                 const slideImg = hasFloating
+                                   ? null
+                                   : ((currentSlide as any).imageUrl || null);
                                  const textCol = (
                                    <div className="space-y-4 min-w-0 flex-1">
                                      <p className="text-[10px] font-black uppercase tracking-[0.25em]" style={{ color: slideAccentColor }}>
@@ -5523,6 +5545,8 @@ export default function App() {
                                {currentSlide?.type === 'diagram' && (() => {
                                   const mermaidCode: string = currentSlide.data?.mermaidCode || currentSlide.data?.code || '';
                                   const caption: string = currentSlide.data?.caption || currentSlide.content || '';
+                                  const diagramHidden = !!(currentSlide.data?.diagramHidden);
+                                  const diagramLayout = currentSlide.data?.diagramLayout || null;
                                   return (
                                     <div className="space-y-5 w-full">
                                       <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
@@ -5533,26 +5557,41 @@ export default function App() {
                                           className={cn('prose max-w-none text-sm', theme !== 'light' ? 'prose-invert text-slate-400' : 'text-slate-600')}
                                         />
                                       )}
-                                      {mermaidCode ? (
-                                        <div className={cn(
-                                          'w-full overflow-auto rounded-xl p-4',
-                                          // Light theme: blend straight into the white slide canvas (no boxed
-                                          // "card" look) so the diagram reads as part of the page, not a widget
-                                          // floating in a dark gray container.
-                                          theme === 'light' ? 'bg-transparent' : 'bg-slate-800/40 border border-slate-700/40'
-                                        )}>
-                                          <MermaidDiagram
-                                            code={mermaidCode}
-                                            theme={theme as any}
-                                            className="mx-auto"
-                                          />
-                                        </div>
+                                      {mermaidCode && !diagramHidden ? (
+                                        <MovableDiagramFrame
+                                          code={mermaidCode}
+                                          theme={theme as any}
+                                          layout={diagramLayout}
+                                          isAuthoring={!isScormPlayer}
+                                          onLayoutChange={(layout) => {
+                                            if (!currentSlide?.id) return;
+                                            pushUndo();
+                                            handleUpdateSlideMedia(currentSlide.id, {
+                                              data: { ...(currentSlide.data || {}), diagramLayout: layout },
+                                            });
+                                          }}
+                                          onDelete={() => {
+                                            if (!currentSlide?.id) return;
+                                            if (!window.confirm('Remove this diagram from the slide?')) return;
+                                            pushUndo();
+                                            handleUpdateSlideMedia(currentSlide.id, {
+                                              data: {
+                                                ...(currentSlide.data || {}),
+                                                diagramHidden: true,
+                                                mermaidCode: '',
+                                                code: '',
+                                              },
+                                            });
+                                          }}
+                                        />
                                       ) : (
                                         <div className={cn(
                                           'rounded-xl p-6 text-sm text-center',
                                           theme === 'light' ? 'bg-amber-50 border border-amber-200 text-amber-700' : 'bg-slate-800/50 border border-amber-700/30 text-amber-400'
                                         )}>
-                                          No diagram code found. Edit this slide to add Mermaid markup.
+                                          {diagramHidden
+                                            ? 'Diagram removed. Use Edit → Regenerate slide or restore Mermaid markup to bring it back.'
+                                            : 'No diagram code found. Edit this slide to add Mermaid markup.'}
                                         </div>
                                       )}
                                     </div>
@@ -5565,7 +5604,14 @@ export default function App() {
                                    <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
                                    <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                      <TabbedHorizontal
-                                       tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []}
+                                       tabs={(currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []).map((t: any) => {
+                                         // Floating canvas owns promoted images — hide static embed to avoid duplicates
+                                         const floatingUrls = new Set((floatingImagesMap[currentSlide.id] || []).map(f => f.url));
+                                         if (t?.imageUrl && floatingUrls.has(t.imageUrl)) {
+                                           return { ...t, imageUrl: undefined };
+                                         }
+                                         return t;
+                                       })}
                                        theme={theme as any}
                                        introContent={currentSlide.content || ''}
                                        introVoiceOver={currentSlide.voiceOverText || currentSlide.narration || ''}
@@ -5595,7 +5641,13 @@ export default function App() {
                                  <div className="space-y-6 w-full">
                                    <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
                                    <TabbedVertical
-                                     tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []}
+                                     tabs={(currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []).map((t: any) => {
+                                       const floatingUrls = new Set((floatingImagesMap[currentSlide.id] || []).map(f => f.url));
+                                       if (t?.imageUrl && floatingUrls.has(t.imageUrl)) {
+                                         return { ...t, imageUrl: undefined };
+                                       }
+                                       return t;
+                                     })}
                                      theme={theme}
                                      introContent={currentSlide.content || ''}
                                      introVoiceOver={currentSlide.voiceOverText || currentSlide.narration || ''}
@@ -5983,8 +6035,30 @@ export default function App() {
                          onRemove={(id) => {
                            if (!currentSlide?.id) return;
                            pushUndo();
+                           const removed = (floatingImagesMap[currentSlide.id] || []).find(i => i.id === id);
                            const next = (floatingImagesMap[currentSlide.id] || []).filter(i => i.id !== id);
                            syncFloatingImages(currentSlide.id, next);
+                           // Clear matching static imageUrl so it doesn't reappear after reload/promote
+                           if (removed?.url) {
+                             const updates: any = {};
+                             if ((currentSlide as any).imageUrl === removed.url) {
+                               updates.imageUrl = undefined;
+                             }
+                             const data = currentSlide.data ? { ...currentSlide.data } : null;
+                             if (data) {
+                               if (data.imageUrl === removed.url) delete data.imageUrl;
+                               for (const key of ['tabs', 'items', 'cards'] as const) {
+                                 if (!Array.isArray(data[key])) continue;
+                                 data[key] = data[key].map((item: any) =>
+                                   item?.imageUrl === removed.url ? { ...item, imageUrl: undefined } : item
+                                 );
+                               }
+                               updates.data = data;
+                             }
+                             if (Object.keys(updates).length) {
+                               handleUpdateSlideMedia(currentSlide.id, updates);
+                             }
+                           }
                          }}
                        />
                         </motion.div>

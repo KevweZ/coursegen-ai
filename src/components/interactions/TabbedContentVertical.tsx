@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect, useMemo } from 'react';
 import { markdownToHtml } from '../../lib/markdownInline';
-import { formatTabIntroOst } from '../../lib/formatTabIntroOst';
+import { formatTabIntroOst, formatTabOstBody } from '../../lib/formatTabIntroOst';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight } from 'lucide-react';
 
@@ -201,7 +201,7 @@ export default function TabbedContentVertical({
                     <div className={`w-1 h-8 rounded-full ${accent.bg}`} />
                     <h3 className={cn('font-extrabold text-lg', isLight ? accent.textLight : accent.text)} dangerouslySetInnerHTML={{ __html: markdownToHtml(activeTab!.label) }} />
                   </div>
-                  <div className={cn('text-sm leading-relaxed', isLight ? 'text-slate-700' : 'text-slate-200')} dangerouslySetInnerHTML={{ __html: markdownToHtml(activeTab!.content) }} />
+                  <div className={cn('text-sm leading-relaxed tab-ost-body', isLight ? 'text-slate-700' : 'text-slate-200')} dangerouslySetInnerHTML={{ __html: markdownToHtml(formatTabOstBody(activeTab!.content)) }} />
                   {activeTab!.imageUrl && (
                     <div className="mt-5 rounded-xl overflow-hidden border border-slate-200/80 shadow-sm max-w-md">
                       <img

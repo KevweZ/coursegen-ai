@@ -393,6 +393,28 @@ button, [role="button"], a { cursor: pointer; }
   hyphens: none;            /* explicitly disable auto-hyphenation on titles */
 }
 
+/* ── Markdown lists from markdownToHtml (tab OST, timelines, etc.) ─────── */
+/* Tailwind preflight zeros list-style; restore visible bullets for .md-list */
+ul.md-list {
+  list-style-type: disc !important;
+  list-style-position: outside;
+  padding-left: 1.35rem;
+  margin: 0.4rem 0 0.75rem;
+}
+ul.md-list ul.md-list {
+  list-style-type: circle !important;
+  margin: 0.2rem 0;
+  padding-left: 1.15rem;
+}
+ul.md-list li {
+  margin: 0.28rem 0;
+  padding-left: 0.15rem;
+  line-height: 1.45;
+}
+.tab-ost-body ul.md-list {
+  margin-top: 0.15rem;
+}
+
 /* ── Slide prose: ensure proper spacing after bullet/numbered lists ────── */
 /* When a non-list paragraph follows a list, add visible separation */
 .prose > ul,

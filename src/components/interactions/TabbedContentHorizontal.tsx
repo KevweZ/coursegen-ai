@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { markdownToHtml } from '../../lib/markdownInline';
-import { formatTabIntroOst } from '../../lib/formatTabIntroOst';
+import { formatTabIntroOst, formatTabOstBody } from '../../lib/formatTabIntroOst';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export interface HorizontalTab {
@@ -163,15 +163,15 @@ export default function TabbedContentHorizontal({
                   />
                 </div>
                 <div
-                  className={`text-sm leading-relaxed ${isLight ? 'text-slate-700' : 'text-slate-200'}`}
-                  dangerouslySetInnerHTML={{ __html: markdownToHtml(activeTab!.content) }}
+                  className={`text-sm leading-relaxed tab-ost-body ${isLight ? 'text-slate-700' : 'text-slate-200'}`}
+                  dangerouslySetInnerHTML={{ __html: markdownToHtml(formatTabOstBody(activeTab!.content)) }}
                 />
                 {activeTab!.expandedContent && (
                   <div
-                    className={`mt-4 pt-4 border-t text-sm leading-relaxed ${
+                    className={`mt-4 pt-4 border-t text-sm leading-relaxed tab-ost-body ${
                       isLight ? 'border-slate-200 text-slate-600' : 'border-slate-700 text-slate-300'
                     }`}
-                    dangerouslySetInnerHTML={{ __html: markdownToHtml(activeTab!.expandedContent) }}
+                    dangerouslySetInnerHTML={{ __html: markdownToHtml(formatTabOstBody(activeTab!.expandedContent)) }}
                   />
                 )}
                 {activeTab!.imageUrl && (

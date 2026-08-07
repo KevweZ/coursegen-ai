@@ -195,7 +195,9 @@ const aiRateLimit = rateLimit({
 
 const ttsRateLimit = rateLimit({
   windowMs:         15 * 60 * 1000,
-  max:              50,                // TTS is cheaper, allow slightly more
+  // Full courses often need 40–80+ calls (content + tabs + synthetic
+  // cover/objectives/module title/overview). 50 starved system slides.
+  max:              250,
   standardHeaders:  true,
   legacyHeaders:    false,
   message: { error: 'Too many TTS requests. Please wait 15 minutes.' },

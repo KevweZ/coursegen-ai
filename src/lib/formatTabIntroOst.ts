@@ -2,6 +2,9 @@
  * Build richer Introduction OST for tabbed slides.
  * Prefers existing educational intro content; enriches thin intros from narration
  * into short bullets (same density as content tabs) — never a long paragraph.
+ *
+ * Also exports formatTabOstBody for tab panel content: short multi-line phrases
+ * become bullets; full sentences / paragraphs stay as prose.
  */
 
 function isInstructionOnly(text: string): boolean {
@@ -98,4 +101,61 @@ export function formatTabIntroOst(opts: {
   }
 
   return body;
+}
+
+/**
+ * Format tab panel OST for display.
+ * - Short multi-line phrases (bullet-shaped) → markdown bullets
+ * - Already-bulleted markdown → normalize markers
+ * - Sentence paragraphs after a list stay as prose (split by blank line)
+ * - Long sentence-only blocks stay as paragraphs (no forced bullets)
+ */
+export function formatTabOstBody(text: string): string {
+  const raw = (text || '').trim();
+  if (!raw) return '';
+  if (/<[a-z][\s\S]*>/i.test(raw)) return raw; // already HTML from rich editor
+
+  // Split into blocks separated by blank lines so a bullet list + paragraph
+  // after it (common AI pattern) can be handled independently.
+  const blocks = raw.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
+  if (!blocks.length) return raw;
+
+  return blocks.map(block => {
+    const lines = block.split(/\n/).map(l => l.trim()).filter(Boolean);
+    if (!lines.length) return '';
+
+    if (alreadyBulleted(block)) {
+      return lines
+        .map(l => {
+          if (/^[-*•]\s+/.test(l)) return `- ${l.replace(/^[-*•]\s+/, '')}`;
+          if (/^\d+[.)]\s+/.test(l)) return `- ${l.replace(/^\d+[.)]\s+/, '')}`;
+          return `- ${l}`;
+        })
+        .join('\n');
+    }
+
+    const isShortPhrase = (l: string) => {
+      const words = l.split(/\s+/).filter(Boolean).length;
+      // Long sentences (or mid-length ending in .!?) stay prose
+      if (words > 14) return false;
+      if (words > 10 && /[.!?]$/.test(l)) return false;
+      return true;
+    };
+
+    // Multi-line: leading short phrases → bullets; trailing prose stays paragraphs
+    // e.g. 4 short rows + "Diffuser casings are common in high-pressure…"
+    if (lines.length >= 2) {
+      let splitAt = 0;
+      while (splitAt < lines.length && isShortPhrase(lines[splitAt])) splitAt++;
+      // Need at least 2 short lines to treat as a list
+      if (splitAt >= 2) {
+        const bullets = lines.slice(0, splitAt).map(l => `- ${l.replace(/^[-*•]\s+/, '')}`).join('\n');
+        const prose = lines.slice(splitAt).join('\n');
+        return prose ? `${bullets}\n\n${prose}` : bullets;
+      }
+    }
+
+    // Single short line or paragraph prose — leave alone
+    return block;
+  }).join('\n\n');
 }
