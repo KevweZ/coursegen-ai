@@ -2052,11 +2052,11 @@ export default function App() {
     if (shouldShowWelcomeTour()) setShowWelcomeTour(true);
   }, [user?.id, step, isAnalyzing, coldStartCountdown]);
 
-  // Course Development toolbar tour (once per user/session)
+  // Course Development toolbar tour — every visit unless "Don't show again"
   useEffect(() => {
     if (!user || step !== 'preview' || isSandboxMode) return;
     if (shouldShowDevTour()) setShowDevTour(true);
-  }, [user?.id, step, isSandboxMode]);
+  }, [user?.id, step, isSandboxMode, course?.title]);
 
   // One-time heal: strip auto-promoted floating images that overlapped tab titles
   useEffect(() => {
@@ -2832,6 +2832,8 @@ export default function App() {
     setIsSandboxMode(false);
     setMobileDesignDemo(false);
     // Do NOT wait for narration — open Course Development after images + QC; TTS runs in background
+    // Cancel any prior course's in-flight TTS so it cannot steal rate-limit budget / cancel the new job
+    resetTTS();
 
     // Pre-generate mastery quiz in parallel with imagery/QC — we await it
     // before opening preview so Begin Quiz never kicks off a second generation.
@@ -2983,8 +2985,19 @@ export default function App() {
             setOriginalCourse(working);
             showDraftMessage('AI cover image ready ✓');
           } catch (err: any) {
-            console.warn('[ImageService] Cover generation failed:', err);
-            showDraftMessage(err?.message || 'Cover image generation failed — add one via Upload Image.');
+            console.warn('[ImageService] Cover generation failed, retrying once:', err);
+            try {
+              await new Promise(r => setTimeout(r, 1500));
+              coverUrl = await generateCourseCoverImage(working.title || 'Course', working.description);
+              working = { ...working, coverImage: coverUrl };
+              setCourseBg(coverUrl);
+              setCourse(working);
+              setOriginalCourse(working);
+              showDraftMessage('AI cover image ready ✓');
+            } catch (err2: any) {
+              console.warn('[ImageService] Cover generation failed:', err2);
+              showDraftMessage(err2?.message || 'Cover image generation failed — add one via Upload Image or Edit → Generate AI images.');
+            }
           }
         }
         setProgress(68);
@@ -3063,6 +3076,89 @@ export default function App() {
 
     setProgress(95);
 
+    // Start narration as soon as structure/images/QC are ready — do NOT wait for
+    // mastery-quiz generation (that used to delay TTS until after a long exam call,
+    // and a prior run's cancel flag could kill the new job).
+    if (voiceSnapshot) {
+      const courseForTts = working;
+      const voiceForTts = voiceIdSnapshot;
+      const ov = syntheticOverridesSnapshot || {};
+      const titlesOn = includeModuleTitlesSnapshot;
+      const overviewsOn = includeModuleOverviewsSnapshot;
+      void (async () => {
+        try {
+          await generateTTS(courseForTts, setCourse, voiceForTts);
+        } catch (err) {
+          console.warn('[TTS] Slide narration generation failed:', err);
+          showDraftMessage('Narration hit an error — use Edit → Regenerate all narration to retry.');
+        }
+
+        try {
+          const { generateSlideTTS: genSlideTTS, urlToDataUrl } = await import('./services/ttsService');
+          const syntheticJobs: Array<{ id: string; text: string }> = [
+            {
+              id: '__cover__',
+              text: (ov['__cover__']?.voiceOverText || `Welcome to ${courseForTts.title}. ${courseForTts.description || ''}`).trim(),
+            },
+            {
+              id: '__player-tour__',
+              text: (ov['__player-tour__']?.voiceOverText
+                || 'Before we begin, take a moment to explore the player controls. Hover over each card to see the corresponding element highlighted in the player preview.').trim(),
+            },
+            {
+              id: '__course-objectives__',
+              text: (ov['__course-objectives__']?.voiceOverText
+                || ov['__objectives__']?.voiceOverText
+                || 'These are the learning objectives for this course. Review each one so you know what you will be able to do when you finish.').trim(),
+            },
+          ];
+          const moduleSynthetics: Array<{ id: string; text: string }> = (courseForTts.modules || []).flatMap(
+            (m: any, idx: number) => {
+              const modNum = idx + 1;
+              const ct = (m.title || `Module ${modNum}`).replace(/^Module\s+\d+\s*[\u2014\-]\s*/i, '').trim();
+              const items: Array<{ id: string; text: string }> = [];
+              if (titlesOn) {
+                const id = `__module-cover-${modNum}__`;
+                items.push({
+                  id,
+                  text: (ov[id]?.voiceOverText
+                    || `Module ${modNum}: ${ct}.${m.description ? ' ' + m.description : ''}`).trim(),
+                });
+              }
+              if (overviewsOn) {
+                const id = `__module-overview-${modNum}__`;
+                const fallback = titlesOn
+                  ? `Let's revisit the objectives for this module.${m.description ? ' ' + m.description : ''}`.trim()
+                  : `Module ${modNum}: ${ct}. Let's revisit the objectives for this module.${m.description ? ' ' + m.description : ''}`.trim();
+                items.push({
+                  id,
+                  text: (ov[id]?.voiceOverText || fallback).trim(),
+                });
+              }
+              return items;
+            }
+          );
+          const allSynthetic = [...syntheticJobs, ...moduleSynthetics].filter(j => j.text.trim());
+          for (let i = 0; i < allSynthetic.length; i++) {
+            const { id, text } = allSynthetic[i];
+            try {
+              const blobUrl = await genSlideTTS(text, { voice: voiceForTts as any });
+              let durable = blobUrl;
+              try { durable = await urlToDataUrl(blobUrl); } catch { /* keep blob */ }
+              setSyntheticAudioMap(prev => ({ ...prev, [id]: durable }));
+            } catch (e) {
+              console.warn('[TTS] Synthetic narration failed during finalize', id, e);
+            }
+            if (i < allSynthetic.length - 1) await new Promise(r => setTimeout(r, 300));
+          }
+        } catch (e) {
+          console.warn('[TTS] Synthetic narration batch failed:', e);
+        }
+      })();
+    } else {
+      showDraftMessage('Voice-over is off in Course Settings — enable it and use Edit → Regenerate all narration if you want audio.');
+    }
+
     // Ensure mastery quiz is ready before Course Development opens — Begin must not generate.
     if (examGenPromiseRef.current) {
       try {
@@ -3079,8 +3175,7 @@ export default function App() {
     }
 
     // Open preview as soon as structure + images + QC (+ quiz) are ready.
-    // Do NOT await TTS here — that blocked users and a later setCourse(working)
-    // wiped blob voiceOverUrls patched by generateTTS.
+    // TTS already running in background above.
     if (coverUrl) working = { ...working, coverImage: coverUrl };
     working = seedFloatingFromCourse(working) || working;
     setCourse(working);
@@ -3091,82 +3186,6 @@ export default function App() {
     setHighestVisitedIndex(0);
     setStep('preview');
     navigateTo(ROUTES.courseDevelopment);
-
-    // ── Audio in background (toast shows progress; does not block preview) ─
-    // Content slides FIRST (proven path), then synthetic cover/objectives/module
-    // slides. Rate limit raised server-side so system slides are less likely to starve.
-    if (voiceSnapshot) {
-      void (async () => {
-        try {
-          await generateTTS(working, setCourse, voiceIdSnapshot);
-        } catch (err) {
-          console.warn('[TTS] Slide narration generation failed:', err);
-        }
-
-        try {
-          const { generateSlideTTS: genSlideTTS, urlToDataUrl } = await import('./services/ttsService');
-          const ov = syntheticOverridesSnapshot || {};
-          const syntheticJobs: Array<{ id: string; text: string }> = [
-            {
-              id: '__cover__',
-              text: (ov['__cover__']?.voiceOverText || `Welcome to ${working.title}. ${working.description || ''}`).trim(),
-            },
-            {
-              id: '__player-tour__',
-              text: (ov['__player-tour__']?.voiceOverText
-                || 'Before we begin, take a moment to explore the player controls. Hover over each card to see the corresponding element highlighted in the player preview.').trim(),
-            },
-            {
-              id: '__course-objectives__',
-              text: (ov['__course-objectives__']?.voiceOverText
-                || ov['__objectives__']?.voiceOverText
-                || 'These are the learning objectives for this course. Review each one so you know what you will be able to do when you finish.').trim(),
-            },
-          ];
-          const moduleSynthetics: Array<{ id: string; text: string }> = (working.modules || []).flatMap(
-            (m: any, idx: number) => {
-              const modNum = idx + 1;
-              const ct = (m.title || `Module ${modNum}`).replace(/^Module\s+\d+\s*[\u2014\-]\s*/i, '').trim();
-              const items: Array<{ id: string; text: string }> = [];
-              if (includeModuleTitlesSnapshot) {
-                const id = `__module-cover-${modNum}__`;
-                items.push({
-                  id,
-                  text: (ov[id]?.voiceOverText
-                    || `Module ${modNum}: ${ct}.${m.description ? ' ' + m.description : ''}`).trim(),
-                });
-              }
-              if (includeModuleOverviewsSnapshot) {
-                const id = `__module-overview-${modNum}__`;
-                const fallback = includeModuleTitlesSnapshot
-                  ? `Let's revisit the objectives for this module.${m.description ? ' ' + m.description : ''}`.trim()
-                  : `Module ${modNum}: ${ct}. Let's revisit the objectives for this module.${m.description ? ' ' + m.description : ''}`.trim();
-                items.push({
-                  id,
-                  text: (ov[id]?.voiceOverText || fallback).trim(),
-                });
-              }
-              return items;
-            }
-          );
-          const allSynthetic = [...syntheticJobs, ...moduleSynthetics].filter(j => j.text.trim());
-          for (let i = 0; i < allSynthetic.length; i++) {
-            const { id, text } = allSynthetic[i];
-            try {
-              const blobUrl = await genSlideTTS(text, { voice: voiceIdSnapshot as any });
-              let durable = blobUrl;
-              try { durable = await urlToDataUrl(blobUrl); } catch { /* keep blob */ }
-              setSyntheticAudioMap(prev => ({ ...prev, [id]: durable }));
-            } catch (e) {
-              console.warn('[TTS] Synthetic narration failed during finalize', id, e);
-            }
-            if (i < allSynthetic.length - 1) await new Promise(r => setTimeout(r, 300));
-          }
-        } catch (e) {
-          console.warn('[TTS] Synthetic narration batch failed:', e);
-        }
-      })();
-    }
   };
   finalizeGeneratedCourseRef.current = finalizeGeneratedCourse;
 
@@ -5246,45 +5265,55 @@ export default function App() {
                                  const typeLabel = currentSlide.type === 'summary' ? 'Summary' : 'Overview';
                                  const body = (currentSlide.content || '').trim();
                                  const isEmpty = body.length < 8;
-                                 // Source extraction places imageUrl; keep clear of floating overlays / interactions
                                  const slideImg = (currentSlide as any).imageUrl || null;
-                                 const textCol = (
-                                   <div className="space-y-4 min-w-0 flex-1">
+                                 const headerBlock = (
+                                   <div className="space-y-4 w-full">
                                      <p className="text-[10px] font-black uppercase tracking-[0.25em]" style={{ color: slideAccentColor }}>
                                        {typeLabel}
                                      </p>
                                      <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                     {isEmpty ? (
-                                       <EmptySlideRegenerate
-                                         title={currentSlide.title}
-                                         isRegenerating={regeneratingSlideId === currentSlide.id}
-                                         onRegenerate={() => regenerateBlankSlide(currentSlide)}
-                                         compact
-                                       />
-                                     ) : (
-                                       <SlideContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} />
-                                     )}
                                    </div>
                                  );
-                                 if (!slideImg) return <div className="w-full">{textCol}</div>;
+                                 const bodyBlock = isEmpty ? (
+                                   <EmptySlideRegenerate
+                                     title={currentSlide.title}
+                                     isRegenerating={regeneratingSlideId === currentSlide.id}
+                                     onRegenerate={() => regenerateBlankSlide(currentSlide)}
+                                     compact
+                                   />
+                                 ) : (
+                                   <SlideContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} />
+                                 );
+                                 if (!slideImg) {
+                                   return (
+                                     <div className="w-full space-y-4">
+                                       {headerBlock}
+                                       {bodyBlock}
+                                     </div>
+                                   );
+                                 }
+                                 // Header + divider span full width; image sits beside body only (never over the rule)
                                  return (
-                                   <div className="w-full flex flex-row gap-6 items-start">
-                                     {textCol}
-                                     <div className="hidden md:block relative w-[38%] max-w-[340px] shrink-0 rounded-xl overflow-hidden border border-slate-700/40 shadow-lg self-center group/slideimg">
-                                       <img src={slideImg} alt="" className="w-full h-auto max-h-72 object-contain bg-slate-900/40" />
-                                       {!isScormPlayer && (
-                                         <button
-                                           type="button"
-                                           title="Remove image"
-                                           onClick={() => {
-                                             pushUndo();
-                                             handleUpdateSlideMedia(currentSlide.id, { imageUrl: undefined });
-                                           }}
-                                           className="absolute top-2 right-2 opacity-0 group-hover/slideimg:opacity-100 transition-opacity bg-red-500 hover:bg-red-400 text-white rounded-full p-1.5 shadow"
-                                         >
-                                           <Trash2 className="w-3.5 h-3.5" />
-                                         </button>
-                                       )}
+                                   <div className="w-full space-y-4">
+                                     {headerBlock}
+                                     <div className="w-full flex flex-row gap-6 items-start">
+                                       <div className="min-w-0 flex-1">{bodyBlock}</div>
+                                       <div className="hidden md:block relative w-[38%] max-w-[340px] shrink-0 rounded-xl overflow-hidden border border-slate-200 shadow-md mt-1 group/slideimg">
+                                         <img src={slideImg} alt="" className="w-full h-auto max-h-72 object-contain bg-slate-50" />
+                                         {!isScormPlayer && (
+                                           <button
+                                             type="button"
+                                             title="Remove image"
+                                             onClick={() => {
+                                               pushUndo();
+                                               handleUpdateSlideMedia(currentSlide.id, { imageUrl: undefined });
+                                             }}
+                                             className="absolute top-2 right-2 opacity-0 group-hover/slideimg:opacity-100 transition-opacity bg-red-500 hover:bg-red-400 text-white rounded-full p-1.5 shadow"
+                                           >
+                                             <Trash2 className="w-3.5 h-3.5" />
+                                           </button>
+                                         )}
+                                       </div>
                                      </div>
                                    </div>
                                  );

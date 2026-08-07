@@ -76,7 +76,15 @@ export function useTTSGeneration() {
     });
 
     if (narratableSlides.length === 0) {
-      setProgress(prev => ({ ...prev, isDone: true }));
+      setProgress({
+        isRunning: false,
+        isDone: true,
+        currentSlide: 0,
+        totalSlides: 0,
+        currentSlideTitle: '',
+        error: 'No narratable slide text found',
+        skipped: allSlides.length,
+      });
       return;
     }
 

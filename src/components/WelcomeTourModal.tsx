@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, ChevronLeft, ChevronRight, Upload, Settings2, Eye } from 'lucide-react';
 
 export const WELCOME_TOUR_KEY = 'nexcourse_welcome_tour_dismissed';
-const WELCOME_TOUR_SESSION_KEY = 'nexcourse_welcome_tour_session';
 
 const STEPS = [
   {
@@ -39,7 +38,6 @@ export function WelcomeTourModal({ open, onClose }: WelcomeTourModalProps) {
   const finish = () => {
     try {
       if (dontShowAgain) localStorage.setItem(WELCOME_TOUR_KEY, '1');
-      sessionStorage.setItem(WELCOME_TOUR_SESSION_KEY, '1');
     } catch { /* ignore */ }
     onClose();
   };
@@ -160,8 +158,8 @@ export function WelcomeTourModal({ open, onClose }: WelcomeTourModalProps) {
 
 export function shouldShowWelcomeTour(): boolean {
   try {
+    // Only permanent "Don't show again" suppresses the tour
     if (localStorage.getItem(WELCOME_TOUR_KEY) === '1') return false;
-    if (sessionStorage.getItem(WELCOME_TOUR_SESSION_KEY) === '1') return false;
     return true;
   } catch {
     return true;

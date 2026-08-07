@@ -6,7 +6,6 @@ import {
 } from 'lucide-react';
 
 export const DEV_TOUR_KEY = 'nexcourse_dev_tour_dismissed';
-const DEV_TOUR_SESSION_KEY = 'nexcourse_dev_tour_session';
 
 /** Accent colors aligned with the Course Development toolbar buttons */
 const STEPS = [
@@ -67,8 +66,8 @@ interface Props {
 
 export function shouldShowDevTour(): boolean {
   try {
+    // Only permanent "Don't show again" suppresses the tour
     if (localStorage.getItem(DEV_TOUR_KEY) === '1') return false;
-    if (sessionStorage.getItem(DEV_TOUR_SESSION_KEY) === '1') return false;
   } catch { /* ignore */ }
   return true;
 }
@@ -85,7 +84,6 @@ export function DevToolbarTourModal({ open, onClose }: Props) {
   const finish = () => {
     try {
       if (dontShowAgain) localStorage.setItem(DEV_TOUR_KEY, '1');
-      sessionStorage.setItem(DEV_TOUR_SESSION_KEY, '1');
     } catch { /* ignore */ }
     onClose();
   };
