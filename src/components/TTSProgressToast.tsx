@@ -107,7 +107,11 @@ export const TTSProgressToast: React.FC<Props> = ({ progress, onDismiss }) => {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-white leading-tight">
                   {progress.isDone && !progress.isRunning
-                    ? 'Audio generation complete'
+                    ? (progress.error && progress.currentSlide === 0
+                        ? 'Audio generation failed'
+                        : progress.error
+                          ? 'Audio generation finished with errors'
+                          : 'Audio generation complete')
                     : 'Generating narration audio'}
                 </p>
                 {progress.isRunning && (

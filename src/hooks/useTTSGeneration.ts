@@ -4,18 +4,18 @@
  *
  * - Loops through all slides sequentially after course hydration
  * - Patches each slide's voiceOverUrl via functional setCourse (does not wipe cover/source images)
- * - Exposes fine-grained progress state for the UI toast
- * - Skips slides with no narration text gracefully
+ * - Stores durable data: URLs (not ephemeral blob:) so audio survives re-renders / draft save
+ * - Retries transient 429/503 failures
  * - Uses a run id so a cancelled/stale job cannot clobber a newer run's progress
  */
 
 import { useState, useCallback, useRef } from 'react';
-import { generateSlideTTS } from '../services/ttsService';
+import { generateSlideTTS, urlToDataUrl } from '../services/ttsService';
 
 export interface TTSProgress {
   isRunning: boolean;
   isDone: boolean;
-  currentSlide: number;    // 1-based index of slide currently being processed
+  currentSlide: number;    // 1-based index of slide currently being processed / success count when done
   totalSlides: number;     // total slides that have narration text
   currentSlideTitle: string;
   error: string | null;
@@ -33,6 +33,27 @@ const DEFAULT_PROGRESS: TTSProgress = {
 };
 
 type SetCourse = (updater: any) => void;
+
+async function generateDurableSlideTTS(text: string, voice: string): Promise<string> {
+  let lastErr: any;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const blobUrl = await generateSlideTTS(text, { voice: voice as any });
+      try {
+        return await urlToDataUrl(blobUrl);
+      } catch {
+        return blobUrl;
+      }
+    } catch (err: any) {
+      lastErr = err;
+      const msg = String(err?.message || '');
+      const retryable = /429|503|502|COLD_START|Too many TTS|warming up/i.test(msg);
+      if (!retryable || attempt === 2) throw err;
+      await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+    }
+  }
+  throw lastErr || new Error('TTS failed');
+}
 
 /**
  * Returns { progress, generateTTS, cancelTTS, resetTTS, clearTTSProgress }
@@ -66,7 +87,6 @@ export function useTTSGeneration() {
     const narratableSlides = allSlides.filter(({ slide }) => {
       if (!(slide.voiceOverText || slide.narration || slide.content)) return false;
       if (opts?.onlyMissing && slide.voiceOverUrl) {
-        // Still include if any tab is missing audio
         const isTabbed = slide.type === 'tabbed-horizontal' || slide.type === 'tabbed-vertical';
         const tabs: any[] = slide.data?.tabs || slide.data?.items || [];
         if (isTabbed && tabs.some((t: any) => (t?.voiceOverText || '').trim() && !t.voiceOverUrl)) {
@@ -105,6 +125,8 @@ export function useTTSGeneration() {
     });
 
     let successCount = 0;
+    let failCount = 0;
+    let lastError: string | null = null;
 
     for (let i = 0; i < narratableSlides.length; i++) {
       if (!isActive(runId)) break;
@@ -127,11 +149,10 @@ export function useTTSGeneration() {
       try {
         const skipMain = !!(opts?.onlyMissing && slide.voiceOverUrl);
         if (!skipMain) {
-          const blobUrl = await generateSlideTTS(narrationText, { voice: voice as any });
+          const durableUrl = await generateDurableSlideTTS(narrationText, voice);
           if (!isActive(runId)) break;
           successCount++;
 
-          // Merge into latest course — never replace with a pre-imagery clone
           setCourse((prev: any) => {
             if (!prev?.modules) return prev;
             return {
@@ -139,7 +160,7 @@ export function useTTSGeneration() {
               modules: prev.modules.map((m: any) => ({
                 ...m,
                 slides: (m.slides || []).map((s: any) =>
-                  s.id === slideId ? { ...s, voiceOverUrl: blobUrl } : s
+                  s.id === slideId ? { ...s, voiceOverUrl: durableUrl } : s
                 ),
               })),
             };
@@ -148,7 +169,6 @@ export function useTTSGeneration() {
           successCount++;
         }
 
-        // Per-tab narration (tabbed-horizontal / tabbed-vertical)
         const isTabbed = slide.type === 'tabbed-horizontal' || slide.type === 'tabbed-vertical';
         const tabs: any[] = slide.data?.tabs || slide.data?.items || [];
         if (isTabbed && Array.isArray(tabs) && tabs.length) {
@@ -159,7 +179,7 @@ export function useTTSGeneration() {
             if (!tabText) continue;
             if (opts?.onlyMissing && tab.voiceOverUrl) continue;
             try {
-              const tabUrl = await generateSlideTTS(tabText, { voice: voice as any });
+              const tabUrl = await generateDurableSlideTTS(tabText, voice);
               if (!isActive(runId)) break;
               setCourse((prev: any) => {
                 if (!prev?.modules) return prev;
@@ -183,18 +203,22 @@ export function useTTSGeneration() {
               });
               await new Promise(r => setTimeout(r, 250));
             } catch (tabErr: any) {
+              failCount++;
+              lastError = tabErr?.message || 'Tab audio failed';
               console.warn(`[TTS] Tab audio failed on "${slide.title}" tab ${ti}:`, tabErr?.message);
             }
           }
         }
       } catch (err: any) {
         if (!isActive(runId)) break;
+        failCount++;
+        lastError = err?.message || 'TTS failed';
         console.warn(`[TTS] Failed for slide "${slide.title}":`, err.message);
         setProgress(prev => ({
           ...prev,
           error: `Slide "${slide.title}": ${err.message}`,
         }));
-        await new Promise(r => setTimeout(r, 1500));
+        await new Promise(r => setTimeout(r, 1200));
       }
 
       if (i < narratableSlides.length - 1) {
@@ -203,11 +227,17 @@ export function useTTSGeneration() {
     }
 
     if (isActive(runId)) {
+      const allFailed = successCount === 0 && narratableSlides.length > 0;
       setProgress(prev => ({
         ...prev,
         isRunning: false,
         isDone: true,
         currentSlide: successCount,
+        error: allFailed
+          ? (lastError || 'Narration failed for every slide — check TTS server / rate limits, then use Edit → Regenerate all narration.')
+          : failCount > 0
+            ? `${successCount} ready, ${failCount} failed${lastError ? ` (last: ${lastError})` : ''}`
+            : null,
       }));
     }
   }, []);

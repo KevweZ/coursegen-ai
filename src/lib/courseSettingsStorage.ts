@@ -54,7 +54,7 @@ export const DEFAULT_COURSE_SETTINGS: SavedCourseSettings = {
   includeModuleOverviewSlides: true,
   includeSummarySlides: true,
   slideCount: 14,
-  imageMode: 'none',
+  imageMode: 'ai',
   /** When hotspot is on but Multimedia AI/source are off, still AI-generate hotspot backdrops */
   hotspotGenerateBackdrop: false,
 };

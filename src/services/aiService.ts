@@ -406,7 +406,9 @@ export async function generateCourseOutline(
     if (t === 'mc' || t === 'ma' || t === 'tf') return 'quiz';
     return t;
   });
-  const uniqueQuizActivities = [...new Set(quizActivities.length ? quizActivities : ['quiz'])];
+  const uniqueQuizActivities = [...new Set(
+    quizActivities.length ? quizActivities : ['sorting', 'matching', 'drop-targets']
+  )];
   const kcMode = configParams.knowledgeCheckMode || 'per-module';
   const kcCount = Math.max(1, configParams.knowledgeCheckCount ?? 1);
   const kcDirective = configParams.includeKnowledgeChecks === false
@@ -860,7 +862,22 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     else if (isMissingData('accordion', 'items')) slide.type = 'content';
     else if (isMissingData('flashcards', 'cards')) slide.type = 'content';
     else if (isMissingData('click-reveal', 'items')) slide.type = 'content';
-    else if (slide.type === 'quiz' && !slide.interactions?.length) slide.type = 'content';
+    else if (slide.type === 'quiz' || slide.type === 'multiple-choice' || slide.type === 'multiple-answers' || slide.type === 'true-false') {
+      const opts = slide.interactions?.[0]?.options || slide.data?.options;
+      if (!Array.isArray(opts) || opts.length < 2) {
+        slide.type = 'content';
+        slide.content = slide.content || `**${slide.title || 'Knowledge Check'}**\n\nReview this topic, then continue. (Interactive question options were incomplete and were converted to content.)`;
+      }
+    }
+    else if (slide.type === 'sorting' && (!slide.data?.items?.length && !slide.interactions?.[0]?.items?.length)) {
+      slide.type = 'content';
+    }
+    else if (slide.type === 'matching' && (!slide.data?.items?.length && !slide.interactions?.[0]?.items?.length)) {
+      slide.type = 'content';
+    }
+    else if ((slide.type === 'drop-targets' || slide.type === 'memory-match') && (!slide.data?.items?.length && !slide.interactions?.[0]?.items?.length)) {
+      slide.type = 'content';
+    }
     else if (slide.type === 'game-template' && !slide.data?.templateType) {
       slide.type = 'content';
       slide.content = slide.content || 'Game template encountered a structural error.';

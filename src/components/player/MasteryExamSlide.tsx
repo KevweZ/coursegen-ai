@@ -185,12 +185,50 @@ export const MasteryExamSlide: React.FC<Props> = ({
   if (examConfig.presentationMode === 'scroll-all') {
     const answeredCount = questions.filter(q => isAnswered(q, answers[q.id])).length;
 
+    const overviewPanel = (
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">
+          Question Overview
+        </p>
+        <div className="grid grid-cols-4 gap-1.5 max-h-[min(52vh,420px)] overflow-y-auto pr-0.5 custom-scrollbar">
+          {questions.map((q, idx) => {
+            const done = isAnswered(q, answers[q.id]);
+            return (
+              <button
+                key={q.id}
+                type="button"
+                title={done ? `Question ${idx + 1} — answered` : `Question ${idx + 1} — unanswered`}
+                onClick={() => jumpToQuestion(q.id)}
+                className={`h-8 rounded-full text-[11px] font-bold transition-colors ${
+                  done
+                    ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+                    : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+                }`}
+              >
+                {idx + 1}
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-3 pt-2 border-t border-slate-100 space-y-1.5">
+          <div className="flex items-center gap-2 text-[10px] text-slate-600 font-semibold">
+            <span className="w-3 h-3 rounded-full bg-emerald-500 shrink-0" />
+            Answered
+          </div>
+          <div className="flex items-center gap-2 text-[10px] text-slate-600 font-semibold">
+            <span className="w-3 h-3 rounded-full bg-slate-200 shrink-0" />
+            Unanswered
+          </div>
+        </div>
+      </div>
+    );
+
     return (
-      <div className="h-full flex flex-col bg-white relative">
-        <div ref={scrollRootRef} className="flex-1 overflow-y-auto">
-          <div className="flex gap-4 p-4 sm:p-6 max-w-6xl mx-auto items-start pb-28">
-            {/* Questions column */}
-            <div className="flex-1 min-w-0 space-y-6">
+      <div className="h-full flex flex-col bg-white relative overflow-hidden">
+        <div className="flex-1 min-h-0 flex">
+          {/* Questions scroll independently — overview is NOT inside this scroller */}
+          <div ref={scrollRootRef} className="flex-1 min-w-0 overflow-y-auto p-4 sm:p-6 pb-8">
+            <div className="max-w-3xl mx-auto space-y-6">
               <div className="text-center space-y-1 mb-2">
                 <h2 className="text-2xl font-extrabold text-slate-900">Mastery Quiz</h2>
                 <p className="text-sm text-slate-500">{answeredCount} of {questions.length} answered</p>
@@ -214,46 +252,12 @@ export const MasteryExamSlide: React.FC<Props> = ({
                 </div>
               ))}
             </div>
-
-            {/* Question overview — sticky right rail */}
-            <aside className="hidden md:flex w-[148px] shrink-0 sticky top-4 flex-col gap-3">
-              <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">
-                  Question Overview
-                </p>
-                <div className="grid grid-cols-4 gap-1.5 max-h-[min(52vh,420px)] overflow-y-auto pr-0.5 custom-scrollbar">
-                  {questions.map((q, idx) => {
-                    const done = isAnswered(q, answers[q.id]);
-                    return (
-                      <button
-                        key={q.id}
-                        type="button"
-                        title={done ? `Question ${idx + 1} — answered` : `Question ${idx + 1} — unanswered`}
-                        onClick={() => jumpToQuestion(q.id)}
-                        className={`h-8 rounded-full text-[11px] font-bold transition-colors ${
-                          done
-                            ? 'bg-emerald-500 text-white hover:bg-emerald-600'
-                            : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
-                        }`}
-                      >
-                        {idx + 1}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="mt-3 pt-2 border-t border-slate-100 space-y-1.5">
-                  <div className="flex items-center gap-2 text-[10px] text-slate-600 font-semibold">
-                    <span className="w-3 h-3 rounded-full bg-emerald-500 shrink-0" />
-                    Answered
-                  </div>
-                  <div className="flex items-center gap-2 text-[10px] text-slate-600 font-semibold">
-                    <span className="w-3 h-3 rounded-full bg-slate-200 shrink-0" />
-                    Unanswered
-                  </div>
-                </div>
-              </div>
-            </aside>
           </div>
+
+          {/* Locked overview rail — always visible while questions scroll */}
+          <aside className="hidden md:flex w-[160px] shrink-0 border-l border-slate-200 bg-slate-50/80 p-3 overflow-y-auto">
+            {overviewPanel}
+          </aside>
         </div>
 
         {/* Mobile overview strip */}
@@ -286,9 +290,10 @@ export const MasteryExamSlide: React.FC<Props> = ({
           </button>
         </div>
 
+        {/* Viewport-centered confirm — not middle of the tall scroll document */}
         {confirming && (
-          <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 max-w-sm w-full mx-4 space-y-4 shadow-xl">
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[250] p-4">
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 max-w-sm w-full space-y-4 shadow-xl">
               <h3 className="text-slate-900 font-extrabold text-lg">Submit Quiz?</h3>
               <p className="text-slate-500 text-sm">You answered {answeredCount} of {questions.length} questions. Once submitted, you cannot change your answers.</p>
               <div className="flex gap-3">

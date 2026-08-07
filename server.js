@@ -187,7 +187,9 @@ app.use(
 // ─── 5. Rate Limiting — AI Proxy Endpoints ──────────────────────────────────
 const aiRateLimit = rateLimit({
   windowMs:         15 * 60 * 1000,   // 15-minute window
-  max:              30,                // max 30 AI requests per IP per window
+  // Full course hydrate is many bulk chunk + per-slide retries (40–80+ calls).
+  // 30 starved knowledge checks into empty stubs while outline still "succeeded".
+  max:              200,
   standardHeaders:  true,
   legacyHeaders:    false,
   message: { error: 'Too many requests. Please wait 15 minutes before trying again.' },
@@ -195,9 +197,9 @@ const aiRateLimit = rateLimit({
 
 const ttsRateLimit = rateLimit({
   windowMs:         15 * 60 * 1000,
-  // Full courses often need 40–80+ calls (content + tabs + synthetic
-  // cover/objectives/module title/overview). 50 starved system slides.
-  max:              250,
+  // Full courses often need 40–120+ calls (content + tabs + synthetic
+  // cover/objectives/module title/overview). Keep headroom for retries.
+  max:              400,
   standardHeaders:  true,
   legacyHeaders:    false,
   message: { error: 'Too many TTS requests. Please wait 15 minutes.' },

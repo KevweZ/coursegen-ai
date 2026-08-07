@@ -27,13 +27,21 @@ export function stripAutoPromotedFloating(slide: any): any {
 
 export function stripCourseAutoPromotedFloating(course: any): any {
   if (!course?.modules) return course;
-  return {
-    ...course,
-    modules: course.modules.map((m: any) => ({
-      ...m,
-      slides: (m.slides || []).map((s: any) => stripAutoPromotedFloating(s)),
-    })),
-  };
+  let changed = false;
+  const modules = course.modules.map((m: any) => {
+    let moduleChanged = false;
+    const slides = (m.slides || []).map((s: any) => {
+      const next = stripAutoPromotedFloating(s);
+      if (next !== s) moduleChanged = true;
+      return next;
+    });
+    if (!moduleChanged) return m;
+    changed = true;
+    return { ...m, slides };
+  });
+  // Preserve referential equality when nothing was stripped — callers use !== to skip setCourse
+  if (!changed) return course;
+  return { ...course, modules };
 }
 
 /** Build floatingImagesMap from course slides (user floats only after strip). */

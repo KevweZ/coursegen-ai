@@ -2258,7 +2258,10 @@ export default function App() {
         includeKnowledgeChecks: true,
         knowledgeCheckMode: examConfig.knowledgeCheckMode || 'per-module',
         knowledgeCheckCount: examConfig.knowledgeCheckCount ?? 1,
-        quizActivityTypes: (examConfig.knowledgeCheckQuestionTypes || examConfig.questionTypes || []).filter(t =>
+        quizActivityTypes: (examConfig.knowledgeCheckQuestionTypes?.length
+          ? examConfig.knowledgeCheckQuestionTypes
+          : ['sorting', 'matching', 'drop-targets']
+        ).filter(t =>
           ['sorting', 'matching', 'drop-targets', 'mc', 'ma', 'tf'].includes(t)
         ),
         objectiveFormat,
@@ -2370,7 +2373,9 @@ export default function App() {
               includeKnowledgeChecks: true,
               knowledgeCheckMode: outlineExamCfg.knowledgeCheckMode || 'per-module',
               knowledgeCheckCount: outlineExamCfg.knowledgeCheckCount ?? 1,
-              quizActivityTypes: outlineExamCfg.knowledgeCheckQuestionTypes || outlineExamCfg.questionTypes,
+              quizActivityTypes: outlineExamCfg.knowledgeCheckQuestionTypes?.length
+                ? outlineExamCfg.knowledgeCheckQuestionTypes
+                : ['sorting', 'matching', 'drop-targets'],
               objectiveFormat: settingsOverride?.objectiveFormat ?? objectiveFormat,
             }
           );
@@ -2429,7 +2434,9 @@ export default function App() {
             includeKnowledgeChecks: true,
             knowledgeCheckMode: outlineExamCfg.knowledgeCheckMode || 'per-module',
             knowledgeCheckCount: outlineExamCfg.knowledgeCheckCount ?? 1,
-            quizActivityTypes: outlineExamCfg.knowledgeCheckQuestionTypes || outlineExamCfg.questionTypes,
+            quizActivityTypes: outlineExamCfg.knowledgeCheckQuestionTypes?.length
+              ? outlineExamCfg.knowledgeCheckQuestionTypes
+              : ['sorting', 'matching', 'drop-targets'],
             objectiveFormat: settingsOverride?.objectiveFormat ?? objectiveFormat,
           }
         );
@@ -2808,7 +2815,9 @@ export default function App() {
           includeKnowledgeChecks: true,
           knowledgeCheckMode: examConfig.knowledgeCheckMode || 'per-module',
           knowledgeCheckCount: examConfig.knowledgeCheckCount ?? 1,
-          quizActivityTypes: examConfig.knowledgeCheckQuestionTypes || examConfig.questionTypes,
+          quizActivityTypes: examConfig.knowledgeCheckQuestionTypes?.length
+            ? examConfig.knowledgeCheckQuestionTypes
+            : ['sorting', 'matching', 'drop-targets'],
           objectiveFormat,
         }
       );
@@ -2890,8 +2899,6 @@ export default function App() {
     setIsSandboxMode(false);
     setMobileDesignDemo(false);
     // Do NOT wait for narration — open Course Development after images + QC; TTS runs in background
-    // Cancel any prior course's in-flight TTS so it cannot steal rate-limit budget / clobber the new job
-    resetTTS();
 
     // Pre-generate mastery quiz in parallel with imagery/QC — we await it
     // before opening preview so Begin Quiz never kicks off a second generation.
@@ -3158,6 +3165,8 @@ export default function App() {
     } else if (wantsAi) {
       console.warn('[ImageService] AI images enabled but no cover URL after finalize imagery');
       showDraftMessage('AI cover did not generate — use Edit → Generate AI images or Upload Image on the title slide.');
+    } else if (!wantsAi && !wantsSource) {
+      showDraftMessage('Multimedia images are off in Course Settings — enable AI Images to generate a cover.');
     }
     working = seedFloatingFromCourse(working) || working;
     setCourse(working);
@@ -3175,6 +3184,11 @@ export default function App() {
     setHighestVisitedIndex(0);
     setStep('preview');
     navigateTo(ROUTES.courseDevelopment);
+
+    // Cancel any prior course's in-flight TTS immediately before starting the new job
+    // (do this late — not at finalize start — so a long exam/imagery wait cannot leave
+    // a cancelled flag racing a premature toast dismiss from the previous course).
+    resetTTS();
 
     // ── Audio in background (toast shows progress; does not block preview) ─
     // Content slides FIRST (proven path), then synthetic cover/objectives/module
@@ -3239,6 +3253,7 @@ export default function App() {
             }
           );
           const allSynthetic = [...syntheticJobs, ...moduleSynthetics].filter(j => j.text.trim());
+          let synthOk = 0;
           for (let i = 0; i < allSynthetic.length; i++) {
             const { id, text } = allSynthetic[i];
             try {
@@ -3246,10 +3261,14 @@ export default function App() {
               let durable = blobUrl;
               try { durable = await urlToDataUrl(blobUrl); } catch { /* keep blob */ }
               setSyntheticAudioMap(prev => ({ ...prev, [id]: durable }));
+              synthOk++;
             } catch (e) {
               console.warn('[TTS] Synthetic narration failed during finalize', id, e);
             }
             if (i < allSynthetic.length - 1) await new Promise(r => setTimeout(r, 300));
+          }
+          if (synthOk === 0 && allSynthetic.length > 0) {
+            showDraftMessage('System-slide narration failed — use Edit → Regenerate all narration to retry.');
           }
         } catch (e) {
           console.warn('[TTS] Synthetic narration batch failed:', e);
