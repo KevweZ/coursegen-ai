@@ -203,12 +203,14 @@ export default function TabbedContentVertical({
                   </div>
                   <div className={cn('text-sm leading-relaxed tab-ost-body', isLight ? 'text-slate-700' : 'text-slate-200')} dangerouslySetInnerHTML={{ __html: markdownToHtml(formatTabOstBody(activeTab!.content)) }} />
                   {activeTab!.imageUrl && (
-                    <div className="mt-5 rounded-xl overflow-hidden border border-slate-200/80 shadow-sm max-w-md">
-                      <img
-                        src={activeTab!.imageUrl}
-                        alt=""
-                        className="w-full h-auto max-h-48 object-cover"
-                      />
+                    <div className="mt-6 pt-4 border-t border-slate-200/80">
+                      <div className="rounded-xl overflow-hidden border border-slate-200/80 shadow-sm max-w-sm mx-auto">
+                        <img
+                          src={activeTab!.imageUrl}
+                          alt=""
+                          className="w-full h-auto max-h-52 object-contain bg-slate-50"
+                        />
+                      </div>
                     </div>
                   )}
                 </>

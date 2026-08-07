@@ -175,12 +175,14 @@ export default function TabbedContentHorizontal({
                   />
                 )}
                 {activeTab!.imageUrl && (
-                  <div className="mt-5 rounded-xl overflow-hidden border border-slate-200/80 shadow-sm max-w-md">
-                    <img
-                      src={activeTab!.imageUrl}
-                      alt=""
-                      className="w-full h-auto max-h-48 object-cover"
-                    />
+                  <div className="mt-6 pt-4 border-t border-slate-200/80">
+                    <div className="rounded-xl overflow-hidden border border-slate-200/80 shadow-sm max-w-sm mx-auto">
+                      <img
+                        src={activeTab!.imageUrl}
+                        alt=""
+                        className="w-full h-auto max-h-52 object-contain bg-slate-50"
+                      />
+                    </div>
                   </div>
                 )}
               </>

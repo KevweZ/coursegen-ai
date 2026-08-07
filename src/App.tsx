@@ -142,7 +142,7 @@ import { ModuleOverviewSlide, MODULE_COLORS } from './components/player/ModuleOv
 import { PlayerTourSlide }       from './components/player/PlayerTourSlide';
 import { WheelDiagram } from './components/interactions/WheelDiagram';
 import { MermaidDiagram } from './components/MermaidDiagram';
-import { MovableDiagramFrame } from './components/MovableDiagramFrame';
+import { DiagramAlignFrame, type DiagramAlign } from './components/DiagramAlignFrame';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { CustomMatchingActivity } from './components/interactions/CustomMatchingActivity';
 import { CustomSortingActivity } from './components/interactions/CustomSortingActivity';
@@ -155,7 +155,7 @@ import { FloatingImageCanvas } from './components/FloatingImageCanvas';
 import { TrialInvitePanel } from './components/TrialInvitePanel';
 
 import { FloatingImage } from './types/course';
-import { promoteCourseImagesToFloating, floatingMapFromCourse } from './lib/promoteSlideImages';
+import { stripCourseAutoPromotedFloating, floatingMapFromCourse } from './lib/promoteSlideImages';
 import TabbedHorizontal from './components/interactions/TabbedContentHorizontal';
 import TabbedVertical from './components/interactions/TabbedContentVertical';
 import FolderExplorer from './components/interactions/FolderExplorer';
@@ -897,18 +897,18 @@ export default function App() {
         }
         console.log(`[Drafts] Attached ${media.size} media asset(s) after preview open`);
 
-        // Promote static imageUrl → floating so drafts get movable/deletable images
+        // Remove auto-promoted floating overlays that broke tab layouts
         try {
-          const promoted = promoteCourseImagesToFloating(working);
-          const fmap = floatingMapFromCourse(promoted);
-          if (Object.keys(fmap).length) {
-            setFloatingImagesMap(prev => ({ ...prev, ...fmap }));
-            working = promoted;
+          const cleaned = stripCourseAutoPromotedFloating(working);
+          const fmap = floatingMapFromCourse(cleaned);
+          setFloatingImagesMap(fmap);
+          if (cleaned !== working) {
+            working = cleaned;
             setCourse(working);
             setOriginalCourse(working);
           }
         } catch (e) {
-          console.warn('[Drafts] Image promote failed:', e);
+          console.warn('[Drafts] Floating cleanup failed:', e);
         }
 
         const missingAudio = (working.modules || []).some((m: any) =>
@@ -2039,6 +2039,30 @@ export default function App() {
     if (shouldShowDevTour()) setShowDevTour(true);
   }, [user?.id, step, isSandboxMode]);
 
+  // One-time heal: strip auto-promoted floating images that overlapped tab titles
+  useEffect(() => {
+    if (step !== 'preview' || !course?.modules) return;
+    const cleaned = stripCourseAutoPromotedFloating(course);
+    const hadPromoInCourse = cleaned !== course;
+
+    setFloatingImagesMap(prev => {
+      let changed = false;
+      const next: typeof prev = {};
+      for (const [id, imgs] of Object.entries(prev)) {
+        const kept = (imgs || []).filter(f => !String(f.id || '').match(/^(fi-promo-|fi-ai-|fi-src-)/));
+        if (kept.length !== (imgs || []).length) changed = true;
+        if (kept.length) next[id] = kept;
+      }
+      if (!changed) return prev;
+      return next;
+    });
+
+    if (hadPromoInCourse) {
+      setCourse(cleaned);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- heal once when preview opens / course shell changes
+  }, [step, course?.title, course?.modules?.length]);
+
   const clearColdStartCountdown = () => {
     if (coldStartTimerRef.current) {
       clearInterval(coldStartTimerRef.current);
@@ -2806,13 +2830,20 @@ export default function App() {
     const runImagery = wantsAi || wantsSource || wantsHotspotBackdrop;
 
     const seedFloatingFromCourse = (c: any) => {
-      const promoted = promoteCourseImagesToFloating(c);
-      const map = floatingMapFromCourse(promoted);
-      if (Object.keys(map).length) {
-        setFloatingImagesMap(prev => ({ ...prev, ...map }));
-      }
-      // Persist promotion back onto working course when images were only on imageUrl
-      return promoted;
+      // Strip bad auto-promoted floats from prior beta; keep author uploads only
+      const cleaned = stripCourseAutoPromotedFloating(c);
+      const map = floatingMapFromCourse(cleaned);
+      setFloatingImagesMap(prev => {
+        const next = { ...prev };
+        // Drop auto-promoted entries from map too
+        for (const [slideId, imgs] of Object.entries(next)) {
+          const kept = (imgs || []).filter(f => !String(f.id || '').match(/^(fi-promo-|fi-ai-|fi-src-)/));
+          if (kept.length) next[slideId] = kept;
+          else delete next[slideId];
+        }
+        return { ...next, ...map };
+      });
+      return cleaned;
     };
 
     const mergeImageryInto = (base: any, imagery: any, coverFallback: string | null) => {
@@ -2999,10 +3030,16 @@ export default function App() {
     navigateTo(ROUTES.courseDevelopment);
 
     // ── Audio in background (toast shows progress; does not block preview) ─
-    // Synthetic slides (cover, objectives, module title/overview) run FIRST so
-    // they are not starved by content+tab TTS volume / rate limits.
+    // Content slides FIRST (proven path), then synthetic cover/objectives/module
+    // slides. Rate limit raised server-side so system slides are less likely to starve.
     if (voiceSnapshot) {
       void (async () => {
+        try {
+          await generateTTS(working, setCourse, voiceIdSnapshot);
+        } catch (err) {
+          console.warn('[TTS] Slide narration generation failed:', err);
+        }
+
         try {
           const { generateSlideTTS: genSlideTTS, urlToDataUrl } = await import('./services/ttsService');
           const ov = syntheticOverridesSnapshot || {};
@@ -3064,12 +3101,6 @@ export default function App() {
           }
         } catch (e) {
           console.warn('[TTS] Synthetic narration batch failed:', e);
-        }
-
-        try {
-          await generateTTS(working, setCourse, voiceIdSnapshot);
-        } catch (err) {
-          console.warn('[TTS] Slide narration generation failed:', err);
         }
       })();
     }
@@ -3227,10 +3258,10 @@ export default function App() {
     setShowEditMenu(false);
     showDraftMessage('Regenerating all narration…');
     try {
-      // System slides first (objectives / module title / overview), then content
+      // Content first (stable), then system slides
+      await generateTTS(course, setCourse, ttsVoice);
       const syntheticJobs = collectSyntheticNarrationJobs(allSlides);
       const synthOk = await generateSyntheticNarration(syntheticJobs, ttsVoice);
-      await generateTTS(course, setCourse, ttsVoice);
       setVoiceOverEnabled(true);
       showDraftMessage(
         synthOk > 0
@@ -3308,13 +3339,10 @@ export default function App() {
       working = await generateContentSlideImages(working, (done, total) => {
         showDraftMessage(`Generating AI images… ${done}/${total}`);
       });
-      working = promoteCourseImagesToFloating(working);
-      const fmap = floatingMapFromCourse(working);
-      if (Object.keys(fmap).length) {
-        setFloatingImagesMap(prev => ({ ...prev, ...fmap }));
-      }
+      working = stripCourseAutoPromotedFloating(working);
+      setFloatingImagesMap(floatingMapFromCourse(working));
       setCourse(working);
-      showDraftMessage('AI images updated. Drag to move or hover to delete. Save the draft to keep them.');
+      showDraftMessage('AI images updated. Save the draft to keep them.');
     } catch (err: any) {
       console.error('[Images] Regen failed:', err);
       showDraftMessage(err?.message || 'Failed to regenerate AI images.');
@@ -5155,11 +5183,8 @@ export default function App() {
                                  const typeLabel = currentSlide.type === 'summary' ? 'Summary' : 'Overview';
                                  const body = (currentSlide.content || '').trim();
                                  const isEmpty = body.length < 8;
-                                 // Promoted to FloatingImageCanvas — avoid a second static copy
-                                 const hasFloating = (floatingImagesMap[currentSlide.id] || []).length > 0;
-                                 const slideImg = hasFloating
-                                   ? null
-                                   : ((currentSlide as any).imageUrl || null);
+                                 // Source extraction places imageUrl; keep clear of floating overlays / interactions
+                                 const slideImg = (currentSlide as any).imageUrl || null;
                                  const textCol = (
                                    <div className="space-y-4 min-w-0 flex-1">
                                      <p className="text-[10px] font-black uppercase tracking-[0.25em]" style={{ color: slideAccentColor }}>
@@ -5182,8 +5207,21 @@ export default function App() {
                                  return (
                                    <div className="w-full flex flex-row gap-6 items-start">
                                      {textCol}
-                                     <div className="hidden md:block w-[38%] max-w-[340px] shrink-0 rounded-xl overflow-hidden border border-slate-700/40 shadow-lg self-center">
+                                     <div className="hidden md:block relative w-[38%] max-w-[340px] shrink-0 rounded-xl overflow-hidden border border-slate-700/40 shadow-lg self-center group/slideimg">
                                        <img src={slideImg} alt="" className="w-full h-auto max-h-72 object-contain bg-slate-900/40" />
+                                       {!isScormPlayer && (
+                                         <button
+                                           type="button"
+                                           title="Remove image"
+                                           onClick={() => {
+                                             pushUndo();
+                                             handleUpdateSlideMedia(currentSlide.id, { imageUrl: undefined });
+                                           }}
+                                           className="absolute top-2 right-2 opacity-0 group-hover/slideimg:opacity-100 transition-opacity bg-red-500 hover:bg-red-400 text-white rounded-full p-1.5 shadow"
+                                         >
+                                           <Trash2 className="w-3.5 h-3.5" />
+                                         </button>
+                                       )}
                                      </div>
                                    </div>
                                  );
@@ -5546,7 +5584,7 @@ export default function App() {
                                   const mermaidCode: string = currentSlide.data?.mermaidCode || currentSlide.data?.code || '';
                                   const caption: string = currentSlide.data?.caption || currentSlide.content || '';
                                   const diagramHidden = !!(currentSlide.data?.diagramHidden);
-                                  const diagramLayout = currentSlide.data?.diagramLayout || null;
+                                  const diagramAlign = (currentSlide.data?.diagramAlign as DiagramAlign) || 'center';
                                   return (
                                     <div className="space-y-5 w-full">
                                       <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
@@ -5558,21 +5596,20 @@ export default function App() {
                                         />
                                       )}
                                       {mermaidCode && !diagramHidden ? (
-                                        <MovableDiagramFrame
+                                        <DiagramAlignFrame
                                           code={mermaidCode}
                                           theme={theme as any}
-                                          layout={diagramLayout}
+                                          align={diagramAlign}
                                           isAuthoring={!isScormPlayer}
-                                          onLayoutChange={(layout) => {
+                                          onAlignChange={(align) => {
                                             if (!currentSlide?.id) return;
                                             pushUndo();
                                             handleUpdateSlideMedia(currentSlide.id, {
-                                              data: { ...(currentSlide.data || {}), diagramLayout: layout },
+                                              data: { ...(currentSlide.data || {}), diagramAlign: align },
                                             });
                                           }}
                                           onDelete={() => {
                                             if (!currentSlide?.id) return;
-                                            if (!window.confirm('Remove this diagram from the slide?')) return;
                                             pushUndo();
                                             handleUpdateSlideMedia(currentSlide.id, {
                                               data: {
@@ -5604,14 +5641,7 @@ export default function App() {
                                    <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
                                    <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                      <TabbedHorizontal
-                                       tabs={(currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []).map((t: any) => {
-                                         // Floating canvas owns promoted images — hide static embed to avoid duplicates
-                                         const floatingUrls = new Set((floatingImagesMap[currentSlide.id] || []).map(f => f.url));
-                                         if (t?.imageUrl && floatingUrls.has(t.imageUrl)) {
-                                           return { ...t, imageUrl: undefined };
-                                         }
-                                         return t;
-                                       })}
+                                       tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []}
                                        theme={theme as any}
                                        introContent={currentSlide.content || ''}
                                        introVoiceOver={currentSlide.voiceOverText || currentSlide.narration || ''}
@@ -5641,13 +5671,7 @@ export default function App() {
                                  <div className="space-y-6 w-full">
                                    <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
                                    <TabbedVertical
-                                     tabs={(currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []).map((t: any) => {
-                                       const floatingUrls = new Set((floatingImagesMap[currentSlide.id] || []).map(f => f.url));
-                                       if (t?.imageUrl && floatingUrls.has(t.imageUrl)) {
-                                         return { ...t, imageUrl: undefined };
-                                       }
-                                       return t;
-                                     })}
+                                     tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []}
                                      theme={theme}
                                      introContent={currentSlide.content || ''}
                                      introVoiceOver={currentSlide.voiceOverText || currentSlide.narration || ''}
@@ -6035,30 +6059,8 @@ export default function App() {
                          onRemove={(id) => {
                            if (!currentSlide?.id) return;
                            pushUndo();
-                           const removed = (floatingImagesMap[currentSlide.id] || []).find(i => i.id === id);
                            const next = (floatingImagesMap[currentSlide.id] || []).filter(i => i.id !== id);
                            syncFloatingImages(currentSlide.id, next);
-                           // Clear matching static imageUrl so it doesn't reappear after reload/promote
-                           if (removed?.url) {
-                             const updates: any = {};
-                             if ((currentSlide as any).imageUrl === removed.url) {
-                               updates.imageUrl = undefined;
-                             }
-                             const data = currentSlide.data ? { ...currentSlide.data } : null;
-                             if (data) {
-                               if (data.imageUrl === removed.url) delete data.imageUrl;
-                               for (const key of ['tabs', 'items', 'cards'] as const) {
-                                 if (!Array.isArray(data[key])) continue;
-                                 data[key] = data[key].map((item: any) =>
-                                   item?.imageUrl === removed.url ? { ...item, imageUrl: undefined } : item
-                                 );
-                               }
-                               updates.data = data;
-                             }
-                             if (Object.keys(updates).length) {
-                               handleUpdateSlideMedia(currentSlide.id, updates);
-                             }
-                           }
                          }}
                        />
                         </motion.div>

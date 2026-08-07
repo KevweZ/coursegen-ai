@@ -160,27 +160,14 @@ export function attachSourceImagesToCourse(
           };
         }
 
-        // Text / summary — also seed floatingMedia so images are movable/deletable
+        // Text / summary only — imageUrl drives a dedicated right column
         if (s.type !== 'content' && s.type !== 'summary') return s;
         const img = pool[imgIdx % pool.length];
         if (!img) return s;
         imgIdx++;
-        const floating = Array.isArray(s.floatingMedia) ? [...s.floatingMedia] : [];
-        if (!floating.some((f: any) => f.url === img.dataUrl)) {
-          floating.push({
-            id: `fi-src-${s.id || imgIdx}`,
-            url: img.dataUrl,
-            x: 440,
-            y: 56,
-            width: 300,
-            height: 220,
-            tabId: null,
-          });
-        }
         return {
           ...s,
           imageUrl: img.dataUrl,
-          floatingMedia: floating,
         };
       }),
     })),
@@ -423,42 +410,15 @@ export async function generateContentSlideImages(
       );
       const slide = modules[job.mi].slides[job.si];
       if (job.kind === 'slide') {
-        const floating = Array.isArray(slide.floatingMedia) ? [...slide.floatingMedia] : [];
-        if (!floating.some((f: any) => f.url === url)) {
-          floating.push({
-            id: `fi-ai-${slide.id || `${job.mi}-${job.si}`}`,
-            url,
-            x: 440,
-            y: 56,
-            width: 300,
-            height: 220,
-            tabId: null,
-          });
-        }
-        modules[job.mi].slides[job.si] = { ...slide, imageUrl: url, floatingMedia: floating };
+        modules[job.mi].slides[job.si] = { ...slide, imageUrl: url };
       } else if (typeof job.tabIndex === 'number') {
         if (slide.type === 'tabbed-horizontal' || slide.type === 'tabbed-vertical') {
           const key = slide.data?.tabs ? 'tabs' : 'items';
           const list = [...(slide.data?.[key] || [])];
           if (list[job.tabIndex]) {
-            const tab = list[job.tabIndex];
-            const tabId = (tab.id != null && String(tab.id).trim()) ? String(tab.id) : `tab-${job.tabIndex}`;
-            list[job.tabIndex] = { ...tab, imageUrl: url };
-            const floating = Array.isArray(slide.floatingMedia) ? [...slide.floatingMedia] : [];
-            if (!floating.some((f: any) => f.url === url)) {
-              floating.push({
-                id: `fi-ai-${slide.id}-${tabId}`,
-                url,
-                x: 360,
-                y: 80,
-                width: 280,
-                height: 200,
-                tabId,
-              });
-            }
+            list[job.tabIndex] = { ...list[job.tabIndex], imageUrl: url };
             modules[job.mi].slides[job.si] = {
               ...slide,
-              floatingMedia: floating,
               data: { ...(slide.data || {}), [key]: list },
             };
           }
