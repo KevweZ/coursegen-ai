@@ -9,6 +9,8 @@ export const RETURN_TO_KEY = 'nexcourse_return_to';
 export const ROUTES = {
   home: '/',
   upload: '/upload',
+  /** Analyze / quick-build progress (distinct from upload so welcome tour cannot appear here) */
+  building: '/Building',
   login: '/login',
   signup: '/signup',
   methodology: '/methodology',
@@ -32,6 +34,7 @@ export type ParsedAppPath =
   | { kind: 'marketing'; view: 'homepage' | 'methodology' | 'pricing' | 'examples' }
   | { kind: 'auth'; mode: 'login' | 'signup' }
   | { kind: 'upload' }
+  | { kind: 'building' }
   | { kind: 'courseSettings' }
   | { kind: 'courseDevelopment' }
   | { kind: 'playerProperties' }
@@ -46,7 +49,7 @@ export type ParsedAppPath =
 /** Paths that require a signed-in user (deep-link → login if anonymous). */
 export function isProtectedPath(pathname: string): boolean {
   const p = pathname.replace(/\/+$/, '') || '/';
-  if (p === '/upload') return true;
+  if (p === '/upload' || p === '/Building') return true;
   if (
     p === '/CourseSettings' ||
     p === '/CourseDevelopment' ||
@@ -68,6 +71,7 @@ export function parseAppPath(pathname: string): ParsedAppPath {
   if (p === '/login') return { kind: 'auth', mode: 'login' };
   if (p === '/signup') return { kind: 'auth', mode: 'signup' };
   if (p === '/upload') return { kind: 'upload' };
+  if (p === '/Building') return { kind: 'building' };
   if (p === '/CourseSettings') return { kind: 'courseSettings' };
   if (p === '/CourseDevelopment') return { kind: 'courseDevelopment' };
   if (p === '/PlayerProperties') return { kind: 'playerProperties' };

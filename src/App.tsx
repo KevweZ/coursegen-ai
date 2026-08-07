@@ -1263,6 +1263,16 @@ export default function App() {
       setShowPlayerProperties(false);
       return;
     }
+    if (parsed.kind === 'building') {
+      // Progress route — same home step UI; idle visits bounce back to /upload via sync effect
+      setStep('home');
+      setActiveDraftId(null);
+      setIsSandboxMode(false);
+      setMobileDesignDemo(false);
+      setShowPlayerProperties(false);
+      setShowWelcomeTour(false);
+      return;
+    }
     if (parsed.kind === 'courseSettings') {
       setSettingsMode('defaults');
       setIsSandboxMode(false);
@@ -1414,7 +1424,8 @@ export default function App() {
       else if (publicView === 'examples' && path !== ROUTES.examples) navigateTo(ROUTES.examples, true);
       return;
     }
-    if (step === 'home' && path !== ROUTES.upload) navigateTo(ROUTES.upload, true);
+    // /upload vs /Building for step===home is handled in a later effect (needs analyze/generate flags)
+    if (step === 'home') return;
     else if (step === 'details' && !isSandboxMode) {
       if (activeDraftId && !path.startsWith('/design/')) navigateTo(ROUTES.design(activeDraftId), true);
       else if (!activeDraftId && path !== ROUTES.courseSettings && !path.startsWith('/design/')) {
@@ -2044,13 +2055,14 @@ export default function App() {
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  /** Mirrors upload vs progress URL for tour gating (navigateTo does not re-render by itself). */
+  const [homeRoutePath, setHomeRoutePath] = useState<string>(ROUTES.upload);
   /** When set, shows a non-error warm-up UI and auto-retries analysis at 0 */
   const [coldStartCountdown, setColdStartCountdown] = useState<number | null>(null);
   const coldStartTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // First-visit welcome tour on the upload home (dismissible).
-  // Never open (and force-close) while analyze/generate progress UI is up —
-  // quick-build flips isAnalyzing→false then isGenerating→true on the same home step.
+  // First-visit welcome tour — ONLY on exact /upload URL (never on /Building progress).
+  // Closing sets sessionStorage; "Don't show again" sets localStorage.
   useEffect(() => {
     const busy =
       isAnalyzing ||
@@ -2058,12 +2070,40 @@ export default function App() {
       isHydrating ||
       isGeneratingImages ||
       coldStartCountdown != null;
-    if (!user || step !== 'home' || busy) {
-      if (busy) setShowWelcomeTour(false);
+    const onUploadUrl = homeRoutePath === ROUTES.upload;
+
+    if (!user || step !== 'home' || busy || !onUploadUrl) {
+      setShowWelcomeTour(false);
       return;
     }
     if (shouldShowWelcomeTour()) setShowWelcomeTour(true);
-  }, [user?.id, step, isAnalyzing, isGenerating, isHydrating, isGeneratingImages, coldStartCountdown]);
+    else setShowWelcomeTour(false);
+  }, [user?.id, step, isAnalyzing, isGenerating, isHydrating, isGeneratingImages, coldStartCountdown, homeRoutePath]);
+
+  // Idle upload stays on /upload; analyze / quick-build progress uses /Building
+  useEffect(() => {
+    if (!user || isScormPlayer || step !== 'home') return;
+    const path = window.location.pathname.replace(/\/+$/, '') || '/';
+    if (path.startsWith('/sandbox/')) return;
+    const busy =
+      isAnalyzing ||
+      isGenerating ||
+      isHydrating ||
+      isGeneratingImages ||
+      coldStartCountdown != null;
+    const target = busy ? ROUTES.building : ROUTES.upload;
+    if (path !== target) navigateTo(target, true);
+    setHomeRoutePath(target);
+  }, [
+    user,
+    isScormPlayer,
+    step,
+    isAnalyzing,
+    isGenerating,
+    isHydrating,
+    isGeneratingImages,
+    coldStartCountdown,
+  ]);
 
   // Course Development toolbar tour — once per session (or forever if "Don't show again")
   useEffect(() => {
@@ -2238,9 +2278,11 @@ export default function App() {
     settingsOverride?: SavedCourseSettings | null
   ) => {
     clearColdStartCountdown();
-    // Hide tour immediately when upload/progress starts (don't wait for effect)
+    // Leave /upload immediately so welcome tour cannot remount on the progress screen
     setShowWelcomeTour(false);
     dismissWelcomeTourForSession();
+    setHomeRoutePath(ROUTES.building);
+    navigateTo(ROUTES.building, true);
     setIsAnalyzing(true);
     setAnalyzeError(null);
     setProgress(15);
@@ -6935,7 +6977,10 @@ export default function App() {
 
         <WelcomeTourModal
           open={showWelcomeTour}
-          onClose={() => setShowWelcomeTour(false)}
+          onClose={() => {
+            dismissWelcomeTourForSession();
+            setShowWelcomeTour(false);
+          }}
         />
         <DevToolbarTourModal
           open={showDevTour}
