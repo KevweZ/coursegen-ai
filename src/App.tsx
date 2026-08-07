@@ -656,8 +656,8 @@ export default function App() {
 
   const showDraftMessage = (msg: string) => {
     setDraftSaveMessage(msg);
-    const long = /fail|full|error|quota|sign in|cannot|not found/i.test(msg);
-    setTimeout(() => setDraftSaveMessage(null), long ? 6000 : 3500);
+    const long = /fail|full|error|quota|sign in|cannot|not found|narration|trial|credit|audio/i.test(msg);
+    setTimeout(() => setDraftSaveMessage(null), long ? 10000 : 3500);
   };
 
   const collectDesignSnapshot = (): Omit<DesignDraftSnapshot, 'phase'> => ({
@@ -6281,6 +6281,7 @@ export default function App() {
                         onVolumeChange={player.setVolume}
                         showCC={showCC}
                         onToggleCC={voiceOverEnabled ? () => setShowCC(v => !v) : undefined}
+                        narrationGenerating={ttsProgress.isRunning}
 
                       />
 

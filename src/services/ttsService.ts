@@ -39,7 +39,15 @@ export const TTS_FATAL_CODES = new Set([
   'TRIAL_TTS_LIMIT',
 ]);
 
-function getSupabaseAccessToken(): string | null {
+/** Prefer live Supabase session — localStorage scraping fails with chunked/cookie sessions. */
+async function getSupabaseAccessToken(): Promise<string | null> {
+  try {
+    const { supabase } = await import('../lib/supabaseClient');
+    const { data } = await supabase.auth.getSession();
+    if (data?.session?.access_token) return data.session.access_token;
+  } catch {
+    /* fall through to localStorage */
+  }
   try {
     const key = Object.keys(localStorage).find(k =>
       (k.startsWith('sb-') && k.includes('auth-token')) ||
@@ -137,8 +145,8 @@ export type TtsJobSnapshot = {
   results?: TtsJobResultItem[];
 };
 
-function authHeaders(): Record<string, string> {
-  const token = getSupabaseAccessToken();
+async function authHeaders(): Promise<Record<string, string>> {
+  const token = await getSupabaseAccessToken();
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
   return headers;
@@ -151,9 +159,16 @@ export async function createTtsJob(opts: {
   speed?: number;
   items: TtsJobItem[];
 }): Promise<TtsJobSnapshot> {
+  const headers = await authHeaders();
+  if (!headers.Authorization) {
+    throw new TTSRequestError('Sign in required to generate narration.', {
+      status: 401,
+      code: 'TTS_AUTH_REQUIRED',
+    });
+  }
   const response = await fetch(`${TTS_PROXY_URL}/jobs`, {
     method: 'POST',
-    headers: authHeaders(),
+    headers,
     body: JSON.stringify({
       voice: opts.voice || 'alloy',
       model: opts.model || 'tts-1',
@@ -172,7 +187,7 @@ export async function createTtsJob(opts: {
 export async function pollTtsJob(jobId: string): Promise<TtsJobSnapshot> {
   const response = await fetch(`${TTS_PROXY_URL}/jobs/${encodeURIComponent(jobId)}`, {
     method: 'GET',
-    headers: authHeaders(),
+    headers: await authHeaders(),
   });
   if (!response.ok) {
     const errText = await response.text().catch(() => response.statusText);
@@ -185,7 +200,7 @@ export async function pollTtsJob(jobId: string): Promise<TtsJobSnapshot> {
 export async function cancelTtsJob(jobId: string): Promise<void> {
   const response = await fetch(`${TTS_PROXY_URL}/jobs/${encodeURIComponent(jobId)}`, {
     method: 'DELETE',
-    headers: authHeaders(),
+    headers: await authHeaders(),
   });
   if (!response.ok && response.status !== 404) {
     const errText = await response.text().catch(() => response.statusText);
@@ -206,9 +221,15 @@ export async function generateSlideTTS(
     throw new Error('Cannot generate TTS for empty text.');
   }
 
-  const token = getSupabaseAccessToken();
+  const token = await getSupabaseAccessToken();
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
+  if (!token) {
+    throw new TTSRequestError('Sign in required to generate narration.', {
+      status: 401,
+      code: 'TTS_AUTH_REQUIRED',
+    });
+  }
 
   const response = await fetch(TTS_PROXY_URL, {
     method: 'POST',

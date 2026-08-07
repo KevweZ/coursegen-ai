@@ -32,6 +32,8 @@ export const TTSProgressToast: React.FC<Props> = ({ progress, onDismiss }) => {
 
     if (progress.isDone) {
       setVisible(true);
+      // Keep failures on screen until the user dismisses — quick fails were easy to miss.
+      if (progress.error) return;
       timerRef.current = setTimeout(() => {
         setVisible(false);
         onDismiss?.();
@@ -45,7 +47,7 @@ export const TTSProgressToast: React.FC<Props> = ({ progress, onDismiss }) => {
         timerRef.current = null;
       }
     };
-  }, [progress.isRunning, progress.isDone, onDismiss]);
+  }, [progress.isRunning, progress.isDone, progress.error, onDismiss]);
 
   const handleDismiss = () => {
     if (timerRef.current) {

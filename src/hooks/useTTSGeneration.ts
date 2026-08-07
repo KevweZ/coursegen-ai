@@ -134,7 +134,7 @@ export function buildCourseNarrationItems(
 
   for (const mod of course.modules) {
     for (const slide of (mod.slides ?? [])) {
-      const text = String(slide.voiceOverText || slide.narration || slide.content || '').trim();
+      const text = String(slide.voiceOverText || slide.narration || '').trim().slice(0, 4096);
       const hasMain = !!text;
       const skipMain = !!(opts?.onlyMissing && slide.voiceOverUrl);
 
@@ -155,7 +155,7 @@ export function buildCourseNarrationItems(
       const tabs: any[] = listKey ? (slide.data?.[listKey] || []) : [];
       if (isTabbed && tabs.length) {
         for (const tab of tabs) {
-          const tabText = String(tab?.voiceOverText || '').trim();
+          const tabText = String(tab?.voiceOverText || '').trim().slice(0, 4096);
           if (!tabText) continue;
           if (opts?.onlyMissing && tab.voiceOverUrl) continue;
           items.push({
@@ -266,34 +266,45 @@ export function useTTSGeneration() {
         if (snap.status === 'completed' || snap.status === 'failed' || snap.status === 'cancelled') {
           const success = snap.successCount ?? 0;
           const failed = snap.failCount ?? 0;
+          const errorMsg =
+            snap.status === 'cancelled'
+              ? 'Narration cancelled'
+              : success === 0
+                ? (snap.error || 'Narration failed for every clip. Check credits, trial limits, or OpenAI quota.')
+                : failed > 0
+                  ? `${success} ready, ${failed} failed${snap.error ? ` (last: ${snap.error})` : ''}`
+                  : null;
           setProgress(prev => ({
             ...prev,
             isRunning: false,
             isDone: true,
             currentSlide: success,
             totalSlides: snap.total || prev.totalSlides,
-            error:
-              snap.status === 'cancelled'
-                ? 'Narration cancelled'
-                : success === 0
-                  ? (snap.error || 'Narration failed for every clip. Check credits, trial limits, or OpenAI quota.')
-                  : failed > 0
-                    ? `${success} ready, ${failed} failed${snap.error ? ` (last: ${snap.error})` : ''}`
-                    : null,
+            error: errorMsg,
           }));
+          if (snap.status === 'cancelled' || success === 0) {
+            throw new TTSRequestError(errorMsg || 'Narration failed', {
+              status: 502,
+              code: snap.code || 'TTS_ERROR',
+            });
+          }
           break;
         }
       }
     } catch (err: any) {
       if (!isActive(runId)) return;
       const message = formatTtsErrorForUser(err);
-      setProgress(prev => ({
-        ...prev,
-        isRunning: false,
-        isDone: true,
-        currentSlide: 0,
-        error: message,
-      }));
+      setProgress(prev => {
+        // Keep terminal failure state already set by the poll loop
+        if (prev.isDone && prev.error && !prev.isRunning) return { ...prev, error: prev.error || message };
+        return {
+          ...prev,
+          isRunning: false,
+          isDone: true,
+          currentSlide: 0,
+          error: message,
+        };
+      });
       if (err instanceof TTSRequestError) throw err;
       throw new TTSRequestError(message, { status: 500, code: 'TTS_ERROR' });
     } finally {

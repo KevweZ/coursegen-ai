@@ -120,7 +120,7 @@ const app = express();
 // Stripe webhooks MUST receive the raw body for signature verification.
 // Mount raw parser for that path BEFORE express.json().
 app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
-app.use(express.json({ limit: '512kb' }));
+app.use(express.json({ limit: '2mb' }));
 
 // ─── 2a. CORS — allow Cloudflare Pages frontend ─────────────────────────────
 const ALLOWED_ORIGINS = [
@@ -1682,6 +1682,7 @@ app.post('/api/tts/jobs', ttsRateLimit, async (req, res) => {
 
   const authz = await authorizeTtsRequest(req);
   if (!authz.ok) {
+    console.warn('[TTS Job] create rejected:', authz.status, authz.body?.code, authz.body?.error);
     return res.status(authz.status).json(authz.body);
   }
 
@@ -1758,6 +1759,7 @@ app.post('/api/tts/jobs', ttsRateLimit, async (req, res) => {
 
   ttsJobs.set(jobId, job);
   ttsActiveJobByUser.set(userId, jobId);
+  console.log(`[TTS Job] created ${jobId} for user ${userId} — ${normalized.length} items, voice=${voice}`);
 
   // Fire-and-forget worker — client polls for progress/results
   setImmediate(() => {

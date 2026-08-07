@@ -71,6 +71,8 @@ interface PlayerBarProps {
   showCC?: boolean;
   /** Toggle closed captions on/off */
   onToggleCC?: () => void;
+  /** True while a background narration job is still generating audio */
+  narrationGenerating?: boolean;
 }
 
 
@@ -90,6 +92,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   onVolumeChange,
   showCC = false,
   onToggleCC,
+  narrationGenerating = false,
 }) => {
 
   const barRef = useRef<HTMLDivElement>(null);
@@ -241,6 +244,16 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               <Play className="w-3.5 h-3.5 fill-current translate-x-[1px]" />
             )}
           </button>
+        ) : narrationGenerating ? (
+          <div className={cn(
+            'flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full border shrink-0',
+            isLight
+              ? 'border-indigo-200 text-indigo-600 bg-indigo-50'
+              : 'border-indigo-500/40 text-indigo-300 bg-indigo-500/10'
+          )}>
+            <Loader2 className="w-3 h-3 animate-spin" />
+            Generating audio…
+          </div>
         ) : (
           <div className={cn(
             'flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full border shrink-0',
