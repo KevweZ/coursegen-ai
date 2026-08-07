@@ -4,39 +4,54 @@
  * Bottom-center so it does not cover player Next/Prev controls.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2, XCircle, X, Loader2 } from 'lucide-react';
 import { TTSProgress } from '../hooks/useTTSGeneration';
 
 interface Props {
   progress: TTSProgress;
+  /** Clears completed toast UI only — must not cancel an in-flight TTS job. */
   onDismiss?: () => void;
 }
 
 export const TTSProgressToast: React.FC<Props> = ({ progress, onDismiss }) => {
   const [visible, setVisible] = useState(false);
-  const [autoDismissTimer, setAutoDismissTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (progress.isRunning || progress.isDone) {
-      setVisible(true);
-      if (progress.isDone && !progress.isRunning) {
-        const t = setTimeout(() => {
-          setVisible(false);
-          onDismiss?.();
-        }, 5000);
-        setAutoDismissTimer(t);
-      }
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
     }
+
+    if (progress.isRunning) {
+      setVisible(true);
+      return;
+    }
+
+    if (progress.isDone) {
+      setVisible(true);
+      timerRef.current = setTimeout(() => {
+        setVisible(false);
+        onDismiss?.();
+        timerRef.current = null;
+      }, 5000);
+    }
+
     return () => {
-      if (autoDismissTimer) clearTimeout(autoDismissTimer);
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [progress.isRunning, progress.isDone]);
+  }, [progress.isRunning, progress.isDone, onDismiss]);
 
   const handleDismiss = () => {
-    if (autoDismissTimer) clearTimeout(autoDismissTimer);
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
     setVisible(false);
     onDismiss?.();
   };

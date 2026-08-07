@@ -192,7 +192,7 @@ import { MarketingHomepage } from './components/marketing/MarketingHomepage';
 import { MethodologyPage } from './components/marketing/MethodologyPage';
 import { ExamplesPage } from './components/marketing/ExamplesPage';
 import { HelpWidget } from './components/HelpWidget';
-import { WelcomeTourModal, shouldShowWelcomeTour } from './components/WelcomeTourModal';
+import { WelcomeTourModal, shouldShowWelcomeTour, dismissWelcomeTourForSession } from './components/WelcomeTourModal';
 import { DevToolbarTourModal, shouldShowDevTour } from './components/DevToolbarTourModal';
 import { DropTargetsActivity } from './components/interactions/DropTargetsActivity';
 
@@ -1689,7 +1689,7 @@ export default function App() {
     pause: () => player.pause(),
     clearAudio: () => player.loadSlide('', null, null),
   };
-  const { progress: ttsProgress, generateTTS, resetTTS } = useTTSGeneration();
+  const { progress: ttsProgress, generateTTS, resetTTS, clearTTSProgress } = useTTSGeneration();
 
   // Virtual exam slides appended after all content slides.
   // Module Title (module-cover) and Module Overview are injected per Course Settings.
@@ -2016,13 +2016,15 @@ export default function App() {
     }
   }, [currentSlideIndex, examPhase, examSession.score, examSession.passed]);
 
-  // Set courseBg stably — Item 11: skip background for light theme (stays white)
+  // Keep courseBg in sync with the AI/user cover; otherwise seed a theme backdrop
   useEffect(() => {
-    if (course && !courseBg) {
-      // Light theme stays white by default; dark/unified get the themed background
-      if (course.visualTheme !== 'light') {
-        setCourseBg(getRandomBackgroundForTheme(course.visualTheme));
-      }
+    const cover = (course as any)?.coverImage as string | undefined;
+    if (cover) {
+      if (courseBg !== cover) setCourseBg(cover);
+      return;
+    }
+    if (course && !courseBg && course.visualTheme !== 'light') {
+      setCourseBg(getRandomBackgroundForTheme(course.visualTheme));
     }
   }, [course]);
 
@@ -2046,13 +2048,24 @@ export default function App() {
   const [coldStartCountdown, setColdStartCountdown] = useState<number | null>(null);
   const coldStartTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // First-visit welcome tour on the upload home (dismissible)
+  // First-visit welcome tour on the upload home (dismissible).
+  // Never open (and force-close) while analyze/generate progress UI is up —
+  // quick-build flips isAnalyzing→false then isGenerating→true on the same home step.
   useEffect(() => {
-    if (!user || step !== 'home' || isAnalyzing || coldStartCountdown != null) return;
+    const busy =
+      isAnalyzing ||
+      isGenerating ||
+      isHydrating ||
+      isGeneratingImages ||
+      coldStartCountdown != null;
+    if (!user || step !== 'home' || busy) {
+      if (busy) setShowWelcomeTour(false);
+      return;
+    }
     if (shouldShowWelcomeTour()) setShowWelcomeTour(true);
-  }, [user?.id, step, isAnalyzing, coldStartCountdown]);
+  }, [user?.id, step, isAnalyzing, isGenerating, isHydrating, isGeneratingImages, coldStartCountdown]);
 
-  // Course Development toolbar tour — every visit unless "Don't show again"
+  // Course Development toolbar tour — once per session (or forever if "Don't show again")
   useEffect(() => {
     if (!user || step !== 'preview' || isSandboxMode) return;
     if (shouldShowDevTour()) setShowDevTour(true);
@@ -2225,6 +2238,9 @@ export default function App() {
     settingsOverride?: SavedCourseSettings | null
   ) => {
     clearColdStartCountdown();
+    // Hide tour immediately when upload/progress starts (don't wait for effect)
+    setShowWelcomeTour(false);
+    dismissWelcomeTourForSession();
     setIsAnalyzing(true);
     setAnalyzeError(null);
     setProgress(15);
@@ -2832,7 +2848,7 @@ export default function App() {
     setIsSandboxMode(false);
     setMobileDesignDemo(false);
     // Do NOT wait for narration — open Course Development after images + QC; TTS runs in background
-    // Cancel any prior course's in-flight TTS so it cannot steal rate-limit budget / cancel the new job
+    // Cancel any prior course's in-flight TTS so it cannot steal rate-limit budget / clobber the new job
     resetTTS();
 
     // Pre-generate mastery quiz in parallel with imagery/QC — we await it
@@ -3076,9 +3092,51 @@ export default function App() {
 
     setProgress(95);
 
-    // Start narration as soon as structure/images/QC are ready — do NOT wait for
-    // mastery-quiz generation (that used to delay TTS until after a long exam call,
-    // and a prior run's cancel flag could kill the new job).
+    // Ensure mastery quiz is ready before Course Development opens — Begin must not generate.
+    if (examGenPromiseRef.current) {
+      try {
+        const qs = await examGenPromiseRef.current;
+        if (qs?.length) {
+          working = { ...working, examQuestions: qs };
+        }
+      } catch (e) {
+        console.warn('[Mastery Quiz] Await pre-generation failed:', e);
+      } finally {
+        setIsGeneratingExam(false);
+        examGenPromiseRef.current = null;
+      }
+    }
+
+    // Open preview FIRST with the final imagery snapshot.
+    // CRITICAL: Do NOT call setCourse(working) again after TTS starts — that wipes
+    // blob voiceOverUrls that generateTTS patches in via functional updates.
+    if (coverUrl) {
+      working = { ...working, coverImage: coverUrl };
+      setCourseBg(coverUrl);
+    } else if (wantsAi) {
+      console.warn('[ImageService] AI images enabled but no cover URL after finalize imagery');
+      showDraftMessage('AI cover did not generate — use Edit → Generate AI images or Upload Image on the title slide.');
+    }
+    working = seedFloatingFromCourse(working) || working;
+    setCourse(working);
+    setOriginalCourse(working);
+    // Re-assert cover via functional update so a concurrent setCourse cannot drop it
+    if (coverUrl) {
+      const finalCover = coverUrl;
+      setCourse((prev: any) => (prev ? { ...prev, coverImage: prev.coverImage || finalCover } : prev));
+      setOriginalCourse((prev: any) => (prev ? { ...prev, coverImage: prev.coverImage || finalCover } : prev));
+      setCourseBg(finalCover);
+    }
+    setProgress(100);
+    // Re-assert slide 0 in case any interim navigation ran during imagery/QC
+    setCurrentSlideIndex(0);
+    setHighestVisitedIndex(0);
+    setStep('preview');
+    navigateTo(ROUTES.courseDevelopment);
+
+    // ── Audio in background (toast shows progress; does not block preview) ─
+    // Content slides FIRST (proven path), then synthetic cover/objectives/module
+    // slides. Must start AFTER the final setCourse(working) above.
     if (voiceSnapshot) {
       const courseForTts = working;
       const voiceForTts = voiceIdSnapshot;
@@ -3158,34 +3216,6 @@ export default function App() {
     } else {
       showDraftMessage('Voice-over is off in Course Settings — enable it and use Edit → Regenerate all narration if you want audio.');
     }
-
-    // Ensure mastery quiz is ready before Course Development opens — Begin must not generate.
-    if (examGenPromiseRef.current) {
-      try {
-        const qs = await examGenPromiseRef.current;
-        if (qs?.length) {
-          working = { ...working, examQuestions: qs };
-        }
-      } catch (e) {
-        console.warn('[Mastery Quiz] Await pre-generation failed:', e);
-      } finally {
-        setIsGeneratingExam(false);
-        examGenPromiseRef.current = null;
-      }
-    }
-
-    // Open preview as soon as structure + images + QC (+ quiz) are ready.
-    // TTS already running in background above.
-    if (coverUrl) working = { ...working, coverImage: coverUrl };
-    working = seedFloatingFromCourse(working) || working;
-    setCourse(working);
-    setOriginalCourse(working);
-    setProgress(100);
-    // Re-assert slide 0 in case any interim navigation ran during imagery/QC
-    setCurrentSlideIndex(0);
-    setHighestVisitedIndex(0);
-    setStep('preview');
-    navigateTo(ROUTES.courseDevelopment);
   };
   finalizeGeneratedCourseRef.current = finalizeGeneratedCourse;
 
@@ -6941,7 +6971,7 @@ export default function App() {
         {/* Media progress — bottom-center; visible during preview while TTS runs */}
         <TTSProgressToast
           progress={ttsProgress}
-          onDismiss={resetTTS}
+          onDismiss={clearTTSProgress}
         />
 
         {/* Interaction Preview Modal */}

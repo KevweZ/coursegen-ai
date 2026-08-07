@@ -6,7 +6,7 @@
  * - Patches each slide's voiceOverUrl via functional setCourse (does not wipe cover/source images)
  * - Exposes fine-grained progress state for the UI toast
  * - Skips slides with no narration text gracefully
- * - Async/await; callers may await it during course finalize so preview waits for audio
+ * - Uses a run id so a cancelled/stale job cannot clobber a newer run's progress
  */
 
 import { useState, useCallback, useRef } from 'react';
@@ -35,15 +35,17 @@ const DEFAULT_PROGRESS: TTSProgress = {
 type SetCourse = (updater: any) => void;
 
 /**
- * Returns { progress, generateTTS }
+ * Returns { progress, generateTTS, cancelTTS, resetTTS, clearTTSProgress }
  *
- * Call generateTTS(course, setCourse) after hydrateCourse() resolves.
- * Prefer calling AFTER imagery so narration text is stable; updates merge into
- * whatever the latest course state is (covers/source images are preserved).
+ * Call generateTTS(course, setCourse) AFTER the final setCourse(working) that
+ * opens preview — a later setCourse(staleWorking) will wipe patched voiceOverUrls.
  */
 export function useTTSGeneration() {
   const [progress, setProgress] = useState<TTSProgress>(DEFAULT_PROGRESS);
-  const cancelRef = useRef(false);
+  /** Bumped to invalidate any in-flight generateTTS loop. */
+  const runIdRef = useRef(0);
+
+  const isActive = (runId: number) => runId === runIdRef.current;
 
   const generateTTS = useCallback(async (
     course: any,
@@ -75,20 +77,23 @@ export function useTTSGeneration() {
       return true;
     });
 
+    const runId = ++runIdRef.current;
+
     if (narratableSlides.length === 0) {
-      setProgress({
-        isRunning: false,
-        isDone: true,
-        currentSlide: 0,
-        totalSlides: 0,
-        currentSlideTitle: '',
-        error: 'No narratable slide text found',
-        skipped: allSlides.length,
-      });
+      if (isActive(runId)) {
+        setProgress({
+          isRunning: false,
+          isDone: true,
+          currentSlide: 0,
+          totalSlides: 0,
+          currentSlideTitle: '',
+          error: 'No narratable slide text found',
+          skipped: allSlides.length,
+        });
+      }
       return;
     }
 
-    cancelRef.current = false;
     setProgress({
       isRunning: true,
       isDone: false,
@@ -102,25 +107,28 @@ export function useTTSGeneration() {
     let successCount = 0;
 
     for (let i = 0; i < narratableSlides.length; i++) {
-      if (cancelRef.current) break;
+      if (!isActive(runId)) break;
 
       const { slide } = narratableSlides[i];
       const narrationText = slide.voiceOverText || slide.narration || slide.content || '';
       const slideId = slide.id;
       const title = slide.title ?? `Slide ${i + 1}`;
 
-      setProgress(prev => ({
-        ...prev,
-        currentSlide: i + 1,
-        currentSlideTitle: title,
-        error: null,
-      }));
+      if (isActive(runId)) {
+        setProgress(prev => ({
+          ...prev,
+          currentSlide: i + 1,
+          currentSlideTitle: title,
+          error: null,
+        }));
+      }
       onSlideProgress?.(i + 1, narratableSlides.length, title);
 
       try {
         const skipMain = !!(opts?.onlyMissing && slide.voiceOverUrl);
         if (!skipMain) {
           const blobUrl = await generateSlideTTS(narrationText, { voice: voice as any });
+          if (!isActive(runId)) break;
           successCount++;
 
           // Merge into latest course — never replace with a pre-imagery clone
@@ -145,13 +153,14 @@ export function useTTSGeneration() {
         const tabs: any[] = slide.data?.tabs || slide.data?.items || [];
         if (isTabbed && Array.isArray(tabs) && tabs.length) {
           for (let ti = 0; ti < tabs.length; ti++) {
-            if (cancelRef.current) break;
+            if (!isActive(runId)) break;
             const tab = tabs[ti];
             const tabText = (tab?.voiceOverText || '').trim();
             if (!tabText) continue;
             if (opts?.onlyMissing && tab.voiceOverUrl) continue;
             try {
               const tabUrl = await generateSlideTTS(tabText, { voice: voice as any });
+              if (!isActive(runId)) break;
               setCourse((prev: any) => {
                 if (!prev?.modules) return prev;
                 return {
@@ -179,6 +188,7 @@ export function useTTSGeneration() {
           }
         }
       } catch (err: any) {
+        if (!isActive(runId)) break;
         console.warn(`[TTS] Failed for slide "${slide.title}":`, err.message);
         setProgress(prev => ({
           ...prev,
@@ -192,23 +202,34 @@ export function useTTSGeneration() {
       }
     }
 
-    setProgress(prev => ({
-      ...prev,
-      isRunning: false,
-      isDone: true,
-      currentSlide: successCount,
-    }));
+    if (isActive(runId)) {
+      setProgress(prev => ({
+        ...prev,
+        isRunning: false,
+        isDone: true,
+        currentSlide: successCount,
+      }));
+    }
   }, []);
 
   const cancelTTS = useCallback(() => {
-    cancelRef.current = true;
+    runIdRef.current += 1;
     setProgress(prev => ({ ...prev, isRunning: false }));
   }, []);
 
+  /** Cancel any in-flight job and clear progress (e.g. starting a new course). */
   const resetTTS = useCallback(() => {
-    cancelRef.current = true;
+    runIdRef.current += 1;
     setProgress(DEFAULT_PROGRESS);
   }, []);
 
-  return { progress, generateTTS, cancelTTS, resetTTS };
+  /** Clear completed toast state without cancelling a running job. */
+  const clearTTSProgress = useCallback(() => {
+    setProgress(prev => {
+      if (prev.isRunning) return prev;
+      return DEFAULT_PROGRESS;
+    });
+  }, []);
+
+  return { progress, generateTTS, cancelTTS, resetTTS, clearTTSProgress };
 }
