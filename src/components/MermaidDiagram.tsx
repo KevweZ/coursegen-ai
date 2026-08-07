@@ -66,6 +66,19 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
   const [svg, setSvg] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const idRef = useRef<string>(nextId());
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!svg || !wrapRef.current) return;
+    const svgEl = wrapRef.current.querySelector('svg');
+    if (!svgEl) return;
+    // Mermaid may emit width="100%" which defeats L/C/R alignment — use intrinsic size
+    svgEl.removeAttribute('width');
+    svgEl.style.maxWidth = '100%';
+    svgEl.style.width = 'auto';
+    svgEl.style.height = 'auto';
+    svgEl.style.display = 'block';
+  }, [svg]);
 
   useEffect(() => {
     if (!code?.trim()) return;
@@ -119,8 +132,8 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
                   titleColor: '#e2e8f0',
                   nodeTextColor: '#f1f5f9',
                 },
-          flowchart: { useMaxWidth: true, htmlLabels: true },
-          sequence: { useMaxWidth: true },
+          flowchart: { useMaxWidth: false, htmlLabels: true },
+          sequence: { useMaxWidth: false },
           fontFamily: 'Inter, ui-sans-serif, system-ui',
           fontSize: 14,
           securityLevel: 'loose',
@@ -190,9 +203,11 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
   // ─── Rendered SVG ─────────────────────────────────────────────────────────────
   // Transparent wrapper so the diagram sits on the slide landscape itself —
   // no dark gray "card" behind the flowchart/shapes.
+  // Prefer intrinsic SVG size (not width:100%) so parent align L/C/R can work.
   return (
     <div
-      className={`mermaid-diagram-wrapper w-full overflow-auto ${className}`}
+      ref={wrapRef}
+      className={`mermaid-diagram-wrapper overflow-visible inline-block max-w-full ${className}`}
       // Mermaid outputs complete SVG — safe since securityLevel is 'loose' with our own content
       dangerouslySetInnerHTML={{ __html: svg }}
       style={{

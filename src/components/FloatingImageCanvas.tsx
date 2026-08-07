@@ -279,6 +279,7 @@ export function FloatingImageCanvas({
   const latestOnChange = useRef(onChange);
   const latestHover = useRef(onDragOverTab);
   const [cropTarget, setCropTarget] = useState<FloatingImage | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const visibleImages = images.filter(img => {
     if (!img.tabId) return true;
@@ -292,6 +293,24 @@ export function FloatingImageCanvas({
     latestHover.current = onDragOverTab;
   }, [images, onChange, onDragOverTab]);
 
+  // Clear selection when slide images change / tab changes
+  useEffect(() => {
+    setSelectedId(null);
+  }, [visibleImages.map(i => i.id).join('|'), activeTabId]);
+
+  // Click outside → deselect (hide border / handles)
+  useEffect(() => {
+    if (!isAuthoring || !selectedId) return;
+    const onDocPointer = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (!t) return;
+      if (t.closest?.('.floating-image') || t.closest?.('[data-floating-crop-modal]')) return;
+      setSelectedId(null);
+    };
+    document.addEventListener('mousedown', onDocPointer, true);
+    return () => document.removeEventListener('mousedown', onDocPointer, true);
+  }, [isAuthoring, selectedId]);
+
   useEffect(() => {
     if (!isAuthoring) return;
 
@@ -299,6 +318,10 @@ export function FloatingImageCanvas({
       inertia: false,
       autoScroll: true,
       listeners: {
+        start(event) {
+          const id = (event.target as HTMLElement).getAttribute('data-id');
+          if (id) setSelectedId(id);
+        },
         move(event) {
           const target = event.target as HTMLElement;
           const x = (parseFloat(target.getAttribute('data-x') || '0') || 0) + event.dx;
@@ -335,6 +358,10 @@ export function FloatingImageCanvas({
         }),
       ],
       listeners: {
+        start(event) {
+          const id = (event.target as HTMLElement).getAttribute('data-id');
+          if (id) setSelectedId(id);
+        },
         move(event) {
           const target = event.target as HTMLElement;
           let x = parseFloat(target.getAttribute('data-x') || '0') || 0;
@@ -375,82 +402,96 @@ export function FloatingImageCanvas({
   return (
     <>
       <div className="absolute inset-0 z-20 pointer-events-none" ref={containerRef}>
-        {visibleImages.map(img => (
-          <div
-            key={img.id}
-            data-id={img.id}
-            data-x={img.x}
-            data-y={img.y}
-            className={`floating-image absolute rounded-xl overflow-visible group ${
-              isAuthoring ? 'pointer-events-auto cursor-move' : 'pointer-events-auto'
-            } ${img.tabId ? 'ring-2 ring-indigo-400/70 ring-offset-1' : ''}`}
-            style={{
-              width: img.width ? `${img.width}px` : '320px',
-              height: img.height ? `${img.height}px` : '240px',
-              transform: `translate(${img.x}px, ${img.y}px)`,
-              touchAction: 'none',
-              background: 'transparent',
-            }}
-            title={img.tabId ? `Tab image (${img.tabId}) — drag outside tabs to make slide-wide` : 'Slide-wide image — drag onto a tab panel to scope it'}
-          >
-            <img
-              src={img.url}
-              alt="Floating layout"
-              className="w-full h-full object-contain select-none rounded-lg shadow-lg"
-              style={{ background: 'transparent' }}
-              draggable={false}
-              onDragStart={e => e.preventDefault()}
-            />
+        {visibleImages.map(img => {
+          const isSelected = isAuthoring && selectedId === img.id;
+          return (
+            <div
+              key={img.id}
+              data-id={img.id}
+              data-x={img.x}
+              data-y={img.y}
+              onMouseDown={() => {
+                if (isAuthoring) setSelectedId(img.id);
+              }}
+              className={`floating-image absolute rounded-xl overflow-visible ${
+                isAuthoring ? 'pointer-events-auto cursor-move' : 'pointer-events-auto'
+              } ${isSelected ? 'ring-2 ring-indigo-500 ring-offset-2 z-30' : ''}`}
+              style={{
+                width: img.width ? `${img.width}px` : '320px',
+                height: img.height ? `${img.height}px` : '240px',
+                transform: `translate(${img.x}px, ${img.y}px)`,
+                touchAction: 'none',
+                background: 'transparent',
+              }}
+              title={
+                img.tabId
+                  ? `Tab image — click to select, drag to move`
+                  : 'Click to select · Drag to move · Crop / delete when selected'
+              }
+            >
+              <img
+                src={img.url}
+                alt="Floating layout"
+                className={`w-full h-full object-contain select-none rounded-lg ${
+                  isSelected ? 'shadow-lg' : 'shadow-sm'
+                }`}
+                style={{ background: 'transparent' }}
+                draggable={false}
+                onDragStart={e => e.preventDefault()}
+              />
 
-            {isAuthoring && img.tabId && (
-              <span className="absolute -top-2 left-2 px-1.5 py-0.5 rounded bg-indigo-600 text-white text-[9px] font-bold shadow opacity-90">
-                Tab
-              </span>
-            )}
+              {isSelected && img.tabId && (
+                <span className="absolute -top-2 left-2 px-1.5 py-0.5 rounded bg-indigo-600 text-white text-[9px] font-bold shadow">
+                  Tab
+                </span>
+              )}
 
-            {isAuthoring && (
-              <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-50">
-                <button
-                  onClick={e => { e.stopPropagation(); setCropTarget(img); }}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-full p-1.5 shadow cursor-pointer"
-                  title="Crop image"
-                >
-                  <Crop className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={e => { e.stopPropagation(); onRemove(img.id); }}
-                  className="bg-red-500 hover:bg-red-400 text-white rounded-full p-1.5 shadow cursor-pointer"
-                  title="Remove image"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )}
+              {isSelected && (
+                <div className="absolute top-1 right-1 flex gap-1 z-50">
+                  <button
+                    onClick={e => { e.stopPropagation(); setCropTarget(img); }}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-full p-1.5 shadow cursor-pointer"
+                    title="Crop image"
+                  >
+                    <Crop className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={e => { e.stopPropagation(); onRemove(img.id); setSelectedId(null); }}
+                    className="bg-red-500 hover:bg-red-400 text-white rounded-full p-1.5 shadow cursor-pointer"
+                    title="Remove image"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
 
-            {isAuthoring && (
-              <>
-                <div className="absolute top-0 left-0 w-3.5 h-3.5 bg-indigo-500 border-2 border-white rounded-sm cursor-nwse-resize opacity-0 group-hover:opacity-100" />
-                <div className="absolute top-0 right-0 w-3.5 h-3.5 bg-indigo-500 border-2 border-white rounded-sm cursor-nesw-resize opacity-0 group-hover:opacity-100" />
-                <div className="absolute bottom-0 left-0 w-3.5 h-3.5 bg-indigo-500 border-2 border-white rounded-sm cursor-nesw-resize opacity-0 group-hover:opacity-100" />
-                <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-indigo-500 border-2 border-white rounded-sm cursor-nwse-resize opacity-0 group-hover:opacity-100" />
-              </>
-            )}
-          </div>
-        ))}
+              {isSelected && (
+                <>
+                  <div className="absolute top-0 left-0 w-3.5 h-3.5 bg-indigo-500 border-2 border-white rounded-sm cursor-nwse-resize" />
+                  <div className="absolute top-0 right-0 w-3.5 h-3.5 bg-indigo-500 border-2 border-white rounded-sm cursor-nesw-resize" />
+                  <div className="absolute bottom-0 left-0 w-3.5 h-3.5 bg-indigo-500 border-2 border-white rounded-sm cursor-nesw-resize" />
+                  <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-indigo-500 border-2 border-white rounded-sm cursor-nwse-resize" />
+                </>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {cropTarget && (
-        <CropModal
-          imageUrl={cropTarget.url}
-          onClose={() => setCropTarget(null)}
-          onSave={croppedUrl => {
-            const updatedImages = images.map(img =>
-              img.id === cropTarget.id ? { ...img, url: croppedUrl } : img
-            );
-            onChange(updatedImages);
-            setCropTarget(null);
-          }}
-        />
+        <div data-floating-crop-modal>
+          <CropModal
+            imageUrl={cropTarget.url}
+            onClose={() => setCropTarget(null)}
+            onSave={croppedUrl => {
+              const updatedImages = images.map(img =>
+                img.id === cropTarget.id ? { ...img, url: croppedUrl } : img
+              );
+              onChange(updatedImages);
+              setCropTarget(null);
+            }}
+          />
+        </div>
       )}
     </>
   );

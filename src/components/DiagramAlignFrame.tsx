@@ -1,10 +1,10 @@
 /**
  * DiagramAlignFrame — Full natural-height Mermaid diagram with simple
- * left / center / right alignment and delete. No freeform drag/resize
- * (that cropped content and fought the scrollbar).
+ * left / center / right alignment and delete.
+ * Align/delete chrome only appears while the diagram is selected.
  */
 import { AlignLeft, AlignCenter, AlignRight, Trash2 } from 'lucide-react';
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import MermaidDiagram from './MermaidDiagram';
 
 export type DiagramAlign = 'left' | 'center' | 'right';
@@ -30,12 +30,34 @@ export function DiagramAlignFrame({
   onAlignChange,
   onDelete,
 }: Props) {
+  const [selected, setSelected] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isAuthoring || !selected) return;
+    const onDocPointer = (e: MouseEvent | TouchEvent) => {
+      const el = rootRef.current;
+      if (!el) return;
+      const target = e.target as Node | null;
+      if (target && el.contains(target)) return;
+      setSelected(false);
+    };
+    // capture so we clear selection even when other handlers stopPropagation
+    document.addEventListener('mousedown', onDocPointer, true);
+    return () => document.removeEventListener('mousedown', onDocPointer, true);
+  }, [isAuthoring, selected]);
+
+  // Reset selection when navigating to another slide / code change
+  useEffect(() => {
+    setSelected(false);
+  }, [code]);
+
   const justify =
     align === 'left' ? 'justify-start' : align === 'right' ? 'justify-end' : 'justify-center';
 
   return (
-    <div className="w-full space-y-2">
-      {isAuthoring && (
+    <div ref={rootRef} className="w-full space-y-2">
+      {isAuthoring && selected && (
         <div className="flex items-center justify-end gap-1">
           <div className="inline-flex items-center rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
             {(
@@ -49,7 +71,10 @@ export function DiagramAlignFrame({
                 key={id}
                 type="button"
                 title={title}
-                onClick={() => onAlignChange?.(id)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAlignChange?.(id);
+                }}
                 className={cn(
                   'p-1.5 transition-colors',
                   align === id
@@ -65,7 +90,8 @@ export function DiagramAlignFrame({
             <button
               type="button"
               title="Remove diagram"
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 if (window.confirm('Remove this diagram from the slide?')) onDelete();
               }}
               className="p-1.5 rounded-lg border border-rose-200 bg-white text-rose-500 hover:bg-rose-50 shadow-sm"
@@ -77,14 +103,36 @@ export function DiagramAlignFrame({
       )}
 
       <div className={cn('w-full flex', justify)}>
+        {/*
+          Shrink-wrap the diagram so flex justify-* can actually move it.
+          Previous w-full child made left/center/right look identical.
+        */}
         <div
+          role={isAuthoring ? 'button' : undefined}
+          tabIndex={isAuthoring ? 0 : undefined}
+          onClick={() => {
+            if (isAuthoring) setSelected(true);
+          }}
+          onKeyDown={(e) => {
+            if (!isAuthoring) return;
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setSelected(true);
+            }
+          }}
           className={cn(
-            'w-full max-w-full overflow-x-auto',
-            theme === 'light' ? 'bg-transparent' : 'bg-slate-800/40 border border-slate-700/40 rounded-xl p-4'
+            'max-w-full w-fit overflow-x-auto rounded-xl transition-[box-shadow,outline] outline-none',
+            theme === 'light' ? 'bg-transparent' : 'bg-slate-800/40 p-4',
+            isAuthoring && 'cursor-pointer',
+            isAuthoring && selected && 'ring-2 ring-indigo-500 ring-offset-2 shadow-md',
+            !isAuthoring && theme !== 'light' && 'border border-slate-700/40'
           )}
         >
-          {/* Natural height — no fixed box / crop / inner scrollbar that fights controls */}
-          <MermaidDiagram code={code} theme={theme} className="mx-auto" />
+          <MermaidDiagram
+            code={code}
+            theme={theme}
+            className="!w-auto max-w-full"
+          />
         </div>
       </div>
     </div>
