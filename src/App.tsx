@@ -2809,6 +2809,24 @@ export default function App() {
     setOriginalCourse(stamped);
     setSyntheticAudioMap({});
     setExploredBySlide({});
+    // Always open a newly generated course on the title/cover slide — never reuse
+    // the previous course's last-viewed index (e.g. Key Takeaways before quiz).
+    setCurrentSlideIndex(0);
+    setHighestVisitedIndex(0);
+    setQuizState({});
+    setKcCheckedSlideIds(new Set());
+    setExamPhase('idle');
+    setExamSession({
+      questions: [],
+      answers: {},
+      currentQuestionIdx: 0,
+      submitted: false,
+      score: null,
+      passed: null,
+    });
+    setActiveTabAudioUrl(null);
+    setActiveTabForImages(null);
+    setDragOverTabId(null);
     // Leaving Design phase — unsaved design draft id must not stick to Development
     setActiveDraftId(null);
     setIsSandboxMode(false);
@@ -3068,6 +3086,9 @@ export default function App() {
     setCourse(working);
     setOriginalCourse(working);
     setProgress(100);
+    // Re-assert slide 0 in case any interim navigation ran during imagery/QC
+    setCurrentSlideIndex(0);
+    setHighestVisitedIndex(0);
     setStep('preview');
     navigateTo(ROUTES.courseDevelopment);
 
