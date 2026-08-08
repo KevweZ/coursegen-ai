@@ -98,7 +98,7 @@ export function formatTtsErrorForUser(err: unknown): string {
       case 'TRIAL_EXPIRED':
         return err.message || 'Your trial has expired.';
       case 'TTS_QUOTA':
-        return 'Server OpenAI TTS quota exceeded. This is a platform billing issue — retry later or contact support.';
+        return 'Server OpenAI TTS quota exceeded. Check OpenAI Billing (prepaid credits / payment method) and Limits (Usage tier monthly cap is separate from your $ spend limit). Then retry narration.';
       case 'TTS_RATE_LIMIT':
         return 'Narration is rate-limited right now. The app will wait and retry automatically when possible.';
       case 'TTS_CONCURRENCY':

@@ -34,7 +34,14 @@ export interface ParsedDocumentMetadata {
  *
  * Returns the structured markdown string on success, throws on failure.
  */
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+
 async function parseDocumentViaServer(file: File): Promise<{ markdown: string; metadata: ParsedDocumentMetadata }> {
+  if (file.size > MAX_UPLOAD_BYTES) {
+    throw new Error(
+      `File is ${(file.size / (1024 * 1024)).toFixed(1)}MB — max upload size is 50MB. Compress or split the file, then try again.`
+    );
+  }
   const arrayBuffer = await file.arrayBuffer();
   const response = await fetch('/api/parse-document', {
     method: 'POST',

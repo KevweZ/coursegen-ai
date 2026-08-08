@@ -2472,6 +2472,17 @@ export default function App() {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';
+    const maxMb = 50;
+    if (file.size > maxMb * 1024 * 1024) {
+      setAnalyzeError(
+        `File is ${(file.size / (1024 * 1024)).toFixed(1)}MB — max upload size is ${maxMb}MB. Compress or split the PDF/PPTX, then try again.`
+      );
+      setHomeRoutePath(ROUTES.building);
+      navigateTo(ROUTES.building, true);
+      setIsAnalyzing(true);
+      setProgress(80);
+      return;
+    }
     if (buildMode === 'game') {
       setUploadedFile(file);
       await runAnalysis(file, 'game');

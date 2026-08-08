@@ -215,7 +215,14 @@ async function executeAnthropicAI(modelTier: 'complex' | 'bulk', systemPrompt: s
       await new Promise(resolve => setTimeout(resolve, waitTime));
       return await executeCall();
     }
-    throw new Error(`AI Proxy request failed: ${err.message}`);
+    const raw = String(err?.message || err || '');
+    // Browser TypeError when the server never answers (deploy restart, cold start, timeout).
+    if (/failed to fetch|networkerror|load failed|aborted/i.test(raw)) {
+      throw new Error(
+        'AI Proxy request failed to fetch (server unreachable or timed out — often right after a Render deploy). Wait ~30s and try again.'
+      );
+    }
+    throw new Error(`AI Proxy request failed: ${raw}`);
   }
 }
 

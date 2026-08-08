@@ -407,7 +407,8 @@ async function parseDocxToMarkdown(buffer) {
 // ─── 5b. Document Parse Endpoint ────────────────────────────────────────────
 app.post('/api/parse-document',
   parseRateLimit,
-  express.raw({ type: 'application/octet-stream', limit: '30mb' }),
+  // Pilot source decks often exceed 30MB (scanned PDFs / image-heavy PPTX).
+  express.raw({ type: 'application/octet-stream', limit: '50mb' }),
   async (req, res) => {
     const rawName = req.headers['x-file-name'];
     if (!rawName) return res.status(400).json({ error: 'Missing X-File-Name header.' });
@@ -418,6 +419,11 @@ app.post('/api/parse-document',
 
     if (!buffer || buffer.length === 0) {
       return res.status(400).json({ error: 'Empty file body.' });
+    }
+    if (buffer.length > 50 * 1024 * 1024) {
+      return res.status(413).json({
+        error: 'File is larger than 50MB. Compress the PDF/PPTX or split it, then try again.',
+      });
     }
 
     try {
