@@ -55,7 +55,7 @@ const STEPS = [
   {
     icon: Rocket,
     title: 'Publish Course',
-    body: 'Export a SCORM package for your LMS when you’re ready. Trial accounts can build and preview but cannot export SCORM until upgraded.',
+    body: 'Export a SCORM package for your LMS when you’re ready. Choose SCORM 1.2 or 2004, then download the zip to upload to your LMS.',
     accent: '#a78bfa', // violet — matches Publish
   },
 ] as const;

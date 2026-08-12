@@ -5014,16 +5014,8 @@ export default function App() {
                       )}
                     </button>
 
-                    {isTrial ? (
-                      <button
-                        title="Publish Course — not available in trial"
-                        onClick={() => setShowTrialExportModal(true)}
-                        className="flex items-center gap-1 px-2 py-1 rounded-md border border-slate-600/60 text-slate-500 text-[11px] font-semibold"
-                      >
-                        <Download className="w-3 h-3" /> <span className="hidden lg:inline">Publish Course</span>
-                      </button>
-                    ) : (
-                      <div className="flex items-center rounded-md overflow-hidden border border-violet-700/50">
+                    {/* Closed beta: trial users may export SCORM (same control as paid). */}
+                    <div className="flex items-center rounded-md overflow-hidden border border-violet-700/50">
                         <button
                           title={`SCORM version (current: ${scormVersion})`}
                           onClick={() => setScormVersion(v => v === '1.2' ? '2004' : '1.2')}
@@ -5056,7 +5048,6 @@ export default function App() {
                           )}
                         </button>
                       </div>
-                    )}
                   </div>
                 </div>
               </div>}
