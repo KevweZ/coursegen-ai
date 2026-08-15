@@ -700,7 +700,11 @@ export default function App() {
           syntheticAudioMap,
           examQuestions,
         });
-        showDraftMessage(updated.message);
+        showDraftMessage(
+          updated.success
+            ? `${updated.message} You can refresh safely — reopen from Save.`
+            : updated.message
+        );
         if (updated.success) navigateTo(ROUTES.preview(activeDraftId), true);
         return;
       }
@@ -711,7 +715,11 @@ export default function App() {
         syntheticAudioMap,
         examQuestions,
       });
-      showDraftMessage(result.message);
+      showDraftMessage(
+        result.success
+          ? `${result.message} You can refresh safely — reopen from Save.`
+          : result.message
+      );
       if (result.success && result.id) {
         setActiveDraftId(result.id);
         navigateTo(ROUTES.preview(result.id));
@@ -2014,6 +2022,18 @@ export default function App() {
     return () => { window.removeEventListener('beforeunload', onUnload); scormQuit(); };
   }, []);
 
+  // Warn before refresh/close while a course is open — drafts are not autosaved
+  useEffect(() => {
+    if (isScormPlayer || !course) return;
+    if (step !== 'preview') return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [course, step, isScormPlayer]);
+
   useEffect(() => { scormSetLocation(currentSlideIndex); }, [currentSlideIndex]);
 
   // Reset scenario gate when entering a scenario slide
@@ -2451,16 +2471,19 @@ export default function App() {
       clearInterval(analysisTimer);
       console.error('File analysis error:', err);
       const isColdStart = err?.message?.includes('COLD_START') || err?.message?.includes('warming up') || err?.message?.includes('503');
-      const isTrialErr = err?.message?.includes('TRIAL_LIMIT_EXCEEDED') || err?.message?.includes('trial limit');
+      const isTrialExpiredErr = /TRIAL_EXPIRED|trial has expired/i.test(String(err?.message || ''));
+      const isTrialLimitErr = /TRIAL_LIMIT_EXCEEDED|weekly AI generation limit|trial limit/i.test(String(err?.message || ''));
       if (isColdStart) {
         // Friendly warm-up state with auto-retry — not framed as a failure
         startColdStartCountdown();
         return;
       }
       setAnalyzeError(
-        isTrialErr
-          ? 'Trial generation limit reached. Please upgrade your plan to continue.'
-          : `Analysis failed: ${err?.message ?? 'Unknown error'}. Please try again.`
+        isTrialExpiredErr
+          ? 'Your trial access period has ended. Contact support@nexcourse.ai to continue.'
+          : isTrialLimitErr
+            ? 'Weekly AI generation limit reached (this is not your trial end date). Wait for the weekly reset, open a saved draft from Save, or contact support@nexcourse.ai.'
+            : `Analysis failed: ${err?.message ?? 'Unknown error'}. Please try again.`
       );
       // Keep progress at 80% and stay on the analyzing screen so the user can retry
       setProgress(80);
@@ -6439,8 +6462,9 @@ export default function App() {
 
                   {editDrawerTab === 'audio' && (
                     <>
-                      <div className="p-3 bg-emerald-900/20 border border-emerald-700/30 rounded-xl text-xs text-emerald-300">
-                        <strong>ISD Best Practice:</strong> Narration should <em>expand</em> on what's on screen — never read line-by-line. Aim for conversational, explanatory language.
+                      <div className="p-3 bg-emerald-900/20 border border-emerald-700/30 rounded-xl text-xs text-emerald-300 space-y-1.5">
+                        <p><strong>ISD Best Practice:</strong> Narration should <em>expand</em> on what's on screen — never read line-by-line. Aim for conversational, explanatory language.</p>
+                        <p className="text-amber-200/90"><strong>Note:</strong> Editing this script does not change the spoken audio until you click <em>Regenerate audio</em> below (or Edit → Regenerate all narration). Use <em>Save</em> before refreshing so your draft is not lost.</p>
                       </div>
                       <div className="space-y-2">
                         <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest flex items-center justify-between">

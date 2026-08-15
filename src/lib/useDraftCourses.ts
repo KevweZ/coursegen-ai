@@ -803,10 +803,10 @@ export function useDraftCourses(
     };
     const result = await persistNew(meta, snapshot, assets);
     if (!result.ok) return { success: false, message: result.error || 'Failed to save draft.' };
-    const cloudHint = result.error?.includes('local only') ? result.error : '';
+    const cloudHint = result.error?.includes('local only') ? ` ${result.error}` : '';
     return {
       success: true,
-      message: `Draft "${meta.courseTitle}" saved to cloud!${cloudHint}`,
+      message: `Draft "${meta.courseTitle}" saved. Reopen anytime from Save.${cloudHint}`,
       id,
     };
   }, [userId, slotsTotal]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1025,7 +1025,7 @@ export function useDraftCourses(
       phase: 'preview',
     }, snapshot, assets);
     if (!result.ok) return { success: false, message: result.error || 'Failed to update draft.' };
-    return { success: true, message: 'Draft updated ✓' };
+    return { success: true, message: 'Draft updated ✓ Reopen anytime from Save.' };
   }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const replaceDesignDraft = useCallback(async (id: string, design: Omit<DesignDraftSnapshot, 'phase'>) => {

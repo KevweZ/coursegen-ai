@@ -651,7 +651,7 @@ app.post('/api/ai', aiRateLimit, async (req, res) => {
 
           if (typeof count === 'number' && count >= TRIAL_AI_LIMIT) {
             return res.status(429).json({
-              error: `Trial limit reached. You've used ${count}/${TRIAL_AI_LIMIT} AI generations this week. Contact us to upgrade your account.`,
+              error: `Weekly AI generation limit reached (${count}/${TRIAL_AI_LIMIT}). This is separate from your trial end date — wait for the weekly reset or contact support@nexcourse.ai.`,
               code: 'TRIAL_LIMIT_EXCEEDED',
             });
           }

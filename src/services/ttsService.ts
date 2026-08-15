@@ -94,9 +94,9 @@ export function formatTtsErrorForUser(err: unknown): string {
       case 'TTS_NO_CREDITS':
         return err.message || 'No narration credits remaining. Upgrade or buy credits, then retry.';
       case 'TRIAL_TTS_LIMIT':
-        return err.message || 'Trial narration weekly limit reached. Upgrade or wait for reset.';
+        return err.message || 'Weekly narration (TTS) limit reached. This is separate from your trial end date and from the AI generation limit.';
       case 'TRIAL_EXPIRED':
-        return err.message || 'Your trial has expired.';
+        return err.message || 'Your trial access period has ended.';
       case 'TTS_QUOTA':
         return 'Server OpenAI TTS quota exceeded. Check OpenAI Billing (prepaid credits / payment method) and Limits (Usage tier monthly cap is separate from your $ spend limit). Then retry narration.';
       case 'TTS_RATE_LIMIT':
