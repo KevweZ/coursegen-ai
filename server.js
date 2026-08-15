@@ -632,10 +632,12 @@ app.post('/api/ai', aiRateLimit, async (req, res) => {
         if (isComplexCall) {
           trialUserId = authUser.id;
           const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+          // Count only course-generation AI calls — never TTS rows (those have their own weekly cap).
           const { count, error: countErr } = await trialSupaClient
             .from('ai_usage')
             .select('*', { count: 'exact', head: true })
             .eq('user_id', authUser.id)
+            .eq('type', 'course_generation')
             .gte('created_at', weekAgo);
 
           if (countErr) {
