@@ -23,7 +23,7 @@ interface Props {
   onClose:      () => void;
   onApply:      (confirmedIssueIds: string[]) => void;
   onRunScan:    () => void;
-  onGoToSlide:  (moduleIndex: number, slideIndex: number) => void;
+  onGoToSlide:  (moduleIndex: number, slideIndex: number, field?: string) => void;
   /** Instantly convert empty interaction to simple content slide */
   onSimplify:   (moduleIndex: number, slideIndex: number) => void;
   /** AI regeneration of a single slide's interaction data */
@@ -33,18 +33,44 @@ interface Props {
 }
 
 const SEVERITY_CONFIG = {
-  error:   { label: 'Error',   color: 'text-red-400',    bg: 'bg-red-500/10',   border: 'border-red-500/30',   icon: XCircle },
-  warning: { label: 'Warning', color: 'text-amber-400',  bg: 'bg-amber-500/10', border: 'border-amber-500/30', icon: AlertCircle },
-  info:    { label: 'Info',    color: 'text-blue-400',   bg: 'bg-blue-500/10',  border: 'border-blue-500/30',  icon: Info },
+  error:   { label: 'Must fix', color: 'text-red-400',   bg: 'bg-slate-900/80', border: 'border-slate-700 border-l-4 border-l-red-500',   icon: XCircle },
+  warning: { label: 'Review',   color: 'text-amber-400', bg: 'bg-slate-900/80', border: 'border-slate-700 border-l-4 border-l-amber-500', icon: AlertCircle },
+  info:    { label: 'Note',     color: 'text-slate-400', bg: 'bg-slate-900/80', border: 'border-slate-700 border-l-4 border-l-sky-600/70', icon: Info },
 };
 
+const FILTER_LABELS: Record<FilterTab, string> = {
+  all: 'All',
+  error: 'Must fix',
+  warning: 'Review',
+  info: 'Notes',
+};
+
+/** Map QC field keys to plain English for beta testers. */
+function humanizeField(field?: string): string {
+  if (!field?.trim()) return 'Content';
+  const key = field.trim();
+  const lower = key.toLowerCase().replace(/[_\s]+/g, '');
+  if (lower === 'voiceovertext' || lower === 'narration') return 'Narration script';
+  if (lower === 'content') return 'Slide text';
+  if (lower === 'title') return 'Slide title';
+  if (lower === 'data.items' || lower === 'items' || key === 'data.items') return 'Interaction items';
+  if (lower === 'data.tabs' || lower === 'tabs' || key === 'data.tabs') return 'Tabs';
+  // Prettify camelCase / snake_case / dotted paths into words
+  return key
+    .replace(/[._]/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
+
 function ScoreBadge({ score }: { score: number }) {
-  const color = score >= 80 ? 'from-emerald-500 to-teal-500'
-               : score >= 60 ? 'from-amber-500 to-orange-500'
-               : 'from-red-500 to-pink-500';
+  const color = score >= 80 ? 'from-emerald-600/90 to-teal-600/80'
+               : score >= 60 ? 'from-amber-600/90 to-orange-600/80'
+               : 'from-red-600/90 to-rose-600/80';
   return (
-    <div className={`w-14 h-14 rounded-full bg-gradient-to-br ${color} flex items-center justify-center shadow-lg shrink-0`}>
-      <span className="text-white font-black text-lg leading-none">{score}</span>
+    <div className={`w-14 h-14 rounded-full bg-gradient-to-br ${color} flex items-center justify-center shadow-md shrink-0`}>
+      <span className="text-white font-bold text-lg leading-none">{score}</span>
     </div>
   );
 }
@@ -87,7 +113,7 @@ function IssueCard({
       data-slide-id={issue.slideId}
       className={`rounded-xl border overflow-hidden transition-all ${declined ? 'opacity-40' : ''} ${
         highlighted
-          ? 'border-indigo-400 bg-indigo-500/15 ring-2 ring-indigo-400/60 shadow-lg shadow-indigo-500/10'
+          ? 'border-indigo-400 border-l-4 border-l-indigo-400 bg-slate-900/80 ring-1 ring-indigo-400/40'
           : `${cfg.border} ${cfg.bg}`
       }`}
     >
@@ -96,26 +122,28 @@ function IssueCard({
         <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${cfg.color}`} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={`text-[10px] font-black uppercase tracking-widest ${cfg.color}`}>{cfg.label}</span>
+            <span className={`text-[10px] font-semibold uppercase tracking-wide ${cfg.color}`}>{cfg.label}</span>
             {(issue as any).slideRef && (
               <>
-                <span className="text-[10px] text-slate-500">·</span>
-                <span className="text-[10px] font-black text-indigo-300 bg-indigo-500/15 border border-indigo-500/30 px-1.5 py-0.5 rounded">
+                <span className="text-[10px] text-slate-600">·</span>
+                <span className="text-[10px] font-medium text-slate-300 bg-slate-800/80 border border-slate-600/50 px-1.5 py-0.5 rounded">
                   {(issue as any).slideRef}
                 </span>
               </>
             )}
-            <span className="text-[10px] text-slate-500">·</span>
-            <span className="text-[10px] text-slate-400 truncate">{issue.moduleTitle}</span>
-            <span className="text-[10px] text-slate-500">·</span>
-            <span className="text-[10px] text-slate-400 truncate">{issue.slideTitle}</span>
+            <span className="text-[10px] text-slate-600">·</span>
+            <span className="text-[10px] text-slate-500 truncate">{issue.moduleTitle}</span>
+            <span className="text-[10px] text-slate-600">·</span>
+            <span className="text-[10px] text-slate-500 truncate">{issue.slideTitle}</span>
           </div>
-          <p className="text-sm text-slate-200 font-medium mt-0.5">{issue.message}</p>
-          <p className="text-[11px] text-slate-500 mt-0.5 font-mono">{issue.field}</p>
+          <p className="text-sm text-slate-200 mt-1 leading-snug">{issue.message}</p>
+          <p className="mt-1.5 inline-flex items-center text-[11px] text-slate-400 bg-slate-800/60 border border-slate-700/60 px-2 py-0.5 rounded">
+            Where: {humanizeField(issue.field)}
+          </p>
           {/* Always-visible fix preview so Confirm Fix is meaningful without expanding */}
           {canConfirmFix && issue.suggestion && !confirmed && (
             <p className="mt-2 text-[11px] text-emerald-300/90 leading-snug">
-              <span className="font-bold text-emerald-400">Suggested fix: </span>
+              <span className="font-semibold text-emerald-400">Suggested fix: </span>
               <span className="text-emerald-200/90">{issue.suggestion.length > 140 ? `${issue.suggestion.slice(0, 140)}…` : issue.suggestion}</span>
             </p>
           )}
@@ -310,7 +338,7 @@ export function QCTrackChangesModal({
               <Shield className="w-4 h-4 text-indigo-400" />
             </div>
             <div className="flex-1">
-              <h2 className="text-base font-black text-white">Quality Check</h2>
+              <h2 className="text-base font-bold text-white">Quality Check</h2>
               <p className="text-xs text-slate-400">
                 {loading
                   ? 'Scanning course content…'
@@ -319,6 +347,9 @@ export function QCTrackChangesModal({
                     ? `${pendingCount} pending item${pendingCount !== 1 ? 's' : ''} · ${report.totalIssues} total found`
                     : `${report.totalIssues} issue${report.totalIssues !== 1 ? 's' : ''} found — all reviewed`
                   : 'Ready to scan'}
+              </p>
+              <p className="text-[11px] text-slate-500 mt-1 leading-snug">
+                Open a finding, then View slide to jump there. Confirm applies a suggested text fix; Regenerate rebuilds the slide with AI.
               </p>
             </div>
             {report && !loading && <ScoreBadge score={report.score} />}
@@ -419,13 +450,13 @@ export function QCTrackChangesModal({
                     <button
                       key={tab}
                       onClick={() => setFilter(tab)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-all border ${
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
                         filter === tab
                           ? 'bg-slate-800 border-slate-600 text-white'
                           : 'border-transparent text-slate-500 hover:text-slate-300'
                       }`}
                     >
-                      {tab === 'all' ? `All (${report.totalIssues})` : tab}
+                      {tab === 'all' ? `All (${report.totalIssues})` : FILTER_LABELS[tab]}
                     </button>
                   ))}
                 </div>
@@ -445,7 +476,7 @@ export function QCTrackChangesModal({
                 {filteredIssues.length === 0 ? (
                   <div className="text-center py-12 text-slate-500">
                     <CheckCircle2 className="w-10 h-10 mx-auto mb-3 text-emerald-600/50" />
-                    <p className="font-medium">No {filter !== 'all' ? filter : ''} issues found</p>
+                    <p className="font-medium">No {filter !== 'all' ? FILTER_LABELS[filter].toLowerCase() : ''} issues found</p>
                   </div>
                 ) : (
                   filteredIssues.map(issue => (
@@ -457,7 +488,7 @@ export function QCTrackChangesModal({
                       highlighted={!!focusSlideId && issue.slideId === focusSlideId}
                       onConfirm={() => onConfirm(issue.id)}
                       onDecline={() => onDecline(issue.id)}
-                      onGoToSlide={() => onGoToSlide(issue.moduleIndex, issue.slideIndex)}
+                      onGoToSlide={() => onGoToSlide(issue.moduleIndex, issue.slideIndex, issue.field)}
                       onSimplify={() => onSimplify(issue.moduleIndex, issue.slideIndex)}
                       onRegenerate={() => onRegenerate(issue.moduleIndex, issue.slideIndex, issue.slideId)}
                     />
@@ -488,7 +519,7 @@ export function QCTrackChangesModal({
                   {confirmed.size > 0 && (
                     <button
                       onClick={() => onApply([...confirmed])}
-                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-bold transition-all hover:from-indigo-500 hover:to-purple-500 shadow-lg shadow-indigo-500/20 flex items-center gap-2"
+                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600/90 to-indigo-500/80 text-white text-sm font-semibold transition-all hover:from-indigo-500 hover:to-indigo-400 shadow-md shadow-indigo-500/15 flex items-center gap-2"
                     >
                       <Sparkles className="w-3.5 h-3.5" />
                       Apply {confirmed.size} Fix{confirmed.size !== 1 ? 'es' : ''}
@@ -511,7 +542,7 @@ export function QCTrackChangesModal({
               </div>
               <button
                 onClick={onRunScan}
-                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-sm rounded-xl transition-all shadow-lg shadow-indigo-500/20"
+                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-600/90 to-indigo-500/80 hover:from-indigo-500 hover:to-indigo-400 text-white font-semibold text-sm rounded-xl transition-all shadow-md shadow-indigo-500/15"
               >
                 <Shield className="w-4 h-4" /> Run QC Scan
               </button>

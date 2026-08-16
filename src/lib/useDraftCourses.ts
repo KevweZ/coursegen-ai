@@ -509,6 +509,8 @@ export interface UseDraftCoursesReturn {
     }
   ) => Promise<{ success: boolean; message: string }>;
   replaceDesignDraft: (id: string, design: Omit<DesignDraftSnapshot, 'phase'>) => Promise<{ success: boolean; message: string }>;
+  /** Rename a draft in the library (does not change course content). */
+  renameDraft: (id: string, title: string) => Promise<{ success: boolean; message: string }>;
   saveDraft: (
     course: any,
     playerConfig: any,
@@ -1045,6 +1047,60 @@ export function useDraftCourses(
     return { success: true, message: 'Design draft updated ✓' };
   }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const renameDraft = useCallback(async (id: string, title: string) => {
+    if (!userId) return { success: false, message: 'Sign in to rename drafts.' };
+    const trimmed = title.trim();
+    if (!trimmed) return { success: false, message: 'Enter a draft name.' };
+    const existing = draftsRef.current.find(d => d.id === id);
+    if (!existing) return { success: false, message: 'Draft not found.' };
+
+    let snapshot = payloadCacheRef.current.get(id) || null;
+    if (!snapshot) {
+      try {
+        snapshot = (await idbGet(STORE_PAYLOAD, payloadKey(userId, id))) as DraftSnapshot | null;
+      } catch {
+        snapshot = null;
+      }
+    }
+    if (!snapshot) {
+      snapshot = await loadDraftAsync(id);
+    }
+    if (!snapshot) return { success: false, message: 'Could not load draft to rename.' };
+
+    const nextSnap: DraftSnapshot =
+      snapshot.phase === 'preview'
+        ? {
+            ...snapshot,
+            course: { ...(snapshot as PreviewDraftSnapshot).course, title: trimmed },
+          }
+        : {
+            ...snapshot,
+            courseTitle: trimmed,
+          };
+
+    try {
+      // Update payload + index only — never touch the assets store on rename.
+      await idbPut(STORE_PAYLOAD, payloadKey(userId, id), nextSnap);
+      const nextMeta = metaFromDraft({
+        ...existing,
+        id,
+        courseTitle: trimmed,
+        savedAt: new Date().toISOString(),
+      });
+      const next = draftsRef.current.map(d => (d.id === id ? nextMeta : d));
+      await writeIndex(userId, next);
+      setDrafts(next);
+      payloadCacheRef.current.set(id, nextSnap);
+
+      const assets = await loadDraftAssets(id).catch(() => ({} as Record<string, string>));
+      const cloud = await upsertCloudDraft(userId, nextMeta, nextSnap, assets, workspaceId);
+      if (cloud.ok) setCloudEnabled(true);
+      return { success: true, message: `Draft renamed to "${trimmed}".` };
+    } catch (e: any) {
+      return { success: false, message: e?.message || 'Failed to rename draft.' };
+    }
+  }, [userId, loadDraftAsync, loadDraftAssets, workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return {
     drafts,
     isReady,
@@ -1061,6 +1117,7 @@ export function useDraftCourses(
     deleteDraft,
     replacePreviewDraft,
     replaceDesignDraft,
+    renameDraft,
     saveDraft: savePreviewDraft,
     replaceDraft: replacePreviewDraft,
   };

@@ -5,7 +5,7 @@
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom';
-import { X, FolderOpen, Clock, Layers, BookOpen, Trash2, RefreshCw, Loader2 } from 'lucide-react';
+import { X, FolderOpen, Clock, Layers, BookOpen, Trash2, RefreshCw, Loader2, Pencil } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { CourseDraft } from '../../lib/useDraftCourses';
 
@@ -20,6 +20,7 @@ interface Props {
   onRefresh?: () => void | Promise<void>;
   onLoad: (id: string) => void;
   onDelete: (id: string) => void;
+  onRename?: (id: string, title: string) => void | Promise<void>;
 }
 
 type TabId = 'all' | 'preview' | 'design';
@@ -33,11 +34,13 @@ function formatDate(iso: string) {
 
 export const ViewDraftsModal: React.FC<Props> = ({
   isOpen, onClose, drafts, isReady = true, cloudEnabled = false, slotsUsed, slotsTotal,
-  onRefresh, onLoad, onDelete,
+  onRefresh, onLoad, onDelete, onRename,
 }) => {
   const [tab, setTab] = useState<TabId>('all');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
 
   useEffect(() => {
     if (!isOpen) return;
@@ -170,15 +173,50 @@ export const ViewDraftsModal: React.FC<Props> = ({
                 >
                   <div className="flex-1 min-w-0 space-y-1.5">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-base font-bold text-white truncate">{d.courseTitle || 'Untitled course'}</p>
-                      <span className={cn(
-                        'text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full',
-                        d.phase === 'preview'
-                          ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
-                          : 'bg-indigo-500/15 text-indigo-300 border border-indigo-500/30'
-                      )}>
-                        {d.phase === 'preview' ? 'Development' : 'Design'}
-                      </span>
+                      {renamingId === d.id ? (
+                        <form
+                          className="flex items-center gap-2 flex-1 min-w-0"
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            const trimmed = renameValue.trim();
+                            if (trimmed && onRename) void onRename(d.id, trimmed);
+                            setRenamingId(null);
+                          }}
+                        >
+                          <input
+                            autoFocus
+                            value={renameValue}
+                            onChange={(e) => setRenameValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Escape') setRenamingId(null);
+                            }}
+                            className="flex-1 min-w-0 rounded-lg border border-indigo-500/50 bg-slate-950 px-3 py-1.5 text-sm font-bold text-white outline-none focus:border-indigo-400"
+                            aria-label="Draft name"
+                          />
+                          <button type="submit" className="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white">
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRenamingId(null)}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-400 border border-slate-600"
+                          >
+                            Cancel
+                          </button>
+                        </form>
+                      ) : (
+                        <>
+                          <p className="text-base font-bold text-white truncate">{d.courseTitle || 'Untitled course'}</p>
+                          <span className={cn(
+                            'text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full',
+                            d.phase === 'preview'
+                              ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                              : 'bg-indigo-500/15 text-indigo-300 border border-indigo-500/30'
+                          )}>
+                            {d.phase === 'preview' ? 'Development' : 'Design'}
+                          </span>
+                        </>
+                      )}
                     </div>
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-400">
                       <span className="inline-flex items-center gap-1.5">
@@ -209,7 +247,7 @@ export const ViewDraftsModal: React.FC<Props> = ({
                           Cancel
                         </button>
                       </>
-                    ) : (
+                    ) : renamingId === d.id ? null : (
                       <>
                         <button
                           onClick={() => onLoad(d.id)}
@@ -217,6 +255,19 @@ export const ViewDraftsModal: React.FC<Props> = ({
                         >
                           Open
                         </button>
+                        {onRename && (
+                          <button
+                            onClick={() => {
+                              setConfirmDelete(null);
+                              setRenamingId(d.id);
+                              setRenameValue(d.courseTitle || '');
+                            }}
+                            className="p-2 rounded-lg text-slate-500 hover:text-indigo-300 hover:bg-indigo-500/10"
+                            title="Rename draft"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                        )}
                         <button
                           onClick={() => setConfirmDelete(d.id)}
                           className="p-2 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10"

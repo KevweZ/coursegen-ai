@@ -4222,6 +4222,10 @@ export default function App() {
               onLoad={handleLoadDraft}
               onDelete={(id) => { void draftManager.deleteDraft(id); }}
               onReplace={(id) => { void handleReplaceDraft(id); }}
+              onRename={async (id, title) => {
+                const result = await draftManager.renameDraft(id, title);
+                showDraftMessage(result.message);
+              }}
               saveMessage={draftSaveMessage}
             />
           )}
@@ -4237,6 +4241,10 @@ export default function App() {
             onRefresh={() => draftManager.refreshDrafts()}
             onLoad={handleLoadDraft}
             onDelete={(id) => { void draftManager.deleteDraft(id); }}
+            onRename={async (id, title) => {
+              const result = await draftManager.renameDraft(id, title);
+              showDraftMessage(result.message);
+            }}
           />
 
           <DraftOpeningOverlay
@@ -4271,18 +4279,17 @@ export default function App() {
               setQcConfirmed(prev => { const n = new Set(prev); ids.forEach(id => n.delete(id)); return n; });
             }}
             onClose={() => { setQcModalOpen(false); setQcFocusSlideId(null); }}
-            onGoToSlide={(moduleIndex, slideIndex) => {
+            onGoToSlide={(moduleIndex, slideIndex, field) => {
               const slideId = course?.modules?.[moduleIndex]?.slides?.[slideIndex]?.id;
+              let targetSlide: any = null;
               if (slideId) {
                 const idx = allSlides.findIndex(s => s.id === slideId);
                 if (idx >= 0) {
                   setCurrentSlideIndex(idx);
-                  setQcModalOpen(false);
-                  return;
+                  targetSlide = allSlides[idx];
                 }
               }
-              // Fallback: account for pre-content synthetics + per-module title/overview
-              if (course?.modules) {
+              if (!targetSlide && course?.modules) {
                 let globalIdx = PRE_CONTENT;
                 for (let m = 0; m < moduleIndex; m++) {
                   globalIdx += (includeModuleTitleSlides ? 1 : 0) + (includeModuleOverviewSlides ? 1 : 0);
@@ -4290,9 +4297,29 @@ export default function App() {
                 }
                 globalIdx += (includeModuleTitleSlides ? 1 : 0) + (includeModuleOverviewSlides ? 1 : 0);
                 globalIdx += slideIndex;
-                setCurrentSlideIndex(Math.min(globalIdx, allSlides.length - 1));
+                const idx = Math.min(globalIdx, allSlides.length - 1);
+                setCurrentSlideIndex(idx);
+                targetSlide = allSlides[idx];
               }
               setQcModalOpen(false);
+              setQcFocusSlideId(null);
+              if (targetSlide) {
+                const f = String(field || '').toLowerCase();
+                const openAudio = /voiceover|narration|audio/.test(f);
+                editingSlideRef.current = {
+                  ...targetSlide,
+                  _objectives: targetSlide.id === '__course-objectives__'
+                    ? JSON.parse(JSON.stringify(learningObjectives || []))
+                    : (targetSlide as any)._objectives,
+                };
+                setEditingSlide(editingSlideRef.current);
+                setEditDrawerTab(openAudio ? 'audio' : 'text');
+                showDraftMessage(
+                  openAudio
+                    ? 'Opened Audio editor — check Narration script for this finding.'
+                    : 'Opened Edit Text — look for the highlighted finding on this slide.'
+                );
+              }
             }}
             onSimplify={(moduleIndex, slideIndex) => {
               pushUndo(); setCourse(simplifySlide(course, moduleIndex, slideIndex));
@@ -4853,8 +4880,14 @@ export default function App() {
                               type="button"
                               onClick={() => {
                                 setShowEditMenu(false);
-                                editingSlideRef.current = currentSlide;
-                                setEditingSlide(currentSlide);
+                                const seeded = currentSlide?.id === '__course-objectives__'
+                                  ? {
+                                      ...currentSlide,
+                                      _objectives: JSON.parse(JSON.stringify(learningObjectives || [])),
+                                    }
+                                  : currentSlide;
+                                editingSlideRef.current = seeded;
+                                setEditingSlide(seeded);
                                 setEditDrawerOpen(true);
                                 setEditDrawerTab('text');
                                 const n = normalizeRegenSlideType(currentSlide);
@@ -6429,6 +6462,11 @@ export default function App() {
 
                 {/* Body */}
                 <div className="flex-1 overflow-y-auto p-5 space-y-5">
+                  <div className="p-3 rounded-xl border border-slate-700 bg-slate-950 text-[11px] text-slate-300 leading-relaxed">
+                    <strong className="text-white">Edit</strong> changes what’s on this slide.&nbsp;
+                    <strong className="text-white">Regenerate</strong> asks AI to rebuild the slide (or interaction) from scratch.
+                    {editDrawerTab === 'regenerate' ? ' Confirm the type below, then regenerate.' : ' Switch tabs above to edit text, audio, or regenerate.'}
+                  </div>
                   {editDrawerTab === 'text' && (
                     <>
                       <div className="space-y-2">
@@ -6441,6 +6479,61 @@ export default function App() {
                           placeholder="Slide title..."
                         />
                       </div>
+                      {String(editingSlide.id) === '__course-objectives__' ? (
+                        <div className="space-y-3">
+                          <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">Course objectives</label>
+                          <p className="text-[11px] text-slate-400">Edit terminal and enabling objectives. Saved changes update the Course Objectives slide.</p>
+                          {(Array.isArray((editingSlide as any)._objectives) ? (editingSlide as any)._objectives : learningObjectives || []).map((obj: any, oi: number) => {
+                            const term = typeof obj === 'string' ? obj : (obj?.terminalObjective || '');
+                            const enablers: string[] = typeof obj === 'string' ? [] : (obj?.enablingObjectives || []);
+                            return (
+                              <div key={oi} className="rounded-xl border border-slate-700 bg-slate-950 p-3 space-y-2">
+                                <label className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">Objective {oi + 1}</label>
+                                <textarea
+                                  rows={2}
+                                  value={term}
+                                  onChange={(e) => {
+                                    const list = [...(Array.isArray((editingSlideRef.current as any)?._objectives)
+                                      ? (editingSlideRef.current as any)._objectives
+                                      : learningObjectives || [])];
+                                    const prev = list[oi];
+                                    list[oi] = typeof prev === 'string'
+                                      ? e.target.value
+                                      : { ...(prev || {}), terminalObjective: e.target.value, enablingObjectives: enablers };
+                                    const updated = { ...(editingSlideRef.current ?? editingSlide), _objectives: list };
+                                    editingSlideRef.current = updated;
+                                    setEditingSlide(updated);
+                                  }}
+                                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"
+                                  placeholder="Terminal objective…"
+                                />
+                                {enablers.map((en, ei) => (
+                                  <input
+                                    key={ei}
+                                    value={en}
+                                    onChange={(e) => {
+                                      const list = [...(Array.isArray((editingSlideRef.current as any)?._objectives)
+                                        ? (editingSlideRef.current as any)._objectives
+                                        : learningObjectives || [])];
+                                      const prev = typeof list[oi] === 'string'
+                                        ? { terminalObjective: list[oi], enablingObjectives: [...enablers] }
+                                        : { ...(list[oi] || {}), enablingObjectives: [...enablers] };
+                                      const nextEn = [...(prev.enablingObjectives || [])];
+                                      nextEn[ei] = e.target.value;
+                                      list[oi] = { ...prev, enablingObjectives: nextEn };
+                                      const updated = { ...(editingSlideRef.current ?? editingSlide), _objectives: list };
+                                      editingSlideRef.current = updated;
+                                      setEditingSlide(updated);
+                                    }}
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500"
+                                    placeholder={`Enabling objective ${ei + 1}`}
+                                  />
+                                ))}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
                       <div className="space-y-2">
                         <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest flex items-center justify-between">
                           <span>On-Screen Text <span className="normal-case font-normal text-slate-600">(Rich Text)</span></span>
@@ -6456,6 +6549,52 @@ export default function App() {
                           placeholder="Slide content... Use the toolbar for bold, italic, colors, and lists."
                         />
                       </div>
+                      )}
+                      {(editingSlide.type === 'click-reveal' || editingSlide.type === 'accordion') && (() => {
+                        const items: any[] = editingSlide.data?.items || [];
+                        return (
+                          <div className="space-y-3">
+                            <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">Click &amp; Reveal items</label>
+                            {items.length === 0 ? (
+                              <p className="text-xs text-slate-500">No items yet — use Regenerate to rebuild this interaction.</p>
+                            ) : items.map((it, ii) => (
+                              <div key={it.id || ii} className="rounded-xl border border-slate-700 bg-slate-950 p-3 space-y-2">
+                                <input
+                                  value={it.term || it.label || ''}
+                                  onChange={(e) => {
+                                    const next = [...items];
+                                    next[ii] = { ...next[ii], term: e.target.value, label: e.target.value };
+                                    const updated = {
+                                      ...(editingSlideRef.current ?? editingSlide),
+                                      data: { ...(editingSlide.data || {}), items: next },
+                                    };
+                                    editingSlideRef.current = updated;
+                                    setEditingSlide(updated);
+                                  }}
+                                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm font-bold text-white outline-none focus:border-indigo-500"
+                                  placeholder={`Item ${ii + 1} title`}
+                                />
+                                <textarea
+                                  rows={3}
+                                  value={it.definition || it.content || ''}
+                                  onChange={(e) => {
+                                    const next = [...items];
+                                    next[ii] = { ...next[ii], definition: e.target.value, content: e.target.value };
+                                    const updated = {
+                                      ...(editingSlideRef.current ?? editingSlide),
+                                      data: { ...(editingSlide.data || {}), items: next },
+                                    };
+                                    editingSlideRef.current = updated;
+                                    setEditingSlide(updated);
+                                  }}
+                                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 resize-none"
+                                  placeholder="Revealed text…"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </>
                   )}
 
@@ -6786,7 +6925,7 @@ export default function App() {
                         {!regenNoInteraction && (
                           <>
                             <div className="space-y-2">
-                              <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">
+                              <p className="text-[11px] font-extrabold text-yellow-300 uppercase tracking-widest">
                                 {isKc ? 'Knowledge check type' : 'Interactive element'}
                               </p>
                               <div className="grid grid-cols-2 gap-2">
@@ -6811,7 +6950,7 @@ export default function App() {
                               </div>
                             </div>
                             <div className="space-y-2">
-                              <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">
+                              <p className="text-[11px] font-extrabold text-yellow-300 uppercase tracking-widest">
                                 {isKc ? 'Or switch to interactive element' : 'Or switch to knowledge check'}
                               </p>
                               <div className="grid grid-cols-2 gap-2">
@@ -6940,6 +7079,9 @@ export default function App() {
                           }));
                           if (latest.voiceOverUrl) {
                             setSyntheticAudioMap(prev => ({ ...prev, [latest.id]: latest.voiceOverUrl as string }));
+                          }
+                          if (latest.id === '__course-objectives__' && Array.isArray((latest as any)._objectives)) {
+                            setLearningObjectives((latest as any)._objectives);
                           }
                         } else {
                           setCourse((prevCourse: any) => {
