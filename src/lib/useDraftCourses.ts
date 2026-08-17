@@ -483,6 +483,8 @@ export interface UseDraftCoursesReturn {
       syntheticSlideOverrides?: Record<string, any>;
       syntheticAudioMap?: Record<string, string>;
       examQuestions?: any[];
+      /** Force a distinct library name (e.g. "Course (1)") without renaming the live editor title. */
+      titleOverride?: string;
     }
   ) => Promise<{ success: boolean; message: string; id?: string }>;
   saveDesignDraft: (design: Omit<DesignDraftSnapshot, 'phase'>) => Promise<{ success: boolean; message: string; id?: string }>;
@@ -794,6 +796,7 @@ export function useDraftCourses(
       syntheticSlideOverrides?: Record<string, any>;
       syntheticAudioMap?: Record<string, string>;
       examQuestions?: any[];
+      titleOverride?: string;
     }
   ) => {
     if (!userId) return { success: false, message: 'Sign in to save drafts.' };
@@ -809,10 +812,13 @@ export function useDraftCourses(
 
     const id = makeDraftId();
     const { snapshot, assets } = await preparePreviewSnapshot(course, playerConfig, theme, id, extras);
+    // titleOverride names the library slot only — keep the in-course title unchanged
+    const courseTitle = (extras?.titleOverride || snapshot.course?.title || 'Untitled Course').trim()
+      || 'Untitled Course';
     const meta: CourseDraft = {
       id,
       savedAt: new Date().toISOString(),
-      courseTitle: snapshot.course.title || 'Untitled Course',
+      courseTitle,
       slideCount: (snapshot.course.modules || []).reduce((a: number, m: any) => a + (m.slides?.length || 0), 0),
       moduleCount: (snapshot.course.modules || []).length,
       theme,

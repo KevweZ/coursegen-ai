@@ -5,7 +5,7 @@
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, BookOpen, Trash2, FolderOpen, Clock, Layers, Save, AlertCircle, CheckCircle2, Lock, Pencil } from 'lucide-react';
+import { X, BookOpen, Trash2, FolderOpen, Clock, Layers, Save, AlertCircle, CheckCircle2, Lock, Pencil, Loader2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { CourseDraft } from '../../lib/useDraftCourses';
 
@@ -19,7 +19,11 @@ interface Props {
   canSave: boolean;
   isAuthenticated: boolean;
   currentCourseTitle?: string;
+  activeDraftId?: string | null;
+  isSaving?: boolean;
   onSave: () => void;
+  /** Overwrite the draft currently open in the player (when one is active). */
+  onUpdateCurrent?: () => void;
   onLoad: (id: string) => void;
   onDelete: (id: string) => void;
   onReplace: (id: string) => void;
@@ -58,7 +62,8 @@ function SlotBar({ used, total, theme }: { used: number; total: number; theme: s
 
 export const DraftCoursesPanel: React.FC<Props> = ({
   isOpen, onClose, theme, drafts, slotsUsed, slotsTotal, canSave,
-  isAuthenticated, currentCourseTitle, onSave, onLoad, onDelete, onReplace, onRename, saveMessage,
+  isAuthenticated, currentCourseTitle, activeDraftId, isSaving, onSave, onUpdateCurrent,
+  onLoad, onDelete, onReplace, onRename, saveMessage,
 }) => {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -67,6 +72,7 @@ export const DraftCoursesPanel: React.FC<Props> = ({
   const bg = theme === 'light' ? 'bg-white border-slate-200 text-slate-900' : theme === 'unified' ? 'bg-indigo-950 border-indigo-500/30 text-white' : 'bg-slate-900 border-slate-700 text-white';
   const cardBg = theme === 'light' ? 'bg-slate-50 border-slate-200 hover:border-indigo-300' : theme === 'unified' ? 'bg-indigo-900/40 border-indigo-500/20 hover:border-purple-400/50' : 'bg-slate-800/60 border-slate-700 hover:border-indigo-500/50';
   const subText = theme === 'light' ? 'text-slate-500' : 'text-slate-400';
+  const savingBusy = !!isSaving;
 
   // Instant unmount when closed — AnimatePresence exit left a frozen blur over the player
   if (!isOpen) return null;
@@ -87,11 +93,18 @@ export const DraftCoursesPanel: React.FC<Props> = ({
     setRenamingId(null);
   };
 
+  const messageLooksSuccess = !!(
+    saveMessage &&
+    (saveMessage.startsWith('✓') || /saved|renamed|updated/i.test(saveMessage)) &&
+    !/fail|error|cannot|can’t|quota|full/i.test(saveMessage)
+  );
+  const messageLooksProgress = !!(saveMessage && /saving|updating|overwriting/i.test(saveMessage));
+
   const content = (
         <>
           <div
             className="fixed inset-0 bg-black/40 z-[600]"
-            onClick={onClose}
+            onClick={savingBusy ? undefined : onClose}
             aria-hidden
           />
 
@@ -112,7 +125,11 @@ export const DraftCoursesPanel: React.FC<Props> = ({
                   <p className={cn('text-xs', subText)}>Synced to your account</p>
                 </div>
               </div>
-              <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-700/30 transition-colors">
+              <button
+                onClick={onClose}
+                disabled={savingBusy}
+                className="p-1.5 rounded-lg hover:bg-slate-700/30 transition-colors disabled:opacity-40"
+              >
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -140,44 +157,76 @@ export const DraftCoursesPanel: React.FC<Props> = ({
                 </div>
               )}
 
-              {/* Save message feedback */}
-              <AnimatePresence>
-                {saveMessage && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    className={cn(
-                      'flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium',
-                      saveMessage.startsWith('✓') || saveMessage.includes('saved') || saveMessage.includes('renamed')
-                        ? (theme === 'light' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-emerald-900/30 border-emerald-500/30 text-emerald-300')
-                        : (theme === 'light' ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-amber-900/30 border-amber-500/30 text-amber-300')
-                    )}
-                  >
-                    {saveMessage.includes('saved') || saveMessage.includes('renamed') ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
-                    {saveMessage}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
               {/* Save current course */}
               {isAuthenticated && (
                 <div className={cn('rounded-xl border p-4 space-y-3', cardBg)}>
                   <p className="text-xs font-black uppercase tracking-wider text-indigo-400">Current Course</p>
                   <p className="text-sm font-semibold truncate">{currentCourseTitle || 'Untitled Course'}</p>
+
+                  {onUpdateCurrent && (
+                    <button
+                      onClick={onUpdateCurrent}
+                      disabled={savingBusy}
+                      className={cn(
+                        'w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold transition-all',
+                        savingBusy
+                          ? 'bg-indigo-600/50 text-white/80 cursor-wait'
+                          : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-900/30 hover:shadow-indigo-900/50'
+                      )}
+                    >
+                      {savingBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                      Update current draft
+                    </button>
+                  )}
+
                   <button
                     onClick={onSave}
-                    disabled={!canSave}
+                    disabled={!canSave || savingBusy}
                     className={cn(
                       'w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold transition-all',
-                      canSave
-                        ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-900/30 hover:shadow-indigo-900/50'
+                      canSave && !savingBusy
+                        ? (onUpdateCurrent
+                          ? (theme === 'light' ? 'bg-white border border-indigo-300 text-indigo-700 hover:bg-indigo-50' : 'bg-slate-800/80 border border-indigo-500/40 text-indigo-200 hover:bg-slate-800')
+                          : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-900/30 hover:shadow-indigo-900/50')
                         : 'bg-slate-700/30 text-slate-500 cursor-not-allowed'
                     )}
                   >
-                    <Save className="w-4 h-4" />
+                    {savingBusy && !onUpdateCurrent ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                     {canSave ? 'Save as new draft' : 'All slots used — delete one first'}
                   </button>
+
+                  {onUpdateCurrent && canSave && (
+                    <p className={cn('text-[11px] leading-snug', subText)}>
+                      “Save as new draft” keeps your current draft and adds another copy (e.g. with (1) in the name if titles match).
+                    </p>
+                  )}
+
+                  {/* In-panel save status — stays next to the buttons */}
+                  <AnimatePresence mode="wait">
+                    {(savingBusy || saveMessage) && (
+                      <motion.div
+                        key={savingBusy ? 'saving' : (saveMessage || 'done')}
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        className={cn(
+                          'flex items-start gap-2 rounded-lg border px-3 py-2.5 text-xs font-medium',
+                          savingBusy || messageLooksProgress
+                            ? (theme === 'light' ? 'bg-indigo-50 border-indigo-200 text-indigo-800' : 'bg-indigo-900/40 border-indigo-500/30 text-indigo-200')
+                            : messageLooksSuccess
+                              ? (theme === 'light' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-emerald-900/30 border-emerald-500/30 text-emerald-300')
+                              : (theme === 'light' ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-amber-900/30 border-amber-500/30 text-amber-300')
+                        )}
+                      >
+                        {savingBusy || messageLooksProgress
+                          ? <Loader2 className="w-3.5 h-3.5 shrink-0 mt-0.5 animate-spin" />
+                          : messageLooksSuccess
+                            ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                            : <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />}
+                        <span>{savingBusy ? (saveMessage || 'Saving…') : saveMessage}</span>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               )}
 
@@ -185,13 +234,19 @@ export const DraftCoursesPanel: React.FC<Props> = ({
               {isAuthenticated && drafts.length > 0 && (
                 <div className="space-y-2">
                   <p className="text-xs font-black uppercase tracking-wider text-indigo-400 px-1">Your Drafts</p>
-                  {drafts.map((draft, idx) => (
+                  {drafts.map((draft, idx) => {
+                    const isActive = activeDraftId === draft.id;
+                    return (
                     <motion.div
                       key={draft.id}
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: idx * 0.05 }}
-                      className={cn('rounded-xl border p-4 space-y-3 transition-colors', cardBg)}
+                      className={cn(
+                        'rounded-xl border p-4 space-y-3 transition-colors',
+                        cardBg,
+                        isActive && (theme === 'light' ? 'ring-2 ring-indigo-400/60 border-indigo-300' : 'ring-2 ring-indigo-500/50 border-indigo-500/40')
+                      )}
                     >
                       {/* Draft info */}
                       <div className="space-y-1">
@@ -235,7 +290,14 @@ export const DraftCoursesPanel: React.FC<Props> = ({
                             </form>
                           ) : (
                             <>
-                              <p className="font-bold text-sm leading-snug">{draft.courseTitle}</p>
+                              <div className="min-w-0 flex-1 space-y-1">
+                                <p className="font-bold text-sm leading-snug">{draft.courseTitle}</p>
+                                {isActive && (
+                                  <span className="inline-block text-[10px] px-1.5 py-0.5 rounded font-black uppercase tracking-wide bg-indigo-500/20 text-indigo-300">
+                                    Open now
+                                  </span>
+                                )}
+                              </div>
                               <div className="flex flex-col items-end gap-1 shrink-0">
                                 <span className={cn(
                                   'text-[10px] px-2 py-0.5 rounded-full font-black uppercase',
@@ -275,24 +337,28 @@ export const DraftCoursesPanel: React.FC<Props> = ({
                         <div className="flex gap-2">
                           <button
                             onClick={() => onLoad(draft.id)}
-                            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600/90 hover:bg-indigo-500 text-white text-xs font-bold transition-all"
+                            disabled={savingBusy}
+                            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600/90 hover:bg-indigo-500 text-white text-xs font-bold transition-all disabled:opacity-50"
                           >
                             <FolderOpen className="w-3.5 h-3.5" /> Load
                           </button>
                           <button
                             onClick={() => onReplace(draft.id)}
+                            disabled={savingBusy}
                             className={cn(
-                              'flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all',
+                              'flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all disabled:opacity-50',
                               theme === 'light' ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-slate-700/50 hover:bg-slate-600 text-slate-200'
                             )}
                           >
-                            <Save className="w-3.5 h-3.5" /> Overwrite
+                            {savingBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                            Overwrite
                           </button>
                           {onRename && (
                             <button
                               onClick={() => startRename(draft)}
+                              disabled={savingBusy}
                               className={cn(
-                                'p-2 rounded-lg transition-colors',
+                                'p-2 rounded-lg transition-colors disabled:opacity-50',
                                 theme === 'light' ? 'text-slate-500 hover:bg-slate-200 hover:text-indigo-600' : 'text-slate-400 hover:bg-slate-700/50 hover:text-indigo-300'
                               )}
                               title="Rename draft"
@@ -302,14 +368,16 @@ export const DraftCoursesPanel: React.FC<Props> = ({
                           )}
                           <button
                             onClick={() => setConfirmDelete(draft.id)}
-                            className="p-2 rounded-lg text-red-400 hover:bg-red-900/20 transition-colors"
+                            disabled={savingBusy}
+                            className="p-2 rounded-lg text-red-400 hover:bg-red-900/20 transition-colors disabled:opacity-50"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       )}
                     </motion.div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 

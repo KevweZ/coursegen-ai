@@ -654,14 +654,120 @@ export default function App() {
   const [draftSaveMessage, setDraftSaveMessage] = React.useState<string | null>(null);
   const draftMessageTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [activeDraftId, setActiveDraftId] = React.useState<string | null>(null);
+  const [isSavingDraft, setIsSavingDraft] = React.useState(false);
   const [designDraftSavedFlash, setDesignDraftSavedFlash] = React.useState(false);
   const playerDefaultsLoadedFor = React.useRef<string | null>(null);
 
   const showDraftMessage = (msg: string) => {
     setDraftSaveMessage(msg);
     if (draftMessageTimerRef.current) clearTimeout(draftMessageTimerRef.current);
-    const long = /fail|full|error|quota|sign in|cannot|can’t|not found|narration|trial|credit|audio|eligible|skipped|system slide/i.test(msg);
+    const long = /fail|full|error|quota|sign in|cannot|can’t|not found|narration|trial|credit|audio|eligible|skipped|system slide|sync/i.test(msg);
     draftMessageTimerRef.current = setTimeout(() => setDraftSaveMessage(null), long ? 10000 : 4500);
+  };
+
+  const allocateUniqueDraftTitle = (base: string) => {
+    const used = new Set(
+      draftManager.drafts.map(d => (d.courseTitle || '').trim().toLowerCase()).filter(Boolean)
+    );
+    const root = (base || 'Untitled Course').trim() || 'Untitled Course';
+    if (!used.has(root.toLowerCase())) return root;
+    let n = 1;
+    while (used.has(`${root} (${n})`.toLowerCase())) n += 1;
+    return `${root} (${n})`;
+  };
+
+  const draftSaveExtras = () => ({
+    learningObjectives,
+    syntheticSlideOverrides,
+    syntheticAudioMap,
+    examQuestions,
+  });
+
+  /** Always create a new library slot (never overwrites the active draft). */
+  const handleSaveDraft = async () => {
+    if (!course) {
+      showDraftMessage('Nothing to save — open or generate a course first.');
+      return;
+    }
+    if (!draftManager.canSave) {
+      showDraftMessage(`All ${draftManager.slotsTotal} draft slots are full — delete one before saving a new draft.`);
+      return;
+    }
+    setIsSavingDraft(true);
+    showDraftMessage('Saving new draft…');
+    try {
+      const titleOverride = allocateUniqueDraftTitle(course.title || 'Untitled Course');
+      const result = await draftManager.savePreviewDraft(course, playerConfig, theme, {
+        ...draftSaveExtras(),
+        titleOverride,
+      });
+      showDraftMessage(
+        result.success
+          ? `${result.message} You can refresh safely — reopen from Save.`
+          : result.message
+      );
+      if (result.success && result.id) {
+        setActiveDraftId(result.id);
+        navigateTo(ROUTES.preview(result.id));
+      }
+    } catch (err: any) {
+      console.error('[Drafts] Save failed:', err);
+      showDraftMessage(err?.message || 'Failed to save draft.');
+    } finally {
+      setIsSavingDraft(false);
+    }
+  };
+
+  /** Overwrite the currently open draft (or fall back to a new slot). */
+  const handleUpdateActiveDraft = async () => {
+    if (!course) {
+      showDraftMessage('Nothing to save — open or generate a course first.');
+      return;
+    }
+    if (!activeDraftId) {
+      await handleSaveDraft();
+      return;
+    }
+    setIsSavingDraft(true);
+    showDraftMessage('Updating current draft…');
+    try {
+      const existing = await draftManager.loadDraftAsync(activeDraftId);
+      if (existing?.phase === 'preview') {
+        const updated = await draftManager.replacePreviewDraft(activeDraftId, course, playerConfig, theme, draftSaveExtras());
+        showDraftMessage(
+          updated.success
+            ? `${updated.message} You can refresh safely — reopen from Save.`
+            : updated.message
+        );
+        if (updated.success) navigateTo(ROUTES.preview(activeDraftId), true);
+        return;
+      }
+      // Active id isn’t a preview draft — create a new slot (do not nest handleSaveDraft busy state)
+      if (!draftManager.canSave) {
+        showDraftMessage(`All ${draftManager.slotsTotal} draft slots are full — delete one before saving a new draft.`);
+        return;
+      }
+      showDraftMessage('Saving new draft…');
+      const titleOverride = allocateUniqueDraftTitle(course.title || 'Untitled Course');
+      const result = await draftManager.savePreviewDraft(course, playerConfig, theme, {
+        ...draftSaveExtras(),
+        titleOverride,
+      });
+      showDraftMessage(
+        result.success
+          ? `${result.message} You can refresh safely — reopen from Save.`
+          : result.message
+      );
+      if (result.success && result.id) {
+        setActiveDraftId(result.id);
+        navigateTo(ROUTES.preview(result.id));
+      }
+    } catch (err: any) {
+      console.error('[Drafts] Update failed:', err);
+      showDraftMessage(err?.message || 'Failed to update draft.');
+    } finally {
+      setIsSavingDraft(false);
+    }
   };
 
   const collectDesignSnapshot = (): Omit<DesignDraftSnapshot, 'phase'> => ({
@@ -686,53 +792,6 @@ export default function App() {
     ttsVoice,
     settingsMode: settingsMode === 'quick' ? 'session' : settingsMode,
   });
-
-  const handleSaveDraft = async () => {
-    if (!course) {
-      showDraftMessage('Nothing to save — open or generate a course first.');
-      return;
-    }
-    showDraftMessage('Saving draft…');
-    try {
-    if (activeDraftId) {
-      // Prefer async payload (sync cache may be empty after refresh)
-      const existing = await draftManager.loadDraftAsync(activeDraftId);
-      if (existing?.phase === 'preview') {
-        const updated = await draftManager.replacePreviewDraft(activeDraftId, course, playerConfig, theme, {
-          learningObjectives,
-          syntheticSlideOverrides,
-          syntheticAudioMap,
-          examQuestions,
-        });
-        showDraftMessage(
-          updated.success
-            ? `${updated.message} You can refresh safely — reopen from Save.`
-            : updated.message
-        );
-        if (updated.success) navigateTo(ROUTES.preview(activeDraftId), true);
-        return;
-      }
-    }
-      const result = await draftManager.savePreviewDraft(course, playerConfig, theme, {
-        learningObjectives,
-        syntheticSlideOverrides,
-        syntheticAudioMap,
-        examQuestions,
-      });
-      showDraftMessage(
-        result.success
-          ? `${result.message} You can refresh safely — reopen from Save.`
-          : result.message
-      );
-      if (result.success && result.id) {
-        setActiveDraftId(result.id);
-        navigateTo(ROUTES.preview(result.id));
-      }
-    } catch (err: any) {
-      console.error('[Drafts] Save failed:', err);
-      showDraftMessage(err?.message || 'Failed to save draft.');
-    }
-  };
 
   const applyDesignSnapshot = (design: Omit<DesignDraftSnapshot, 'phase'> | DesignDraftSnapshot) => {
     setCourseTitle(design.courseTitle || '');
@@ -1012,11 +1071,17 @@ export default function App() {
 
   const handleReplaceDraft = async (id: string) => {
     if (!course) return;
-    const result = await draftManager.replacePreviewDraft(id, course, playerConfig, theme);
-    showDraftMessage(result.message);
-    if (result.success) {
-      setActiveDraftId(id);
-      navigateTo(ROUTES.preview(id), true);
+    setIsSavingDraft(true);
+    showDraftMessage('Overwriting draft…');
+    try {
+      const result = await draftManager.replacePreviewDraft(id, course, playerConfig, theme, draftSaveExtras());
+      showDraftMessage(result.message);
+      if (result.success) {
+        setActiveDraftId(id);
+        navigateTo(ROUTES.preview(id), true);
+      }
+    } finally {
+      setIsSavingDraft(false);
     }
   };
 
@@ -4303,7 +4368,10 @@ export default function App() {
               canSave={draftManager.canSave}
               isAuthenticated={!!user}
               currentCourseTitle={course?.title}
+              activeDraftId={activeDraftId}
+              isSaving={isSavingDraft}
               onSave={handleSaveDraft}
+              onUpdateCurrent={activeDraftId ? () => { void handleUpdateActiveDraft(); } : undefined}
               onLoad={handleLoadDraft}
               onDelete={(id) => { void draftManager.deleteDraft(id); }}
               onReplace={(id) => { void handleReplaceDraft(id); }}
@@ -5195,9 +5263,9 @@ export default function App() {
                       onClick={() => setShowDraftsPanel(true)}
                       className="relative flex items-center gap-1 px-2 py-1 rounded-md border border-slate-600/60 hover:bg-slate-700/30 text-slate-300 text-[11px] font-semibold"
                     >
-                      <Save className="w-3 h-3" />
-                      <span className="hidden lg:inline">Save</span>
-                      {draftManager.slotsUsed > 0 && (
+                      {isSavingDraft ? <Loader2 className="w-3 h-3 animate-spin text-indigo-300" /> : <Save className="w-3 h-3" />}
+                      <span className="hidden lg:inline">{isSavingDraft ? 'Saving…' : 'Save'}</span>
+                      {draftManager.slotsUsed > 0 && !isSavingDraft && (
                         <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-indigo-500 text-white text-[10px] font-black rounded-full flex items-center justify-center">
                           {draftManager.slotsUsed}
                         </span>
@@ -7570,13 +7638,18 @@ export default function App() {
             aria-live="polite"
           >
             <div className={cn(
-              'rounded-xl border px-4 py-3 text-sm font-medium shadow-2xl backdrop-blur-md',
-              /fail|error|cannot|can’t|quota|not found/i.test(draftSaveMessage)
-                ? 'bg-amber-950/95 border-amber-600/40 text-amber-100'
-                : /eligible|skipped|system slide/i.test(draftSaveMessage)
-                  ? 'bg-slate-900/95 border-slate-600 text-slate-100'
-                  : 'bg-emerald-950/95 border-emerald-600/40 text-emerald-100'
+              'rounded-xl border px-4 py-3 text-sm font-medium shadow-2xl backdrop-blur-md flex items-center gap-2',
+              isSavingDraft || /saving|updating|overwriting/i.test(draftSaveMessage)
+                ? 'bg-slate-900/95 border-indigo-500/40 text-indigo-100'
+                : /fail|error|cannot|can’t|quota|not found/i.test(draftSaveMessage)
+                  ? 'bg-amber-950/95 border-amber-600/40 text-amber-100'
+                  : /eligible|skipped|system slide/i.test(draftSaveMessage)
+                    ? 'bg-slate-900/95 border-slate-600 text-slate-100'
+                    : 'bg-emerald-950/95 border-emerald-600/40 text-emerald-100'
             )}>
+              {(isSavingDraft || /saving|updating|overwriting/i.test(draftSaveMessage)) && (
+                <Loader2 className="w-4 h-4 shrink-0 animate-spin text-indigo-300" />
+              )}
               {draftSaveMessage}
             </div>
           </motion.div>
