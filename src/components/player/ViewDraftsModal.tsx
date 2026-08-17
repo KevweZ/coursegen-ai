@@ -99,6 +99,9 @@ export const ViewDraftsModal: React.FC<Props> = ({
                   <span className={cloudEnabled ? 'text-emerald-400/90' : 'text-amber-400/90'}>
                     {' '}· {cloudEnabled ? 'Account sync on' : 'Local only — cloud drafts unavailable'}
                   </span>
+                  <span className="block text-slate-500 text-xs mt-1">
+                    Tip: on the device that has the draft, tap the refresh icon to upload it to your account before checking another device.
+                  </span>
                 </p>
               </div>
             </div>
@@ -108,7 +111,7 @@ export const ViewDraftsModal: React.FC<Props> = ({
                   onClick={() => { void handleRefresh(); }}
                   disabled={refreshing}
                   className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-50"
-                  title="Refresh list"
+                  title="Sync drafts to your account"
                 >
                   {refreshing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
                 </button>

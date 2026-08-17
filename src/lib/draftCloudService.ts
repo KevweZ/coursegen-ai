@@ -191,6 +191,36 @@ export async function downloadCloudAssets(userId: string, draftId: string): Prom
   return out;
 }
 
+function leanSnapshotForUpload(snapshot: CloudDraftSnapshot): CloudDraftSnapshot {
+  const strip = (value: unknown, depth = 0): unknown => {
+    if (depth > 14 || value == null) return value;
+    if (typeof value === 'string') {
+      if (value.startsWith('data:') && value.length > 2000) return '';
+      if (value.startsWith('blob:')) return '';
+      return value;
+    }
+    if (Array.isArray(value)) return value.map(v => strip(v, depth + 1));
+    if (typeof value === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        // Skip ephemeral / huge fields that belong in asset storage
+        if (/^(voiceOverUrl|audioUrl|coverImage|imageUrl|mediaUrl)$/i.test(k) && typeof v === 'string' && v.length > 500) {
+          out[k] = '';
+          continue;
+        }
+        out[k] = strip(v, depth + 1);
+      }
+      return out;
+    }
+    return value;
+  };
+  try {
+    return strip(JSON.parse(JSON.stringify(snapshot))) as CloudDraftSnapshot;
+  } catch {
+    return strip(snapshot) as CloudDraftSnapshot;
+  }
+}
+
 export async function upsertCloudDraft(
   userId: string,
   meta: CloudDraftMeta,
@@ -203,13 +233,39 @@ export async function upsertCloudDraft(
   }
 
   try {
+    const lean = leanSnapshotForUpload(snapshot);
+    let body = JSON.stringify({ meta, snapshot: lean, workspaceId: workspaceId || null });
+    // Keep well under Worker/proxy limits
+    if (body.length > 12_000_000) {
+      const minimal = {
+        ...lean,
+        course: lean.phase === 'preview' && lean.course
+          ? {
+              ...lean.course,
+              modules: (lean.course.modules || []).map((m: any) => ({
+                ...m,
+                slides: (m.slides || []).map((s: any) => ({
+                  id: s.id,
+                  title: s.title,
+                  type: s.type,
+                  content: typeof s.content === 'string' ? s.content.slice(0, 4000) : s.content,
+                  voiceOverText: typeof s.voiceOverText === 'string' ? s.voiceOverText.slice(0, 4000) : s.voiceOverText,
+                  data: s.data,
+                })),
+              })),
+            }
+          : lean.course,
+      };
+      body = JSON.stringify({ meta, snapshot: minimal, workspaceId: workspaceId || null });
+    }
+
     const res = await authedFetch('/api/drafts/upsert', {
       method: 'POST',
-      body: JSON.stringify({ meta, snapshot, workspaceId: workspaceId || null }),
+      body,
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      return { ok: false, error: data.error || `Cloud save failed (${res.status})` };
+      return { ok: false, error: data.error || data.message || `Cloud save failed (${res.status})` };
     }
 
     try {

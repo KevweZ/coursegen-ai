@@ -4080,8 +4080,30 @@ export default function App() {
                     <button
                       onClick={() => {
                         setAdminDropdownOpen(false);
-                        void draftManager.refreshDrafts();
-                        setShowViewDraftsModal(true);
+                        void (async () => {
+                          showDraftMessage('Syncing drafts to your account…');
+                          const report = await draftManager.refreshDrafts();
+                          setShowViewDraftsModal(true);
+                          if (report.migrated > 0 && report.failed === 0) {
+                            showDraftMessage(
+                              `Synced ${report.migrated} draft${report.migrated === 1 ? '' : 's'} to your account — open View Drafts on your iPhone to see them.`
+                            );
+                          } else if (report.failed > 0) {
+                            showDraftMessage(
+                              `Cloud sync issue: ${report.errors[0] || `${report.failed} draft(s) failed`}. Local drafts: ${report.localCount}, cloud: ${report.cloudCount}.`
+                            );
+                          } else if (report.cloudCount > 0) {
+                            showDraftMessage(
+                              `Account has ${report.cloudCount} draft${report.cloudCount === 1 ? '' : 's'} ready on other devices.`
+                            );
+                          } else if (report.localCount > 0) {
+                            showDraftMessage(
+                              `Found ${report.localCount} draft(s) on this device but none in the cloud yet. Tap Sync in View Drafts, or re-save the draft.`
+                            );
+                          } else {
+                            showDraftMessage('No drafts found on this device yet.');
+                          }
+                        })();
                       }}
                       className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800 text-sm font-medium transition-all text-left"
                     >
@@ -4301,7 +4323,27 @@ export default function App() {
             cloudEnabled={draftManager.cloudEnabled}
             slotsUsed={draftManager.slotsUsed}
             slotsTotal={draftManager.slotsTotal}
-            onRefresh={() => draftManager.refreshDrafts()}
+            onRefresh={async () => {
+              showDraftMessage('Syncing drafts to your account…');
+              const report = await draftManager.refreshDrafts();
+              if (report.migrated > 0 && report.failed === 0) {
+                showDraftMessage(
+                  `Synced ${report.migrated} draft${report.migrated === 1 ? '' : 's'} — they should now appear on your iPhone after refresh.`
+                );
+              } else if (report.failed > 0) {
+                showDraftMessage(
+                  `Sync problem: ${report.errors[0] || 'upload failed'}`
+                );
+              } else if (report.cloudCount > 0) {
+                showDraftMessage(`Up to date — ${report.cloudCount} draft(s) on your account.`);
+              } else {
+                showDraftMessage(
+                  report.localCount > 0
+                    ? 'Drafts are on this device only — re-save a draft, then Sync again.'
+                    : 'No drafts to sync yet.'
+                );
+              }
+            }}
             onLoad={handleLoadDraft}
             onDelete={(id) => { void draftManager.deleteDraft(id); }}
             onRename={async (id, title) => {

@@ -473,7 +473,7 @@ export interface UseDraftCoursesReturn {
   canSave: boolean;
   slotsUsed: number;
   slotsTotal: number;
-  refreshDrafts: () => Promise<void>;
+  refreshDrafts: () => Promise<{ migrated: number; failed: number; cloudCount: number; localCount: number; errors: string[] }>;
   savePreviewDraft: (
     course: any,
     playerConfig: any,
@@ -551,14 +551,16 @@ export function useDraftCourses(
   const payloadCacheRef = useRef<Map<string, DraftSnapshot>>(new Map());
 
   const refreshDrafts = useCallback(async () => {
+    const report = { migrated: 0, failed: 0, cloudCount: 0, localCount: 0, errors: [] as string[] };
     if (!userId) {
       setDrafts([]);
       setIsReady(true);
-      return;
+      return report;
     }
     try {
       const tombstones = await readTombstones(userId);
       let local = (await loadDraftsForUser(userId)).filter(d => !tombstones.has(d.id));
+      report.localCount = local.length;
       resetCloudDraftsProbe();
       const cloudOk = await isCloudDraftsAvailable();
       setCloudEnabled(cloudOk);
@@ -583,7 +585,11 @@ export function useDraftCourses(
           try {
             const raw = await idbGet<unknown>(STORE_PAYLOAD, payloadKey(userId, meta.id));
             const snapshot = parseSnapshotRaw(raw);
-            if (!snapshot) continue;
+            if (!snapshot) {
+              report.failed += 1;
+              report.errors.push(`“${meta.courseTitle}” — missing local content to upload`);
+              continue;
+            }
             let assets =
               (await idbGet<Record<string, string>>(STORE_ASSETS, payloadKey(userId, meta.id))) || {};
             if (snapshot.phase === 'preview' && snapshot.course) {
@@ -598,16 +604,25 @@ export function useDraftCourses(
             if (up.ok) {
               console.log(`[DraftCourses] Migrated "${meta.courseTitle}" → cloud`);
               cloudIds.add(meta.id);
+              report.migrated += 1;
+              if (up.error) report.errors.push(`“${meta.courseTitle}” — ${up.error}`);
             } else {
               console.warn(`[DraftCourses] Cloud migrate skipped for ${meta.id}:`, up.error);
+              report.failed += 1;
+              report.errors.push(`“${meta.courseTitle}” — ${up.error || 'upload failed'}`);
             }
-          } catch (e) {
+          } catch (e: any) {
             console.warn('[DraftCourses] Cloud migrate failed for', meta.id, e);
+            report.failed += 1;
+            report.errors.push(`“${meta.courseTitle}” — ${e?.message || 'upload failed'}`);
           }
         }
         cloud = (await listCloudDrafts(userId, workspaceId)).filter(d => !activeTombstones.has(d.id));
+      } else {
+        report.errors.push('Cloud sync unavailable — sign in again, then tap Sync.');
       }
 
+      report.cloudCount = cloud.length;
       const remainingTombstones = await readTombstones(userId);
       // Always merge cloud + local so this device’s drafts stay visible while migrating up
       const merged = mergeDraftLists(cloud, local).filter(d => !remainingTombstones.has(d.id));
@@ -616,9 +631,11 @@ export function useDraftCourses(
     } catch (e) {
       console.error('[DraftCourses] refresh failed:', e);
       setDrafts([]);
+      report.errors.push(e instanceof Error ? e.message : 'Refresh failed');
     } finally {
       setIsReady(true);
     }
+    return report;
   }, [userId, workspaceId]);
 
   useEffect(() => {

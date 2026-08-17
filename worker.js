@@ -32,16 +32,20 @@ export default {
       try {
         const renderRes = await fetch(proxyRequest);
 
-        // If Render returns HTML (cold-start splash / error page), surface a
-        // clean JSON error rather than forwarding raw HTML that breaks JSON.parse
+        // If Render returns HTML (cold-start splash / error page), don't pretend JSON succeeded
         const contentType = renderRes.headers.get('content-type') ?? '';
         if (contentType.includes('text/html')) {
+          const status = renderRes.status;
+          const isWarmup = status === 502 || status === 503 || status === 520 || status === 521 || status === 522;
           return new Response(
             JSON.stringify({
-              error: 'Server is warming up — please wait 20–30 seconds and try again.',
-              code:  'COLD_START',
+              error: isWarmup
+                ? 'Server is warming up — please wait 20–30 seconds and try again.'
+                : `API error (${status}). If you were saving a draft, try Sync again.`,
+              code: isWarmup ? 'COLD_START' : 'UPSTREAM_HTML',
+              status,
             }),
-            { status: 503, headers: { 'Content-Type': 'application/json' } }
+            { status: isWarmup ? 503 : 502, headers: { 'Content-Type': 'application/json' } }
           );
         }
 
