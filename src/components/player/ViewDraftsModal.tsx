@@ -97,7 +97,7 @@ export const ViewDraftsModal: React.FC<Props> = ({
                     <span className="text-slate-500"> · {slotsUsed}/{slotsTotal} slots used</span>
                   )}
                   <span className={cloudEnabled ? 'text-emerald-400/90' : 'text-amber-400/90'}>
-                    {' '}· {cloudEnabled ? 'Cloud synced' : 'Local only — run drafts SQL migration'}
+                    {' '}· {cloudEnabled ? 'Account sync on' : 'Local only — cloud drafts unavailable'}
                   </span>
                 </p>
               </div>

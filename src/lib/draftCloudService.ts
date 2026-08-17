@@ -23,6 +23,27 @@ const CHUNK_CHARS = 3_500_000;
 
 let cloudReady: boolean | null = null;
 
+/** Remove huge inline data-URLs that blow past PostgREST body limits (media lives in Storage). */
+function stripInlineDataUrls(value: unknown, depth = 0): unknown {
+  if (depth > 14 || value == null) return value;
+  if (typeof value === 'string') {
+    if (value.startsWith('data:') && value.length > 8_000) return '';
+    if (value.startsWith('blob:')) return '';
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(v => stripInlineDataUrls(v, depth + 1));
+  }
+  if (typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = stripInlineDataUrls(v, depth + 1);
+    }
+    return out;
+  }
+  return value;
+}
+
 export async function isCloudDraftsAvailable(): Promise<boolean> {
   if (cloudReady != null) return cloudReady;
   try {
@@ -63,7 +84,10 @@ export async function listCloudDrafts(
     .order('updated_at', { ascending: false });
 
   if (workspaceId) {
-    query = query.eq('workspace_id', workspaceId);
+    // Shared team pool + this user’s personal drafts that predate workspace attach
+    query = query.or(
+      `workspace_id.eq.${workspaceId},and(user_id.eq.${userId},workspace_id.is.null)`
+    );
   } else {
     query = query.eq('user_id', userId);
   }
@@ -186,6 +210,16 @@ export async function upsertCloudDraft(
   }
 
   try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData?.session?.user?.id) {
+      return { ok: false, error: 'Not signed in — cloud draft sync requires an active session.' };
+    }
+    if (sessionData.session.user.id !== userId) {
+      return { ok: false, error: 'Session user mismatch — sign out and sign back in, then save again.' };
+    }
+
+    const leanSnapshot = stripInlineDataUrls(snapshot) as CloudDraftSnapshot;
+
     const row: Record<string, unknown> = {
       id: meta.id,
       user_id: userId,
@@ -194,8 +228,8 @@ export async function upsertCloudDraft(
       slide_count: meta.slideCount,
       module_count: meta.moduleCount,
       theme: meta.theme || 'light',
-      player_config: snapshot.phase === 'preview' ? snapshot.playerConfig ?? null : null,
-      snapshot,
+      player_config: leanSnapshot.phase === 'preview' ? leanSnapshot.playerConfig ?? null : null,
+      snapshot: leanSnapshot,
       updated_at: meta.savedAt || new Date().toISOString(),
     };
     if (workspaceId) row.workspace_id = workspaceId;
@@ -203,7 +237,16 @@ export async function upsertCloudDraft(
     const { error } = await supabase.from('course_drafts').upsert(row, { onConflict: 'id' });
     if (error) throw error;
 
-    await uploadAssets(userId, meta.id, assets);
+    try {
+      await uploadAssets(userId, meta.id, assets);
+    } catch (assetErr: any) {
+      // Row is already in cloud — surface asset failure but keep draft listable on other devices
+      console.warn('[DraftCloud] Assets upload failed (draft row saved):', assetErr);
+      return {
+        ok: true,
+        error: `Synced draft shell; media upload failed (${assetErr?.message || 'storage error'}). Re-save to retry media.`,
+      };
+    }
     return { ok: true };
   } catch (e: any) {
     console.error('[DraftCloud] upsert failed:', e);

@@ -1144,6 +1144,123 @@ app.post('/api/admin/revoke', async (req, res) => {
   }
 });
 
+// ─── 6d. Admin — List trial invitees (cloud source of truth) ─────────────────
+app.get('/api/admin/invites', async (req, res) => {
+  const isAdmin = await verifyAdminJwt(req.headers.authorization).catch(() => false);
+  if (!isAdmin) {
+    return res.status(403).json({ error: 'Forbidden.' });
+  }
+
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supa = createClient(
+      process.env.VITE_SUPABASE_URL,
+      getSupabaseKey(),
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+
+    const invites = [];
+    let page = 1;
+    while (page <= 30) {
+      const { data, error } = await supa.auth.admin.listUsers({ page, perPage: 200 });
+      if (error) {
+        console.error('[Admin Invites] listUsers error:', error.message);
+        return res.status(400).json({ error: error.message });
+      }
+      for (const u of data?.users || []) {
+        const meta = u.user_metadata || {};
+        const role = String(meta.role || '');
+        const plan = String(meta.plan || '');
+        const expiresAt = meta.trial_expires_at || null;
+        const isTrialish = role === 'trial' || plan === 'trial' || !!expiresAt;
+        if (!isTrialish || !u.email) continue;
+        invites.push({
+          email: u.email,
+          userId: u.id,
+          expiresAt: expiresAt || null,
+          invitedAt: u.created_at || u.invited_at || new Date().toISOString(),
+        });
+      }
+      if (!data?.users?.length || data.users.length < 200) break;
+      page += 1;
+    }
+
+    invites.sort((a, b) => String(b.invitedAt).localeCompare(String(a.invitedAt)));
+    return res.json({ success: true, invites });
+  } catch (err) {
+    console.error('[Admin Invites] Error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── 6e. Admin — Reactivate / extend trial ───────────────────────────────────
+app.post('/api/admin/extend', async (req, res) => {
+  const { userId, email, trialDays = 7 } = req.body || {};
+
+  const isAdmin = await verifyAdminJwt(req.headers.authorization).catch(() => false);
+  if (!isAdmin) {
+    return res.status(403).json({ error: 'Forbidden.' });
+  }
+  if (!userId && !email?.trim()) {
+    return res.status(400).json({ error: 'userId or email is required.' });
+  }
+
+  const days = Math.min(90, Math.max(1, Number(trialDays) || 7));
+
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supa = createClient(
+      process.env.VITE_SUPABASE_URL,
+      getSupabaseKey(),
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+
+    let user = null;
+    if (userId) {
+      const { data, error } = await supa.auth.admin.getUserById(userId);
+      if (error) return res.status(400).json({ error: error.message });
+      user = data?.user || null;
+    } else {
+      const target = String(email).trim().toLowerCase();
+      let page = 1;
+      while (!user && page <= 30) {
+        const { data, error } = await supa.auth.admin.listUsers({ page, perPage: 200 });
+        if (error) return res.status(400).json({ error: error.message });
+        user = (data?.users || []).find(u => (u.email || '').toLowerCase() === target) || null;
+        if (!data?.users?.length || data.users.length < 200) break;
+        page += 1;
+      }
+    }
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+    const { error } = await supa.auth.admin.updateUserById(user.id, {
+      user_metadata: {
+        ...(user.user_metadata || {}),
+        role: 'trial',
+        plan: 'trial',
+        trial_expires_at: expiresAt,
+      },
+    });
+    if (error) return res.status(400).json({ error: error.message });
+
+    console.log(`[Admin Extend] Reactivated ${user.email} — expires ${expiresAt}`);
+    return res.json({
+      success: true,
+      userId: user.id,
+      email: user.email,
+      expiresAt,
+      trialDays: days,
+    });
+  } catch (err) {
+    console.error('[Admin Extend] Error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 
 // ─── 7. OpenAI TTS Proxy ────────────────────────────────────────────────────
 /** Serialize TTS calls process-wide so a full course cannot stampede OpenAI RPM limits. */

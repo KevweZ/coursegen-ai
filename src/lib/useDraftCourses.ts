@@ -805,10 +805,19 @@ export function useDraftCourses(
     };
     const result = await persistNew(meta, snapshot, assets);
     if (!result.ok) return { success: false, message: result.error || 'Failed to save draft.' };
-    const cloudHint = result.error?.includes('local only') ? ` ${result.error}` : '';
+    if (result.error?.includes('local only')) {
+      return {
+        success: true,
+        message: `Draft "${meta.courseTitle}" saved on this device only — cloud sync failed:${result.error.replace(/^ \(local only —/, '')} Open View Drafts on another device after sync succeeds.`,
+        id,
+      };
+    }
+    if (result.error) {
+      return { success: true, message: `Draft "${meta.courseTitle}" saved to your account. ${result.error}`, id };
+    }
     return {
       success: true,
-      message: `Draft "${meta.courseTitle}" saved. Reopen anytime from Save.${cloudHint}`,
+      message: `Draft "${meta.courseTitle}" saved to your account (available on other devices).`,
       id,
     };
   }, [userId, slotsTotal]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -836,7 +845,17 @@ export function useDraftCourses(
     };
     const result = await persistNew(meta, snapshot);
     if (!result.ok) return { success: false, message: result.error || 'Failed to save draft.' };
-    return { success: true, message: `Design draft "${meta.courseTitle}" saved to cloud!`, id };
+    if (result.error?.includes('local only')) {
+      return {
+        success: true,
+        message: `Design draft "${meta.courseTitle}" saved on this device only — cloud sync failed:${result.error.replace(/^ \(local only —/, '')}`,
+        id,
+      };
+    }
+    if (result.error) {
+      return { success: true, message: `Design draft "${meta.courseTitle}" saved. ${result.error}`, id };
+    }
+    return { success: true, message: `Design draft "${meta.courseTitle}" saved to your account.`, id };
   }, [userId, slotsTotal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadDraftAsync = useCallback(async (

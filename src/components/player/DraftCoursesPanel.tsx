@@ -325,7 +325,7 @@ export const DraftCoursesPanel: React.FC<Props> = ({
 
             {/* Footer */}
             <div className={cn('px-5 py-3 border-t text-xs', subText, theme === 'light' ? 'border-slate-200' : 'border-slate-700/60')}>
-              Drafts are saved locally on this device. Cloud sync available on Business plan.
+              Drafts save to your NexCourse account so they appear on other devices when you’re signed in.
             </div>
           </div>
         </>
