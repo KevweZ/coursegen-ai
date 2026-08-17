@@ -332,11 +332,13 @@ const MAX_CONTENT_AI_IMAGES = 14;
  * Skips quizzes, knowledge checks, objectives/overview, and slides that already have an image.
  * Prefer leaving source-extracted imageUrl untouched.
  */
+export type ContentImageGenResult = { course: any; jobsAttempted: number };
+
 export async function generateContentSlideImages(
   course: any,
   onProgress?: (done: number, total: number) => void
-): Promise<any> {
-  if (!course?.modules?.length) return course;
+): Promise<ContentImageGenResult> {
+  if (!course?.modules?.length) return { course, jobsAttempted: 0 };
 
   type Job = { kind: 'slide' | 'tab'; mi: number; si: number; tabIndex?: number; subject: string; slideTitle: string };
   const jobs: Job[] = [];
@@ -391,7 +393,7 @@ export async function generateContentSlideImages(
   });
 
   const selected = jobs.slice(0, MAX_CONTENT_AI_IMAGES);
-  if (!selected.length) return course;
+  if (!selected.length) return { course, jobsAttempted: 0 };
 
   // Deep-clone modules we will mutate
   const modules = course.modules.map((m: any) => ({
@@ -442,5 +444,5 @@ export async function generateContentSlideImages(
     if (done < selected.length) await new Promise(r => setTimeout(r, 1400));
   }
 
-  return { ...course, modules };
+  return { course: { ...course, modules }, jobsAttempted: selected.length };
 }

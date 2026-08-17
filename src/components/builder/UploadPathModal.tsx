@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { FileUp, Sparkles, SlidersHorizontal, X, ArrowRight } from 'lucide-react';
+import { FileUp, Sparkles, ListChecks, X, ArrowRight, SlidersHorizontal } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
 export type UploadPathChoice = 'quick' | 'customize';
@@ -9,9 +9,11 @@ interface Props {
   fileName: string;
   onConfirm: (choice: UploadPathChoice) => void;
   onCancel: () => void;
+  /** Open saved Course Settings (defaults) without losing the pending upload. */
+  onViewCourseSettings?: () => void;
 }
 
-export function UploadPathModal({ fileName, onConfirm, onCancel }: Props) {
+export function UploadPathModal({ fileName, onConfirm, onCancel, onViewCourseSettings }: Props) {
   const [choice, setChoice] = useState<UploadPathChoice>('quick');
 
   return (
@@ -29,7 +31,7 @@ export function UploadPathModal({ fileName, onConfirm, onCancel }: Props) {
               <FileUp className="w-5 h-5 text-purple-300" />
             </div>
             <div className="min-w-0">
-              <h3 className="text-lg font-bold text-white">How would you like to proceed?</h3>
+              <h3 className="text-lg font-bold text-white">How would you like to build?</h3>
               <p className="text-sm text-slate-400 mt-0.5 truncate" title={fileName}>{fileName}</p>
             </div>
           </div>
@@ -43,6 +45,11 @@ export function UploadPathModal({ fileName, onConfirm, onCancel }: Props) {
         </div>
 
         <div className="p-5 space-y-3">
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Both options use your <strong className="text-slate-300">Course Settings</strong> (player, interactions, audio, and multimedia preferences).
+            {onViewCourseSettings ? ' Review or edit them anytime before you continue.' : null}
+          </p>
+
           <button
             type="button"
             onClick={() => setChoice('quick')}
@@ -63,10 +70,10 @@ export function UploadPathModal({ fileName, onConfirm, onCancel }: Props) {
               <div>
                 <div className="flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-purple-300" />
-                  <span className="font-bold text-white">Build with my defaults</span>
+                  <span className="font-bold text-white">Build now</span>
                 </div>
                 <p className="text-sm text-slate-400 mt-1 leading-relaxed">
-                  Skip Course Settings and go straight to building. Uses your saved defaults from the profile menu.
+                  Analyze the document and generate the course without stopping. Uses your saved Course Settings.
                 </p>
               </div>
             </div>
@@ -91,15 +98,26 @@ export function UploadPathModal({ fileName, onConfirm, onCancel }: Props) {
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <SlidersHorizontal className="w-4 h-4 text-indigo-300" />
-                  <span className="font-bold text-white">Customize settings</span>
+                  <ListChecks className="w-4 h-4 text-indigo-300" />
+                  <span className="font-bold text-white">Review before build</span>
                 </div>
                 <p className="text-sm text-slate-400 mt-1 leading-relaxed">
-                  Analyze the document, then review Course Settings, objectives, and the course structure before building.
+                  After analysis, review and edit the topic, description, objectives, and course structure — then generate when you are ready.
                 </p>
               </div>
             </div>
           </button>
+
+          {onViewCourseSettings && (
+            <button
+              type="button"
+              onClick={onViewCourseSettings}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-700 bg-slate-950 text-sm font-bold text-slate-300 hover:border-indigo-500/50 hover:text-indigo-200 transition-colors"
+            >
+              <SlidersHorizontal className="w-4 h-4 text-indigo-400" />
+              View Course Settings
+            </button>
+          )}
         </div>
 
         <div className="flex items-center justify-end gap-3 p-5 border-t border-slate-800 bg-slate-900/80">

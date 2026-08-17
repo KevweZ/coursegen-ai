@@ -650,14 +650,16 @@ export default function App() {
   const [showAppImagePicker, setShowAppImagePicker] = React.useState(false);
   const [showImageDropdown, setShowImageDropdown] = React.useState(false);
   const [draftSaveMessage, setDraftSaveMessage] = React.useState<string | null>(null);
+  const draftMessageTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [activeDraftId, setActiveDraftId] = React.useState<string | null>(null);
   const [designDraftSavedFlash, setDesignDraftSavedFlash] = React.useState(false);
   const playerDefaultsLoadedFor = React.useRef<string | null>(null);
 
   const showDraftMessage = (msg: string) => {
     setDraftSaveMessage(msg);
-    const long = /fail|full|error|quota|sign in|cannot|not found|narration|trial|credit|audio/i.test(msg);
-    setTimeout(() => setDraftSaveMessage(null), long ? 10000 : 3500);
+    if (draftMessageTimerRef.current) clearTimeout(draftMessageTimerRef.current);
+    const long = /fail|full|error|quota|sign in|cannot|can’t|not found|narration|trial|credit|audio|eligible|skipped|system slide/i.test(msg);
+    draftMessageTimerRef.current = setTimeout(() => setDraftSaveMessage(null), long ? 10000 : 4500);
   };
 
   const collectDesignSnapshot = (): Omit<DesignDraftSnapshot, 'phase'> => ({
@@ -1040,6 +1042,30 @@ export default function App() {
     setActiveDraftId(null);
     setIsSandboxMode(false);
     navigateTo(ROUTES.upload);
+  };
+
+  /** Back from Course Settings — resume upload chooser if a file is still pending. */
+  const backFromCourseSettings = () => {
+    if (pendingUploadFile) {
+      setStep('home');
+      setMobileDesignDemo(false);
+      navigateTo(ROUTES.upload);
+      setShowUploadPathModal(true);
+      return;
+    }
+    goHome();
+  };
+
+  /** From upload chooser: open saved Course Settings without discarding the pending file. */
+  const viewCourseSettingsFromUploadPath = () => {
+    setShowUploadPathModal(false);
+    applySavedSettings(resolveCourseSettings(user?.id));
+    setSettingsMode('defaults');
+    setIsSandboxMode(false);
+    setMobileDesignDemo(false);
+    setActiveDraftId(null);
+    setStep('details');
+    navigateTo(ROUTES.courseSettings);
   };
 
   /** Public marketing landing (nexcourse.ai /) — logo + bare-domain default */
@@ -3140,7 +3166,7 @@ export default function App() {
             working = await generateContentSlideImages(working, (done, total) => {
               setProgress(72 + Math.round((done / Math.max(1, total)) * 6));
               if (done === total) showDraftMessage(`Content visuals ready (${total}) ✓`);
-            });
+            }).then(r => r.course);
             if (coverUrl) working = { ...working, coverImage: coverUrl };
             working = seedFloatingFromCourse(working) || working;
             setCourse(working);
@@ -3510,10 +3536,12 @@ export default function App() {
     try {
       const { generateContentSlideImages, generateCourseCoverImage } = await import('./services/imageService');
       let working: any = course;
+      let coverMade = false;
       if (!working.coverImage) {
         try {
           const cover = await generateCourseCoverImage(working.title || 'Course', working.description || '');
           if (cover) {
+            coverMade = true;
             working = { ...working, coverImage: cover };
             setCourse(working);
             setCourseBg(cover);
@@ -3522,13 +3550,27 @@ export default function App() {
           console.warn('[Images] Cover regen failed', e);
         }
       }
-      working = await generateContentSlideImages(working, (done, total) => {
+      const { course: withImages, jobsAttempted } = await generateContentSlideImages(working, (done, total) => {
         showDraftMessage(`Generating AI images… ${done}/${total}`);
       });
-      working = stripCourseAutoPromotedFloating(working);
+      working = stripCourseAutoPromotedFloating(withImages);
       setFloatingImagesMap(floatingMapFromCourse(working));
       setCourse(working);
-      showDraftMessage('AI images updated. Save the draft to keep them.');
+      if (!coverMade && jobsAttempted === 0) {
+        showDraftMessage(
+          'No eligible slides for AI images. Objectives, overviews, and quizzes are skipped — only content/tabs that still need visuals are filled. Use Upload Image for a specific slide.'
+        );
+      } else {
+        const parts = [
+          coverMade ? 'cover updated' : null,
+          jobsAttempted > 0 ? `${jobsAttempted} content visual${jobsAttempted === 1 ? '' : 's'}` : null,
+        ].filter(Boolean);
+        showDraftMessage(
+          parts.length
+            ? `AI images updated (${parts.join(', ')}). Save the draft to keep them.`
+            : 'AI images updated. Save the draft to keep them.'
+        );
+      }
     } catch (err: any) {
       console.error('[Images] Regen failed:', err);
       showDraftMessage(err?.message || 'Failed to regenerate AI images.');
@@ -4672,7 +4714,7 @@ export default function App() {
                         outlineDraft={outlineDraft}
                         onOutlineChange={setOutlineDraft}
                         onRegenerateOutline={regenerateOutlineForSettings}
-                        onBack={goHome}
+                        onBack={backFromCourseSettings}
                         onReplaceDocument={(e) => { if (e.target.files?.[0]) handleFileUpload(e); }}
                         onSaveSettings={persistCourseSettings}
                         onGenerateCourse={handleGenerateCourseFromSettings}
@@ -4685,6 +4727,27 @@ export default function App() {
                   </div>
                 </>
               ) : (
+              <>
+              {pendingUploadFile && settingsMode === 'defaults' && (
+                <div className="max-w-5xl mx-auto px-6 pt-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-indigo-500/30 bg-indigo-950/40 px-4 py-3 text-sm">
+                    <p className="text-slate-300">
+                      Upload waiting: <strong className="text-white">{pendingUploadFile.name}</strong>. Adjust Course Settings, then continue your build choice.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStep('home');
+                        navigateTo(ROUTES.upload);
+                        setShowUploadPathModal(true);
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shrink-0"
+                    >
+                      Back to build choices
+                    </button>
+                  </div>
+                </div>
+              )}
               <CourseSettingsPage
                 mode={settingsMode === 'defaults' ? 'defaults' : 'session'}
                 isSandboxMode={isSandboxMode}
@@ -4743,7 +4806,7 @@ export default function App() {
                 outlineDraft={outlineDraft}
                 onOutlineChange={setOutlineDraft}
                 onRegenerateOutline={regenerateOutlineForSettings}
-                onBack={goHome}
+                onBack={backFromCourseSettings}
                 onReplaceDocument={(e) => { if (e.target.files?.[0]) handleFileUpload(e); }}
                 onSaveSettings={persistCourseSettings}
                 onGenerateCourse={handleGenerateCourseFromSettings}
@@ -4752,6 +4815,7 @@ export default function App() {
                 designDraftSavedFlash={designDraftSavedFlash}
                 settingsSavedFlash={settingsSavedFlash}
               />
+              </>
               )}
             </motion.div>
           )}
@@ -4906,6 +4970,13 @@ export default function App() {
                               type="button"
                               onClick={() => {
                                 setShowEditMenu(false);
+                                const sid = String(currentSlide?.id || '');
+                                if (sid.startsWith('__') && sid !== '__cover__') {
+                                  showDraftMessage(
+                                    'This system slide can’t be regenerated as an interaction. Use Edit Slide → Edit Text or Audio, or open a content/knowledge-check slide to regenerate.'
+                                  );
+                                  return;
+                                }
                                 openRegenerateSlideDrawer(currentSlide);
                               }}
                               className="w-full text-left px-3 py-2 hover:bg-slate-800 text-amber-200 flex items-start gap-2"
@@ -6901,6 +6972,19 @@ export default function App() {
                       );
                     }
 
+                    if (isSynthetic) {
+                      return (
+                        <div className="space-y-4">
+                          <div className="p-3 bg-amber-900/20 border border-amber-700/30 rounded-xl text-xs text-amber-200 leading-relaxed">
+                            This is a <strong className="text-amber-100">system slide</strong> (objectives, module overview, player tour, etc.).
+                            It can’t be rebuilt as Tabs, Click &amp; Reveal, or a knowledge check.
+                            Use <strong className="text-white">Edit Text</strong> or <strong className="text-white">Audio</strong> to change this slide.
+                            Open a regular content or knowledge-check slide to regenerate interactions.
+                          </div>
+                        </div>
+                      );
+                    }
+
                     return (
                       <div className="space-y-4">
                         <div className="p-3 bg-amber-900/20 border border-amber-700/30 rounded-xl text-xs text-amber-200 leading-relaxed">
@@ -7163,6 +7247,7 @@ export default function App() {
               fileName={(pendingUploadFile || uploadedFile)!.name}
               onConfirm={confirmUploadPath}
               onCancel={cancelUploadPath}
+              onViewCourseSettings={viewCourseSettingsFromUploadPath}
             />
           )}
         </AnimatePresence>
@@ -7407,6 +7492,31 @@ export default function App() {
             apiBase={import.meta.env.VITE_API_BASE ?? ''}
             accessToken={adminToken}
           />
+        )}
+      </AnimatePresence>
+
+      {/* Global status toast — Drafts panel is often closed, so preview actions need visible feedback */}
+      <AnimatePresence>
+        {draftSaveMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[900] max-w-lg w-[min(92vw,32rem)] pointer-events-none"
+            role="status"
+            aria-live="polite"
+          >
+            <div className={cn(
+              'rounded-xl border px-4 py-3 text-sm font-medium shadow-2xl backdrop-blur-md',
+              /fail|error|cannot|can’t|quota|not found/i.test(draftSaveMessage)
+                ? 'bg-amber-950/95 border-amber-600/40 text-amber-100'
+                : /eligible|skipped|system slide/i.test(draftSaveMessage)
+                  ? 'bg-slate-900/95 border-slate-600 text-slate-100'
+                  : 'bg-emerald-950/95 border-emerald-600/40 text-emerald-100'
+            )}>
+              {draftSaveMessage}
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
 

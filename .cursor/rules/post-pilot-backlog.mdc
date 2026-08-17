@@ -1,0 +1,22 @@
+---
+description: Post-pilot backlog held until after closed-beta invitees finish reviewing (2.1, 2.2, video).
+alwaysApply: true
+---
+
+# Post-pilot backlog (do not ship during active pilot)
+
+Agreed with product to **hold** these until after the current closed-beta wave. Do not implement unless the user explicitly restarts them.
+
+## 2.1 — Separate post-upload review page
+- Rename the in-between workflow away from “Course Settings” (topic / description / objectives / structure).
+- Prefer **two tabs**: Course foundation (topic + description + objectives) and Course structure (outline).
+- Strongly link edits: objective format re-apply to manual objectives; sync structure when objectives change; confirm prompts when edits affect other tabs.
+
+## 2.2 — Course Structure interaction dropdowns
+- Make each slide’s interaction type on the Design/structure list a **clickable dropdown** (not a static label) so authors can pick another interaction before generate.
+
+## 1 — Multimedia upload (video + durable GIF story)
+- Expanding “Upload image” to real **video** needs player `<video>`, media kind on floats, durable storage (not blob-only), and SCORM binary packaging — not an `accept=` tweak.
+- GIF already works via `image/*` with caveats (crop freezes animation). Document; defer full “Upload multimedia” productization with video.
+
+When the user asks to resume post-pilot work, start with **2.1 + 2.2** before video.
