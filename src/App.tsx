@@ -90,9 +90,11 @@ import {
   DEFAULT_COURSE_SETTINGS,
   resolveCourseSettings,
   saveCourseSettings,
+  cacheCourseSettings,
   SavedCourseSettings,
 } from './lib/courseSettingsStorage';
-import { loadPlayerProperties, savePlayerProperties } from './lib/playerPropertiesStorage';
+import { loadPlayerProperties, savePlayerProperties, cachePlayerProperties } from './lib/playerPropertiesStorage';
+import { fetchAccountPreferences, pushAccountPreferences } from './lib/accountPreferences';
 import { CourseOutline, Slide, TerminalObjectiveGroup, ExamConfig, ExamQuestion, ExamSessionState, NavigationMode } from './types/course';
 import { extractTextFromFile, extractImagesFromFile, SourceImage } from './lib/fileProcessor';
 import { generateGameTemplate, generateStandaloneGame } from './services/aiGameService';
@@ -1662,20 +1664,9 @@ export default function App() {
   /** Per-slide set of explored interaction item ids (for requireInteractionsComplete) */
   const [exploredBySlide, setExploredBySlide] = useState<Record<string, string[]>>({});
 
-  // Load saved account-level player defaults once per signed-in user
+  // Player defaults are loaded with Course Settings via account preferences (see effect below).
   useEffect(() => {
-    if (!user?.id) {
-      playerDefaultsLoadedFor.current = null;
-      return;
-    }
-    if (playerDefaultsLoadedFor.current === user.id) return;
-    playerDefaultsLoadedFor.current = user.id;
-    const saved = loadPlayerProperties(user.id);
-    if (saved) {
-      setPlayerConfig(saved);
-      setNavigationMode(saved.navigationMode);
-      setExamConfig(c => ({ ...c, presentationMode: saved.examPresentationMode }));
-    }
+    if (!user?.id) playerDefaultsLoadedFor.current = null;
   }, [user?.id]);
 
   const markInteractionExplored = (slideId: string | undefined, itemId: string) => {
@@ -2276,10 +2267,40 @@ export default function App() {
     setTimeout(() => setSettingsSavedFlash(false), 2000);
   };
 
-  // Load saved course defaults once auth is ready (factory defaults for new accounts)
+  // Load saved course defaults once auth is ready (cloud account prefs → local cache → factory defaults)
   useEffect(() => {
     if (authLoading) return;
-    applySavedSettings(resolveCourseSettings(user?.id));
+    let cancelled = false;
+    (async () => {
+      if (!user?.id) {
+        applySavedSettings(resolveCourseSettings(null));
+        return;
+      }
+      const cloud = await fetchAccountPreferences();
+      if (cancelled) return;
+      const localSettings = resolveCourseSettings(user.id);
+      const localPlayer = loadPlayerProperties(user.id);
+
+      if (cloud?.courseSettings && typeof cloud.courseSettings === 'object') {
+        cacheCourseSettings(cloud.courseSettings as SavedCourseSettings, user.id);
+        applySavedSettings(cloud.courseSettings as SavedCourseSettings);
+      } else {
+        applySavedSettings(localSettings);
+        // First-time migrate this device’s settings up to the account
+        void pushAccountPreferences({ courseSettings: localSettings });
+      }
+
+      if (cloud?.playerProperties && typeof cloud.playerProperties === 'object') {
+        const merged = { ...defaultPlayerConfig, ...cloud.playerProperties };
+        cachePlayerProperties(merged, user.id);
+        applyPlayerConfig(merged);
+      } else if (localPlayer) {
+        applyPlayerConfig(localPlayer);
+        void pushAccountPreferences({ playerProperties: localPlayer });
+      }
+      playerDefaultsLoadedFor.current = user.id;
+    })();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user?.id]);
 

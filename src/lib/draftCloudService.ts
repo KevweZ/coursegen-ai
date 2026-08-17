@@ -1,10 +1,9 @@
 /**
- * Cloud draft persistence via Supabase (Postgres + Storage).
- * Source of truth for signed-in users; IndexedDB remains a local cache.
+ * Cloud draft persistence via the NexCourse server (service-role upsert).
+ * IndexedDB remains a per-device cache; the server is the cross-device source of truth.
  */
 import { supabase } from './supabaseClient';
 
-/** Loose shapes to avoid circular imports with useDraftCourses */
 export interface CloudDraftMeta {
   id: string;
   savedAt: string;
@@ -18,35 +17,49 @@ export interface CloudDraftMeta {
 export type CloudDraftSnapshot = Record<string, any>;
 
 const BUCKET = 'draft-assets';
-/** Keep each storage object comfortably under typical API limits */
 const CHUNK_CHARS = 3_500_000;
 
 let cloudReady: boolean | null = null;
 
-/** Remove huge inline data-URLs that blow past PostgREST body limits (media lives in Storage). */
-function stripInlineDataUrls(value: unknown, depth = 0): unknown {
-  if (depth > 14 || value == null) return value;
-  if (typeof value === 'string') {
-    if (value.startsWith('data:') && value.length > 8_000) return '';
-    if (value.startsWith('blob:')) return '';
-    return value;
+function apiBase(): string {
+  return String((import.meta as any).env?.VITE_API_BASE ?? '').replace(/\/$/, '');
+}
+
+async function getAccessToken(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token ?? null;
+}
+
+async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const token = await getAccessToken();
+  if (!token) throw new Error('Not signed in — cloud draft sync requires an active session.');
+  const headers = new Headers(init.headers || {});
+  headers.set('Authorization', `Bearer ${token}`);
+  if (init.body && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
   }
-  if (Array.isArray(value)) {
-    return value.map(v => stripInlineDataUrls(v, depth + 1));
-  }
-  if (typeof value === 'object') {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = stripInlineDataUrls(v, depth + 1);
-    }
-    return out;
-  }
-  return value;
+  return fetch(`${apiBase()}${path}`, { ...init, headers });
 }
 
 export async function isCloudDraftsAvailable(): Promise<boolean> {
   if (cloudReady != null) return cloudReady;
   try {
+    // Prefer server route (works even when browser RLS is misconfigured)
+    const token = await getAccessToken();
+    if (token) {
+      const res = await fetch(`${apiBase()}/api/drafts`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.status === 401) {
+        cloudReady = false;
+        return false;
+      }
+      // 200 or empty list = cloud path works; 500 with missing table still false
+      if (res.ok) {
+        cloudReady = true;
+        return true;
+      }
+    }
     const { error } = await supabase.from('course_drafts').select('id').limit(1);
     if (error) {
       console.warn('[DraftCloud] Table not ready:', error.message);
@@ -62,7 +75,6 @@ export async function isCloudDraftsAvailable(): Promise<boolean> {
   }
 }
 
-/** Reset probe after migration so the next call re-checks */
 export function resetCloudDraftsProbe() {
   cloudReady = null;
 }
@@ -76,38 +88,22 @@ export async function listCloudDrafts(
   workspaceId?: string | null
 ): Promise<CloudDraftMeta[]> {
   if (!(await isCloudDraftsAvailable())) return [];
-
-  // Team: list the shared workspace pool. Creator: personal drafts only.
-  let query = supabase
-    .from('course_drafts')
-    .select('id, phase, course_title, slide_count, module_count, theme, updated_at')
-    .order('updated_at', { ascending: false });
-
-  if (workspaceId) {
-    // Shared team pool + this user’s personal drafts that predate workspace attach
-    query = query.or(
-      `workspace_id.eq.${workspaceId},and(user_id.eq.${userId},workspace_id.is.null)`
-    );
-  } else {
-    query = query.eq('user_id', userId);
-  }
-
-  const { data, error } = await query;
-
-  if (error) {
-    console.warn('[DraftCloud] list failed:', error.message);
+  try {
+    const q = workspaceId
+      ? `/api/drafts?workspaceId=${encodeURIComponent(workspaceId)}`
+      : '/api/drafts';
+    const res = await authedFetch(q);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.warn('[DraftCloud] list failed:', data.error || res.status);
+      return [];
+    }
+    void userId;
+    return (data.drafts || []) as CloudDraftMeta[];
+  } catch (e: any) {
+    console.warn('[DraftCloud] list failed:', e?.message || e);
     return [];
   }
-
-  return (data || []).map((row: any) => ({
-    id: row.id,
-    savedAt: row.updated_at || new Date().toISOString(),
-    courseTitle: row.course_title || 'Untitled Course',
-    slideCount: row.slide_count ?? 0,
-    moduleCount: row.module_count ?? 0,
-    theme: row.theme || 'light',
-    phase: (row.phase === 'design' ? 'design' : 'preview') as 'design' | 'preview',
-  }));
 }
 
 async function uploadAssets(
@@ -116,8 +112,6 @@ async function uploadAssets(
   assets?: Record<string, string>
 ): Promise<void> {
   const prefix = assetPrefix(userId, draftId);
-
-  // Clear previous chunks
   try {
     const { data: existing } = await supabase.storage.from(BUCKET).list(prefix);
     if (existing?.length) {
@@ -139,7 +133,6 @@ async function uploadAssets(
     return;
   }
 
-  // Chunk large asset maps
   const keys = Object.keys(assets);
   let chunk: Record<string, string> = {};
   let chunkIdx = 0;
@@ -206,41 +199,22 @@ export async function upsertCloudDraft(
   workspaceId?: string | null
 ): Promise<{ ok: boolean; error?: string }> {
   if (!(await isCloudDraftsAvailable())) {
-    return { ok: false, error: 'Cloud drafts table not set up. Run supabase_drafts_migration.sql in Supabase.' };
+    return { ok: false, error: 'Cloud drafts unavailable. Sign in and try again.' };
   }
 
   try {
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData?.session?.user?.id) {
-      return { ok: false, error: 'Not signed in — cloud draft sync requires an active session.' };
+    const res = await authedFetch('/api/drafts/upsert', {
+      method: 'POST',
+      body: JSON.stringify({ meta, snapshot, workspaceId: workspaceId || null }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { ok: false, error: data.error || `Cloud save failed (${res.status})` };
     }
-    if (sessionData.session.user.id !== userId) {
-      return { ok: false, error: 'Session user mismatch — sign out and sign back in, then save again.' };
-    }
-
-    const leanSnapshot = stripInlineDataUrls(snapshot) as CloudDraftSnapshot;
-
-    const row: Record<string, unknown> = {
-      id: meta.id,
-      user_id: userId,
-      phase: meta.phase,
-      course_title: meta.courseTitle,
-      slide_count: meta.slideCount,
-      module_count: meta.moduleCount,
-      theme: meta.theme || 'light',
-      player_config: leanSnapshot.phase === 'preview' ? leanSnapshot.playerConfig ?? null : null,
-      snapshot: leanSnapshot,
-      updated_at: meta.savedAt || new Date().toISOString(),
-    };
-    if (workspaceId) row.workspace_id = workspaceId;
-
-    const { error } = await supabase.from('course_drafts').upsert(row, { onConflict: 'id' });
-    if (error) throw error;
 
     try {
       await uploadAssets(userId, meta.id, assets);
     } catch (assetErr: any) {
-      // Row is already in cloud — surface asset failure but keep draft listable on other devices
       console.warn('[DraftCloud] Assets upload failed (draft row saved):', assetErr);
       return {
         ok: true,
@@ -254,37 +228,24 @@ export async function upsertCloudDraft(
   }
 }
 
-/** Fetch lean snapshot only — never downloads media (that blocked the open overlay). */
 export async function fetchCloudDraft(
   userId: string,
   draftId: string
 ): Promise<{ snapshot: CloudDraftSnapshot; assets: Record<string, string> } | null> {
   if (!(await isCloudDraftsAvailable())) return null;
-
-  // Do not filter by user_id — Team members may open shared workspace drafts (RLS).
-  const { data, error } = await supabase
-    .from('course_drafts')
-    .select('snapshot, player_config, phase, theme, user_id')
-    .eq('id', draftId)
-    .maybeSingle();
-
-  if (error || !data?.snapshot) {
-    if (error) console.warn('[DraftCloud] fetch failed:', error.message);
+  try {
+    const res = await authedFetch(`/api/drafts/${encodeURIComponent(draftId)}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.snapshot) {
+      if (!res.ok) console.warn('[DraftCloud] fetch failed:', data.error || res.status);
+      return null;
+    }
+    void userId;
+    return { snapshot: data.snapshot as CloudDraftSnapshot, assets: {} };
+  } catch (e: any) {
+    console.warn('[DraftCloud] fetch failed:', e?.message || e);
     return null;
   }
-
-  let snapshot = data.snapshot as CloudDraftSnapshot;
-  // Ensure preview snapshots carry playerConfig/theme from columns if needed
-  if (snapshot && typeof snapshot === 'object' && snapshot.phase === 'preview') {
-    snapshot = {
-      ...snapshot,
-      playerConfig: snapshot.playerConfig ?? data.player_config,
-      theme: snapshot.theme ?? data.theme ?? 'light',
-    };
-  }
-
-  void userId; // viewer id — assets still live under the saver's prefix when loaded later
-  return { snapshot, assets: {} };
 }
 
 export async function deleteCloudDraft(
@@ -292,40 +253,24 @@ export async function deleteCloudDraft(
   draftId: string
 ): Promise<{ ok: boolean; error?: string }> {
   if (!(await isCloudDraftsAvailable())) {
-    // No cloud table — treat as success so local delete can proceed
     return { ok: true };
   }
-
-  // Prefer owner delete; Team RLS also allows workspace members to delete shared rows.
-  const { data: row } = await supabase
-    .from('course_drafts')
-    .select('user_id')
-    .eq('id', draftId)
-    .maybeSingle();
-
-  const { error } = await supabase
-    .from('course_drafts')
-    .delete()
-    .eq('id', draftId);
-
-  if (error) {
-    console.warn('[DraftCloud] delete row failed:', error.message);
-    return { ok: false, error: error.message };
-  }
-
   try {
-    const ownerId = row?.user_id || userId;
-    const prefix = assetPrefix(ownerId, draftId);
-    const { data: files } = await supabase.storage.from(BUCKET).list(prefix);
-    if (files?.length) {
-      const { error: rmErr } = await supabase.storage
-        .from(BUCKET)
-        .remove(files.map(f => `${prefix}/${f.name}`));
-      if (rmErr) console.warn('[DraftCloud] delete assets failed:', rmErr.message);
-    }
-  } catch (e) {
-    console.warn('[DraftCloud] delete assets failed:', e);
-  }
+    const res = await authedFetch(`/api/drafts/${encodeURIComponent(draftId)}`, { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: data.error || res.statusText };
 
-  return { ok: true };
+    try {
+      const prefix = assetPrefix(userId, draftId);
+      const { data: files } = await supabase.storage.from(BUCKET).list(prefix);
+      if (files?.length) {
+        await supabase.storage.from(BUCKET).remove(files.map(f => `${prefix}/${f.name}`));
+      }
+    } catch (e) {
+      console.warn('[DraftCloud] delete assets failed:', e);
+    }
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'Cloud delete failed' };
+  }
 }

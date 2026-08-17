@@ -1,5 +1,6 @@
 import { ExamConfig, NavigationMode } from '../types/course';
 import { normalizeImageMode, type CourseImageMode } from '../services/imageService';
+import { pushAccountPreferences } from './accountPreferences';
 
 export interface SavedCourseSettings {
   preset: 'quick' | 'standard' | 'comprehensive';
@@ -72,19 +73,20 @@ function cloneDefaults(): SavedCourseSettings {
   };
 }
 
+function normalizeSaved(parsed: SavedCourseSettings): SavedCourseSettings {
+  return { ...parsed, imageMode: normalizeImageMode(parsed.imageMode) };
+}
+
 export function loadCourseSettings(userId?: string | null): SavedCourseSettings | null {
   try {
     const raw = localStorage.getItem(storageKey(userId));
     if (!raw && userId) {
-      // Fall back to anonymous key if user-specific missing
       const fallback = localStorage.getItem(STORAGE_KEY);
       if (!fallback) return null;
-      const parsed = JSON.parse(fallback) as SavedCourseSettings;
-      return { ...parsed, imageMode: normalizeImageMode(parsed.imageMode) };
+      return normalizeSaved(JSON.parse(fallback) as SavedCourseSettings);
     }
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as SavedCourseSettings;
-    return { ...parsed, imageMode: normalizeImageMode(parsed.imageMode) };
+    return normalizeSaved(JSON.parse(raw) as SavedCourseSettings);
   } catch {
     return null;
   }
@@ -100,6 +102,20 @@ export function saveCourseSettings(settings: SavedCourseSettings, userId?: strin
     localStorage.setItem(storageKey(userId), JSON.stringify(settings));
   } catch (e) {
     console.warn('[courseSettingsStorage] Failed to save settings', e);
+  }
+  if (userId) {
+    void pushAccountPreferences({ courseSettings: settings }).then(r => {
+      if (!r.ok) console.warn('[courseSettingsStorage] Cloud sync failed:', r.error);
+    });
+  }
+}
+
+/** Apply settings from the account cloud without re-pushing. */
+export function cacheCourseSettings(settings: SavedCourseSettings, userId?: string | null): void {
+  try {
+    localStorage.setItem(storageKey(userId), JSON.stringify(settings));
+  } catch (e) {
+    console.warn('[courseSettingsStorage] Failed to cache settings', e);
   }
 }
 

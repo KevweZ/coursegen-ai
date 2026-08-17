@@ -109,7 +109,7 @@ export const DraftCoursesPanel: React.FC<Props> = ({
                 </div>
                 <div>
                   <h2 className="font-black text-sm tracking-tight">Saved Drafts</h2>
-                  <p className={cn('text-xs', subText)}>Pro · localStorage</p>
+                  <p className={cn('text-xs', subText)}>Synced to your account</p>
                 </div>
               </div>
               <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-700/30 transition-colors">

@@ -120,7 +120,7 @@ const app = express();
 // Stripe webhooks MUST receive the raw body for signature verification.
 // Mount raw parser for that path BEFORE express.json().
 app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '15mb' }));
 
 // ─── 2a. CORS — allow Cloudflare Pages frontend ─────────────────────────────
 const ALLOWED_ORIGINS = [
@@ -1257,6 +1257,229 @@ app.post('/api/admin/extend', async (req, res) => {
     });
   } catch (err) {
     console.error('[Admin Extend] Error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── 6f. Account drafts (server-side sync — bypasses brittle browser RLS) ─────
+function stripHeavyStrings(value, depth = 0) {
+  if (depth > 14 || value == null) return value;
+  if (typeof value === 'string') {
+    if (value.startsWith('data:') && value.length > 8000) return '';
+    if (value.startsWith('blob:')) return '';
+    return value;
+  }
+  if (Array.isArray(value)) return value.map(v => stripHeavyStrings(v, depth + 1));
+  if (typeof value === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = stripHeavyStrings(v, depth + 1);
+    return out;
+  }
+  return value;
+}
+
+async function requireAuthedUser(req) {
+  const auth = authFromHeader(req.headers.authorization);
+  if (!auth?.userId) return null;
+  // Confirm token with Supabase when possible (rejects forged payloads)
+  try {
+    const header = req.headers.authorization || '';
+    const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+    if (!token) return auth;
+    const supabase = await getAdminSupabase();
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (!error && user?.id) return { userId: user.id, email: user.email || auth.email };
+  } catch { /* fall through to JWT decode */ }
+  return auth;
+}
+
+app.get('/api/drafts', async (req, res) => {
+  const auth = await requireAuthedUser(req);
+  if (!auth?.userId) return res.status(401).json({ error: 'Sign in required.' });
+  try {
+    const supabase = await getAdminSupabase();
+    const workspaceId = typeof req.query.workspaceId === 'string' ? req.query.workspaceId : null;
+    let query = supabase
+      .from('course_drafts')
+      .select('id, phase, course_title, slide_count, module_count, theme, updated_at, workspace_id')
+      .order('updated_at', { ascending: false });
+    if (workspaceId) {
+      query = query.or(
+        `workspace_id.eq.${workspaceId},and(user_id.eq.${auth.userId},workspace_id.is.null)`
+      );
+    } else {
+      query = query.eq('user_id', auth.userId);
+    }
+    const { data, error } = await query;
+    if (error) return res.status(400).json({ error: error.message });
+    return res.json({
+      success: true,
+      drafts: (data || []).map(row => ({
+        id: row.id,
+        savedAt: row.updated_at,
+        courseTitle: row.course_title || 'Untitled Course',
+        slideCount: row.slide_count ?? 0,
+        moduleCount: row.module_count ?? 0,
+        theme: row.theme || 'light',
+        phase: row.phase === 'design' ? 'design' : 'preview',
+      })),
+    });
+  } catch (err) {
+    console.error('[Drafts list]', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/drafts/:id', async (req, res) => {
+  const auth = await requireAuthedUser(req);
+  if (!auth?.userId) return res.status(401).json({ error: 'Sign in required.' });
+  try {
+    const supabase = await getAdminSupabase();
+    const { data, error } = await supabase
+      .from('course_drafts')
+      .select('id, user_id, workspace_id, snapshot, player_config, phase, theme')
+      .eq('id', req.params.id)
+      .maybeSingle();
+    if (error) return res.status(400).json({ error: error.message });
+    if (!data) return res.status(404).json({ error: 'Draft not found.' });
+    if (data.user_id !== auth.userId) {
+      // Allow workspace members to open shared drafts
+      if (data.workspace_id) {
+        const { data: mem } = await supabase
+          .from('workspace_members')
+          .select('id')
+          .eq('workspace_id', data.workspace_id)
+          .eq('user_id', auth.userId)
+          .eq('status', 'active')
+          .maybeSingle();
+        const { data: owned } = await supabase
+          .from('workspaces')
+          .select('id')
+          .eq('id', data.workspace_id)
+          .eq('owner_user_id', auth.userId)
+          .maybeSingle();
+        if (!mem && !owned) return res.status(403).json({ error: 'Forbidden.' });
+      } else {
+        return res.status(403).json({ error: 'Forbidden.' });
+      }
+    }
+    let snapshot = data.snapshot || {};
+    if (snapshot && snapshot.phase === 'preview') {
+      snapshot = {
+        ...snapshot,
+        playerConfig: snapshot.playerConfig ?? data.player_config,
+        theme: snapshot.theme ?? data.theme ?? 'light',
+      };
+    }
+    return res.json({ success: true, snapshot, phase: data.phase });
+  } catch (err) {
+    console.error('[Drafts get]', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/drafts/upsert', async (req, res) => {
+  const auth = await requireAuthedUser(req);
+  if (!auth?.userId) return res.status(401).json({ error: 'Sign in required.' });
+  const { meta, snapshot, workspaceId } = req.body || {};
+  if (!meta?.id || !snapshot) {
+    return res.status(400).json({ error: 'meta.id and snapshot are required.' });
+  }
+  try {
+    const supabase = await getAdminSupabase();
+    const lean = stripHeavyStrings(snapshot);
+    const row = {
+      id: meta.id,
+      user_id: auth.userId,
+      phase: meta.phase === 'design' ? 'design' : 'preview',
+      course_title: meta.courseTitle || 'Untitled Course',
+      slide_count: meta.slideCount ?? 0,
+      module_count: meta.moduleCount ?? 0,
+      theme: meta.theme || 'light',
+      player_config: lean?.phase === 'preview' ? lean.playerConfig ?? null : null,
+      snapshot: lean,
+      updated_at: meta.savedAt || new Date().toISOString(),
+      workspace_id: workspaceId || null,
+    };
+    // Never attach a cancelled / invalid workspace — FK would reject the save
+    if (row.workspace_id) {
+      const { data: ws } = await supabase
+        .from('workspaces')
+        .select('id, status')
+        .eq('id', row.workspace_id)
+        .maybeSingle();
+      if (!ws || ws.status !== 'active') row.workspace_id = null;
+    }
+    const { error } = await supabase.from('course_drafts').upsert(row, { onConflict: 'id' });
+    if (error) {
+      console.error('[Drafts upsert]', error.message);
+      return res.status(400).json({ error: error.message });
+    }
+    return res.json({ success: true, id: meta.id });
+  } catch (err) {
+    console.error('[Drafts upsert]', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/drafts/:id', async (req, res) => {
+  const auth = await requireAuthedUser(req);
+  if (!auth?.userId) return res.status(401).json({ error: 'Sign in required.' });
+  try {
+    const supabase = await getAdminSupabase();
+    const { data: row } = await supabase
+      .from('course_drafts')
+      .select('user_id')
+      .eq('id', req.params.id)
+      .maybeSingle();
+    if (row && row.user_id !== auth.userId) {
+      return res.status(403).json({ error: 'Forbidden.' });
+    }
+    const { error } = await supabase.from('course_drafts').delete().eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[Drafts delete]', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── 6g. Account preferences (Course Settings + Player Properties) ───────────
+app.get('/api/preferences', async (req, res) => {
+  const auth = await requireAuthedUser(req);
+  if (!auth?.userId) return res.status(401).json({ error: 'Sign in required.' });
+  try {
+    const supabase = await getAdminSupabase();
+    const { data, error } = await supabase.auth.admin.getUserById(auth.userId);
+    if (error) return res.status(400).json({ error: error.message });
+    const meta = data?.user?.user_metadata || {};
+    return res.json({
+      success: true,
+      courseSettings: meta.course_settings ?? null,
+      playerProperties: meta.player_properties ?? null,
+    });
+  } catch (err) {
+    console.error('[Preferences get]', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/preferences', async (req, res) => {
+  const auth = await requireAuthedUser(req);
+  if (!auth?.userId) return res.status(401).json({ error: 'Sign in required.' });
+  const { courseSettings, playerProperties } = req.body || {};
+  try {
+    const supabase = await getAdminSupabase();
+    const { data: existing, error: getErr } = await supabase.auth.admin.getUserById(auth.userId);
+    if (getErr) return res.status(400).json({ error: getErr.message });
+    const meta = { ...(existing?.user?.user_metadata || {}) };
+    if (courseSettings && typeof courseSettings === 'object') meta.course_settings = courseSettings;
+    if (playerProperties && typeof playerProperties === 'object') meta.player_properties = playerProperties;
+    const { error } = await supabase.auth.admin.updateUserById(auth.userId, { user_metadata: meta });
+    if (error) return res.status(400).json({ error: error.message });
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[Preferences put]', err.message);
     return res.status(500).json({ error: err.message });
   }
 });

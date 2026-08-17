@@ -1,9 +1,11 @@
 /**
  * Persist account-level Player Properties defaults (admin menu / /PlayerProperties page).
  * Session overrides in Course Development are separate — this is the template for new courses.
+ * Local storage is a cache; account preferences API is the cross-device source of truth.
  */
 import type { PlayerConfig } from '../components/builder/PlayerPropertiesModal';
 import { defaultPlayerConfig } from '../components/builder/PlayerPropertiesModal';
+import { pushAccountPreferences } from './accountPreferences';
 
 const STORAGE_KEY = 'nexcourse.playerProperties.v1';
 
@@ -31,5 +33,19 @@ export function savePlayerProperties(config: PlayerConfig, userId?: string | nul
     localStorage.setItem(storageKey(userId), JSON.stringify(config));
   } catch (e) {
     console.warn('[playerPropertiesStorage] Failed to save', e);
+  }
+  if (userId) {
+    void pushAccountPreferences({ playerProperties: config }).then(r => {
+      if (!r.ok) console.warn('[playerPropertiesStorage] Cloud sync failed:', r.error);
+    });
+  }
+}
+
+/** Apply player properties from the account cloud without re-pushing. */
+export function cachePlayerProperties(config: PlayerConfig, userId?: string | null): void {
+  try {
+    localStorage.setItem(storageKey(userId), JSON.stringify(config));
+  } catch (e) {
+    console.warn('[playerPropertiesStorage] Failed to cache', e);
   }
 }

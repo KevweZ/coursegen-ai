@@ -609,10 +609,8 @@ export function useDraftCourses(
       }
 
       const remainingTombstones = await readTombstones(userId);
-      // Team: cloud list is the shared pool — don't inflate slots with personal IndexedDB-only rows
-      const merged = workspaceId
-        ? cloud.filter(d => !remainingTombstones.has(d.id))
-        : mergeDraftLists(cloud, local).filter(d => !remainingTombstones.has(d.id));
+      // Always merge cloud + local so this device’s drafts stay visible while migrating up
+      const merged = mergeDraftLists(cloud, local).filter(d => !remainingTombstones.has(d.id));
       await writeIndex(userId, merged);
       setDrafts(merged);
     } catch (e) {
