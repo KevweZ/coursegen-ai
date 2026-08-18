@@ -1241,10 +1241,11 @@ export default function App() {
   const [isCoarsePointer, setIsCoarsePointer] = useState(() =>
     typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
   );
-  /** Real handheld preview — scale-to-fit widescreen stage (no CSS orientation rotate). */
+  /** Real handheld preview — scale-to-fit in landscape; portrait shows a rotate prompt. */
   const isPhoneViewport = isCoarsePointer && isCompactViewport;
   const useMobileTocDropdown = viewMode === 'mobile' || isPortrait || isPhoneViewport;
-  const usePhoneLandscapeShell = isPhoneViewport && !isScormPlayer;
+  /** Touch phones in portrait: ask to rotate (no CSS fake-landscape). */
+  const needsLandscapeForPreview = isPhoneViewport && isPortrait && !isScormPlayer;
 
   const [showSettings, setShowSettings] = useState(false);
   const [editingSlide, setEditingSlide] = useState<any>(null);
@@ -2059,25 +2060,6 @@ export default function App() {
     };
   }, []);
 
-  // Lock browser landscape while in phone preview when the platform allows it (often blocked on iOS).
-  useEffect(() => {
-    if (step !== 'preview' || !usePhoneLandscapeShell) {
-      try { screen.orientation?.unlock?.(); } catch { /* ignore */ }
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      try {
-        await screen.orientation?.lock?.('landscape');
-      } catch { /* ignore — letterboxed scale-to-fit still works without a lock */ }
-      if (cancelled) return;
-    })();
-    return () => {
-      cancelled = true;
-      try { screen.orientation?.unlock?.(); } catch { /* ignore */ }
-    };
-  }, [step, usePhoneLandscapeShell]);
-
   // Touch-swipe refs for the course player (swipe left = next, swipe right = prev)
   const playerTouchStartX = useRef(0);
   const playerTouchStartY = useRef(0);
@@ -2240,11 +2222,13 @@ export default function App() {
   ]);
 
   // Course Development toolbar tour — once per session (or forever if "Don't show again").
+  // On phones, wait until landscape so the tour never covers the rotate prompt.
   useEffect(() => {
     migrateDevTourStorage();
     if (!user || step !== 'preview' || isSandboxMode) return;
+    if (needsLandscapeForPreview) return;
     if (shouldShowDevTour()) setShowDevTour(true);
-  }, [user?.id, step, isSandboxMode, course?.title]);
+  }, [user?.id, step, isSandboxMode, course?.title, needsLandscapeForPreview]);
 
   // One-time heal: strip auto-promoted floating images that overlapped tab titles
   useEffect(() => {
@@ -5035,13 +5019,32 @@ export default function App() {
               exit={{ opacity: 0 }}
               className="fixed top-0 left-0 right-0 bottom-0 z-50"
             >
-              {/* Phone + desktop preview fill the viewport; 16:9 content scale-to-fits.
-                  No CSS orientation-rotate — that was what flipped/resized when turning the phone.
-                  Browsers that allow it still try screen.orientation.lock('landscape'). */}
+              {/* Phone portrait: rotate prompt. Landscape/desktop: normal scale-to-fit player.
+                  Tour stays inside this shell and only opens after landscape. */}
               <div
                 className="bg-slate-900 overflow-hidden flex flex-col"
                 style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
               >
+              {needsLandscapeForPreview && (
+                <div className="absolute inset-0 z-[900] flex flex-col items-center justify-center gap-4 bg-slate-950 px-8 text-center">
+                  <div className="w-16 h-16 rounded-2xl bg-indigo-500/15 border border-indigo-400/30 flex items-center justify-center">
+                    <Smartphone className="w-8 h-8 text-indigo-300 rotate-90" />
+                  </div>
+                  <div className="space-y-2 max-w-sm">
+                    <h2 className="text-white font-black text-xl tracking-tight">Rotate to landscape</h2>
+                    <p className="text-slate-400 text-sm leading-relaxed">
+                      Course preview works best in a wide handheld view. Turn your phone sideways to continue — other app pages still work in portrait.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={goHome}
+                    className="mt-2 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-bold border border-slate-600/60"
+                  >
+                    Back
+                  </button>
+                </div>
+              )}
               {/* ── Preview Top Bar — hidden in SCORM/published view ── */}
               {!isScormPlayer && <div className="px-3 bg-slate-900 border-b border-slate-800 shrink-0">
                 <div className="h-11 flex items-center justify-between gap-2">
@@ -6621,10 +6624,10 @@ export default function App() {
 
                 </div>{/* end main slide column */}
               </div>{/* end sidebar+main row */}
-              {/* Tour lives inside the player shell so it shares the phone landscape
-                  CSS rotate and stays aligned with the Course Development toolbar. */}
+              {/* Tour stays inside the player shell (aligned with the toolbar) and only
+                  opens in landscape so it never sits on the rotate prompt. */}
               <DevToolbarTourModal
-                open={showDevTour}
+                open={showDevTour && !needsLandscapeForPreview}
                 onClose={() => setShowDevTour(false)}
               />
               </div>{/* end preview player shell */}
