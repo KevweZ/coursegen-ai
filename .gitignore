@@ -6,6 +6,7 @@ coverage/
 *.log
 .env*
 !.env.example
+!.env.capacitor
 
 # Lock file excluded so Cloudflare Pages uses npm install (not npm ci)
 # which avoids Node version mismatch resolution conflicts.
@@ -15,4 +16,15 @@ package-lock.json
 # Backup files (should never be committed)
 *.backup.*
 *.backup
+
+# Capacitor / native build junk (keep android/ + ios/ project sources)
+android/app/build/
+android/.gradle/
+android/captures/
+android/local.properties
+ios/App/Pods/
+ios/App/build/
+ios/DerivedData/
+*.keystore
+*.jks
 

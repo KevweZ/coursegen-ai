@@ -5,7 +5,10 @@ import { defineConfig, loadEnv } from 'vite';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
+  // Capacitor loads from the device filesystem — relative asset URLs are required.
+  const isCapacitorBuild = env.CAPACITOR === '1' || mode === 'capacitor';
   return {
+    base: isCapacitorBuild ? './' : '/',
     plugins: [react(), tailwindcss()],
     optimizeDeps: {
       include: ['react', 'react-dom'],
