@@ -1241,16 +1241,9 @@ export default function App() {
   const [isCoarsePointer, setIsCoarsePointer] = useState(() =>
     typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
   );
-  /** Real handheld preview — locked landscape shell + scale-to-fit (not desktop “mobile bezel”). */
+  /** Real handheld preview — scale-to-fit widescreen stage (no CSS orientation rotate). */
   const isPhoneViewport = isCoarsePointer && isCompactViewport;
   const useMobileTocDropdown = viewMode === 'mobile' || isPortrait || isPhoneViewport;
-  /** Stable landscape box (long × short edge). Same in portrait and landscape — only CSS transform flips. */
-  const [phoneLandscapeSize, setPhoneLandscapeSize] = useState(() => {
-    if (typeof window === 'undefined') return { w: 844, h: 390 };
-    const w = window.visualViewport?.width ?? window.innerWidth;
-    const h = window.visualViewport?.height ?? window.innerHeight;
-    return { w: Math.max(w, h), h: Math.min(w, h) };
-  });
   const usePhoneLandscapeShell = isPhoneViewport && !isScormPlayer;
 
   const [showSettings, setShowSettings] = useState(false);
@@ -2052,9 +2045,6 @@ export default function App() {
       setIsPortrait(w < 768 && h > w);
       setIsCompactViewport(Math.min(w, h) < 520);
       setIsCoarsePointer(coarseMq.matches);
-      // Keep long×short stable across orientation flips so the shell doesn’t resize/flicker
-      const next = { w: Math.max(w, h), h: Math.min(w, h) };
-      setPhoneLandscapeSize(prev => (prev.w === next.w && prev.h === next.h ? prev : next));
     };
     check();
     window.addEventListener('resize', check);
@@ -2069,7 +2059,7 @@ export default function App() {
     };
   }, []);
 
-  // Prefer a real landscape orientation lock while previewing on phones (when the browser allows it).
+  // Lock browser landscape while in phone preview when the platform allows it (often blocked on iOS).
   useEffect(() => {
     if (step !== 'preview' || !usePhoneLandscapeShell) {
       try { screen.orientation?.unlock?.(); } catch { /* ignore */ }
@@ -2079,7 +2069,7 @@ export default function App() {
     (async () => {
       try {
         await screen.orientation?.lock?.('landscape');
-      } catch { /* iOS / unsigned gestures often reject — CSS shell is the fallback */ }
+      } catch { /* ignore — letterboxed scale-to-fit still works without a lock */ }
       if (cancelled) return;
     })();
     return () => {
@@ -2098,12 +2088,7 @@ export default function App() {
   const handlePlayerTouchEnd = (e: React.TouchEvent) => {
     const dx = e.changedTouches[0].clientX - playerTouchStartX.current;
     const dy = e.changedTouches[0].clientY - playerTouchStartY.current;
-    // Portrait + CSS-rotated shell: device vertical ≈ visual horizontal
-    if (usePhoneLandscapeShell && isPortrait) {
-      if (Math.abs(dy) > 60 && Math.abs(dy) > Math.abs(dx) * 1.5) {
-        if (dy > 0) handleNext(); else handlePrev();
-      }
-    } else if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
       if (dx < 0) handleNext(); else handlePrev();
     }
   };
@@ -5050,18 +5035,12 @@ export default function App() {
               exit={{ opacity: 0 }}
               className="fixed top-0 left-0 right-0 bottom-0 z-50"
             >
-              {/* Phone preview uses one stable landscape shell (long×short) for both
-                  device orientations; CSS only toggles rotate vs none. That avoids swapping
-                  between two different layout systems when the phone turns. */}
+              {/* Phone + desktop preview fill the viewport; 16:9 content scale-to-fits.
+                  No CSS orientation-rotate — that was what flipped/resized when turning the phone.
+                  Browsers that allow it still try screen.orientation.lock('landscape'). */}
               <div
-                className={cn(
-                  'bg-slate-900 overflow-hidden flex flex-col',
-                  usePhoneLandscapeShell && 'phone-landscape-shell'
-                )}
-                style={usePhoneLandscapeShell ? {
-                  width: phoneLandscapeSize.w,
-                  height: phoneLandscapeSize.h,
-                } : { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+                className="bg-slate-900 overflow-hidden flex flex-col"
+                style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
               >
               {/* ── Preview Top Bar — hidden in SCORM/published view ── */}
               {!isScormPlayer && <div className="px-3 bg-slate-900 border-b border-slate-800 shrink-0">

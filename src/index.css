@@ -548,27 +548,3 @@ img:not([loading]) {
 .mermaid-diagram-wrapper svg > rect:first-child {
   fill: transparent !important;
 }
-
-/*
- * Phone course preview: one stable landscape shell for both device orientations.
- * Size is always (long × short) edge — React passes those as inline width/height.
- * Only the transform changes with orientation, so rotating the phone doesn’t swap
- * between two different layout systems (which caused the visible flicker/resize).
- */
-.phone-landscape-shell {
-  position: fixed;
-  top: 0;
-  left: 0;
-  transform-origin: top left;
-  max-width: none;
-}
-@media (orientation: portrait) {
-  .phone-landscape-shell {
-    transform: rotate(90deg) translateY(-100%);
-  }
-}
-@media (orientation: landscape) {
-  .phone-landscape-shell {
-    transform: none;
-  }
-}
