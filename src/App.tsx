@@ -2046,18 +2046,9 @@ export default function App() {
   const handlePlayerTouchEnd = (e: React.TouchEvent) => {
     const dx = e.changedTouches[0].clientX - playerTouchStartX.current;
     const dy = e.changedTouches[0].clientY - playerTouchStartY.current;
-    if (isPortrait && !isScormPlayer) {
-      // CSS-rotated 90° CW: device vertical axis = visual horizontal axis
-      // Swipe down on device (dy > 0) = visual left swipe = next slide
-      // Swipe up on device  (dy < 0) = visual right swipe = prev slide
-      if (Math.abs(dy) > 60 && Math.abs(dy) > Math.abs(dx) * 1.5) {
-        if (dy > 0) handleNext(); else handlePrev();
-      }
-    } else {
-      // Normal orientation: horizontal swipe navigates slides
-      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-        if (dx < 0) handleNext(); else handlePrev();
-      }
+    // Horizontal swipe navigates slides (no CSS rotate on phones — that blanked iOS).
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      if (dx < 0) handleNext(); else handlePrev();
     }
   };
 
@@ -4995,22 +4986,26 @@ export default function App() {
           {step === 'preview' && course && (
             // top-0 (not top-20) -- the global header is hidden during preview (see above),
             // so the player now owns the full viewport height.
-            <motion.div key="preview" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed top-0 left-0 right-0 bottom-0 z-50">
-              {/* Auto-landscape wrapper: CSS-rotates 90° on mobile portrait so the player
-                  appears landscape immediately — no user action required. On desktop or
-                  physical landscape the wrapper is a transparent full-size container. */}
+            <motion.div
+              key="preview"
+              initial={false}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed top-0 left-0 right-0 bottom-0 z-50"
+            >
+              {/* Full-viewport player shell.
+                  NOTE: Do NOT CSS-rotate portrait phones (top:100vh + rotate(90deg)) —
+                  that combination blanks the preview on iOS Safari/Edge. Scale-to-fit
+                  handles landscape 16:9 content in either orientation. */}
               <div
                 className="bg-slate-900 overflow-hidden flex flex-col"
-                style={(isPortrait && !isScormPlayer) ? {
-                  position: 'fixed',
-                  top: '100vh',
-                  left: 0,
-                  width: '100vh',
-                  height: '100vw',
-                  transformOrigin: 'left top',
-                  transform: 'rotate(90deg)',
-                } : { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+                style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
               >
+              {isPortrait && !isScormPlayer && (
+                <div className="shrink-0 px-3 py-1.5 bg-slate-800/90 border-b border-slate-700 text-center text-[11px] text-slate-300">
+                  Tip: rotate your phone sideways for a wider course view.
+                </div>
+              )}
               {/* ── Preview Top Bar — hidden in SCORM/published view ── */}
               {!isScormPlayer && <div className="px-3 bg-slate-900 border-b border-slate-800 shrink-0">
                 <div className="h-11 flex items-center justify-between gap-2">
@@ -6553,7 +6548,7 @@ export default function App() {
 
                 </div>{/* end main slide column */}
               </div>{/* end sidebar+main row */}
-              </div>{/* end auto-landscape wrapper */}
+              </div>{/* end preview player shell */}
            </motion.div>
          )}
          </AnimatePresence>

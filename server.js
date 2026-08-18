@@ -329,18 +329,39 @@ function htmlToMarkdown(html) {
     .trim();
 }
 
-/** Server-side PDF parser: pdf-parse + heading detection. */
+/** Server-side PDF parser: pdf-parse v2 (PDFParse) + heading detection. */
 async function parsePdfToMarkdown(buffer) {
-  const pdfParse = (await import('pdf-parse')).default;
-  const data = await pdfParse(buffer);
-  const title = data.info?.Title?.trim() || '';
-  const lines = data.text.split('\n');
-  const processed = detectHeadings(lines);
-  const markdown = (title ? `# ${title}\n\n` : '') + processed.join('\n');
-  return {
-    markdown: cleanWhitespace(markdown),
-    metadata: { type: 'pdf', pageCount: data.numpages, wordCount: data.text.split(/\s+/).filter(Boolean).length },
-  };
+  const { PDFParse } = await import('pdf-parse');
+  const parser = new PDFParse({ data: buffer });
+  try {
+    const textResult = await parser.getText();
+    let title = '';
+    let pageCount = Array.isArray(textResult.pages) ? textResult.pages.length : 0;
+    try {
+      const info = await parser.getInfo();
+      title = (info?.info?.Title || info?.info?.title || '').toString().trim();
+      if (typeof info?.total === 'number' && info.total > 0) pageCount = info.total;
+    } catch {
+      /* metadata is optional */
+    }
+    const rawText = (textResult.text || '').trim();
+    if (!rawText) {
+      throw new Error('No extractable text found in this PDF (it may be scanned/image-only).');
+    }
+    const lines = rawText.split('\n');
+    const processed = detectHeadings(lines);
+    const markdown = (title ? `# ${title}\n\n` : '') + processed.join('\n');
+    return {
+      markdown: cleanWhitespace(markdown),
+      metadata: {
+        type: 'pdf',
+        pageCount,
+        wordCount: rawText.split(/\s+/).filter(Boolean).length,
+      },
+    };
+  } finally {
+    await parser.destroy().catch(() => {});
+  }
 }
 
 /** Server-side PPTX parser: JSZip + slide-by-slide structure. */

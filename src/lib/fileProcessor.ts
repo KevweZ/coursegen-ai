@@ -1,10 +1,24 @@
 import * as mammoth from 'mammoth';
-import * as pdfjs from 'pdfjs-dist';
 import JSZip from 'jszip';
 
-// Use the local worker bundled with pdfjs-dist to avoid CDN/import failures in Vite
-// @ts-ignore
-import PdfJsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+// Safari < 17.4 / older iOS WebKit: modern pdf.js calls Promise.withResolvers().
+if (typeof Promise.withResolvers !== 'function') {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (Promise as any).withResolvers = function <T>() {
+    let resolve!: (value: T | PromiseLike<T>) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  };
+}
+
+// Legacy build is required for iOS Safari/Edge — modern build assumes newer WebKit APIs.
+import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
+// @ts-ignore — Vite URL import for the matching legacy worker
+import PdfJsWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 pdfjs.GlobalWorkerOptions.workerSrc = PdfJsWorker;
 
 export interface SourceImage {
@@ -65,9 +79,19 @@ async function parseDocumentViaServer(file: File): Promise<{ markdown: string; m
 // ─── Client-Side Fallback Parsers ────────────────────────────────────────────
 // These are retained for when the server is unreachable (dev without server, etc.)
 
+async function loadPdfDocument(data: Uint8Array) {
+  try {
+    return await pdfjs.getDocument({ data }).promise;
+  } catch (workerErr) {
+    // Module workers can fail on some iOS WebViews — retry on the main thread.
+    console.warn('[FileProcessor] pdf.js worker failed, retrying without worker:', workerErr);
+    return await pdfjs.getDocument({ data: data.slice(0), disableWorker: true } as any).promise;
+  }
+}
+
 async function extractPdfTextClient(file: File): Promise<string> {
-  const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+  const data = new Uint8Array(await file.arrayBuffer());
+  const pdf = await loadPdfDocument(data);
   let text = '';
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
@@ -129,13 +153,18 @@ export async function extractTextFromFile(file: File): Promise<string> {
 
   // For PDF / PPTX / DOCX — try server first
   if (extension === 'pdf' || extension === 'pptx' || extension === 'docx') {
+    let serverError: string | null = null;
     try {
       const { markdown } = await parseDocumentViaServer(file);
-      if (markdown && markdown.trim().length > 50) {
+      // Accept any non-empty server result. Short docs are valid; forcing a client
+      // fallback used to crash iOS when modern pdf.js APIs were missing.
+      if (markdown && markdown.trim().length > 0) {
         console.log(`[FileProcessor] Server parse succeeded for ${file.name} (${markdown.length} chars)`);
         return markdown;
       }
+      serverError = 'Server returned empty text';
     } catch (serverErr) {
+      serverError = (serverErr as Error).message || String(serverErr);
       console.warn(`[FileProcessor] Server parse failed, falling back to client-side:`, serverErr);
     }
 
@@ -145,7 +174,12 @@ export async function extractTextFromFile(file: File): Promise<string> {
       if (extension === 'docx') return await extractDocxTextClient(file);
       if (extension === 'pptx') return await extractPptxTextClient(file);
     } catch (clientErr) {
-      throw new Error(`Could not extract text from ${file.name}: ${(clientErr as Error).message}`);
+      const clientMsg = (clientErr as Error).message || String(clientErr);
+      throw new Error(
+        serverError
+          ? `Could not extract text from ${file.name}: ${clientMsg} (server: ${serverError})`
+          : `Could not extract text from ${file.name}: ${clientMsg}`
+      );
     }
   }
 
@@ -250,8 +284,8 @@ export async function extractImagesFromFile(file: File): Promise<SourceImage[]> 
 
   // PDF: pull embedded images only — never full-page raster screenshots
   try {
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+    const data = new Uint8Array(await file.arrayBuffer());
+    const pdf = await loadPdfDocument(data);
     let imgIndex = 0;
 
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
