@@ -195,7 +195,7 @@ import { MethodologyPage } from './components/marketing/MethodologyPage';
 import { ExamplesPage } from './components/marketing/ExamplesPage';
 import { HelpWidget } from './components/HelpWidget';
 import { WelcomeTourModal, shouldShowWelcomeTour, dismissWelcomeTourForSession } from './components/WelcomeTourModal';
-import { DevToolbarTourModal, shouldShowDevTour } from './components/DevToolbarTourModal';
+import { DevToolbarTourModal, shouldShowDevTour, migrateDevTourStorage } from './components/DevToolbarTourModal';
 import { DropTargetsActivity } from './components/interactions/DropTargetsActivity';
 
 const renderInstructionalText = (children: React.ReactNode, theme: string, isList: boolean = false) => {
@@ -1241,11 +1241,15 @@ export default function App() {
   const [isCoarsePointer, setIsCoarsePointer] = useState(() =>
     typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
   );
-  /** Real handheld preview — landscape-first, scale-to-fit (not desktop “mobile bezel”). */
+  /** Real handheld preview — force widescreen shell + scale-to-fit (not desktop “mobile bezel”). */
   const isPhoneViewport = isCoarsePointer && isCompactViewport;
   const useMobileTocDropdown = viewMode === 'mobile' || isPortrait || isPhoneViewport;
-  /** Only gate the playable course UI on actual phones in portrait (never on desktop). */
-  const needsLandscapeForPreview = isPhoneViewport && isPortrait && !isScormPlayer;
+  /** Portrait phone: CSS-rotate the player into a landscape layout (no rotate-prompt gate). */
+  const forcePhoneLandscape = isPhoneViewport && isPortrait && !isScormPlayer;
+  const [phoneShellSize, setPhoneShellSize] = useState(() => ({
+    w: typeof window !== 'undefined' ? (window.visualViewport?.width ?? window.innerWidth) : 390,
+    h: typeof window !== 'undefined' ? (window.visualViewport?.height ?? window.innerHeight) : 844,
+  }));
 
   const [showSettings, setShowSettings] = useState(false);
   const [editingSlide, setEditingSlide] = useState<any>(null);
@@ -2046,6 +2050,7 @@ export default function App() {
       setIsPortrait(w < 768 && h > w);
       setIsCompactViewport(Math.min(w, h) < 520);
       setIsCoarsePointer(coarseMq.matches);
+      setPhoneShellSize({ w, h });
     };
     check();
     window.addEventListener('resize', check);
@@ -2070,8 +2075,12 @@ export default function App() {
   const handlePlayerTouchEnd = (e: React.TouchEvent) => {
     const dx = e.changedTouches[0].clientX - playerTouchStartX.current;
     const dy = e.changedTouches[0].clientY - playerTouchStartY.current;
-    // Horizontal swipe navigates slides (no CSS rotate on phones — that blanked iOS).
-    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+    if (forcePhoneLandscape) {
+      // CSS-rotated 90° CW: device vertical ≈ visual horizontal
+      if (Math.abs(dy) > 60 && Math.abs(dy) > Math.abs(dx) * 1.5) {
+        if (dy > 0) handleNext(); else handlePrev();
+      }
+    } else if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
       if (dx < 0) handleNext(); else handlePrev();
     }
   };
@@ -2223,15 +2232,11 @@ export default function App() {
   ]);
 
   // Course Development toolbar tour — once per session (or forever if "Don't show again").
-  // On real phones only, wait until landscape so it doesn't cover the rotate-to-continue gate.
   useEffect(() => {
+    migrateDevTourStorage();
     if (!user || step !== 'preview' || isSandboxMode) return;
-    if (needsLandscapeForPreview) {
-      setShowDevTour(false);
-      return;
-    }
     if (shouldShowDevTour()) setShowDevTour(true);
-  }, [user?.id, step, isSandboxMode, course?.title, needsLandscapeForPreview]);
+  }, [user?.id, step, isSandboxMode, course?.title]);
 
   // One-time heal: strip auto-promoted floating images that overlapped tab titles
   useEffect(() => {
@@ -5023,32 +5028,22 @@ export default function App() {
               className="fixed top-0 left-0 right-0 bottom-0 z-50"
             >
               {/* Full-viewport player shell.
-                  Phones: landscape-only gate (no CSS rotate — that blanked iOS).
-                  Scale-to-fit fills the landscape viewport; PlayerBar docks below the frame. */}
+                  On portrait phones, CSS-rotate into a landscape “widescreen” layout using
+                  visualViewport px + translateY(-100%) — the old top:100vh trick blanked iOS.
+                  PlayerBar stays outside the scaled slide frame so it docks to the shell bottom. */}
               <div
                 className="bg-slate-900 overflow-hidden flex flex-col"
-                style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+                style={forcePhoneLandscape ? {
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  width: phoneShellSize.h,
+                  height: phoneShellSize.w,
+                  transformOrigin: 'top left',
+                  transform: 'rotate(90deg) translateY(-100%)',
+                  maxWidth: 'none',
+                } : { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
               >
-              {needsLandscapeForPreview && (
-                <div className="absolute inset-0 z-[200] flex flex-col items-center justify-center gap-4 bg-slate-950 px-8 text-center">
-                  <div className="w-16 h-16 rounded-2xl bg-indigo-500/15 border border-indigo-400/30 flex items-center justify-center">
-                    <Smartphone className="w-8 h-8 text-indigo-300 rotate-90" />
-                  </div>
-                  <div className="space-y-2 max-w-sm">
-                    <h2 className="text-white font-black text-xl tracking-tight">Rotate to landscape</h2>
-                    <p className="text-slate-400 text-sm leading-relaxed">
-                      Course preview is built for a wide handheld view. Turn your phone sideways to continue — other app pages still work in portrait.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={goHome}
-                    className="mt-2 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-bold border border-slate-600/60"
-                  >
-                    Back
-                  </button>
-                </div>
-              )}
               {/* ── Preview Top Bar — hidden in SCORM/published view ── */}
               {!isScormPlayer && <div className="px-3 bg-slate-900 border-b border-slate-800 shrink-0">
                 <div className="h-11 flex items-center justify-between gap-2">
@@ -7442,7 +7437,7 @@ export default function App() {
           }}
         />
         <DevToolbarTourModal
-          open={showDevTour && !needsLandscapeForPreview}
+          open={showDevTour}
           onClose={() => setShowDevTour(false)}
         />
 

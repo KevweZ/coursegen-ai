@@ -5,8 +5,16 @@ import {
   Undo2, Shield, Save, Rocket,
 } from 'lucide-react';
 
-export const DEV_TOUR_KEY = 'nexcourse_dev_tour_dismissed';
-const DEV_TOUR_SESSION_KEY = 'nexcourse_dev_tour_session';
+export const DEV_TOUR_KEY = 'nexcourse_dev_tour_dismissed_v2';
+const DEV_TOUR_SESSION_KEY = 'nexcourse_dev_tour_session_v2';
+
+/** Clear legacy dismiss keys from the v1 tour gate so the tour can appear again. */
+export function migrateDevTourStorage(): void {
+  try {
+    localStorage.removeItem('nexcourse_dev_tour_dismissed');
+    sessionStorage.removeItem('nexcourse_dev_tour_session');
+  } catch { /* ignore */ }
+}
 
 /** Accent colors aligned with the Course Development toolbar buttons */
 const STEPS = [
