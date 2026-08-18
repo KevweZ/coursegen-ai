@@ -2214,11 +2214,13 @@ export default function App() {
     coldStartCountdown,
   ]);
 
-  // Course Development toolbar tour — once per session (or forever if "Don't show again")
+  // Course Development toolbar tour — once per session (or forever if "Don't show again").
+  // On phones, wait until landscape so it doesn't cover the rotate-to-continue gate.
   useEffect(() => {
     if (!user || step !== 'preview' || isSandboxMode) return;
+    if (needsLandscapeForPreview) return;
     if (shouldShowDevTour()) setShowDevTour(true);
-  }, [user?.id, step, isSandboxMode, course?.title]);
+  }, [user?.id, step, isSandboxMode, course?.title, needsLandscapeForPreview]);
 
   // One-time heal: strip auto-promoted floating images that overlapped tab titles
   useEffect(() => {
@@ -7429,7 +7431,7 @@ export default function App() {
           }}
         />
         <DevToolbarTourModal
-          open={showDevTour}
+          open={showDevTour && !needsLandscapeForPreview}
           onClose={() => setShowDevTour(false)}
         />
 
