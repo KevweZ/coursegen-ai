@@ -1241,15 +1241,17 @@ export default function App() {
   const [isCoarsePointer, setIsCoarsePointer] = useState(() =>
     typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
   );
-  /** Real handheld preview — force widescreen shell + scale-to-fit (not desktop “mobile bezel”). */
+  /** Real handheld preview — locked landscape shell + scale-to-fit (not desktop “mobile bezel”). */
   const isPhoneViewport = isCoarsePointer && isCompactViewport;
   const useMobileTocDropdown = viewMode === 'mobile' || isPortrait || isPhoneViewport;
-  /** Portrait phone: CSS-rotate the player into a landscape layout (no rotate-prompt gate). */
-  const forcePhoneLandscape = isPhoneViewport && isPortrait && !isScormPlayer;
-  const [phoneShellSize, setPhoneShellSize] = useState(() => ({
-    w: typeof window !== 'undefined' ? (window.visualViewport?.width ?? window.innerWidth) : 390,
-    h: typeof window !== 'undefined' ? (window.visualViewport?.height ?? window.innerHeight) : 844,
-  }));
+  /** Stable landscape box (long × short edge). Same in portrait and landscape — only CSS transform flips. */
+  const [phoneLandscapeSize, setPhoneLandscapeSize] = useState(() => {
+    if (typeof window === 'undefined') return { w: 844, h: 390 };
+    const w = window.visualViewport?.width ?? window.innerWidth;
+    const h = window.visualViewport?.height ?? window.innerHeight;
+    return { w: Math.max(w, h), h: Math.min(w, h) };
+  });
+  const usePhoneLandscapeShell = isPhoneViewport && !isScormPlayer;
 
   const [showSettings, setShowSettings] = useState(false);
   const [editingSlide, setEditingSlide] = useState<any>(null);
@@ -2050,7 +2052,9 @@ export default function App() {
       setIsPortrait(w < 768 && h > w);
       setIsCompactViewport(Math.min(w, h) < 520);
       setIsCoarsePointer(coarseMq.matches);
-      setPhoneShellSize({ w, h });
+      // Keep long×short stable across orientation flips so the shell doesn’t resize/flicker
+      const next = { w: Math.max(w, h), h: Math.min(w, h) };
+      setPhoneLandscapeSize(prev => (prev.w === next.w && prev.h === next.h ? prev : next));
     };
     check();
     window.addEventListener('resize', check);
@@ -2065,6 +2069,25 @@ export default function App() {
     };
   }, []);
 
+  // Prefer a real landscape orientation lock while previewing on phones (when the browser allows it).
+  useEffect(() => {
+    if (step !== 'preview' || !usePhoneLandscapeShell) {
+      try { screen.orientation?.unlock?.(); } catch { /* ignore */ }
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        await screen.orientation?.lock?.('landscape');
+      } catch { /* iOS / unsigned gestures often reject — CSS shell is the fallback */ }
+      if (cancelled) return;
+    })();
+    return () => {
+      cancelled = true;
+      try { screen.orientation?.unlock?.(); } catch { /* ignore */ }
+    };
+  }, [step, usePhoneLandscapeShell]);
+
   // Touch-swipe refs for the course player (swipe left = next, swipe right = prev)
   const playerTouchStartX = useRef(0);
   const playerTouchStartY = useRef(0);
@@ -2075,8 +2098,8 @@ export default function App() {
   const handlePlayerTouchEnd = (e: React.TouchEvent) => {
     const dx = e.changedTouches[0].clientX - playerTouchStartX.current;
     const dy = e.changedTouches[0].clientY - playerTouchStartY.current;
-    if (forcePhoneLandscape) {
-      // CSS-rotated 90° CW: device vertical ≈ visual horizontal
+    // Portrait + CSS-rotated shell: device vertical ≈ visual horizontal
+    if (usePhoneLandscapeShell && isPortrait) {
       if (Math.abs(dy) > 60 && Math.abs(dy) > Math.abs(dx) * 1.5) {
         if (dy > 0) handleNext(); else handlePrev();
       }
@@ -5027,21 +5050,17 @@ export default function App() {
               exit={{ opacity: 0 }}
               className="fixed top-0 left-0 right-0 bottom-0 z-50"
             >
-              {/* Full-viewport player shell.
-                  On portrait phones, CSS-rotate into a landscape “widescreen” layout using
-                  visualViewport px + translateY(-100%) — the old top:100vh trick blanked iOS.
-                  PlayerBar stays outside the scaled slide frame so it docks to the shell bottom. */}
+              {/* Phone preview uses one stable landscape shell (long×short) for both
+                  device orientations; CSS only toggles rotate vs none. That avoids swapping
+                  between two different layout systems when the phone turns. */}
               <div
-                className="bg-slate-900 overflow-hidden flex flex-col"
-                style={forcePhoneLandscape ? {
-                  position: 'fixed',
-                  top: 0,
-                  left: 0,
-                  width: phoneShellSize.h,
-                  height: phoneShellSize.w,
-                  transformOrigin: 'top left',
-                  transform: 'rotate(90deg) translateY(-100%)',
-                  maxWidth: 'none',
+                className={cn(
+                  'bg-slate-900 overflow-hidden flex flex-col',
+                  usePhoneLandscapeShell && 'phone-landscape-shell'
+                )}
+                style={usePhoneLandscapeShell ? {
+                  width: phoneLandscapeSize.w,
+                  height: phoneLandscapeSize.h,
                 } : { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
               >
               {/* ── Preview Top Bar — hidden in SCORM/published view ── */}
