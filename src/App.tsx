@@ -1237,7 +1237,11 @@ export default function App() {
   const [isCompactViewport, setIsCompactViewport] = useState(() =>
     typeof window !== 'undefined' && Math.min(window.innerWidth, window.innerHeight) < 520
   );
-  const useMobileTocDropdown = viewMode === 'mobile' || isPortrait || isCompactViewport;
+  /** Real phone / small-device preview — landscape-first, scale-to-fit (not desktop “mobile bezel”). */
+  const isPhoneViewport = isCompactViewport;
+  const useMobileTocDropdown = viewMode === 'mobile' || isPortrait || isPhoneViewport;
+  /** On phones, only show the playable course UI in landscape. */
+  const needsLandscapeForPreview = isPhoneViewport && isPortrait && !isScormPlayer;
 
   const [showSettings, setShowSettings] = useState(false);
   const [editingSlide, setEditingSlide] = useState<any>(null);
@@ -1638,9 +1642,16 @@ export default function App() {
   // Articulate-style scale-to-fit: always called at hook level regardless of step.
   // 'full' resolution mode intentionally fills the available space responsively
   // (no fixed aspect-ratio box), so it is excluded from scaling.
+  // Phones always use scale-to-fit in landscape (ignore the desktop “mobile bezel” toggle).
+  const useScaleTransform =
+    step === 'preview' &&
+    playerConfig?.playerResolution !== 'full' &&
+    (viewMode === 'desktop' || isPhoneViewport);
+  /** PlayerBar must sit outside CSS-scaled frames (and always on phones) or sticky lands mid-slide. */
+  const dockPlayerBarOutside = useScaleTransform || isPhoneViewport;
   const scaler = useScaleToFit(
     playerConfig?.playerResolution ?? '16:9',
-    step === 'preview' && viewMode === 'desktop' && playerConfig?.playerResolution !== 'full'
+    useScaleTransform
   );
   const [ttsVoice, setTtsVoice] = useState<string>(DEFAULT_COURSE_SETTINGS.ttsVoice);
   // Creator/free: Alloy only — clamp if plan can't use other voices
@@ -2025,14 +2036,19 @@ export default function App() {
   // Orientation / compact-viewport listener
   useEffect(() => {
     const check = () => {
-      setIsPortrait(window.innerWidth < 768 && window.innerHeight > window.innerWidth);
-      setIsCompactViewport(Math.min(window.innerWidth, window.innerHeight) < 520);
+      const w = window.visualViewport?.width ?? window.innerWidth;
+      const h = window.visualViewport?.height ?? window.innerHeight;
+      setIsPortrait(w < 768 && h > w);
+      setIsCompactViewport(Math.min(w, h) < 520);
     };
+    check();
     window.addEventListener('resize', check);
     window.addEventListener('orientationchange', check);
+    window.visualViewport?.addEventListener('resize', check);
     return () => {
       window.removeEventListener('resize', check);
       window.removeEventListener('orientationchange', check);
+      window.visualViewport?.removeEventListener('resize', check);
     };
   }, []);
 
@@ -4994,16 +5010,30 @@ export default function App() {
               className="fixed top-0 left-0 right-0 bottom-0 z-50"
             >
               {/* Full-viewport player shell.
-                  NOTE: Do NOT CSS-rotate portrait phones (top:100vh + rotate(90deg)) —
-                  that combination blanks the preview on iOS Safari/Edge. Scale-to-fit
-                  handles landscape 16:9 content in either orientation. */}
+                  Phones: landscape-only gate (no CSS rotate — that blanked iOS).
+                  Scale-to-fit fills the landscape viewport; PlayerBar docks below the frame. */}
               <div
                 className="bg-slate-900 overflow-hidden flex flex-col"
                 style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
               >
-              {isPortrait && !isScormPlayer && (
-                <div className="shrink-0 px-3 py-1.5 bg-slate-800/90 border-b border-slate-700 text-center text-[11px] text-slate-300">
-                  Tip: rotate your phone sideways for a wider course view.
+              {needsLandscapeForPreview && (
+                <div className="absolute inset-0 z-[200] flex flex-col items-center justify-center gap-4 bg-slate-950 px-8 text-center">
+                  <div className="w-16 h-16 rounded-2xl bg-indigo-500/15 border border-indigo-400/30 flex items-center justify-center">
+                    <Smartphone className="w-8 h-8 text-indigo-300 rotate-90" />
+                  </div>
+                  <div className="space-y-2 max-w-sm">
+                    <h2 className="text-white font-black text-xl tracking-tight">Rotate to landscape</h2>
+                    <p className="text-slate-400 text-sm leading-relaxed">
+                      Course preview is built for a wide handheld view. Turn your phone sideways to continue — other app pages still work in portrait.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={goHome}
+                    className="mt-2 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-bold border border-slate-600/60"
+                  >
+                    Back
+                  </button>
                 </div>
               )}
               {/* ── Preview Top Bar — hidden in SCORM/published view ── */}
@@ -5032,6 +5062,7 @@ export default function App() {
 
                   {/* Single unified toolbar — L→R: Desktop, Player Props, Edit, Upload, Undo, Reset, Quality, Save, Publish */}
                   <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
+                    {!isPhoneViewport && (
                     <button
                       title={viewMode === 'desktop' ? 'Switch to mobile landscape preview' : 'Switch to desktop preview'}
                       onClick={() => setViewMode(viewMode === 'desktop' ? 'mobile' : 'desktop')}
@@ -5044,6 +5075,7 @@ export default function App() {
                       {viewMode === 'desktop' ? <Monitor className="w-3 h-3" /> : <Smartphone className="w-3 h-3" />}
                       <span className="hidden lg:inline">{viewMode === 'desktop' ? 'Desktop' : 'Mobile'}</span>
                     </button>
+                    )}
 
                     <button
                       title="Player Properties"
@@ -5364,14 +5396,15 @@ export default function App() {
                       SLIDE's own background further below, this only affects the letterboxed margin
                       around the scaled frame. */}
                   <div
-                    ref={viewMode === 'desktop' ? scaler.containerRef : undefined}
+                    ref={useScaleTransform ? scaler.containerRef : undefined}
                     className={cn(
-                      "relative flex flex-col flex-1 overflow-hidden bg-white",
-                      viewMode === 'desktop' && playerConfig.playerResolution !== 'full' ? 'items-center justify-center' : undefined,
-                      viewMode === 'mobile' ? 'items-center justify-center bg-slate-950 gap-2' : undefined
+                      "relative flex flex-col flex-1 overflow-hidden bg-white min-h-0",
+                      useScaleTransform ? 'items-center justify-center' : undefined,
+                      !useScaleTransform && !isPhoneViewport && viewMode === 'mobile' ? 'items-center justify-center bg-slate-950 gap-2' : undefined,
+                      isPhoneViewport && playerConfig.playerResolution === 'full' ? 'bg-slate-900' : undefined
                     )}
                   >
-                  {viewMode === 'mobile' && isSandboxMode && (
+                  {viewMode === 'mobile' && isSandboxMode && !isPhoneViewport && (
                     <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-400/80 shrink-0 pt-2">
                       Development Demo — Mobile Landscape
                     </p>
@@ -5383,24 +5416,26 @@ export default function App() {
                       so this can never overflow/crop its container the way the old `zoom`-based
                       approach did (which double-scaled an already-100%-wide flex box). 'full'
                       mode intentionally skips scaling and fills the available space directly.
-                      Mobile preview uses a landscape phone bezel (held sideways) so the
-                      eLearning player fits the same 16:9 canvas used on desktop. */}
+                      Desktop “Mobile” toggle uses a landscape phone bezel; real phones always
+                      scale-to-fit instead (PlayerBar docks outside this frame). */}
                   <div className={cn(`theme-${theme}`,
                     "transition-all duration-500 flex flex-col relative z-10",
-                    viewMode === 'desktop'
-                      ? (playerConfig.playerResolution !== 'full' ? 'overflow-hidden' : 'flex-1 overflow-hidden w-full')
-                      : 'shadow-2xl overflow-hidden w-[min(96vw,calc((100vh-7rem)*16/9))] h-[min(calc(100vh-7rem),calc(96vw*9/16))] max-w-[1280px] max-h-[720px] my-2 rounded-[2rem] border-[10px] border-gray-800',
+                    useScaleTransform
+                      ? 'overflow-hidden'
+                      : isPhoneViewport
+                        ? 'flex-1 overflow-hidden w-full min-h-0'
+                      : viewMode === 'desktop'
+                        ? 'flex-1 overflow-hidden w-full min-h-0'
+                        : 'shadow-2xl overflow-hidden w-[min(96vw,calc((100vh-7rem)*16/9))] h-[min(calc(100vh-7rem),calc(96vw*9/16))] max-w-[1280px] max-h-[720px] my-2 rounded-[2rem] border-[10px] border-gray-800',
                     theme === 'light' ? 'bg-white' : theme === 'unified' ? 'bg-indigo-950' : 'bg-slate-900'
                   )}
-                  style={viewMode === 'desktop'
-                    ? (playerConfig.playerResolution !== 'full'
-                        ? {
-                            ...scaler.frameStyle,
-                            borderRadius: '1rem',
-                            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.4)',
-                            border: '1px solid rgba(255,255,255,0.12)',
-                          }
-                        : undefined)
+                  style={useScaleTransform
+                    ? {
+                        ...scaler.frameStyle,
+                        borderRadius: isPhoneViewport ? 0 : '1rem',
+                        boxShadow: isPhoneViewport ? 'none' : '0 25px 50px -12px rgba(0,0,0,0.4)',
+                        border: isPhoneViewport ? 'none' : '1px solid rgba(255,255,255,0.12)',
+                      }
                     : undefined
                   }>
                     {useMobileTocDropdown && (
@@ -6509,11 +6544,12 @@ export default function App() {
                      </div>{/* end inner content */}
                      </div>{/* end accent+content row */}
 
-
-                     {/* Learner Player Navigation Bar — sticky at bottom in full-screen mode */}
+                    {/* Desktop “mobile bezel” demo keeps controls inside the phone chrome.
+                        Scale-to-fit / real phones dock the bar outside the transformed frame
+                        so sticky/transform can’t pin it mid-slide. */}
+                    {!dockPlayerBarOutside && (
                     <div className={cn(
                       "w-full z-[100] shrink-0 border-t backdrop-blur-md",
-                      'sticky bottom-0',
                       theme === 'light' ? 'bg-white/80 border-slate-200' : theme === 'unified' ? 'bg-indigo-950 border-indigo-800' : 'bg-slate-900 border-slate-800'
                     )}>
                       <PlayerBar
@@ -6539,12 +6575,43 @@ export default function App() {
                         showCC={showCC}
                         onToggleCC={voiceOverEnabled ? () => setShowCC(v => !v) : undefined}
                         narrationGenerating={ttsProgress.isRunning}
-
                       />
-
-                     </div>{/* end PlayerBar */}
+                     </div>
+                    )}
                   </div>{/* end slide frame */}
                   </div>{/* end bg canvas */}
+
+                  {dockPlayerBarOutside && (
+                    <div className={cn(
+                      "w-full z-[100] shrink-0 border-t backdrop-blur-md",
+                      theme === 'light' ? 'bg-white/80 border-slate-200' : theme === 'unified' ? 'bg-indigo-950 border-indigo-800' : 'bg-slate-900 border-slate-800'
+                    )}>
+                      <PlayerBar
+                        player={player}
+                        currentSlideIndex={currentSlideIndex}
+                        totalSlides={allSlides.length}
+                        currentSlideTitle={stripSlideTypePrefix(currentSlide?.title ?? '')}
+                        onPrev={handlePrev}
+                        onNext={handleNext}
+                        theme={theme}
+                        disableNext={
+                          currentSlide?.type === 'exam-intro' ||
+                          currentSlide?.type === 'mastery-exam' ||
+                          currentSlide?.type === 'exam-results' ||
+                          (currentSlide?.type === 'scenario' && !scenarioCompleted) ||
+                          !isKcCheckSatisfied() ||
+                          !isCurrentSlideInteractionsComplete()
+                        }
+                        disableNextReason={interactionProgressLabel}
+                        disablePrev={currentSlide?.type === 'mastery-exam' || currentSlide?.type === 'exam-results'}
+                        volume={player.volume}
+                        onVolumeChange={player.setVolume}
+                        showCC={showCC}
+                        onToggleCC={voiceOverEnabled ? () => setShowCC(v => !v) : undefined}
+                        narrationGenerating={ttsProgress.isRunning}
+                      />
+                    </div>
+                  )}
 
                 </div>{/* end main slide column */}
               </div>{/* end sidebar+main row */}

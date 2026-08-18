@@ -77,6 +77,8 @@ export function useScaleToFit(resolution: Resolution | string, active: boolean =
     const ro = new ResizeObserver(scheduleRecalculate);
     if (containerRef.current) ro.observe(containerRef.current);
     window.addEventListener('resize', scheduleRecalculate);
+    window.addEventListener('orientationchange', scheduleRecalculate);
+    window.visualViewport?.addEventListener('resize', scheduleRecalculate);
 
     return () => {
       clearTimeout(t1);
@@ -85,6 +87,8 @@ export function useScaleToFit(resolution: Resolution | string, active: boolean =
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       ro.disconnect();
       window.removeEventListener('resize', scheduleRecalculate);
+      window.removeEventListener('orientationchange', scheduleRecalculate);
+      window.visualViewport?.removeEventListener('resize', scheduleRecalculate);
     };
   }, [scheduleRecalculate]);
 
