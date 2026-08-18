@@ -6623,6 +6623,12 @@ export default function App() {
 
                 </div>{/* end main slide column */}
               </div>{/* end sidebar+main row */}
+              {/* Tour lives inside the player shell so it shares the phone landscape
+                  CSS rotate and stays aligned with the Course Development toolbar. */}
+              <DevToolbarTourModal
+                open={showDevTour}
+                onClose={() => setShowDevTour(false)}
+              />
               </div>{/* end preview player shell */}
            </motion.div>
          )}
@@ -7435,10 +7441,6 @@ export default function App() {
             dismissWelcomeTourForSession();
             setShowWelcomeTour(false);
           }}
-        />
-        <DevToolbarTourModal
-          open={showDevTour}
-          onClose={() => setShowDevTour(false)}
         />
 
         {/* ★ Player Properties Modal ★ */}
