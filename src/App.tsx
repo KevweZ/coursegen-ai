@@ -1237,10 +1237,14 @@ export default function App() {
   const [isCompactViewport, setIsCompactViewport] = useState(() =>
     typeof window !== 'undefined' && Math.min(window.innerWidth, window.innerHeight) < 520
   );
-  /** Real phone / small-device preview — landscape-first, scale-to-fit (not desktop “mobile bezel”). */
-  const isPhoneViewport = isCompactViewport;
+  /** Touch / stylus phones & tablets — not resized desktop browser windows. */
+  const [isCoarsePointer, setIsCoarsePointer] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
+  );
+  /** Real handheld preview — landscape-first, scale-to-fit (not desktop “mobile bezel”). */
+  const isPhoneViewport = isCoarsePointer && isCompactViewport;
   const useMobileTocDropdown = viewMode === 'mobile' || isPortrait || isPhoneViewport;
-  /** On phones, only show the playable course UI in landscape. */
+  /** Only gate the playable course UI on actual phones in portrait (never on desktop). */
   const needsLandscapeForPreview = isPhoneViewport && isPortrait && !isScormPlayer;
 
   const [showSettings, setShowSettings] = useState(false);
@@ -2035,20 +2039,24 @@ export default function App() {
 
   // Orientation / compact-viewport listener
   useEffect(() => {
+    const coarseMq = window.matchMedia('(pointer: coarse)');
     const check = () => {
       const w = window.visualViewport?.width ?? window.innerWidth;
       const h = window.visualViewport?.height ?? window.innerHeight;
       setIsPortrait(w < 768 && h > w);
       setIsCompactViewport(Math.min(w, h) < 520);
+      setIsCoarsePointer(coarseMq.matches);
     };
     check();
     window.addEventListener('resize', check);
     window.addEventListener('orientationchange', check);
     window.visualViewport?.addEventListener('resize', check);
+    coarseMq.addEventListener?.('change', check);
     return () => {
       window.removeEventListener('resize', check);
       window.removeEventListener('orientationchange', check);
       window.visualViewport?.removeEventListener('resize', check);
+      coarseMq.removeEventListener?.('change', check);
     };
   }, []);
 
@@ -2215,10 +2223,13 @@ export default function App() {
   ]);
 
   // Course Development toolbar tour — once per session (or forever if "Don't show again").
-  // On phones, wait until landscape so it doesn't cover the rotate-to-continue gate.
+  // On real phones only, wait until landscape so it doesn't cover the rotate-to-continue gate.
   useEffect(() => {
     if (!user || step !== 'preview' || isSandboxMode) return;
-    if (needsLandscapeForPreview) return;
+    if (needsLandscapeForPreview) {
+      setShowDevTour(false);
+      return;
+    }
     if (shouldShowDevTour()) setShowDevTour(true);
   }, [user?.id, step, isSandboxMode, course?.title, needsLandscapeForPreview]);
 
