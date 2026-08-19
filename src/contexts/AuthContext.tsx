@@ -215,10 +215,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const resetPassword = async (email: string) => {
-    // Prefer dedicated path + query so SPA routing and allowlisted redirects stay reliable.
-    // Keep ?reset=true — already allowed in Supabase redirect URLs for nexcourse.ai
+    // Root + ?reset=true matches the existing Supabase redirect allowlist (emails already deliver).
+    // /reset-password is also detected if used later.
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${getAuthRedirectOrigin()}/reset-password?reset=true`,
+      redirectTo: `${getAuthRedirectOrigin()}?reset=true`,
     });
     return { error: error?.message ?? null };
   };
