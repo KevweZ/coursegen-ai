@@ -3908,9 +3908,12 @@ export default function App() {
     );
   }
 
-  // Password-reset email lands on /?reset=true with a recovery session — must set a new password
-  // before normal app routing (otherwise users only see the marketing homepage).
-  if (!isScormPlayer && passwordRecovery) {
+  // Password-reset email must show set-password UI before marketing/home routing.
+  // Also honor /reset-password path directly (PKCE often drops ?reset=true).
+  const onResetPasswordPath =
+    typeof window !== 'undefined'
+    && (window.location.pathname.replace(/\/+$/, '') || '/') === '/reset-password';
+  if (!isScormPlayer && (passwordRecovery || onResetPasswordPath)) {
     if (!user) {
       const hash = typeof window !== 'undefined' ? window.location.hash : '';
       const search = typeof window !== 'undefined' ? window.location.search : '';
@@ -3935,6 +3938,7 @@ export default function App() {
             <p className="text-lg font-extrabold text-white">Reset link expired or invalid</p>
             <p className="text-sm text-slate-400 leading-relaxed">
               Request a new password reset from the sign-in page, then open the latest email link.
+              If this keeps happening, add <span className="text-slate-300">https://nexcourse.ai/reset-password</span> under Supabase Auth → Redirect URLs.
             </p>
             <button
               type="button"

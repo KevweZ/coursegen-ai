@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabaseClient';
 
 const ADMIN_EMAIL = ((import.meta as any).env.VITE_ADMIN_EMAIL as string ?? '').toLowerCase().trim();
 const RECOVERY_FLAG_KEY = 'nexcourse_password_recovery';
+const RESET_REQUESTED_AT_KEY = 'nexcourse_pw_reset_requested_at';
+const RESET_REQUEST_MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 /** True inside Capacitor native shell (optional global — no hard dependency on @capacitor/core). */
 function isNativeApp(): boolean {
@@ -24,7 +26,21 @@ function getAuthRedirectOrigin(): string {
   return 'https://nexcourse.ai';
 }
 
-/** True when the URL is our password-reset landing (email redirect). */
+/** Supabase auth callback markers (PKCE code / recovery hash). */
+export function isAuthCallbackUrl(): boolean {
+  if (typeof window === 'undefined') return false;
+  const params = new URLSearchParams(window.location.search);
+  if (params.has('code') || params.has('token_hash') || params.get('type') === 'recovery') return true;
+  const hash = window.location.hash.replace(/^#/, '');
+  if (!hash) return false;
+  const hp = new URLSearchParams(hash);
+  return hp.get('type') === 'recovery' || hp.has('access_token');
+}
+
+/**
+ * True when the URL is our password-reset landing.
+ * Prefer /reset-password — PKCE often strips ?reset=true and leaves only /?code=...
+ */
 export function isPasswordResetLandingUrl(): boolean {
   if (typeof window === 'undefined') return false;
   const path = window.location.pathname.replace(/\/+$/, '') || '/';
@@ -32,7 +48,6 @@ export function isPasswordResetLandingUrl(): boolean {
   const params = new URLSearchParams(window.location.search);
   if (params.get('reset') === 'true') return true;
   if (params.get('type') === 'recovery') return true;
-  // Implicit-flow recovery links land as #access_token=...&type=recovery
   const hash = window.location.hash.replace(/^#/, '');
   if (hash) {
     const hp = new URLSearchParams(hash);
@@ -61,11 +76,49 @@ function hasPasswordRecoveryPending(): boolean {
   }
 }
 
+function markPasswordResetRequested() {
+  try {
+    localStorage.setItem(RESET_REQUESTED_AT_KEY, String(Date.now()));
+  } catch { /* ignore */ }
+  markPasswordRecoveryPending();
+}
+
+function clearPasswordResetRequested() {
+  try {
+    localStorage.removeItem(RESET_REQUESTED_AT_KEY);
+  } catch { /* ignore */ }
+}
+
+function recentlyRequestedPasswordReset(): boolean {
+  try {
+    const t = Number(localStorage.getItem(RESET_REQUESTED_AT_KEY) || 0);
+    return !!t && Date.now() - t < RESET_REQUEST_MAX_AGE_MS;
+  } catch {
+    return false;
+  }
+}
+
+/** Should show the set-new-password UI for this page load. */
+export function shouldEnterPasswordRecovery(): boolean {
+  if (isPasswordResetLandingUrl() || hasPasswordRecoveryPending()) return true;
+  // Same browser as "Forgot password": PKCE often lands on /?code=... without ?reset=true
+  if (isAuthCallbackUrl() && recentlyRequestedPasswordReset()) return true;
+  return false;
+}
+
 function stripResetQueryFromUrl() {
   if (typeof window === 'undefined') return;
   const url = new URL(window.location.href);
+  let changed = false;
   if (url.searchParams.has('reset')) {
     url.searchParams.delete('reset');
+    changed = true;
+  }
+  if (url.pathname.replace(/\/+$/, '') === '/reset-password') {
+    url.pathname = '/';
+    changed = true;
+  }
+  if (changed) {
     const next = `${url.pathname}${url.search}${url.hash}`;
     window.history.replaceState({}, '', next || '/');
   }
@@ -109,9 +162,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser]       = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [passwordRecovery, setPasswordRecovery] = useState(() =>
-    isPasswordResetLandingUrl() || hasPasswordRecoveryPending()
-  );
+  const [passwordRecovery, setPasswordRecovery] = useState(() => shouldEnterPasswordRecovery());
 
   // Derived: admin by email match OR user_metadata.role === 'admin'
   const isAdmin = !!(
@@ -127,7 +178,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     : false;
 
   useEffect(() => {
-    if (isPasswordResetLandingUrl()) {
+    if (shouldEnterPasswordRecovery()) {
       markPasswordRecoveryPending();
       setPasswordRecovery(true);
     }
@@ -136,7 +187,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
-      if (session && (isPasswordResetLandingUrl() || hasPasswordRecoveryPending())) {
+      if (session && shouldEnterPasswordRecovery()) {
+        markPasswordRecoveryPending();
         setPasswordRecovery(true);
       }
       setLoading(false);
@@ -152,10 +204,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setPasswordRecovery(true);
         return;
       }
-      // Some clients fire SIGNED_IN for recovery links — still force the set-password UI
-      // when the URL clearly indicates a recovery redirect.
+      // PKCE recovery often fires SIGNED_IN (not PASSWORD_RECOVERY) and may drop ?reset=true
       if (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION')) {
-        if (isPasswordResetLandingUrl() || hasPasswordRecoveryPending()) {
+        if (shouldEnterPasswordRecovery()) {
           markPasswordRecoveryPending();
           setPasswordRecovery(true);
         }
@@ -210,15 +261,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     clearPasswordRecoveryPending();
+    clearPasswordResetRequested();
     setPasswordRecovery(false);
     await supabase.auth.signOut();
   };
 
   const resetPassword = async (email: string) => {
-    // Root + ?reset=true matches the existing Supabase redirect allowlist (emails already deliver).
-    // /reset-password is also detected if used later.
+    // Path survives PKCE better than ?reset=true (which Supabase often drops).
+    // Must be listed under Supabase Auth → Redirect URLs.
+    markPasswordResetRequested();
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${getAuthRedirectOrigin()}?reset=true`,
+      redirectTo: `${getAuthRedirectOrigin()}/reset-password`,
     });
     return { error: error?.message ?? null };
   };
@@ -227,6 +280,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.auth.updateUser({ password });
     if (!error) {
       clearPasswordRecoveryPending();
+      clearPasswordResetRequested();
       setPasswordRecovery(false);
       stripResetQueryFromUrl();
     }
@@ -235,6 +289,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const clearPasswordRecovery = () => {
     clearPasswordRecoveryPending();
+    clearPasswordResetRequested();
     setPasswordRecovery(false);
     stripResetQueryFromUrl();
   };
