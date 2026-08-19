@@ -29,7 +29,16 @@ export function isPasswordResetLandingUrl(): boolean {
   if (typeof window === 'undefined') return false;
   const path = window.location.pathname.replace(/\/+$/, '') || '/';
   if (path === '/reset-password') return true;
-  return new URLSearchParams(window.location.search).get('reset') === 'true';
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('reset') === 'true') return true;
+  if (params.get('type') === 'recovery') return true;
+  // Implicit-flow recovery links land as #access_token=...&type=recovery
+  const hash = window.location.hash.replace(/^#/, '');
+  if (hash) {
+    const hp = new URLSearchParams(hash);
+    if (hp.get('type') === 'recovery') return true;
+  }
+  return false;
 }
 
 function markPasswordRecoveryPending() {
@@ -141,6 +150,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (event === 'PASSWORD_RECOVERY') {
         markPasswordRecoveryPending();
         setPasswordRecovery(true);
+        return;
+      }
+      // Some clients fire SIGNED_IN for recovery links — still force the set-password UI
+      // when the URL clearly indicates a recovery redirect.
+      if (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION')) {
+        if (isPasswordResetLandingUrl() || hasPasswordRecoveryPending()) {
+          markPasswordRecoveryPending();
+          setPasswordRecovery(true);
+        }
       }
     });
 
@@ -197,9 +215,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const resetPassword = async (email: string) => {
+    // Prefer dedicated path + query so SPA routing and allowlisted redirects stay reliable.
     // Keep ?reset=true — already allowed in Supabase redirect URLs for nexcourse.ai
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${getAuthRedirectOrigin()}?reset=true`,
+      redirectTo: `${getAuthRedirectOrigin()}/reset-password?reset=true`,
     });
     return { error: error?.message ?? null };
   };

@@ -16,6 +16,8 @@ export const ROUTES = {
   methodology: '/methodology',
   pricing: '/pricing',
   examples: '/examples',
+  /** Password-reset email landing (public; auth gate shows ResetPasswordPage) */
+  resetPassword: '/reset-password',
   courseSettings: '/CourseSettings',
   courseDevelopment: '/CourseDevelopment',
   playerProperties: '/PlayerProperties',
@@ -70,6 +72,7 @@ export function parseAppPath(pathname: string): ParsedAppPath {
   if (p === '/examples') return { kind: 'marketing', view: 'examples' };
   if (p === '/login') return { kind: 'auth', mode: 'login' };
   if (p === '/signup') return { kind: 'auth', mode: 'signup' };
+  if (p === '/reset-password') return { kind: 'auth', mode: 'login' };
   if (p === '/upload') return { kind: 'upload' };
   if (p === '/Building') return { kind: 'building' };
   if (p === '/CourseSettings') return { kind: 'courseSettings' };
