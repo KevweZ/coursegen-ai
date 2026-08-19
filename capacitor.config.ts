@@ -14,6 +14,11 @@ const config: CapacitorConfig = {
     iosScheme: 'https',
   },
   plugins: {
+    // Android WebView fetch often fails for third-party HTTPS (e.g. Supabase auth).
+    // Native HTTP patching fixes "Failed to fetch" on sign-in in the emulator/device.
+    CapacitorHttp: {
+      enabled: true,
+    },
     SplashScreen: {
       launchAutoHide: true,
       backgroundColor: '#0f172a',
