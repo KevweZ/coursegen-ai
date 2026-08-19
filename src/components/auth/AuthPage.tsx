@@ -209,7 +209,7 @@ export function AuthPage({ onBackToHome, initialMode = 'login' }: { onBackToHome
                 <AuthInput
                   icon={Mail}
                   type={mode === 'login' ? 'text' : 'email'}
-                  placeholder={mode === 'login' ? 'Email address or "admin"' : 'Email address'}
+                  placeholder="Email address"
                   value={email} onChange={setEmail} autoComplete="email"
                 />
 

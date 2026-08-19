@@ -115,7 +115,7 @@ interface AccountPageProps {
 }
 
 export function AccountPage({ onUpgrade }: AccountPageProps) {
-  const { user, session, isAdmin } = useAuth();
+  const { user, session, isAdmin, resetPassword } = useAuth();
   const [status, setStatus]   = useState<PaymentStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [packLoading, setPackLoading] = useState<'standard' | 'volume' | null>(null);
@@ -127,6 +127,9 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
   const [inviteBusy, setInviteBusy] = useState(false);
   const [wsMessage, setWsMessage] = useState<string | null>(null);
   const [wsError, setWsError] = useState<string | null>(null);
+  const [pwResetLoading, setPwResetLoading] = useState(false);
+  const [pwResetMessage, setPwResetMessage] = useState<string | null>(null);
+  const [pwResetError, setPwResetError] = useState<string | null>(null);
   const [adminView, setAdminView] = useState<AdminAccountView>(() =>
     typeof window !== 'undefined' ? readAdminAccountView() : 'admin'
   );
@@ -264,6 +267,21 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
     }
   };
 
+  const handleSendPasswordReset = async () => {
+    const email = user?.email;
+    if (!email) {
+      setPwResetError('No email on this account.');
+      return;
+    }
+    setPwResetLoading(true);
+    setPwResetError(null);
+    setPwResetMessage(null);
+    const { error } = await resetPassword(email);
+    setPwResetLoading(false);
+    if (error) setPwResetError(error);
+    else setPwResetMessage('Password reset link sent. Check your inbox (and spam) to set or change your password.');
+  };
+
   const daysLeft = daysUntilReset();
   // Billing portal: real Stripe customer only; Team seat members never have one
   const canManageBilling =
@@ -360,6 +378,43 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
             )}
           </motion.div>
         )}
+
+        {/* ── Sign-in & password ─────────────────────────────────────────────── */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+          className="rounded-2xl border border-slate-700/60 bg-slate-900/60 backdrop-blur-sm p-5"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <p className="font-bold text-white text-sm">Sign-in &amp; password</p>
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed max-w-xl">
+                If you usually use Google, you can still set an email password for the mobile app
+                or backup sign-in. We email you a secure reset link.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleSendPasswordReset()}
+              disabled={pwResetLoading || !user?.email}
+              className="shrink-0 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-600 bg-slate-800/80 hover:bg-slate-800 text-white text-sm font-bold transition-colors disabled:opacity-60"
+            >
+              {pwResetLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              {pwResetLoading ? 'Sending…' : 'Email password reset link'}
+            </button>
+          </div>
+          {pwResetMessage && (
+            <p className="mt-3 text-xs text-emerald-300 font-medium flex items-start gap-2">
+              <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              {pwResetMessage}
+            </p>
+          )}
+          {pwResetError && (
+            <p className="mt-3 text-xs text-red-300 font-medium flex items-start gap-2">
+              <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              {pwResetError}
+            </p>
+          )}
+        </motion.div>
 
         {/* ── Row 1: Plan + Reset Timer ─────────────────────────────────────── */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">

@@ -190,6 +190,7 @@ import {
 } from './lib/adminPreview';
 import { useAuth } from './contexts/AuthContext';
 import { AuthPage } from './components/auth/AuthPage';
+import { ResetPasswordPage } from './components/auth/ResetPasswordPage';
 import { MarketingHomepage } from './components/marketing/MarketingHomepage';
 import { MethodologyPage } from './components/marketing/MethodologyPage';
 import { ExamplesPage } from './components/marketing/ExamplesPage';
@@ -582,7 +583,7 @@ const mapToGridIds = (ids: string[]): string[] =>
 
 export default function App() {
   const isScormPlayer = typeof window !== 'undefined' && !!(window as any).__COURSE_DATA__;
-  const { user, session, loading: authLoading, signOut, isAdmin, isTrial, isTrialExpired } = useAuth();
+  const { user, session, loading: authLoading, signOut, isAdmin, isTrial, isTrialExpired, passwordRecovery, clearPasswordRecovery } = useAuth();
 
   // ── Plan entitlements (Stripe) — prefer over signup metadata for drafts/voices ─
   const [entitlementPlan, setEntitlementPlan] = React.useState<string | null>(null);
@@ -1486,7 +1487,7 @@ export default function App() {
 
   // ── Deep-link restore (auth + protected paths) ─────────────────────────────
   useEffect(() => {
-    if (isScormPlayer || authLoading) return;
+    if (isScormPlayer || authLoading || passwordRecovery) return;
     const path = window.location.pathname;
 
     if (!user) {
@@ -1518,7 +1519,7 @@ export default function App() {
     if (returnTo) navigateTo(returnTo, true);
     applyAuthenticatedPath(target);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, authLoading, isScormPlayer, isAdmin]);
+  }, [user, authLoading, isScormPlayer, isAdmin, passwordRecovery]);
 
   // Keep URL in sync with major authenticated steps
   useEffect(() => {
@@ -3904,6 +3905,61 @@ export default function App() {
           <p className="text-slate-400 text-sm font-medium">Loading...</p>
         </div>
       </div>
+    );
+  }
+
+  // Password-reset email lands on /?reset=true with a recovery session — must set a new password
+  // before normal app routing (otherwise users only see the marketing homepage).
+  if (!isScormPlayer && passwordRecovery) {
+    if (!user) {
+      const hash = typeof window !== 'undefined' ? window.location.hash : '';
+      const search = typeof window !== 'undefined' ? window.location.search : '';
+      const stillExchanging =
+        hash.includes('access_token') ||
+        hash.includes('type=recovery') ||
+        /[?&]code=/.test(search) ||
+        /[?&]token_hash=/.test(search);
+      if (stillExchanging) {
+        return (
+          <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+            <div className="text-center space-y-4">
+              <div className="w-12 h-12 border-t-2 border-indigo-500 rounded-full animate-spin mx-auto" />
+              <p className="text-slate-400 text-sm font-medium">Confirming reset link…</p>
+            </div>
+          </div>
+        );
+      }
+      return (
+        <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4">
+          <div className="max-w-md w-full rounded-2xl border border-slate-700/70 bg-slate-900/80 p-6 text-center space-y-4">
+            <p className="text-lg font-extrabold text-white">Reset link expired or invalid</p>
+            <p className="text-sm text-slate-400 leading-relaxed">
+              Request a new password reset from the sign-in page, then open the latest email link.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                clearPasswordRecovery();
+                setPublicView('auth');
+                setAuthInitialMode('login');
+                navigateTo(ROUTES.login);
+              }}
+              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm py-3 rounded-xl transition-colors"
+            >
+              Back to sign in
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <ResetPasswordPage
+        onComplete={() => {
+          clearPasswordRecovery();
+          setStep('home');
+          navigateTo(ROUTES.upload);
+        }}
+      />
     );
   }
 
