@@ -66,12 +66,14 @@ function FeatureCard({ icon: Icon, title, description, color, delay }: {
 
 // ── Sign In Dropdown ──────────────────────────────────────────────────────────
 function SignInDropdown({ onClose, onGetStarted }: { onClose: () => void; onGetStarted: () => void }) {
-  const { signIn, signInWithGoogle } = useAuth();
+  const { signIn, signInWithGoogle, resetPassword } = useAuth();
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw]     = useState(false);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState('');
+  const [resetSent, setResetSent] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   // Close on outside click
@@ -100,6 +102,20 @@ function SignInDropdown({ onClose, onGetStarted }: { onClose: () => void; onGetS
     if (err) setError(err || 'Google sign in failed.');
   };
 
+  const handleForgotPassword = async () => {
+    if (!email.trim()) {
+      setError('Enter your email above, then tap Forgot password.');
+      return;
+    }
+    setResetLoading(true);
+    setError('');
+    setResetSent(false);
+    const { error: err } = await resetPassword(email.trim());
+    setResetLoading(false);
+    if (err) setError(err);
+    else setResetSent(true);
+  };
+
   return (
     <motion.div ref={ref} initial={{ opacity: 0, y: -8, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: -8, scale: 0.97 }} transition={{ duration: 0.18 }}
@@ -126,6 +142,13 @@ function SignInDropdown({ onClose, onGetStarted }: { onClose: () => void; onGetS
             <p className="text-red-300 text-xs leading-relaxed">{error}</p>
           </div>
         )}
+        {resetSent && (
+          <div className="flex items-start gap-2 bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-3 py-2.5">
+            <p className="text-emerald-300 text-xs leading-relaxed">
+              Password reset link sent. Check your email inbox (and spam).
+            </p>
+          </div>
+        )}
 
         <div>
           <label className="block text-xs font-bold text-slate-400 mb-1.5">Email</label>
@@ -135,7 +158,17 @@ function SignInDropdown({ onClose, onGetStarted }: { onClose: () => void; onGetS
         </div>
 
         <div>
-          <label className="block text-xs font-bold text-slate-400 mb-1.5">Password</label>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="block text-xs font-bold text-slate-400">Password</label>
+            <button
+              type="button"
+              onClick={() => void handleForgotPassword()}
+              disabled={resetLoading}
+              className="text-[11px] font-medium text-indigo-400 hover:text-indigo-300 disabled:opacity-60 transition-colors"
+            >
+              {resetLoading ? 'Sending…' : 'Forgot password?'}
+            </button>
+          </div>
           <div className="relative">
             <input
               type={showPw ? 'text' : 'password'}
