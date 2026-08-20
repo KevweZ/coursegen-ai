@@ -128,10 +128,12 @@ import {
   parseAppPath,
   isProtectedPath,
   navigateTo,
+  getAppPath,
   stashReturnTo,
   consumeReturnTo,
 } from './lib/routes';
 import type { SandboxDemo } from './lib/routes';
+import { resolveApiBase } from './lib/nativeApiBridge';
 import { DraftCoursesPanel } from './components/player/DraftCoursesPanel';
 import { ViewDraftsModal } from './components/player/ViewDraftsModal';
 import { AppImagePickerModal } from './components/player/AppImagePickerModal';
@@ -1488,7 +1490,7 @@ export default function App() {
   // ── Deep-link restore (auth + protected paths) ─────────────────────────────
   useEffect(() => {
     if (isScormPlayer || authLoading || passwordRecovery) return;
-    const path = window.location.pathname;
+    const path = getAppPath();
 
     if (!user) {
       pathBootstrappedForUser.current = null;
@@ -1524,7 +1526,7 @@ export default function App() {
   // Keep URL in sync with major authenticated steps
   useEffect(() => {
     if (!user || isScormPlayer) return;
-    const path = window.location.pathname;
+    const path = getAppPath();
     if (path.startsWith('/sandbox/')) return;
 
     if (step === 'marketing') {
@@ -1553,10 +1555,10 @@ export default function App() {
     }
   }, [step, user, isScormPlayer, isSandboxMode, activeDraftId, publicView]);
 
-  // ── Browser back / forward ────────────────────────────────────────────────
+  // ── Browser back / forward (also hashchange on Capacitor) ─────────────────
   useEffect(() => {
     const handlePopState = () => {
-      const path = window.location.pathname;
+      const path = getAppPath();
       if (!user) {
         if (isProtectedPath(path)) {
           stashReturnTo(path);
@@ -1574,7 +1576,11 @@ export default function App() {
       applyAuthenticatedPath(path);
     };
     window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    window.addEventListener('hashchange', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('hashchange', handlePopState);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, applyAuthenticatedPath]);
 
@@ -2200,7 +2206,7 @@ export default function App() {
   // Idle upload stays on /upload; analyze / quick-build progress uses /Building
   useEffect(() => {
     if (!user || isScormPlayer || step !== 'home') return;
-    const path = window.location.pathname.replace(/\/+$/, '') || '/';
+    const path = getAppPath();
     if (path.startsWith('/sandbox/')) return;
     const busy =
       isAnalyzing ||
@@ -7749,7 +7755,7 @@ export default function App() {
         {showTrialInvitePanel && isAdmin && (
           <TrialInvitePanel
             onClose={() => setShowTrialInvitePanel(false)}
-            apiBase={import.meta.env.VITE_API_BASE ?? ''}
+            apiBase={resolveApiBase()}
             accessToken={adminToken}
           />
         )}

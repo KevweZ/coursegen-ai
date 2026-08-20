@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import { AuthProvider } from './contexts/AuthContext.tsx';
 import { installNativeFetchBridge, isNativeApp } from './lib/nativeApiBridge';
+import { getAppPath, navigateTo, ROUTES } from './lib/routes';
 import './index.css';
 import '@zomako/elearning-components/dist/elearning-components.css';
 
@@ -18,6 +19,23 @@ async function bootstrapNativeChrome() {
     const { SplashScreen } = await import('@capacitor/splash-screen');
     await SplashScreen.hide();
   } catch { /* ignore */ }
+  try {
+    const { App: CapApp } = await import('@capacitor/app');
+    await CapApp.addListener('backButton', ({ canGoBack }) => {
+      // Prefer in-app history (hash routes) over exiting the shell.
+      if (canGoBack && window.history.length > 1) {
+        window.history.back();
+        return;
+      }
+      const path = getAppPath();
+      if (path !== ROUTES.upload && path !== ROUTES.home && path !== '/') {
+        navigateTo(ROUTES.upload, true);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+        return;
+      }
+      void CapApp.exitApp();
+    });
+  } catch { /* App plugin optional */ }
 }
 
 void bootstrapNativeChrome();

@@ -3,6 +3,7 @@
  * IndexedDB remains a per-device cache; the server is the cross-device source of truth.
  */
 import { supabase } from './supabaseClient';
+import { resolveApiBase } from './nativeApiBridge';
 
 export interface CloudDraftMeta {
   id: string;
@@ -22,7 +23,7 @@ const CHUNK_CHARS = 3_500_000;
 let cloudReady: boolean | null = null;
 
 function apiBase(): string {
-  return String((import.meta as any).env?.VITE_API_BASE ?? '').replace(/\/$/, '');
+  return resolveApiBase();
 }
 
 async function getAccessToken(): Promise<string | null> {

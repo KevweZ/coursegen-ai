@@ -136,7 +136,9 @@ Then press **Run** ▶ again in Android Studio.
 ## How API / login works in the shell
 
 - Supabase uses existing `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` from `.env` (absolute URLs)
-- Relative `/api/*` calls are rewritten at runtime to `https://nexcourse.ai` inside the native WebView (`src/lib/nativeApiBridge.ts`), so the Capacitor app hits the same Worker → Render stack as the browser
+- `.env.capacitor` sets `VITE_API_BASE=https://nexcourse.ai` so drafts/preferences never hit `localhost:3001` from the emulator
+- Relative `/api/*` calls are also rewritten at runtime to `https://nexcourse.ai` (`src/lib/nativeApiBridge.ts`); loopback API URLs are rewritten too
+- Native navigation uses **hash routes** (`#/sandbox/...`) so Vite’s `base: './'` asset URLs keep resolving from the app root (nested pathnames like `/sandbox/CourseDevelopment` previously blanked the WebView)
 
 ## Branch discipline
 
@@ -147,13 +149,71 @@ Then press **Run** ▶ again in Android Studio.
 
 Do **not** run `wrangler deploy` from this branch for pilot users unless you deliberately want to ship mobile-related web changes.
 
-## Suggested next milestones
+## Suggested milestones (roadmap)
 
-1. Android emulator run + email/password sign-in smoke test ← **you are here**
-2. Polish: safe-area / status bar on a real Android device
-3. Deep links so Google OAuth returns into the app
-4. macOS: iOS / TestFlight internal build
-5. After pilot: merge plan + store listing assets
+| # | Milestone | Status |
+|---|-----------|--------|
+| 1 | Capacitor scaffold on side branch | Done |
+| 2 | Native API bridge + CapacitorHttp | Done |
+| 3 | Android Studio + emulator (Gradle/JDK/internet) | Done |
+| 4 | Email/password sign-in smoke test | Done |
+| 5 | Web password-reset + Supabase `/reset-password` allowlist | Done |
+| 6 | Authenticated smoke pass in emulator | **In progress** |
+| 7 | Real Android device (USB) | Pending |
+| 8 | Safe-area / status-bar / keyboard polish | Pending |
+| 9 | Google OAuth deep links back into the app | Pending |
+| 10 | App identity (icon, splash, manifest) | Pending |
+| 11 | iOS Simulator + TestFlight (needs Mac) | Pending |
+| 12 | Store readiness (listing, privacy, signing) | Pending |
+| 13 | Post-pilot merge plan into `main` | Pending |
+
+---
+
+## Milestone 6 — Authenticated smoke pass (emulator)
+
+Goal: prove the signed-in app works end-to-end in the shell (not only the login screen). Stay on `feature/capacitor-mobile-shell`. Emulator must have internet (Chrome can load Google).
+
+### Checklist (do these in order)
+
+1. **Sign in** with email + password → land on upload / home (already done if still signed in).
+2. **Account** — open **My Account** / Account & Billing.
+   - Plan / credits / email visible (not stuck on spinner forever).
+   - No red network / “Failed to fetch” banners.
+3. **Drafts / Save** — open Save / drafts list.
+   - Cloud-saved drafts for this account should appear (status: **Account sync on**). Tap the refresh icon if the list is empty after first sign-in.
+   - Local-only drafts from another browser never appear until that device Syncs them to the account.
+   - If you have a draft: open it and confirm it loads.
+4. **Upload / start a course** — go to upload.
+   - Pick a small PDF or DOCX (or use an existing flow you know works on web).
+   - Confirm analyze / structure UI progresses (or a clear error — note the exact text).
+5. **Demo Course (admin) or Course Development** — open Demo → Course Development, or open a draft preview.
+   - Player / rotate-to-landscape prompt appears (not a blank white screen).
+   - In-app Back or Android hardware back returns to the previous screen.
+6. **Sign out** (optional) — confirm you return to marketing / sign-in without a crash.
+
+### Pass / fail
+
+- **Pass:** steps 1–4 work without persistent network errors.
+- **Fail:** any step shows “Failed to fetch”, blank forever, or wrong empty data vs the same account on https://nexcourse.ai in Chrome on your PC.
+
+If something fails, note: **which step**, **exact error text**, and whether the **same action works in desktop Chrome** on the website.
+
+### Out of scope for #6
+
+- Google sign-in (milestone 9)
+- Real USB phone (milestone 7)
+- Visual polish under notches (milestone 8)
+
+---
+
+## Suggested next milestones (after #6)
+
+7. Real Android device (USB)  
+8. Safe-area / status-bar / keyboard polish  
+9. Deep links so Google OAuth returns into the app  
+10. App identity polish  
+11. macOS: iOS / TestFlight  
+12–13. Store readiness + post-pilot merge  
 
 ## App IDs
 
@@ -168,6 +228,8 @@ Do **not** run `wrangler deploy` from this branch for pilot users unless you del
 | Android Studio doesn’t open | Install Android Studio; then `npx cap open android` |
 | No devices in Run dropdown | Device Manager → Create Device → start the AVD |
 | Blank white screen | Re-run `npm run cap:sync`, then Run again |
-| Sign-in fails with network error | Emulator needs internet; check Wi‑Fi icon in the emulator |
+| Sign-in fails with network error | Emulator needs internet; Chrome must load Google; Cold Boot if offline |
 | Google login leaves the app | Expected for now — use email/password |
 | Gradle sync forever / fails | Let first sync finish; if stuck, File → Invalidate Caches / restart Android Studio |
+| Missing `cordova.variables.gradle` | From repo root: `npm run cap:sync`, then Sync / Run again |
+| JDK / Java 25 incompatibility | Gradle JDK must be **jbr-21**, not Embedded Java 25 |

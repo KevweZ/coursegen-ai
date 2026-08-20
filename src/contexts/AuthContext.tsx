@@ -27,7 +27,9 @@ function getAuthRedirectOrigin(): string {
 /** True when the URL is our password-reset landing (email redirect). */
 export function isPasswordResetLandingUrl(): boolean {
   if (typeof window === 'undefined') return false;
-  const path = window.location.pathname.replace(/\/+$/, '') || '/';
+  // Prefer hash path on Capacitor; pathname on web (and reset deep links).
+  const pathFromHash = (window.location.hash || '').replace(/^#/, '').split('?')[0];
+  const path = (pathFromHash || window.location.pathname).replace(/\/+$/, '') || '/';
   if (path === '/reset-password') return true;
   return new URLSearchParams(window.location.search).get('reset') === 'true';
 }

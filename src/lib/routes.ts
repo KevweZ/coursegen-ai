@@ -2,7 +2,13 @@
  * App route helpers — pushState SPA paths (no React Router).
  * Marketing paths stay lowercase; authenticated app sections use PascalCase
  * per product preference (e.g. /CourseSettings).
+ *
+ * Capacitor native: use hash routes (#/sandbox/...) so the document path stays
+ * at / or /index.html. Nested pathnames break Vite's base: './' asset URLs
+ * (e.g. /sandbox/CourseDevelopment → ./assets resolves under /sandbox/).
  */
+
+import { isNativeApp } from './nativeApiBridge';
 
 export const RETURN_TO_KEY = 'nexcourse_return_to';
 
@@ -45,6 +51,25 @@ export type ParsedAppPath =
   | { kind: 'sandbox'; demo: SandboxDemo }
   | { kind: 'payment'; outcome: 'success' | 'cancel' }
   | { kind: 'unknown' };
+
+/** Native Capacitor shell uses hash routing; web keeps pathname pushState. */
+export function usesHashRouting(): boolean {
+  return isNativeApp();
+}
+
+/**
+ * Current app path (pathname on web; hash path on native, without leading #).
+ */
+export function getAppPath(): string {
+  if (typeof window === 'undefined') return '/';
+  if (usesHashRouting()) {
+    const raw = (window.location.hash || '').replace(/^#/, '');
+    const pathOnly = raw.split('?')[0] || '/';
+    const normalized = pathOnly.startsWith('/') ? pathOnly : `/${pathOnly}`;
+    return normalized.replace(/\/+$/, '') || '/';
+  }
+  return window.location.pathname.replace(/\/+$/, '') || '/';
+}
 
 /** Paths that require a signed-in user (deep-link → login if anonymous). */
 export function isProtectedPath(pathname: string): boolean {
@@ -95,9 +120,21 @@ export function parseAppPath(pathname: string): ParsedAppPath {
 
 export function navigateTo(path: string, replace = false) {
   if (typeof window === 'undefined') return;
-  if (window.location.pathname === path) return;
-  if (replace) window.history.replaceState({}, '', path);
-  else window.history.pushState({}, '', path);
+  const normalized = path.startsWith('/') ? path : `/${path}`;
+
+  if (usesHashRouting()) {
+    const nextHash = `#${normalized === '/' ? '/' : normalized}`;
+    const currentHash = window.location.hash || '#/';
+    if (currentHash === nextHash || currentHash === `#${normalized}`) return;
+    const base = `${window.location.pathname}${window.location.search}`;
+    if (replace) window.history.replaceState({}, '', `${base}${nextHash}`);
+    else window.history.pushState({}, '', `${base}${nextHash}`);
+    return;
+  }
+
+  if (window.location.pathname === normalized) return;
+  if (replace) window.history.replaceState({}, '', normalized);
+  else window.history.pushState({}, '', normalized);
 }
 
 export function stashReturnTo(path: string) {
