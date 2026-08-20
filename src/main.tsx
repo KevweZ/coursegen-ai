@@ -3,14 +3,15 @@ import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import { AuthProvider } from './contexts/AuthContext.tsx';
 import { installNativeFetchBridge, isNativeApp } from './lib/nativeApiBridge';
-import { getAppPath, navigateTo, ROUTES } from './lib/routes';
+import { getAppPath, navigateTo, normalizeCapacitorLocation, ROUTES, usesHashRouting } from './lib/routes';
 import './index.css';
 import '@zomako/elearning-components/dist/elearning-components.css';
 
 installNativeFetchBridge();
+normalizeCapacitorLocation();
 
 async function bootstrapNativeChrome() {
-  if (!isNativeApp()) return;
+  if (!isNativeApp() && !usesHashRouting()) return;
   try {
     const { StatusBar, Style } = await import('@capacitor/status-bar');
     await StatusBar.setStyle({ style: Style.Dark });
@@ -30,7 +31,6 @@ async function bootstrapNativeChrome() {
       const path = getAppPath();
       if (path !== ROUTES.upload && path !== ROUTES.home && path !== '/') {
         navigateTo(ROUTES.upload, true);
-        window.dispatchEvent(new PopStateEvent('popstate'));
         return;
       }
       void CapApp.exitApp();

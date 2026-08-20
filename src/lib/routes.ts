@@ -3,9 +3,13 @@
  * Marketing paths stay lowercase; authenticated app sections use PascalCase
  * per product preference (e.g. /CourseSettings).
  *
- * Capacitor native: use hash routes (#/sandbox/...) so the document path stays
- * at / or /index.html. Nested pathnames break Vite's base: './' asset URLs
- * (e.g. /sandbox/CourseDevelopment → ./assets resolves under /sandbox/).
+ * Capacitor native: use hash routes (#/sandbox/..., #/preview/...) so the document
+ * path stays at / or /index.html. Nested pathnames break Vite's base: './' asset
+ * URLs (e.g. /preview/abc → ./assets resolves under /preview/).
+ *
+ * Prefer MODE === 'capacitor' over Capacitor.isNativePlatform() — the API base can
+ * work from baked VITE_API_BASE even when the bridge detection fails, but pathname
+ * routing would still white-screen on /preview/... and /design/...
  */
 
 import { isNativeApp } from './nativeApiBridge';
@@ -22,6 +26,7 @@ export const ROUTES = {
   methodology: '/methodology',
   pricing: '/pricing',
   examples: '/examples',
+  resetPassword: '/reset-password',
   courseSettings: '/CourseSettings',
   courseDevelopment: '/CourseDevelopment',
   playerProperties: '/PlayerProperties',
@@ -52,9 +57,20 @@ export type ParsedAppPath =
   | { kind: 'payment'; outcome: 'success' | 'cancel' }
   | { kind: 'unknown' };
 
-/** Native Capacitor shell uses hash routing; web keeps pathname pushState. */
+/** True for Capacitor production builds and when the native bridge reports a device. */
 export function usesHashRouting(): boolean {
+  try {
+    if ((import.meta as any).env?.MODE === 'capacitor') return true;
+  } catch { /* ignore */ }
   return isNativeApp();
+}
+
+/** Document path that keeps Vite `base: './'` asset resolution working. */
+function capacitorDocumentBase(): string {
+  if (typeof window === 'undefined') return '/';
+  const p = window.location.pathname || '/';
+  if (p.endsWith('.html')) return p;
+  return '/';
 }
 
 /**
@@ -71,6 +87,25 @@ export function getAppPath(): string {
   return window.location.pathname.replace(/\/+$/, '') || '/';
 }
 
+/**
+ * If a Capacitor session somehow landed on a nested pathname (breaks assets),
+ * move the route into the hash and reset the document path.
+ */
+export function normalizeCapacitorLocation(): void {
+  if (typeof window === 'undefined' || !usesHashRouting()) return;
+  const pathname = window.location.pathname || '/';
+  const isRoot =
+    pathname === '/' ||
+    pathname === '/index.html' ||
+    pathname.endsWith('/index.html');
+  if (isRoot) return;
+
+  const appPath = (pathname.replace(/\/+$/, '') || '/') + (window.location.search || '');
+  const hashPath = window.location.hash?.replace(/^#/, '') || appPath;
+  const normalizedHash = hashPath.startsWith('/') ? hashPath : `/${hashPath}`;
+  window.history.replaceState({}, '', `${capacitorDocumentBase()}#${normalizedHash}`);
+}
+
 /** Paths that require a signed-in user (deep-link → login if anonymous). */
 export function isProtectedPath(pathname: string): boolean {
   const p = pathname.replace(/\/+$/, '') || '/';
@@ -81,6 +116,7 @@ export function isProtectedPath(pathname: string): boolean {
     p === '/PlayerProperties' ||
     p === '/MyAccount'
   ) return true;
+  if (p === '/reset-password') return true;
   if (p.startsWith('/design/') || p.startsWith('/preview/')) return true;
   if (p.startsWith('/sandbox/')) return true;
   return false;
@@ -95,6 +131,7 @@ export function parseAppPath(pathname: string): ParsedAppPath {
   if (p === '/examples') return { kind: 'marketing', view: 'examples' };
   if (p === '/login') return { kind: 'auth', mode: 'login' };
   if (p === '/signup') return { kind: 'auth', mode: 'signup' };
+  if (p === '/reset-password') return { kind: 'auth', mode: 'login' };
   if (p === '/upload') return { kind: 'upload' };
   if (p === '/Building') return { kind: 'building' };
   if (p === '/CourseSettings') return { kind: 'courseSettings' };
@@ -125,10 +162,17 @@ export function navigateTo(path: string, replace = false) {
   if (usesHashRouting()) {
     const nextHash = `#${normalized === '/' ? '/' : normalized}`;
     const currentHash = window.location.hash || '#/';
-    if (currentHash === nextHash || currentHash === `#${normalized}`) return;
-    const base = `${window.location.pathname}${window.location.search}`;
-    if (replace) window.history.replaceState({}, '', `${base}${nextHash}`);
-    else window.history.pushState({}, '', `${base}${nextHash}`);
+    if (currentHash === nextHash || currentHash === `#${normalized}`) {
+      // Still repair a nested pathname if we somehow have one.
+      normalizeCapacitorLocation();
+      return;
+    }
+    const base = capacitorDocumentBase();
+    const url = `${base}${nextHash}`;
+    if (replace) window.history.replaceState({}, '', url);
+    else window.history.pushState({}, '', url);
+    // Do not synthesize popstate here — callers already set React step state.
+    // (Synthesizing it re-entered draft deep-link open and raced the UI.)
     return;
   }
 
