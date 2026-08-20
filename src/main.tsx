@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import { AuthProvider } from './contexts/AuthContext.tsx';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { installNativeFetchBridge, isNativeApp } from './lib/nativeApiBridge';
 import { getAppPath, navigateTo, normalizeCapacitorLocation, ROUTES, usesHashRouting } from './lib/routes';
 import './index.css';
@@ -42,8 +43,10 @@ void bootstrapNativeChrome();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <AuthProvider>
-      <App />
-    </AuthProvider>
+    <ErrorBoundary fallbackTitle="Something went wrong in the app">
+      <AuthProvider>
+        <App />
+      </AuthProvider>
+    </ErrorBoundary>
   </StrictMode>,
 );

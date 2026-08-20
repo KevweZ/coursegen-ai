@@ -5,10 +5,12 @@ import { defineConfig, loadEnv } from 'vite';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
-  // Capacitor loads from the device filesystem — relative asset URLs are required.
+  // Capacitor 8 serves the WebView at https://localhost/ — root-absolute assets
+  // stay valid even if the SPA navigates to /preview/... or /design/... .
+  // (Relative base './' broke whenever the pathname gained a nested segment.)
   const isCapacitorBuild = env.CAPACITOR === '1' || mode === 'capacitor';
   return {
-    base: isCapacitorBuild ? './' : '/',
+    base: '/',
     plugins: [react(), tailwindcss()],
     optimizeDeps: {
       include: ['react', 'react-dom'],

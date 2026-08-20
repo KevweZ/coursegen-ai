@@ -5071,6 +5071,23 @@ export default function App() {
              />
           )}
 
+          {step === 'preview' && !course && (
+            <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-slate-950 px-6 text-center">
+              <div className="w-10 h-10 border-2 border-indigo-500/30 border-t-indigo-400 rounded-full animate-spin" />
+              <p className="text-white font-bold text-base">Opening course preview…</p>
+              <p className="text-slate-400 text-sm max-w-sm">
+                If this stays blank, tap Back and try again. Large drafts can take a moment on the emulator.
+              </p>
+              <button
+                type="button"
+                onClick={goHome}
+                className="mt-2 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-bold border border-slate-600/60"
+              >
+                Back
+              </button>
+            </div>
+          )}
+
           {step === 'preview' && course && (
             // top-0 (not top-20) -- the global header is hidden during preview (see above),
             // so the player now owns the full viewport height.

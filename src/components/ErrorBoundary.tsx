@@ -51,6 +51,20 @@ export class ErrorBoundary extends Component<Props, State> {
             <RefreshCw className="w-4 h-4" />
             Try Again
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              try {
+                window.location.hash = '#/upload';
+                window.location.reload();
+              } catch {
+                window.location.reload();
+              }
+            }}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-700/40 hover:bg-slate-700/60 text-slate-200 text-sm font-semibold transition-colors"
+          >
+            Reload app
+          </button>
         </div>
       );
     }
