@@ -13,6 +13,20 @@
 
 import { useRef, useState, useCallback, useEffect } from 'react';
 
+/** Android WebView / Capacitor often has no speechSynthesis — guard every call. */
+function getSpeechSynthesis(): SpeechSynthesis | null {
+  try {
+    const synth = typeof window !== 'undefined' ? window.speechSynthesis : undefined;
+    return synth ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function cancelSpeechSynthesis() {
+  getSpeechSynthesis()?.cancel();
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -165,7 +179,9 @@ export function usePlayer(): Player {
     // TTS Mock Path
     if (state.ttsText && !state.audioSrc) {
        if (!state.isPlaying) {
-         window.speechSynthesis.cancel();
+         const synth = getSpeechSynthesis();
+         if (!synth) return;
+         cancelSpeechSynthesis();
          
          // Substring from currentTime to simulate accurate scrub/resume
          const fraction = state.duration > 0 ? (state.currentTime / state.duration) : 0;
@@ -180,7 +196,7 @@ export function usePlayer(): Player {
            const utterance = new SpeechSynthesisUtterance(remainingText);
            utterance.rate = 0.95;
            // Prefer a natural female English voice (Aria/Jenny/Zira/Samantha on macOS/Windows/Edge)
-           const _voices = window.speechSynthesis.getVoices();
+           const _voices = synth.getVoices();
            const _female = _voices.find(v =>
              v.lang.startsWith('en') && (
                v.name.includes('Aria') || v.name.includes('Jenny') ||
@@ -208,7 +224,7 @@ export function usePlayer(): Player {
              cancelRaf();
            };
 
-           window.speechSynthesis.speak(utterance);
+           synth.speak(utterance);
            console.log(`[usePlayer] Started TTS playback for slide: ${state.activeSlideId}`);
          } else {
            setState(prev => ({ ...prev, isPlaying: false, isEnded: true, currentTime: state.duration }));
@@ -242,7 +258,7 @@ export function usePlayer(): Player {
   const pause = useCallback(() => {
     cancelRaf();
     if (state.ttsText && !state.audioSrc) {
-       window.speechSynthesis.cancel(); // Cancel instead of pause to allow substring resume
+       cancelSpeechSynthesis(); // Cancel instead of pause to allow substring resume
        setState(prev => ({ ...prev, isPlaying: false }));
        return;
     }
@@ -260,7 +276,9 @@ export function usePlayer(): Player {
       audioRef.current.currentTime = clamped;
     } else if (state.ttsText) {
       if (state.isPlaying) {
-         window.speechSynthesis.cancel();
+         const synth = getSpeechSynthesis();
+         cancelSpeechSynthesis();
+         if (synth) {
          const fraction = state.duration > 0 ? (clamped / state.duration) : 0;
          const charIndex = Math.floor(state.ttsText.length * fraction);
          let startIdx = charIndex;
@@ -270,7 +288,8 @@ export function usePlayer(): Player {
          if (remainingText.length > 0 && clamped < state.duration) {
            const utterance = new SpeechSynthesisUtterance(remainingText);
            utterance.rate = 0.95;
-           window.speechSynthesis.speak(utterance);
+           synth.speak(utterance);
+         }
          }
       }
     }
@@ -287,7 +306,9 @@ export function usePlayer(): Player {
     if (state.audioSrc && audioRef.current) {
       audioRef.current.currentTime = clamped;
     } else if (state.ttsText && state.isPlaying) {
-         window.speechSynthesis.cancel();
+         const synth = getSpeechSynthesis();
+         cancelSpeechSynthesis();
+         if (synth) {
          const fraction = state.duration > 0 ? (clamped / state.duration) : 0;
          const charIndex = Math.floor(state.ttsText.length * fraction);
          let startIdx = charIndex;
@@ -297,7 +318,8 @@ export function usePlayer(): Player {
          if (remainingText.length > 0 && clamped < state.duration) {
            const utterance = new SpeechSynthesisUtterance(remainingText);
            utterance.rate = 0.95;
-           window.speechSynthesis.speak(utterance);
+           synth.speak(utterance);
+         }
          }
     }
     setState(prev => {
@@ -320,7 +342,7 @@ export function usePlayer(): Player {
 
     // Stop and unload previous audio
     cancelRaf();
-    window.speechSynthesis.cancel();
+    cancelSpeechSynthesis();
     audio.pause();
     audio.removeAttribute('src'); // Strictly unbind old source
     audio.load();
