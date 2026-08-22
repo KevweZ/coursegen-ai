@@ -2,7 +2,7 @@
  * PlayerPropertiesModal — Storyline-style Player Properties dialog.
  * Left panel: settings. Right panel: live player preview reacting to all settings.
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Monitor, ChevronDown, ChevronUp, ChevronLeft, ChevronRight,
@@ -10,6 +10,7 @@ import {
   Check, Sparkles, Menu, Settings2, Lock, Unlock, ArrowRight, AlertTriangle,
 } from 'lucide-react';
 import type { NavigationMode, ExamPresentationMode } from '../../types/course';
+import { cn } from '../../lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type TOCPosition = 'sidebar-left' | 'sidebar-right' | 'dropdown-top' | 'dropdown-bottom' | 'hidden';
@@ -45,7 +46,7 @@ export interface PlayerConfig {
 export const defaultPlayerConfig: PlayerConfig = {
   playerStyle: 'modern',
   theme: 'dark',
-  tocPosition: 'sidebar-left', // Desktop default. Mobile always uses dropdown (see App useMobileTocDropdown).
+  tocPosition: 'sidebar-left', // Desktop default. On phone, sidebars use letterbox gutters; dropdowns use gutter Menu.
   tocStartsCollapsed: false,
   tocNumbering: 'numbered',
   showTitle: true,
@@ -80,10 +81,6 @@ interface Props {
   saveLabel?: string;
   title?: string;
   subtitle?: string;
-}
-
-function cn(...classes: (string | false | undefined | null)[]) {
-  return classes.filter(Boolean).join(' ');
 }
 
 function Toggle({ checked, onChange, label }: { checked: boolean; onChange: () => void; label?: string }) {
@@ -322,6 +319,20 @@ export function PlayerPropertiesModal({
   const [local, setLocal] = useState<PlayerConfig>({ ...config });
   const [savedFlash, setSavedFlash] = useState(false);
   const isPage = variant === 'page';
+  const [isPhoneSheet, setIsPhoneSheet] = useState(() =>
+    typeof window !== 'undefined' && Math.min(window.innerWidth, window.innerHeight) < 520
+  );
+
+  useEffect(() => {
+    const sync = () => setIsPhoneSheet(Math.min(window.innerWidth, window.innerHeight) < 520);
+    sync();
+    window.addEventListener('resize', sync);
+    window.addEventListener('orientationchange', sync);
+    return () => {
+      window.removeEventListener('resize', sync);
+      window.removeEventListener('orientationchange', sync);
+    };
+  }, []);
 
   const update = (patch: Partial<PlayerConfig>) => setLocal(prev => ({ ...prev, ...patch }));
   const handleSave = () => {
@@ -346,61 +357,8 @@ export function PlayerPropertiesModal({
     { value: 'hidden',          label: 'Hidden',            description: 'No navigation menu shown',    icon: <X className="w-3.5 h-3.5" /> },
   ];
 
-  const panel = (
-      <motion.div
-        initial={isPage ? { opacity: 0, y: 16 } : { opacity: 0, scale: 0.96, y: 16 }}
-        animate={isPage ? { opacity: 1, y: 0 } : { opacity: 1, scale: 1, y: 0 }}
-        exit={isPage ? { opacity: 0, y: -12 } : { opacity: 0, scale: 0.96, y: 16 }}
-        transition={{ type: 'spring', damping: 28, stiffness: 280 }}
-        className={cn(
-          'bg-slate-900 border border-slate-700 shadow-2xl w-full flex flex-col overflow-hidden',
-          isPage
-            ? 'rounded-2xl max-w-5xl mx-auto min-h-[70vh] max-h-[calc(100vh-8rem)]'
-            : 'rounded-2xl max-w-5xl max-h-[90vh]'
-        )}
-      >
-        {/* ── Header ── */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700 bg-slate-800/60 shrink-0">
-          <div className="flex items-center gap-3">
-            {isPage && (
-              <button
-                type="button"
-                onClick={onClose}
-                className="p-1.5 -ml-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
-                title="Back"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-            )}
-            <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30">
-              <Monitor className="w-4 h-4 text-indigo-400" />
-            </div>
-            <div>
-              <h2 className="text-white font-extrabold text-base">
-                {title || (isPage ? 'Default Player Properties' : 'Player Properties')}
-              </h2>
-              <p className="text-slate-400 text-xs">
-                {subtitle || (isPage
-                  ? 'Saved defaults apply to new courses you create'
-                  : 'Customize the learner experience for this course')}
-              </p>
-            </div>
-          </div>
-          {!isPage && (
-            <button onClick={onClose} className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors">
-              <X className="w-5 h-5" />
-            </button>
-          )}
-        </div>
-
-        {/* ── Body ── */}
-        <div className="flex flex-1 min-h-0 overflow-hidden">
-
-          {/* ─ LEFT: Settings Panel ─ */}
-          <div className="w-72 border-r border-slate-800 overflow-y-auto p-5 shrink-0">
-
-
-
+  const settingsPanel = (
+            <>
             <SectionTitle>Theme</SectionTitle>
             <select
               value={local.theme}
@@ -415,7 +373,7 @@ export function PlayerPropertiesModal({
             <SectionTitle>Table of Contents</SectionTitle>
             <div className="space-y-1.5">
               <p className="text-[10px] text-slate-500 mb-3 leading-relaxed">
-                Desktop default is a fixed left sidebar. On mobile (and Mobile preview), the player always uses a clickable Menu dropdown so the TOC never steals slide width.
+                Desktop uses a fixed sidebar by default. On phone preview, left/right TOC settings place a persistent rail in the letterbox gutter; dropdown settings keep a Menu control in the gutter so the slide stage stays wide.
               </p>
               {tocOptions.map(opt => (
                 <TOCOption
@@ -599,10 +557,11 @@ export function PlayerPropertiesModal({
                 Changing presentation mode will prompt a regeneration confirmation.
               </p>
             </div>
-          </div>
+            </>
+  );
 
-          {/* ─ RIGHT: Live Preview ─ */}
-          <div className="flex-1 flex flex-col bg-slate-950 p-5 gap-4 overflow-y-auto">
+  const livePreviewPanel = (
+          <div className={cn('flex flex-col bg-slate-950 gap-4 overflow-y-auto', isPhoneSheet ? 'p-3' : 'flex-1 p-5')}>
             <div className="flex items-center justify-between mb-1">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-indigo-400" />
@@ -613,8 +572,10 @@ export function PlayerPropertiesModal({
               </span>
             </div>
 
-            {/* Simulated browser chrome */}
-            <div className="rounded-xl overflow-hidden border border-slate-700 shadow-2xl flex flex-col" style={{ height: 380 }}>
+            <div
+              className="rounded-xl overflow-hidden border border-slate-700 shadow-2xl flex flex-col"
+              style={{ height: isPhoneSheet ? 200 : 380 }}
+            >
               <div className="bg-slate-800 px-3 py-2 flex items-center gap-2 border-b border-slate-700 flex-shrink-0">
                 <div className="flex gap-1.5">
                   <div className="w-2.5 h-2.5 rounded-full bg-red-500/70" />
@@ -630,7 +591,6 @@ export function PlayerPropertiesModal({
               </div>
             </div>
 
-            {/* Config summary chips */}
             <div className="flex flex-wrap gap-2">
               {[
                 { label: local.theme + ' theme', color: 'text-slate-300 bg-slate-700/50 border-slate-600' },
@@ -644,31 +604,103 @@ export function PlayerPropertiesModal({
               ))}
             </div>
           </div>
+  );
+
+  const panel = (
+      <motion.div
+        initial={isPage ? { opacity: 0, y: 16 } : { opacity: 0, scale: 0.96, y: 16 }}
+        animate={isPage ? { opacity: 1, y: 0 } : { opacity: 1, scale: 1, y: 0 }}
+        exit={isPage ? { opacity: 0, y: -12 } : { opacity: 0, scale: 0.96, y: 16 }}
+        transition={{ type: 'spring', damping: 28, stiffness: 280 }}
+        className={cn(
+          'bg-slate-900 border border-slate-700 shadow-2xl w-full flex flex-col overflow-hidden',
+          isPage
+            ? 'rounded-2xl max-w-5xl mx-auto min-h-[70vh] max-h-[calc(100vh-8rem)]'
+            : isPhoneSheet
+              ? 'rounded-2xl max-w-lg max-h-[min(92dvh,92vh)]'
+              : 'rounded-2xl max-w-5xl max-h-[90vh]'
+        )}
+      >
+        {/* ── Header ── */}
+        <div className={cn(
+          'flex items-center justify-between border-b border-slate-700 bg-slate-800/60 shrink-0',
+          isPhoneSheet ? 'px-4 py-3' : 'px-6 py-4'
+        )}>
+          <div className="flex items-center gap-3 min-w-0">
+            {isPage && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1.5 -ml-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+                title="Back"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+            )}
+            <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30 shrink-0">
+              <Monitor className="w-4 h-4 text-indigo-400" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-white font-extrabold text-base truncate">
+                {title || (isPage ? 'Default Player Properties' : 'Player Properties')}
+              </h2>
+              <p className="text-slate-400 text-xs truncate">
+                {subtitle || (isPage
+                  ? 'Saved defaults apply to new courses you create'
+                  : 'Customize the learner experience for this course')}
+              </p>
+            </div>
+          </div>
+          {!isPage && (
+            <button onClick={onClose} className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors shrink-0">
+              <X className="w-5 h-5" />
+            </button>
+          )}
+        </div>
+
+        {/* ── Body ── */}
+        <div className={cn('flex flex-1 min-h-0 overflow-hidden', isPhoneSheet && 'flex-col')}>
+          <div className={cn(
+            'overflow-y-auto p-5 min-h-0',
+            isPhoneSheet ? 'flex-1 w-full' : 'w-72 border-r border-slate-800 shrink-0'
+          )}>
+            {settingsPanel}
+          </div>
+          {!isPhoneSheet && livePreviewPanel}
         </div>
 
         {/* ── Footer ── */}
-        <div className="px-6 py-4 border-t border-slate-700 bg-slate-800/40 flex items-center justify-between shrink-0">
+        <div className={cn(
+          'border-t border-slate-700 bg-slate-800/40 flex items-center justify-between shrink-0 gap-2',
+          isPhoneSheet ? 'px-3 py-3' : 'px-6 py-4'
+        )}>
           <button
             onClick={() => setLocal({ ...defaultPlayerConfig })}
-            className="text-xs text-slate-400 hover:text-white transition-colors font-bold"
+            className="text-xs text-slate-400 hover:text-white transition-colors font-bold shrink-0"
           >
             Reset to defaults
           </button>
-          <div className="flex gap-3">
+          <div className="flex gap-2 sm:gap-3 shrink-0">
             {!isPage && (
               <button
                 onClick={onClose}
-                className="px-5 py-2.5 rounded-xl border border-slate-600 text-slate-300 hover:text-white font-bold text-sm transition-all hover:bg-slate-700"
+                className={cn(
+                  'rounded-xl border border-slate-600 text-slate-300 hover:text-white font-bold text-sm transition-all hover:bg-slate-700',
+                  isPhoneSheet ? 'px-3 py-2' : 'px-5 py-2.5'
+                )}
               >
                 Cancel
               </button>
             )}
             <button
               onClick={handleSave}
-              className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition-all shadow-[0_0_20px_-5px_rgba(99,102,241,0.5)] flex items-center gap-2"
+              className={cn(
+                'rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition-all shadow-[0_0_20px_-5px_rgba(99,102,241,0.5)] flex items-center gap-2',
+                isPhoneSheet ? 'px-4 py-2' : 'px-6 py-2.5'
+              )}
             >
-              <Check className="w-4 h-4" />
-              {savedFlash ? 'Saved!' : (saveLabel || (isPage ? 'Save Defaults' : 'Save Properties'))}
+              <Check className="w-4 h-4 shrink-0" />
+              <span className="whitespace-nowrap">{savedFlash ? 'Saved!' : (saveLabel || (isPage ? 'Save Defaults' : 'Save Properties'))}</span>
             </button>
           </div>
         </div>
@@ -688,7 +720,10 @@ export function PlayerPropertiesModal({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/70 backdrop-blur-md z-[300] flex items-start justify-center pt-16 px-4 pb-4 overflow-y-auto"
+      className={cn(
+        'fixed inset-0 bg-black/70 backdrop-blur-md z-[300] flex justify-center overflow-y-auto',
+        isPhoneSheet ? 'items-stretch p-2 pt-[max(0.5rem,env(safe-area-inset-top))]' : 'items-start pt-16 px-4 pb-4'
+      )}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
       {panel}

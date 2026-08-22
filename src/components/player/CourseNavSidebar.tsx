@@ -23,8 +23,14 @@ interface Props {
   examIntroIndex?: number;
   highestVisitedIndex?: number;
   defaultCollapsed?: boolean;
-  /** Fixed left rail vs compact clickable dropdown (mobile / max content space) */
-  variant?: 'sidebar' | 'dropdown';
+  /** Fixed left rail vs compact clickable dropdown (mobile / max content space) vs narrow letterbox gutter rail */
+  variant?: 'sidebar' | 'dropdown' | 'gutter-rail';
+  /** Dock Menu to a high-z safe corner (phone / scaled frame) so slide chrome can’t bury it */
+  dockSafeCorner?: boolean;
+  /** When variant is dropdown and true, Menu sits in normal flow (letterbox gutter) instead of absolute over the slide */
+  gutterHosted?: boolean;
+  /** For gutter-rail: which side (affects border) */
+  railSide?: 'left' | 'right';
   /** Slide ids with unresolved QC issues */
   qcPendingSlideIds?: Set<string>;
   /** Slide ids that had QC issues which were confirmed/declined */
@@ -49,6 +55,9 @@ export function CourseNavSidebar({
   highestVisitedIndex = 0,
   defaultCollapsed = false,
   variant = 'sidebar',
+  dockSafeCorner = false,
+  gutterHosted = false,
+  railSide = 'left',
   qcPendingSlideIds,
   qcResolvedSlideIds,
 }: Props) {
@@ -292,52 +301,98 @@ export function CourseNavSidebar({
 
   // ── Dropdown variant (mobile / max content space) ─────────────────────────
   if (variant === 'dropdown') {
-    return (
-      <div className="absolute top-2 left-2 z-[120] pointer-events-none">
-        <div className="relative pointer-events-auto">
-          <button
-            type="button"
-            onClick={() => setDropdownOpen(o => !o)}
-            className={cn(
-              'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border shadow-lg text-xs font-bold backdrop-blur-md transition-colors',
-              theme === 'light'
-                ? 'bg-white/95 border-slate-200 text-slate-700 hover:bg-white'
-                : 'bg-slate-900/95 border-slate-700 text-slate-100 hover:bg-slate-800'
-            )}
-            title="Table of Contents"
-            aria-expanded={dropdownOpen}
-            aria-haspopup="true"
-          >
-            {dropdownOpen ? <X className="w-3.5 h-3.5" /> : <Menu className="w-3.5 h-3.5" />}
-            <span>Menu</span>
-            <ChevronDown className={cn('w-3 h-3 transition-transform', dropdownOpen && 'rotate-180')} />
-          </button>
-
-          {dropdownOpen && (
-            <>
-              <button
-                type="button"
-                className="fixed inset-0 z-[119] cursor-default bg-black/20"
-                aria-label="Close menu"
-                onClick={() => setDropdownOpen(false)}
-              />
-              <div
-                className={cn(
-                  'absolute top-full left-0 mt-1.5 z-[120] w-[min(20rem,78vw)] max-h-[min(70vh,360px)] flex flex-col rounded-xl border shadow-2xl overflow-hidden',
-                  bg
-                )}
-              >
-                <div className={cn('flex items-center justify-between px-3 py-2 border-b shrink-0', headerBg)}>
-                  <div className="flex items-center gap-2">
-                    <BookOpen className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                    <span className="text-[11px] font-black uppercase tracking-widest">Contents</span>
-                  </div>
-                  <span className="text-[10px] font-bold text-slate-500 bg-slate-700/50 px-1.5 py-0.5 rounded-full">{contentSlideCount}</span>
-                </div>
-                {renderList(navigateAndClose)}
-              </div>
-            </>
+    const menuZ = dockSafeCorner ? 'z-[220]' : 'z-[120]';
+    const scrimZ = dockSafeCorner ? 'z-[219]' : 'z-[119]';
+    const menuButton = (
+      <div className={cn('relative pointer-events-auto', gutterHosted && 'w-full')}>
+        <button
+          type="button"
+          onClick={() => setDropdownOpen(o => !o)}
+          className={cn(
+            'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border shadow-lg text-xs font-bold backdrop-blur-md transition-colors',
+            gutterHosted && 'w-full justify-center',
+            theme === 'light'
+              ? 'bg-white/95 border-slate-200 text-slate-700 hover:bg-white'
+              : 'bg-slate-900/95 border-slate-700 text-slate-100 hover:bg-slate-800'
           )}
+          title="Table of Contents"
+          aria-expanded={dropdownOpen}
+          aria-haspopup="true"
+        >
+          {dropdownOpen ? <X className="w-3.5 h-3.5" /> : <Menu className="w-3.5 h-3.5" />}
+          <span>Menu</span>
+          <ChevronDown className={cn('w-3 h-3 transition-transform', dropdownOpen && 'rotate-180')} />
+        </button>
+
+        {dropdownOpen && (
+          <>
+            <button
+              type="button"
+              className={cn('fixed inset-0 cursor-default bg-black/20', scrimZ)}
+              aria-label="Close menu"
+              onClick={() => setDropdownOpen(false)}
+            />
+            <div
+              className={cn(
+                'absolute top-full mt-1.5 w-[min(20rem,78vw)] max-h-[min(70vh,360px)] flex flex-col rounded-xl border shadow-2xl overflow-hidden',
+                gutterHosted ? 'left-0 right-0 w-auto min-w-[11rem]' : 'left-0',
+                menuZ,
+                bg
+              )}
+            >
+              <div className={cn('flex items-center justify-between px-3 py-2 border-b shrink-0', headerBg)}>
+                <div className="flex items-center gap-2">
+                  <BookOpen className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                  <span className="text-[11px] font-black uppercase tracking-widest">Contents</span>
+                </div>
+                <span className="text-[10px] font-bold text-slate-500 bg-slate-700/50 px-1.5 py-0.5 rounded-full">{contentSlideCount}</span>
+              </div>
+              {renderList(navigateAndClose)}
+            </div>
+          </>
+        )}
+      </div>
+    );
+
+    if (gutterHosted) {
+      return (
+        <div className={cn('h-full w-full flex flex-col pointer-events-none p-1.5', menuZ)}>
+          {menuButton}
+        </div>
+      );
+    }
+
+    return (
+      <div className={cn('absolute top-2 left-2 pointer-events-none', menuZ)}>
+        {menuButton}
+      </div>
+    );
+  }
+
+  // ── Narrow letterbox gutter rail (phone landscape) ────────────────────────
+  if (variant === 'gutter-rail') {
+    const sideBorder = railSide === 'right' ? 'border-l' : 'border-r';
+    return (
+      <div
+        className={cn(
+          'h-full w-full flex flex-col shrink-0 overflow-hidden',
+          sideBorder,
+          bg
+        )}
+      >
+        <div className={cn('flex items-center justify-between px-2 py-2 border-b shrink-0', headerBg)}>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <BookOpen className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+            <span className="text-[10px] font-black uppercase tracking-wider truncate">Contents</span>
+          </div>
+          <span className="text-[9px] font-bold text-slate-500 bg-slate-700/50 px-1.5 py-0.5 rounded-full shrink-0">{contentSlideCount}</span>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar relative">
+          {renderList(onNavigate)}
+          <div
+            className="pointer-events-none sticky bottom-0 h-6 -mt-6 bg-gradient-to-t from-black/35 to-transparent"
+            aria-hidden
+          />
         </div>
       </div>
     );
@@ -393,4 +448,4 @@ export function CourseNavSidebar({
     </div>
   );
 }
-
+

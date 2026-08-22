@@ -104,13 +104,13 @@ export default function TabbedContentVertical({
   };
 
   return (
-    <div className="w-full flex flex-col gap-3 select-none">
+    <div className="w-full flex flex-col gap-3 select-none min-h-0 flex-1">
       {title && (
-        <p className={cn('text-sm font-bold text-center uppercase tracking-widest mb-1', isLight ? 'text-slate-500' : 'text-slate-400')}>{title}</p>
+        <p className={cn('text-sm font-bold text-center uppercase tracking-widest mb-1 shrink-0', isLight ? 'text-slate-500' : 'text-slate-400')}>{title}</p>
       )}
 
-      <div className="flex gap-3 w-full" style={{ minHeight: 'min(55vh, 460px)' }}>
-        <div className="flex flex-col gap-2 w-[150px] sm:w-[170px] shrink-0 overflow-y-auto custom-scrollbar">
+      <div className="flex gap-3 w-full min-h-[280px] flex-1">
+        <div className="flex flex-col gap-2 w-[150px] sm:w-[170px] shrink-0 overflow-y-auto custom-scrollbar min-h-0 max-h-[min(100%,32rem)]">
           <button
             type="button"
             onClick={selectIntro}
@@ -160,7 +160,7 @@ export default function TabbedContentVertical({
         <div
           data-tab-drop-zone={dropZoneId || undefined}
           className={cn(
-            'flex-1 min-w-0 relative overflow-hidden rounded-2xl border transition-all',
+            'flex-1 min-w-0 min-h-[240px] relative rounded-2xl border transition-all',
             isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-800/60 border-slate-700',
             panelHighlighted && 'ring-4 ring-indigo-400/80 ring-inset bg-indigo-50/40'
           )}
@@ -177,7 +177,7 @@ export default function TabbedContentVertical({
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
               transition={{ duration: 0.25, ease: 'easeOut' }}
-              className="absolute inset-0 p-6 overflow-y-auto custom-scrollbar"
+              className="relative p-6"
             >
               {inIntro ? (
                 <>
@@ -204,11 +204,11 @@ export default function TabbedContentVertical({
                   <div className={cn('text-sm leading-relaxed tab-ost-body', isLight ? 'text-slate-700' : 'text-slate-200')} dangerouslySetInnerHTML={{ __html: markdownToHtml(formatTabOstBody(activeTab!.content)) }} />
                   {activeTab!.imageUrl && (
                     <div className="mt-6 pt-4 border-t border-slate-200/80">
-                      <div className="rounded-xl overflow-hidden border border-slate-200/80 shadow-sm max-w-sm mx-auto">
+                      <div className="rounded-xl overflow-hidden border border-slate-200/80 shadow-sm max-w-md mx-auto">
                         <img
                           src={activeTab!.imageUrl}
                           alt=""
-                          className="w-full h-auto max-h-52 object-contain bg-slate-50"
+                          className="w-full h-auto max-h-72 object-contain bg-slate-50"
                         />
                       </div>
                     </div>

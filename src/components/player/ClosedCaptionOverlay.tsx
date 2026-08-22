@@ -21,6 +21,11 @@ interface ClosedCaptionOverlayProps {
   duration: number;
   /** Whether audio is currently playing */
   isPlaying: boolean;
+  /**
+   * absolute-bottom — overlaid on the slide canvas (desktop / in-frame bar).
+   * docked — strip above an outside-docked PlayerBar (phone scale-to-fit).
+   */
+  placement?: 'absolute-bottom' | 'docked';
 }
 
 /** Split text into an array of cleaned sentences */
@@ -41,6 +46,7 @@ export const ClosedCaptionOverlay: React.FC<ClosedCaptionOverlayProps> = ({
   currentTime,
   duration,
   isPlaying,
+  placement = 'absolute-bottom',
 }) => {
   // Build sentence timing map (start/end fractions 0–1 based on word-count weight)
   const sentences = useMemo(() => {
@@ -73,10 +79,16 @@ export const ClosedCaptionOverlay: React.FC<ClosedCaptionOverlayProps> = ({
   // Don't render if no text or not enough info
   if (!narrationText || sentences.length === 0) return null;
 
+  const docked = placement === 'docked';
+
   return (
     <div
-      className="absolute bottom-0 left-0 right-0 z-40 pointer-events-none"
-      style={{ paddingBottom: '3px' }}
+      className={
+        docked
+          ? 'relative w-full shrink-0 z-[110] pointer-events-none px-2 py-1.5'
+          : 'absolute bottom-0 left-0 right-0 z-40 pointer-events-none'
+      }
+      style={docked ? undefined : { paddingBottom: '3px' }}
     >
       <AnimatePresence mode="wait">
         {currentSentence && (
@@ -86,7 +98,7 @@ export const ClosedCaptionOverlay: React.FC<ClosedCaptionOverlayProps> = ({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="mx-auto w-fit max-w-[90%] px-4 py-2 rounded-lg text-center"
+            className="mx-auto w-fit max-w-[min(92%,42rem)] px-4 py-2 rounded-lg text-center"
             style={{
               backgroundColor: 'rgba(0,0,0,0.78)',
               backdropFilter: 'blur(4px)',
@@ -94,7 +106,7 @@ export const ClosedCaptionOverlay: React.FC<ClosedCaptionOverlayProps> = ({
           >
             <p
               className="text-white font-medium leading-snug"
-              style={{ fontSize: 'clamp(0.75rem, 1.6vw, 1rem)' }}
+              style={{ fontSize: docked ? 'clamp(0.7rem, 1.4vw, 0.9rem)' : 'clamp(0.75rem, 1.6vw, 1rem)' }}
             >
               {currentSentence}
             </p>

@@ -108,19 +108,18 @@ export default function TabbedContentHorizontal({
   const panelHighlighted = !!(highlightTabId && dropZoneId && highlightTabId === dropZoneId);
 
   return (
-    <div className="w-full flex flex-col gap-0 select-none">
+    <div className="w-full flex flex-col gap-0 select-none min-h-0 flex-1">
       {title && (
-        <p className={`text-sm font-bold text-center uppercase tracking-widest mb-3 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+        <p className={`text-sm font-bold text-center uppercase tracking-widest mb-3 shrink-0 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
           {title}
         </p>
       )}
 
       <div
         data-tab-drop-zone={dropZoneId || undefined}
-        className={`relative overflow-hidden rounded-t-2xl border border-b-0 transition-all ${
+        className={`relative rounded-t-2xl border border-b-0 transition-all min-h-[240px] flex-1 flex flex-col ${
           isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-800/60 border-slate-700'
         } ${panelHighlighted ? 'ring-4 ring-indigo-400/80 ring-inset bg-indigo-50/40' : ''}`}
-        style={{ minHeight: 'min(55vh, 460px)' }}
       >
         {panelHighlighted && (
           <div className="absolute inset-x-0 top-0 z-10 px-3 py-1.5 text-center text-[11px] font-bold text-white bg-indigo-600/90 pointer-events-none">
@@ -134,7 +133,7 @@ export default function TabbedContentHorizontal({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.22 }}
-            className="absolute inset-0 p-6 sm:p-8 overflow-y-auto custom-scrollbar"
+            className="relative p-6 sm:p-8 flex-1"
           >
             {inIntro ? (
               <>
@@ -176,11 +175,11 @@ export default function TabbedContentHorizontal({
                 )}
                 {activeTab!.imageUrl && (
                   <div className="mt-6 pt-4 border-t border-slate-200/80">
-                    <div className="rounded-xl overflow-hidden border border-slate-200/80 shadow-sm max-w-sm mx-auto">
+                    <div className="rounded-xl overflow-hidden border border-slate-200/80 shadow-sm max-w-md mx-auto">
                       <img
                         src={activeTab!.imageUrl}
                         alt=""
-                        className="w-full h-auto max-h-52 object-contain bg-slate-50"
+                        className="w-full h-auto max-h-72 object-contain bg-slate-50"
                       />
                     </div>
                   </div>
@@ -192,7 +191,7 @@ export default function TabbedContentHorizontal({
       </div>
 
       <div
-        className={`flex border border-t-0 rounded-b-2xl overflow-hidden ${
+        className={`flex border border-t-0 rounded-b-2xl overflow-x-auto custom-scrollbar shrink-0 ${
           isLight ? 'border-slate-200 bg-slate-50' : 'border-slate-700 bg-slate-900/80'
         }`}
       >
@@ -223,7 +222,7 @@ export default function TabbedContentHorizontal({
               type="button"
               data-tab-drop-zone={tab.id}
               onClick={() => selectTab(i)}
-              className={`flex-1 relative px-3 py-3.5 text-xs font-bold transition-all text-center border-r last:border-r-0 ${
+              className={`shrink-0 min-w-[5.5rem] flex-1 relative px-3 py-3.5 text-xs font-bold transition-all text-center border-r last:border-r-0 ${
                 isLight ? 'border-slate-200' : 'border-slate-700/60'
               } ${
                 isActive
