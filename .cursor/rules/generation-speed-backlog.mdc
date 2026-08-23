@@ -1,0 +1,25 @@
+---
+description: Course generation speed backlog (Anthony pilot feedback) — in progress after Phase 1.5.
+alwaysApply: true
+---
+
+# Generation speed backlog (Anthony: Generate → preview too slow)
+
+Phase 1.5 mobile verify is complete enough to start this work. Prefer **same API $**; do not thin prompts or drop retries.
+
+## Status
+
+1. **Parallel hydrate** — **DONE** (bounded concurrency 3 for `hydrateCourseContent` chunks in [`src/services/aiService.ts`](src/services/aiService.ts); Tier 1→2→3 + Bug #7 safety net kept).
+2. **Image pacing** — **NEXT** — reduce sequential 1.2–2.0s sleeps and/or pool 2 concurrent calls in [`src/services/imageService.ts`](src/services/imageService.ts).
+3. **Perceived speed** — open preview after hydrate (+ cover); continue content images / AI QC async, or defer AI QC past first preview ([`src/App.tsx`](src/App.tsx) `finalizeGeneratedCourse`, [`src/services/qcService.ts`](src/services/qcService.ts)).
+
+## Explicitly deprioritize first
+
+- Throwing money at larger/faster models for every slide (higher cost, unclear wall-clock win).
+- Thinning prompts / dropping retries in ways that raise blank-slide risk.
+
+## Context
+
+- Wall clock was dominated by sequential Haiku hydrate + paced images + QC/exam before preview; TTS is already after preview.
+- Backend note: full hydrate can be 40–80+ `/api/ai` calls ([`server.js`](server.js)).
+- Ship generation-speed changes to **`main` / nexcourse.ai** for pilot impact (not only the Capacitor branch).
