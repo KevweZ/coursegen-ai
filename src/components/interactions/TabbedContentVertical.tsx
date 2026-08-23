@@ -1,7 +1,6 @@
-﻿import React, { useState, useEffect, useMemo } from 'react';
+﻿import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { markdownToHtml } from '../../lib/markdownInline';
 import { formatTabIntroOst, formatTabOstBody } from '../../lib/formatTabIntroOst';
-import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight } from 'lucide-react';
 
 export interface VerticalTab {
@@ -43,6 +42,8 @@ const ACCENT_COLORS = [
 ];
 
 const INTRO_ACCENT = ACCENT_COLORS[0];
+/** Match horizontal tabs: fill stage height; leave a little room so CC is not cramped. */
+const PANEL_H = 520;
 
 function cn(...classes: (string | false | undefined | null)[]): string {
   return classes.filter(Boolean).join(' ');
@@ -64,6 +65,7 @@ export default function TabbedContentVertical({
     [tabs]
   );
   const [activeIndex, setActiveIndex] = useState(-1);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setActiveIndex(-1);
@@ -75,11 +77,21 @@ export default function TabbedContentVertical({
   const accent = inIntro ? INTRO_ACCENT : ACCENT_COLORS[Math.max(0, activeIndex) % ACCENT_COLORS.length];
   const dropZoneId = activeTab?.id || '';
   const panelHighlighted = !!(highlightTabId && dropZoneId && highlightTabId === dropZoneId);
+  const panelKey = inIntro ? '__intro__' : (activeTab?.id ?? '__empty__');
 
   const introOst = useMemo(
     () => formatTabIntroOst({ introContent, voiceOverText: introVoiceOver, title }),
     [introContent, introVoiceOver, title]
   );
+
+  const resetScrollTop = () => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = 0;
+  };
+
+  useLayoutEffect(() => {
+    resetScrollTop();
+  }, [panelKey]);
 
   useEffect(() => {
     onActiveTabChange?.(activeTab?.id ?? null);
@@ -89,12 +101,14 @@ export default function TabbedContentVertical({
   if (!normalized.length) return null;
 
   const selectIntro = () => {
+    resetScrollTop();
     setActiveIndex(-1);
     onTabView?.('__intro__');
     onTabAudio?.('__intro__');
   };
 
   const selectTab = (i: number) => {
+    resetScrollTop();
     setActiveIndex(i);
     const id = normalized[i]?.id;
     if (id) {
@@ -109,8 +123,14 @@ export default function TabbedContentVertical({
         <p className={cn('text-sm font-bold text-center uppercase tracking-widest mb-1 shrink-0', isLight ? 'text-slate-500' : 'text-slate-400')}>{title}</p>
       )}
 
-      <div className="flex gap-3 w-full min-h-[280px] flex-1">
-        <div className="flex flex-col gap-2 w-[150px] sm:w-[170px] shrink-0 overflow-y-auto custom-scrollbar min-h-0 max-h-[min(100%,32rem)]">
+      <div
+        className="flex gap-3 w-full min-h-0"
+        style={{ height: PANEL_H, minHeight: PANEL_H }}
+      >
+        <div
+          className="flex flex-col gap-2 w-[150px] sm:w-[170px] shrink-0 overflow-y-auto custom-scrollbar min-h-0"
+          style={{ maxHeight: PANEL_H }}
+        >
           <button
             type="button"
             onClick={selectIntro}
@@ -160,35 +180,33 @@ export default function TabbedContentVertical({
         <div
           data-tab-drop-zone={dropZoneId || undefined}
           className={cn(
-            'flex-1 min-w-0 min-h-[240px] relative rounded-2xl border transition-all',
+            'flex-1 min-w-0 relative rounded-2xl border transition-colors overflow-hidden',
             isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-800/60 border-slate-700',
             panelHighlighted && 'ring-4 ring-indigo-400/80 ring-inset bg-indigo-50/40'
           )}
+          style={{ height: PANEL_H, minHeight: PANEL_H }}
         >
           {panelHighlighted && (
             <div className="absolute inset-x-0 top-0 z-10 px-3 py-1.5 text-center text-[11px] font-bold text-white bg-indigo-600/90 pointer-events-none">
               Drop here to attach image to this tab
             </div>
           )}
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={inIntro ? '__intro__' : activeTab!.id}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.25, ease: 'easeOut' }}
-              className="relative p-6"
-            >
+          <div
+            ref={scrollRef}
+            className="absolute inset-0 overflow-y-auto overflow-x-hidden custom-scrollbar"
+            style={{ overflowAnchor: 'none' }}
+          >
+            <div key={panelKey} className="box-border w-full p-6 sm:p-8 text-left align-top">
               {inIntro ? (
                 <>
-                  <div className="flex items-center gap-2 mb-4">
+                  <div className="flex items-center gap-2 mb-4 w-full">
                     <div className={`w-1 h-8 rounded-full ${accent.bg}`} />
                     <h3 className={cn('font-extrabold text-lg', isLight ? accent.textLight : accent.text)}>
                       Introduction
                     </h3>
                   </div>
                   <div
-                    className={cn('text-sm leading-relaxed', isLight ? 'text-slate-700' : 'text-slate-200')}
+                    className={cn('text-sm leading-relaxed w-full', isLight ? 'text-slate-700' : 'text-slate-200')}
                     dangerouslySetInnerHTML={{ __html: markdownToHtml(introOst) }}
                   />
                   <p className={cn('mt-6 text-xs font-semibold', isLight ? 'text-indigo-600' : 'text-indigo-300')}>
@@ -197,26 +215,27 @@ export default function TabbedContentVertical({
                 </>
               ) : (
                 <>
-                  <div className="flex items-center gap-2 mb-4">
+                  <div className="flex items-center gap-2 mb-4 w-full">
                     <div className={`w-1 h-8 rounded-full ${accent.bg}`} />
                     <h3 className={cn('font-extrabold text-lg', isLight ? accent.textLight : accent.text)} dangerouslySetInnerHTML={{ __html: markdownToHtml(activeTab!.label) }} />
                   </div>
-                  <div className={cn('text-sm leading-relaxed tab-ost-body', isLight ? 'text-slate-700' : 'text-slate-200')} dangerouslySetInnerHTML={{ __html: markdownToHtml(formatTabOstBody(activeTab!.content)) }} />
+                  <div className={cn('text-sm leading-relaxed tab-ost-body w-full', isLight ? 'text-slate-700' : 'text-slate-200')} dangerouslySetInnerHTML={{ __html: markdownToHtml(formatTabOstBody(activeTab!.content)) }} />
                   {activeTab!.imageUrl && (
-                    <div className="mt-6 pt-4 border-t border-slate-200/80">
+                    <div className="mt-6 pt-4 border-t border-slate-200/80 w-full">
                       <div className="rounded-xl overflow-hidden border border-slate-200/80 shadow-sm max-w-md mx-auto">
                         <img
                           src={activeTab!.imageUrl}
                           alt=""
                           className="w-full h-auto max-h-72 object-contain bg-slate-50"
+                          onLoad={resetScrollTop}
                         />
                       </div>
                     </div>
                   )}
                 </>
               )}
-            </motion.div>
-          </AnimatePresence>
+            </div>
+          </div>
         </div>
       </div>
     </div>

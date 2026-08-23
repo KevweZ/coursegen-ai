@@ -44,7 +44,20 @@ function markdownToHtml(md: string): string {
   if (!md) return '';
   if (/<[a-z][\s\S]*>/i.test(md.trim())) return md;
 
-  let html = md
+  // Drop empty / symbol-only bullet lines before conversion (prevents "• -" in Edit)
+  const cleaned = md
+    .split(/\n/)
+    .filter(line => {
+      const t = line.trim();
+      if (!t) return true; // keep blank lines for paragraph breaks
+      if (!/^[-*•]/.test(t) && !/^\d+[.)]/.test(t)) return true;
+      const body = t.replace(/^[-*•]\s*/, '').replace(/^\d+[.)]\s*/, '').trim();
+      if (!body) return false;
+      return /[A-Za-z0-9\u00C0-\u024F]/.test(body);
+    })
+    .join('\n');
+
+  let html = cleaned
     .replace(/^### (.+)$/gm, '<h3>$1</h3>')
     .replace(/^## (.+)$/gm, '<h2>$1</h2>')
     .replace(/^# (.+)$/gm, '<h1>$1</h1>')
@@ -69,7 +82,7 @@ function markdownToHtml(md: string): string {
     .filter(Boolean)
     .join('\n');
 
-  return html || `<p>${md}</p>`;
+  return html || `<p>${cleaned}</p>`;
 }
 
 interface Props {
