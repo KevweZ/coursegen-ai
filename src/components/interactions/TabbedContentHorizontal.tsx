@@ -106,10 +106,10 @@ export default function TabbedContentHorizontal({
     : (activeTab?.color || ACCENT_COLORS[Math.max(0, activeIndex) % ACCENT_COLORS.length]);
   const dropZoneId = activeTab?.id || '';
   const panelHighlighted = !!(highlightTabId && dropZoneId && highlightTabId === dropZoneId);
-  // Reserve panel height when any tab has an image so the tab bar stays in the
-  // "image layout" position from Intro onward (no jump / blank flash on first click).
-  const anyTabHasImage = normalized.some(t => !!t.imageUrl);
-  const panelMinH = anyTabHasImage ? 420 : 280;
+  // Always use a fixed content-panel height so the tab bar stays docked at the
+  // bottom (image-tab layout). Growing/shrinking with content caused a player snap
+  // when switching image tabs ↔ text-only tabs.
+  const PANEL_H = 520;
 
   return (
     <div className="w-full flex flex-col gap-0 select-none">
@@ -124,7 +124,7 @@ export default function TabbedContentHorizontal({
         className={`relative rounded-t-2xl border border-b-0 transition-colors flex flex-col overflow-hidden ${
           isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-800/60 border-slate-700'
         } ${panelHighlighted ? 'ring-4 ring-indigo-400/80 ring-inset bg-indigo-50/40' : ''}`}
-        style={{ minHeight: panelMinH }}
+        style={{ height: PANEL_H, minHeight: PANEL_H }}
       >
         {panelHighlighted && (
           <div className="absolute inset-x-0 top-0 z-10 px-3 py-1.5 text-center text-[11px] font-bold text-white bg-indigo-600/90 pointer-events-none">
@@ -137,8 +137,8 @@ export default function TabbedContentHorizontal({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.12 }}
-            className="relative p-6 sm:p-8 flex-1 min-h-0 overflow-y-auto custom-scrollbar"
+            transition={{ duration: 0.08 }}
+            className="relative p-6 sm:p-8 flex-1 min-h-0 h-full overflow-y-auto custom-scrollbar"
           >
             {inIntro ? (
               <>
