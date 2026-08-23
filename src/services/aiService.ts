@@ -226,6 +226,36 @@ async function executeAnthropicAI(modelTier: 'complex' | 'bulk', systemPrompt: s
   }
 }
 
+/**
+ * Run async work over `items` with at most `concurrency` in flight.
+ * Results stay in input order. Used to parallelize hydrate chunks without
+ * flooding the Anthropic proxy (rate limits still handled in executeAnthropicAI).
+ */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (!items.length) return [];
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(1, concurrency), items.length);
+
+  async function worker() {
+    while (true) {
+      const i = nextIndex++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i], i);
+    }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
+}
+
+/** Bounded parallel hydrate calls — enough for wall-clock win, low rate-limit risk. */
+const HYDRATE_CHUNK_CONCURRENCY = 3;
+
 export interface FileAnalysisResult {
   title: string;
   summary: string;
@@ -997,85 +1027,124 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
 
   // --- Pre-calculate total chunks for accurate progress ---
   const CHUNK_SIZE = 3;
-  let totalChunks = 0;
-  for (const mod of outlineDraft.modules) {
-    totalChunks += Math.ceil(mod.slides.length / CHUNK_SIZE);
-  }
-  let completedChunks = 0;
-
-  // --- Main hydration loop ---
-  for (const emptyModule of outlineDraft.modules) {
+  type HydrateChunkJob = {
+    moduleIndex: number;
+    chunkIndex: number;
+    chunkCount: number;
+    emptyModule: (typeof outlineDraft.modules)[number];
+    chunk: any[];
+  };
+  const chunkJobs: HydrateChunkJob[] = [];
+  for (let moduleIndex = 0; moduleIndex < outlineDraft.modules.length; moduleIndex++) {
+    const emptyModule = outlineDraft.modules[moduleIndex];
     const slideChunks: any[][] = [];
     for (let i = 0; i < emptyModule.slides.length; i += CHUNK_SIZE) {
       slideChunks.push(emptyModule.slides.slice(i, i + CHUNK_SIZE));
     }
+    for (let chunkIndex = 0; chunkIndex < slideChunks.length; chunkIndex++) {
+      chunkJobs.push({
+        moduleIndex,
+        chunkIndex,
+        chunkCount: slideChunks.length,
+        emptyModule,
+        chunk: slideChunks[chunkIndex],
+      });
+    }
+  }
+  const totalChunks = Math.max(chunkJobs.length, 1);
+  let completedChunks = 0;
+  const bumpProgress = () => {
+    completedChunks++;
+    if (onProgress) onProgress(Math.round(10 + (completedChunks / totalChunks) * 88));
+  };
 
-    const hydratedSlides: any[] = [];
+  /** Hydrate one chunk with the same Tier 1 → 2 → 3 ladder as before (unchanged prompts/retries). */
+  async function hydrateOneChunk(job: HydrateChunkJob): Promise<{ moduleIndex: number; chunkIndex: number; slides: any[] }> {
+    const { emptyModule, chunk, chunkIndex, chunkCount, moduleIndex } = job;
+    const chunkModule = { ...emptyModule, slides: chunk };
+    const label = `Module "${emptyModule.title}" Chunk ${chunkIndex + 1}`;
 
-    for (let i = 0; i < slideChunks.length; i++) {
-      const chunk = slideChunks[i];
-      const chunkModule = { ...emptyModule, slides: chunk };
+    const fullPrompt = `Hydrate Module Chunk ${chunkIndex + 1} of ${chunkCount}.\nCourse Topic: ${originalPrompt}${sourceNote}\n\nModule Draft JSON:\n${JSON.stringify(chunkModule, null, 2)}\n\nReturn ONLY a single JSON object: { "id": "...", "title": "...", "slides": [ ... ] }`;
+    const simplePrompt = `Hydrate this module chunk. Be concise -- max 2 sentences per content field, max 4 items per array.\nModule: ${JSON.stringify(chunkModule)}\nReturn ONLY: { "id": "...", "title": "...", "slides": [ ... ] }`;
 
-      const fullPrompt = `Hydrate Module Chunk ${i+1} of ${slideChunks.length}.\nCourse Topic: ${originalPrompt}${sourceNote}\n\nModule Draft JSON:\n${JSON.stringify(chunkModule, null, 2)}\n\nReturn ONLY a single JSON object: { "id": "...", "title": "...", "slides": [ ... ] }`;
-      const simplePrompt = `Hydrate this module chunk. Be concise -- max 2 sentences per content field, max 4 items per array.\nModule: ${JSON.stringify(chunkModule)}\nReturn ONLY: { "id": "...", "title": "...", "slides": [ ... ] }`;
+    let parsedChunk: any = null;
 
-      let parsedChunk: any = null;
+    // Tier 1: Full prompt
+    try {
+      const raw = await executeAnthropicAI('bulk', systemInstruction, fullPrompt, 8192);
+      parsedChunk = parseModuleChunk(raw);
+    } catch (e1: any) {
+      console.warn(`[${label}] Tier 1 failed: ${e1.message}`);
 
-      // Tier 1: Full prompt
+      // Tier 2: Simplified prompt
       try {
-        const raw = await executeAnthropicAI('bulk', systemInstruction, fullPrompt, 8192);
-        parsedChunk = parseModuleChunk(raw);
-      } catch (e1: any) {
-        console.warn(`[Module "${emptyModule.title}" Chunk ${i+1}] Tier 1 failed: ${e1.message}`);
+        const raw2 = await executeAnthropicAI('bulk', systemInstruction, simplePrompt, 8192);
+        parsedChunk = parseModuleChunk(raw2);
+      } catch (e2: any) {
+        console.warn(`[${label}] Tier 2 failed: ${e2.message}. Falling back to per-slide generation.`);
 
-        // Tier 2: Simplified prompt
-        try {
-          const raw2 = await executeAnthropicAI('bulk', systemInstruction, simplePrompt, 8192);
-          parsedChunk = parseModuleChunk(raw2);
-        } catch (e2: any) {
-          console.warn(`[Module "${emptyModule.title}" Chunk ${i+1}] Tier 2 failed: ${e2.message}. Falling back to per-slide generation.`);
-
-          // Tier 3: Generate each slide individually -- REAL CONTENT, no placeholders
-          const individualResults: any[] = [];
-          for (const slide of chunk) {
-            try {
-              const hydratedSlide = await hydrateSingleSlide(slide, emptyModule.title);
-              individualResults.push(hydratedSlide);
-            } catch (e3: any) {
-              console.error(`[Single slide "${slide.title}" in "${emptyModule.title}"] All tiers failed: ${e3.message}`);
-              // Absolute last resort: preserve original slide structure with minimal content
-              // This is not a placeholder -- it's the outline data itself, which always has a title
-              individualResults.push({
-                ...slide,
-                content: `**${slide.title}**\n\nThis slide covers key content for module: ${emptyModule.title}. Please review and edit as needed.`,
-                voiceOverText: `In this slide we cover ${slide.title}, which is an important aspect of ${emptyModule.title}.`,
-                mediaPrompt: `Professional illustration related to ${slide.title}`,
-              });
-            }
+        // Tier 3: per-slide sequentially (avoid exploding concurrency when several chunks fail)
+        const individualResults: any[] = [];
+        for (const slide of chunk) {
+          try {
+            const hydratedSlide = await hydrateSingleSlide(slide, emptyModule.title);
+            individualResults.push(hydratedSlide);
+          } catch (e3: any) {
+            console.error(`[Single slide "${slide.title}" in "${emptyModule.title}"] All tiers failed: ${e3.message}`);
+            individualResults.push({
+              ...slide,
+              content: `**${slide.title}**\n\nThis slide covers key content for module: ${emptyModule.title}. Please review and edit as needed.`,
+              voiceOverText: `In this slide we cover ${slide.title}, which is an important aspect of ${emptyModule.title}.`,
+              mediaPrompt: `Professional illustration related to ${slide.title}`,
+            });
           }
-          hydratedSlides.push(...individualResults.flatMap(s => processSlide(s)));
-          completedChunks++;
-          if (onProgress) onProgress(Math.round(10 + (completedChunks / totalChunks) * 88));
-          continue;
         }
-      }
-
-      // Process successfully parsed chunk
-      completedChunks++;
-      if (onProgress) onProgress(Math.round(10 + (completedChunks / totalChunks) * 88));
-      for (const slide of parsedChunk.slides) {
-        hydratedSlides.push(...processSlide(slide));
+        bumpProgress();
+        return {
+          moduleIndex,
+          chunkIndex,
+          slides: individualResults.flatMap(s => processSlide(s)),
+        };
       }
     }
 
+    bumpProgress();
+    return {
+      moduleIndex,
+      chunkIndex,
+      slides: (parsedChunk.slides as any[]).flatMap(s => processSlide(s)),
+    };
+  }
+
+  // Parallelize chunks across the whole outline (order preserved when assembling)
+  const chunkResults = await mapWithConcurrency(
+    chunkJobs,
+    HYDRATE_CHUNK_CONCURRENCY,
+    hydrateOneChunk,
+  );
+
+  // --- Assemble modules in outline order ---
+  for (let moduleIndex = 0; moduleIndex < outlineDraft.modules.length; moduleIndex++) {
+    const emptyModule = outlineDraft.modules[moduleIndex];
+    const moduleChunks = chunkResults
+      .filter(r => r.moduleIndex === moduleIndex)
+      .sort((a, b) => a.chunkIndex - b.chunkIndex);
+    const hydratedSlides: any[] = moduleChunks.flatMap(r => r.slides);
+
     // ── Post-pass: safety net for slides that parsed successfully but came back
-    // blank (Bug #7) — retries each empty slide individually before falling back
-    // to derived text, so the learner never sees a truly empty slide. ─────────────
-    for (let i = 0; i < hydratedSlides.length; i++) {
-      const s = hydratedSlides[i];
-      if (!s.content?.trim() || !s.voiceOverText?.trim()) {
-        hydratedSlides[i] = await ensureSlideHasContent(s, emptyModule.title);
-      }
+    // blank (Bug #7) — retries empty slides with the same concurrency bound. ──
+    const needsContent = hydratedSlides
+      .map((s, i) => ({ s, i }))
+      .filter(({ s }) => !s.content?.trim() || !s.voiceOverText?.trim());
+    if (needsContent.length) {
+      const fixed = await mapWithConcurrency(
+        needsContent,
+        HYDRATE_CHUNK_CONCURRENCY,
+        async ({ s }) => ensureSlideHasContent(s, emptyModule.title),
+      );
+      fixed.forEach((slide, j) => {
+        hydratedSlides[needsContent[j].i] = slide;
+      });
     }
 
     // ── Post-pass: generate scenario data for scenario-type slides ─────────────

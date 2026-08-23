@@ -1,16 +1,16 @@
 ---
-description: Course generation speed backlog (Anthony pilot feedback) — hold until after Phase 1 mobile verify.
+description: Course generation speed backlog (Anthony pilot feedback) — in progress after Phase 1.5.
 alwaysApply: true
 ---
 
-# Generation speed backlog (hold until Phase 1.5 mobile verify is done)
+# Generation speed backlog (Anthony: Generate → preview too slow)
 
-Pilot feedback (Anthony): Generate Course → preview takes too long. Do **not** implement until the user finishes **Phase 1.5** mobile verify (crop / TOC gutters / Player Properties) and explicitly restarts this work.
+Phase 1.5 mobile verify is complete enough to start this work. Prefer **same API $**; do not thin prompts or drop retries.
 
-## Agreed approach (pilot-safe; prefer same API $)
+## Status
 
-1. **Parallel hydrate** — bounded concurrency (about 2–3) for `hydrateCourseContent` chunks in [`src/services/aiService.ts`](src/services/aiService.ts); keep retry tiers.
-2. **Image pacing** — reduce sequential 1.2–2.0s sleeps and/or pool 2 concurrent calls in [`src/services/imageService.ts`](src/services/imageService.ts).
+1. **Parallel hydrate** — **DONE** (bounded concurrency 3 for `hydrateCourseContent` chunks in [`src/services/aiService.ts`](src/services/aiService.ts); Tier 1→2→3 + Bug #7 safety net kept).
+2. **Image pacing** — **NEXT** — reduce sequential 1.2–2.0s sleeps and/or pool 2 concurrent calls in [`src/services/imageService.ts`](src/services/imageService.ts).
 3. **Perceived speed** — open preview after hydrate (+ cover); continue content images / AI QC async, or defer AI QC past first preview ([`src/App.tsx`](src/App.tsx) `finalizeGeneratedCourse`, [`src/services/qcService.ts`](src/services/qcService.ts)).
 
 ## Explicitly deprioritize first
@@ -20,5 +20,6 @@ Pilot feedback (Anthony): Generate Course → preview takes too long. Do **not**
 
 ## Context
 
-- Wall clock is dominated by sequential Haiku hydrate + paced images + QC/exam before preview; TTS is already after preview.
+- Wall clock was dominated by sequential Haiku hydrate + paced images + QC/exam before preview; TTS is already after preview.
 - Backend note: full hydrate can be 40–80+ `/api/ai` calls ([`server.js`](server.js)).
+- Ship generation-speed changes to **`main` / nexcourse.ai** for pilot impact (not only the Capacitor branch).
