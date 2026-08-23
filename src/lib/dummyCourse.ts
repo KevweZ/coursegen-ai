@@ -208,8 +208,7 @@ Use Previous and Next in the player bar, or click the seekbar to jump to any sli
           title: 'Tabs (Horizontal) — Player Layers',
           content: `- Slide canvas renders each interaction type
 - Player bar handles play, seek, and navigation
-- Themes switch Dark, Light, and Unified
-- Select a tab to continue →`,
+- Themes switch Dark, Light, and Unified`,
           narration: 'Horizontal tabs keep topics in a bottom bar. Start with the introduction, then open each layer to see how text and images share the panel.',
           voiceOverText: 'Horizontal tabs keep topics in a bottom bar. Start with the introduction, then open each layer to see how text and images share the panel.',
           data: {

@@ -152,6 +152,7 @@ import { HotspotInteraction } from './components/interactions/HotspotInteraction
 import ClickRevealInteraction from './components/interactions/ClickRevealInteraction';
 import { getRecommendedGames } from './lib/gameEngine';
 import { DUMMY_COURSE, DUMMY_EXAM_QUESTIONS } from './lib/dummyCourse';
+import { sanitizeOstText } from './lib/formatTabIntroOst';
 import { useScaleToFit } from './hooks/useScaleToFit';
 import { FloatingImageCanvas } from './components/FloatingImageCanvas';
 import { TrialInvitePanel } from './components/TrialInvitePanel';
@@ -5177,8 +5178,12 @@ export default function App() {
                                       _objectives: JSON.parse(JSON.stringify(learningObjectives || [])),
                                     }
                                   : currentSlide;
-                                editingSlideRef.current = seeded;
-                                setEditingSlide(seeded);
+                                // Sanitize so Edit Slide OST matches what the player shows (no orphan "-" bullets)
+                                const cleaned = seeded
+                                  ? { ...seeded, content: sanitizeOstText(String(seeded.content || '')) }
+                                  : seeded;
+                                editingSlideRef.current = cleaned;
+                                setEditingSlide(cleaned);
                                 setEditDrawerOpen(true);
                                 setEditDrawerTab('text');
                                 const n = normalizeRegenSlideType(currentSlide);
@@ -6881,7 +6886,10 @@ export default function App() {
                           key={editingSlide.id}
                           value={editingSlide.content || ''}
                           onChange={(html) => {
-                            const updated = { ...(editingSlideRef.current ?? editingSlide), content: html };
+                            const updated = {
+                              ...(editingSlideRef.current ?? editingSlide),
+                              content: sanitizeOstText(html),
+                            };
                             editingSlideRef.current = updated;
                             setEditingSlide(updated);
                           }}
@@ -7421,7 +7429,11 @@ export default function App() {
                   <button
                     onClick={() => {
                       if (editingSlideRef.current) {
-                        const latest = editingSlideRef.current;
+                        const latest = {
+                          ...editingSlideRef.current,
+                          content: sanitizeOstText(String(editingSlideRef.current.content || '')),
+                        };
+                        editingSlideRef.current = latest;
                         pushUndo();
                         if (isSyntheticSlideId(latest.id)) {
                           // Cover / module title / overview / tour / objectives are injected — not in course.modules
@@ -7438,11 +7450,38 @@ export default function App() {
                         } else {
                           setCourse((prevCourse: any) => {
                             if (!prevCourse) return prevCourse;
+                            // Also sanitize tab/item OST so generated courses don't keep symbol-only bullets
+                            const slideToSave = (() => {
+                              const s = { ...latest };
+                              if (Array.isArray(s.data?.tabs)) {
+                                s.data = {
+                                  ...s.data,
+                                  tabs: s.data.tabs.map((t: any) => ({
+                                    ...t,
+                                    content: sanitizeOstText(String(t.content || '')),
+                                    expandedContent: t.expandedContent != null
+                                      ? sanitizeOstText(String(t.expandedContent))
+                                      : t.expandedContent,
+                                  })),
+                                };
+                              }
+                              if (Array.isArray(s.data?.items)) {
+                                s.data = {
+                                  ...s.data,
+                                  items: s.data.items.map((it: any) => ({
+                                    ...it,
+                                    content: it.content != null ? sanitizeOstText(String(it.content)) : it.content,
+                                    definition: it.definition != null ? sanitizeOstText(String(it.definition)) : it.definition,
+                                  })),
+                                };
+                              }
+                              return s;
+                            })();
                             return {
                               ...prevCourse,
                               modules: prevCourse.modules.map((m: any) => ({
                                 ...m,
-                                slides: m.slides.map((s: any) => s.id === latest.id ? latest : s)
+                                slides: m.slides.map((s: any) => s.id === slideToSave.id ? slideToSave : s)
                               })),
                             };
                           });
