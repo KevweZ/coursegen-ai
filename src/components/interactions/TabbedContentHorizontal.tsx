@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { markdownToHtml } from '../../lib/markdownInline';
 import { formatTabIntroOst, formatTabOstBody } from '../../lib/formatTabIntroOst';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -63,6 +63,8 @@ export default function TabbedContentHorizontal({
   /** -1 = intro state (slide opening lines); no content tab selected yet */
   const [activeIndex, setActiveIndex] = useState(-1);
   const isLight = theme === 'light';
+  /** Stable scrollport — remounting motion children must not inherit prior scrollTop */
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   // Do not auto-select first tab on mount — intro narration plays first
   useEffect(() => {
@@ -73,11 +75,18 @@ export default function TabbedContentHorizontal({
   const activeTab = inIntro || !normalized.length
     ? null
     : normalized[Math.min(activeIndex, normalized.length - 1)];
+  const panelKey = inIntro ? '__intro__' : (activeTab?.id ?? '__empty__');
 
   const introOst = useMemo(
     () => formatTabIntroOst({ introContent, voiceOverText: introVoiceOver, title }),
     [introContent, introVoiceOver, title]
   );
+
+  // Reset scroll before paint so new (often shorter) tab OST never flashes mid/bottom panel
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = 0;
+  }, [panelKey]);
 
   useEffect(() => {
     onActiveTabChange?.(activeTab?.id ?? null);
@@ -131,68 +140,75 @@ export default function TabbedContentHorizontal({
             Drop here to attach image to this tab
           </div>
         )}
-        <AnimatePresence mode="sync" initial={false}>
-          <motion.div
-            key={inIntro ? '__intro__' : activeTab!.id}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.08 }}
-            className="relative p-6 sm:p-8 flex-1 min-h-0 h-full overflow-y-auto custom-scrollbar"
-          >
-            {inIntro ? (
-              <>
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="w-1 h-8 rounded-full shrink-0" style={{ background: INTRO_COLOR }} />
-                  <h3 className="font-extrabold text-lg" style={{ color: INTRO_COLOR }}>
-                    Introduction
-                  </h3>
-                </div>
-                <div
-                  className={`text-sm leading-relaxed ${isLight ? 'text-slate-700' : 'text-slate-200'}`}
-                  dangerouslySetInnerHTML={{ __html: markdownToHtml(introOst) }}
-                />
-                <p className={`mt-6 text-xs font-semibold ${isLight ? 'text-indigo-600' : 'text-indigo-300'}`}>
-                  Select a topic tab below to continue →
-                </p>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="w-1 h-8 rounded-full shrink-0" style={{ background: activeColor }} />
-                  <h3
-                    className="font-extrabold text-lg"
-                    style={{ color: activeColor }}
-                    dangerouslySetInnerHTML={{ __html: markdownToHtml(activeTab!.label) }}
-                  />
-                </div>
-                <div
-                  className={`text-sm leading-relaxed tab-ost-body ${isLight ? 'text-slate-700' : 'text-slate-200'}`}
-                  dangerouslySetInnerHTML={{ __html: markdownToHtml(formatTabOstBody(activeTab!.content)) }}
-                />
-                {activeTab!.expandedContent && (
-                  <div
-                    className={`mt-4 pt-4 border-t text-sm leading-relaxed tab-ost-body ${
-                      isLight ? 'border-slate-200 text-slate-600' : 'border-slate-700 text-slate-300'
-                    }`}
-                    dangerouslySetInnerHTML={{ __html: markdownToHtml(formatTabOstBody(activeTab!.expandedContent)) }}
-                  />
-                )}
-                {activeTab!.imageUrl && (
-                  <div className="mt-6 pt-4 border-t border-slate-200/80">
-                    <div className="rounded-xl overflow-hidden border border-slate-200/80 shadow-sm max-w-md mx-auto">
-                      <img
-                        src={activeTab!.imageUrl}
-                        alt=""
-                        className="w-full h-auto max-h-72 object-contain bg-slate-50"
-                      />
-                    </div>
+        {/* Stable scrollport: avoid flex-1/h-full on remounting motion children (stacked sync
+            exits parked short content at the bottom of the fixed PANEL_H box). */}
+        <div
+          ref={scrollRef}
+          className="relative flex-1 min-h-0 overflow-y-auto custom-scrollbar"
+        >
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={panelKey}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.06 }}
+              className="relative w-full p-6 sm:p-8 flex flex-col items-start justify-start"
+            >
+              {inIntro ? (
+                <>
+                  <div className="flex items-center gap-2 mb-4 w-full">
+                    <div className="w-1 h-8 rounded-full shrink-0" style={{ background: INTRO_COLOR }} />
+                    <h3 className="font-extrabold text-lg" style={{ color: INTRO_COLOR }}>
+                      Introduction
+                    </h3>
                   </div>
-                )}
-              </>
-            )}
-          </motion.div>
-        </AnimatePresence>
+                  <div
+                    className={`text-sm leading-relaxed w-full ${isLight ? 'text-slate-700' : 'text-slate-200'}`}
+                    dangerouslySetInnerHTML={{ __html: markdownToHtml(introOst) }}
+                  />
+                  <p className={`mt-6 text-xs font-semibold ${isLight ? 'text-indigo-600' : 'text-indigo-300'}`}>
+                    Select a topic tab below to continue →
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 mb-4 w-full">
+                    <div className="w-1 h-8 rounded-full shrink-0" style={{ background: activeColor }} />
+                    <h3
+                      className="font-extrabold text-lg"
+                      style={{ color: activeColor }}
+                      dangerouslySetInnerHTML={{ __html: markdownToHtml(activeTab!.label) }}
+                    />
+                  </div>
+                  <div
+                    className={`text-sm leading-relaxed tab-ost-body w-full ${isLight ? 'text-slate-700' : 'text-slate-200'}`}
+                    dangerouslySetInnerHTML={{ __html: markdownToHtml(formatTabOstBody(activeTab!.content)) }}
+                  />
+                  {activeTab!.expandedContent && (
+                    <div
+                      className={`mt-4 pt-4 border-t text-sm leading-relaxed tab-ost-body w-full ${
+                        isLight ? 'border-slate-200 text-slate-600' : 'border-slate-700 text-slate-300'
+                      }`}
+                      dangerouslySetInnerHTML={{ __html: markdownToHtml(formatTabOstBody(activeTab!.expandedContent)) }}
+                    />
+                  )}
+                  {activeTab!.imageUrl && (
+                    <div className="mt-6 pt-4 border-t border-slate-200/80 w-full">
+                      <div className="rounded-xl overflow-hidden border border-slate-200/80 shadow-sm max-w-md mx-auto">
+                        <img
+                          src={activeTab!.imageUrl}
+                          alt=""
+                          className="w-full h-auto max-h-72 object-contain bg-slate-50"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </motion.div>
+          </AnimatePresence>
+        </div>
       </div>
 
       <div
