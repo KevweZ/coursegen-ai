@@ -106,6 +106,10 @@ export default function TabbedContentHorizontal({
     : (activeTab?.color || ACCENT_COLORS[Math.max(0, activeIndex) % ACCENT_COLORS.length]);
   const dropZoneId = activeTab?.id || '';
   const panelHighlighted = !!(highlightTabId && dropZoneId && highlightTabId === dropZoneId);
+  // Reserve panel height when any tab has an image so the tab bar stays in the
+  // "image layout" position from Intro onward (no jump / blank flash on first click).
+  const anyTabHasImage = normalized.some(t => !!t.imageUrl);
+  const panelMinH = anyTabHasImage ? 420 : 280;
 
   return (
     <div className="w-full flex flex-col gap-0 select-none min-h-0 flex-1">
@@ -117,23 +121,24 @@ export default function TabbedContentHorizontal({
 
       <div
         data-tab-drop-zone={dropZoneId || undefined}
-        className={`relative rounded-t-2xl border border-b-0 transition-all min-h-[240px] flex-1 flex flex-col ${
+        className={`relative rounded-t-2xl border border-b-0 transition-colors flex flex-col overflow-hidden ${
           isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-800/60 border-slate-700'
         } ${panelHighlighted ? 'ring-4 ring-indigo-400/80 ring-inset bg-indigo-50/40' : ''}`}
+        style={{ minHeight: panelMinH }}
       >
         {panelHighlighted && (
           <div className="absolute inset-x-0 top-0 z-10 px-3 py-1.5 text-center text-[11px] font-bold text-white bg-indigo-600/90 pointer-events-none">
             Drop here to attach image to this tab
           </div>
         )}
-        <AnimatePresence mode="wait">
+        <AnimatePresence mode="sync" initial={false}>
           <motion.div
             key={inIntro ? '__intro__' : activeTab!.id}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.22 }}
-            className="relative p-6 sm:p-8 flex-1"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12 }}
+            className="relative p-6 sm:p-8 flex-1 min-h-0 overflow-y-auto custom-scrollbar"
           >
             {inIntro ? (
               <>
