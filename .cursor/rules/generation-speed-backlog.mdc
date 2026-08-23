@@ -10,8 +10,8 @@ Phase 1.5 mobile verify is complete enough to start this work. Prefer **same API
 ## Status
 
 1. **Parallel hydrate** — **DONE** (bounded concurrency 3 for `hydrateCourseContent` chunks in [`src/services/aiService.ts`](src/services/aiService.ts); Tier 1→2→3 + Bug #7 safety net kept).
-2. **Image pacing** — **NEXT** — reduce sequential 1.2–2.0s sleeps and/or pool 2 concurrent calls in [`src/services/imageService.ts`](src/services/imageService.ts).
-3. **Perceived speed** — open preview after hydrate (+ cover); continue content images / AI QC async, or defer AI QC past first preview ([`src/App.tsx`](src/App.tsx) `finalizeGeneratedCourse`, [`src/services/qcService.ts`](src/services/qcService.ts)).
+2. **Image pacing** — **DONE** (concurrency 2 + ~400ms pace in [`src/services/imageService.ts`](src/services/imageService.ts); was 1.2–2.0s fully sequential; 429 single retry kept).
+3. **Perceived speed** — **NEXT** — open preview after hydrate (+ cover); continue content images / AI QC async, or defer AI QC past first preview ([`src/App.tsx`](src/App.tsx) `finalizeGeneratedCourse`, [`src/services/qcService.ts`](src/services/qcService.ts)).
 
 ## Explicitly deprioritize first
 
