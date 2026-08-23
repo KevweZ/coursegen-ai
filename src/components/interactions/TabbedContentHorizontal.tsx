@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { markdownToHtml } from '../../lib/markdownInline';
 import { formatTabIntroOst, formatTabOstBody } from '../../lib/formatTabIntroOst';
-import { motion, AnimatePresence } from 'framer-motion';
 
 export interface HorizontalTab {
   id: string;
@@ -40,6 +39,8 @@ const ACCENT_COLORS = [
   '#6366f1', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#f43f5e',
 ];
 const INTRO_COLOR = '#6366f1';
+/** Fixed panel height keeps the tab bar docked; content scrolls inside. */
+const PANEL_H = 520;
 
 function normalizeTabs(tabs: HorizontalTab[]): HorizontalTab[] {
   return (tabs || []).map((t, i) => ({
@@ -63,6 +64,7 @@ export default function TabbedContentHorizontal({
   /** -1 = intro state (slide opening lines); no content tab selected yet */
   const [activeIndex, setActiveIndex] = useState(-1);
   const isLight = theme === 'light';
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   // Do not auto-select first tab on mount — intro narration plays first
   useEffect(() => {
@@ -73,11 +75,22 @@ export default function TabbedContentHorizontal({
   const activeTab = inIntro || !normalized.length
     ? null
     : normalized[Math.min(activeIndex, normalized.length - 1)];
+  const panelKey = inIntro ? '__intro__' : (activeTab?.id ?? '__empty__');
 
   const introOst = useMemo(
     () => formatTabIntroOst({ introContent, voiceOverText: introVoiceOver, title }),
     [introContent, introVoiceOver, title]
   );
+
+  const resetScrollTop = () => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = 0;
+  };
+
+  // Guaranteed top alignment before paint on every panel change
+  useLayoutEffect(() => {
+    resetScrollTop();
+  }, [panelKey]);
 
   useEffect(() => {
     onActiveTabChange?.(activeTab?.id ?? null);
@@ -87,12 +100,14 @@ export default function TabbedContentHorizontal({
   if (!normalized.length) return null;
 
   const selectIntro = () => {
+    resetScrollTop();
     setActiveIndex(-1);
     onTabView?.('__intro__');
     onTabAudio?.('__intro__');
   };
 
   const selectTab = (i: number) => {
+    resetScrollTop();
     setActiveIndex(i);
     const id = normalized[i]?.id;
     if (id) {
@@ -106,22 +121,18 @@ export default function TabbedContentHorizontal({
     : (activeTab?.color || ACCENT_COLORS[Math.max(0, activeIndex) % ACCENT_COLORS.length]);
   const dropZoneId = activeTab?.id || '';
   const panelHighlighted = !!(highlightTabId && dropZoneId && highlightTabId === dropZoneId);
-  // Always use a fixed content-panel height so the tab bar stays docked at the
-  // bottom (image-tab layout). Growing/shrinking with content caused a player snap
-  // when switching image tabs ↔ text-only tabs.
-  const PANEL_H = 520;
 
   return (
-    <div className="w-full flex flex-col gap-0 select-none">
+    <div className="w-full flex flex-col gap-0 select-none min-h-0 flex-1">
       {title && (
-        <p className={`text-sm font-bold text-center uppercase tracking-widest mb-3 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+        <p className={`text-sm font-bold text-center uppercase tracking-widest mb-3 shrink-0 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
           {title}
         </p>
       )}
 
       <div
         data-tab-drop-zone={dropZoneId || undefined}
-        className={`relative rounded-t-2xl border border-b-0 transition-colors flex flex-col overflow-hidden ${
+        className={`relative rounded-t-2xl border border-b-0 transition-colors overflow-hidden ${
           isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-800/60 border-slate-700'
         } ${panelHighlighted ? 'ring-4 ring-indigo-400/80 ring-inset bg-indigo-50/40' : ''}`}
         style={{ height: PANEL_H, minHeight: PANEL_H }}
@@ -131,25 +142,23 @@ export default function TabbedContentHorizontal({
             Drop here to attach image to this tab
           </div>
         )}
-        <AnimatePresence mode="sync" initial={false}>
-          <motion.div
-            key={inIntro ? '__intro__' : activeTab!.id}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.08 }}
-            className="relative p-6 sm:p-8 flex-1 min-h-0 h-full overflow-y-auto custom-scrollbar"
-          >
+        {/* Absolute scrollport: content is always document-top; no flex remount can park OST at bottom. */}
+        <div
+          ref={scrollRef}
+          className="absolute inset-0 overflow-y-auto overflow-x-hidden custom-scrollbar"
+          style={{ overflowAnchor: 'none' }}
+        >
+          <div key={panelKey} className="box-border w-full p-6 sm:p-8 text-left align-top">
             {inIntro ? (
               <>
-                <div className="flex items-center gap-2 mb-4">
+                <div className="flex items-center gap-2 mb-4 w-full">
                   <div className="w-1 h-8 rounded-full shrink-0" style={{ background: INTRO_COLOR }} />
                   <h3 className="font-extrabold text-lg" style={{ color: INTRO_COLOR }}>
                     Introduction
                   </h3>
                 </div>
                 <div
-                  className={`text-sm leading-relaxed ${isLight ? 'text-slate-700' : 'text-slate-200'}`}
+                  className={`text-sm leading-relaxed w-full ${isLight ? 'text-slate-700' : 'text-slate-200'}`}
                   dangerouslySetInnerHTML={{ __html: markdownToHtml(introOst) }}
                 />
                 <p className={`mt-6 text-xs font-semibold ${isLight ? 'text-indigo-600' : 'text-indigo-300'}`}>
@@ -158,7 +167,7 @@ export default function TabbedContentHorizontal({
               </>
             ) : (
               <>
-                <div className="flex items-center gap-2 mb-4">
+                <div className="flex items-center gap-2 mb-4 w-full">
                   <div className="w-1 h-8 rounded-full shrink-0" style={{ background: activeColor }} />
                   <h3
                     className="font-extrabold text-lg"
@@ -167,36 +176,37 @@ export default function TabbedContentHorizontal({
                   />
                 </div>
                 <div
-                  className={`text-sm leading-relaxed tab-ost-body ${isLight ? 'text-slate-700' : 'text-slate-200'}`}
+                  className={`text-sm leading-relaxed tab-ost-body w-full ${isLight ? 'text-slate-700' : 'text-slate-200'}`}
                   dangerouslySetInnerHTML={{ __html: markdownToHtml(formatTabOstBody(activeTab!.content)) }}
                 />
                 {activeTab!.expandedContent && (
                   <div
-                    className={`mt-4 pt-4 border-t text-sm leading-relaxed tab-ost-body ${
+                    className={`mt-4 pt-4 border-t text-sm leading-relaxed tab-ost-body w-full ${
                       isLight ? 'border-slate-200 text-slate-600' : 'border-slate-700 text-slate-300'
                     }`}
                     dangerouslySetInnerHTML={{ __html: markdownToHtml(formatTabOstBody(activeTab!.expandedContent)) }}
                   />
                 )}
                 {activeTab!.imageUrl && (
-                  <div className="mt-6 pt-4 border-t border-slate-200/80">
+                  <div className="mt-6 pt-4 border-t border-slate-200/80 w-full">
                     <div className="rounded-xl overflow-hidden border border-slate-200/80 shadow-sm max-w-md mx-auto">
                       <img
                         src={activeTab!.imageUrl}
                         alt=""
                         className="w-full h-auto max-h-72 object-contain bg-slate-50"
+                        onLoad={resetScrollTop}
                       />
                     </div>
                   </div>
                 )}
               </>
             )}
-          </motion.div>
-        </AnimatePresence>
+          </div>
+        </div>
       </div>
 
       <div
-        className={`flex border border-t-0 rounded-b-2xl overflow-x-auto custom-scrollbar ${
+        className={`flex border border-t-0 rounded-b-2xl overflow-x-auto custom-scrollbar shrink-0 ${
           isLight ? 'border-slate-200 bg-slate-50' : 'border-slate-700 bg-slate-900/80'
         }`}
       >
