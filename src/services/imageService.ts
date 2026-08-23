@@ -7,6 +7,48 @@
 
 const DEFAULT_IMAGE_MODEL = 'google/gemini-3.1-flash-image-preview';
 
+/** Soft-pace between image API calls (was 1.2–2.0s sequential). */
+const IMAGE_PACE_MS = 400;
+/** Bounded parallel image generation — same $ as sequential, lower wall clock. */
+const IMAGE_GEN_CONCURRENCY = 2;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+/** Run async work with at most `concurrency` in flight; results stay in input order. */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (!items.length) return [];
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(1, concurrency), items.length);
+
+  async function worker() {
+    while (true) {
+      const i = nextIndex++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i], i);
+    }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
+}
+
+/** Serialize module mutations when image jobs run in parallel. */
+function createAsyncLock() {
+  let chain: Promise<void> = Promise.resolve();
+  return function withLock<T>(fn: () => T | Promise<T>): Promise<T> {
+    const run = chain.then(fn, fn);
+    chain = run.then(() => undefined, () => undefined);
+    return run;
+  };
+}
+
 /** Canonical multimedia image modes (legacy ai-title* still accepted via normalizeImageMode). */
 export type CourseImageMode =
   | 'none'
@@ -66,20 +108,36 @@ function buildCourseCoverPrompt(courseTitle: string, description?: string): stri
 }
 
 async function callImageEndpoint(prompt: string, model = DEFAULT_IMAGE_MODEL): Promise<string> {
-  const response = await fetch('/api/generate-image', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt, model }),
-  });
+  const execute = async () => {
+    const response = await fetch('/api/generate-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, model }),
+    });
 
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({ error: response.statusText }));
-    throw new Error(err.error ?? `HTTP ${response.status}`);
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: response.statusText }));
+      const msg = err.error ?? `HTTP ${response.status}`;
+      const e = new Error(msg) as Error & { status?: number };
+      e.status = response.status;
+      throw e;
+    }
+
+    const data = await response.json();
+    if (!data.imageDataUrl) throw new Error('No imageDataUrl in response');
+    return data.imageDataUrl as string;
+  };
+
+  try {
+    return await execute();
+  } catch (err: any) {
+    if (err?.status === 429 || /429|rate.?limit|too many/i.test(String(err?.message || ''))) {
+      console.warn('[ImageService] Rate limited — waiting 8s then retrying once…');
+      await sleep(8000);
+      return await execute();
+    }
+    throw err;
   }
-
-  const data = await response.json();
-  if (!data.imageDataUrl) throw new Error('No imageDataUrl in response');
-  return data.imageDataUrl;
 }
 
 /** Generate a single AI cover image for the course title slide. */
@@ -91,7 +149,7 @@ export async function generateCourseCoverImage(
 }
 
 /**
- * Generate banner images for every module in the course, sequentially.
+ * Generate banner images for every module in the course (bounded concurrency).
  */
 export async function generateModuleImages(
   course: any,
@@ -99,12 +157,17 @@ export async function generateModuleImages(
 ): Promise<void> {
   if (!course?.modules?.length) return;
 
-  for (const module of course.modules) {
-    const titleSlide = module.slides?.find(
-      (s: any) => s.type === 'title' || s.type === 'cover'
-    );
-    if (!titleSlide || !module.title?.trim()) continue;
+  const targets = course.modules
+    .map((module: any) => {
+      const titleSlide = module.slides?.find(
+        (s: any) => s.type === 'title' || s.type === 'cover'
+      );
+      if (!titleSlide || !module.title?.trim()) return null;
+      return { module, titleSlide };
+    })
+    .filter(Boolean) as Array<{ module: any; titleSlide: any }>;
 
+  await mapWithConcurrency(targets, IMAGE_GEN_CONCURRENCY, async ({ module, titleSlide }) => {
     try {
       const prompt = buildModuleBannerPrompt(module.title, course.title ?? '');
       const imageDataUrl = await callImageEndpoint(prompt);
@@ -113,9 +176,8 @@ export async function generateModuleImages(
     } catch (err) {
       console.warn(`[ImageService] Failed image for module "${module.title}":`, err);
     }
-
-    await new Promise(r => setTimeout(r, 2000));
-  }
+    await sleep(IMAGE_PACE_MS);
+  });
 }
 
 /**
@@ -192,32 +254,41 @@ export async function enrichHotspotAndCarouselImages(
     return img?.dataUrl || null;
   };
 
-  const modules = [];
-  for (const m of course.modules) {
-    const slides = [];
-    for (const s of m.slides || []) {
-      let slide = { ...s, data: s.data ? { ...s.data } : s.data };
+  type AiJob =
+    | { kind: 'hotspot'; mi: number; si: number; prompt: string }
+    | { kind: 'carousel'; mi: number; si: number; cardIndex: number; prompt: string };
 
+  const modules = course.modules.map((m: any) => ({
+    ...m,
+    slides: (m.slides || []).map((s: any) => ({
+      ...s,
+      data: s.data ? { ...s.data } : s.data,
+    })),
+  }));
+
+  const aiJobs: AiJob[] = [];
+
+  modules.forEach((m: any, mi: number) => {
+    (m.slides || []).forEach((slide: any, si: number) => {
       if (slide.type === 'hotspot') {
         const existing = slide.imageUrl || slide.data?.imageUrl || slide.coverImage;
         if (!existing) {
-          let url = nextSrc();
-          if (!url && opts.generateAi) {
-            try {
-              url = await callImageEndpoint(
-                `Educational diagram-style illustration for: "${slide.title}". ` +
-                `Clean labeled technical cutaway or schematic, light background, no text overlay, high quality, 16:9.`
-              );
-            } catch (e) {
-              console.warn('[ImageService] Hotspot AI image failed:', e);
-            }
-          }
+          const url = nextSrc();
           if (url) {
-            slide = {
+            modules[mi].slides[si] = {
               ...slide,
               imageUrl: url,
               data: { ...(slide.data || {}), imageUrl: url },
             };
+          } else if (opts.generateAi) {
+            aiJobs.push({
+              kind: 'hotspot',
+              mi,
+              si,
+              prompt:
+                `Educational diagram-style illustration for: "${slide.title}". ` +
+                `Clean labeled technical cutaway or schematic, light background, no text overlay, high quality, 16:9.`,
+            });
           }
         }
       }
@@ -225,22 +296,24 @@ export async function enrichHotspotAndCarouselImages(
       if (!opts.hotspotOnly && slide.type === 'carousel-panel') {
         const cards = slide.data?.cards || slide.data?.items || [];
         if (Array.isArray(cards) && cards.length) {
-          const nextCards = [];
-          for (const c of cards) {
-            if (c.imageUrl) { nextCards.push(c); continue; }
-            let url = nextSrc();
-            if (!url && opts.generateAi) {
-              try {
-                url = await callImageEndpoint(
+          const nextCards = cards.map((c: any, cardIndex: number) => {
+            if (c.imageUrl) return c;
+            const url = nextSrc();
+            if (url) return { ...c, imageUrl: url };
+            if (opts.generateAi) {
+              aiJobs.push({
+                kind: 'carousel',
+                mi,
+                si,
+                cardIndex,
+                prompt:
                   `Simple educational illustration for carousel card "${c.label || c.title || 'topic'}" ` +
-                  `in course "${course.title || ''}". Soft colors, no text, no logos.`
-                );
-              } catch { /* non-fatal */ }
+                  `in course "${course.title || ''}". Soft colors, no text, no logos.`,
+              });
             }
-            nextCards.push(url ? { ...c, imageUrl: url } : c);
-            if (opts.generateAi) await new Promise(r => setTimeout(r, 1200));
-          }
-          slide = {
+            return c;
+          });
+          modules[mi].slides[si] = {
             ...slide,
             data: {
               ...(slide.data || {}),
@@ -250,12 +323,48 @@ export async function enrichHotspotAndCarouselImages(
           };
         }
       }
+    });
+  });
 
-      slides.push(slide);
-      if (opts.generateAi && slide.type === 'hotspot') await new Promise(r => setTimeout(r, 1200));
-    }
-    modules.push({ ...m, slides });
+  if (aiJobs.length) {
+    const withLock = createAsyncLock();
+    await mapWithConcurrency(aiJobs, IMAGE_GEN_CONCURRENCY, async (job) => {
+      let url: string | null = null;
+      try {
+        url = await callImageEndpoint(job.prompt);
+      } catch (e) {
+        console.warn('[ImageService] Hotspot/carousel AI image failed:', e);
+      }
+      if (url) {
+        await withLock(() => {
+          const slide = modules[job.mi].slides[job.si];
+          if (job.kind === 'hotspot') {
+            modules[job.mi].slides[job.si] = {
+              ...slide,
+              imageUrl: url,
+              data: { ...(slide.data || {}), imageUrl: url },
+            };
+          } else {
+            const key = slide.data?.cards ? 'cards' : 'items';
+            const list = [...(slide.data?.[key] || [])];
+            if (list[job.cardIndex]) {
+              list[job.cardIndex] = { ...list[job.cardIndex], imageUrl: url };
+              modules[job.mi].slides[job.si] = {
+                ...slide,
+                data: {
+                  ...(slide.data || {}),
+                  [key]: list,
+                  ...(key === 'cards' && slide.data?.items ? { items: list } : {}),
+                },
+              };
+            }
+          }
+        });
+      }
+      await sleep(IMAGE_PACE_MS);
+    });
   }
+
   return { ...course, modules };
 }
 
@@ -405,44 +514,53 @@ export async function generateContentSlideImages(
   }));
 
   let done = 0;
-  for (const job of selected) {
+  const withLock = createAsyncLock();
+
+  await mapWithConcurrency(selected, IMAGE_GEN_CONCURRENCY, async (job) => {
+    let url: string | null = null;
     try {
-      const url = await callImageEndpoint(
+      url = await callImageEndpoint(
         buildSlideVisualPrompt(course.title || 'Course', job.slideTitle, job.subject)
       );
-      const slide = modules[job.mi].slides[job.si];
-      if (job.kind === 'slide') {
-        modules[job.mi].slides[job.si] = { ...slide, imageUrl: url };
-      } else if (typeof job.tabIndex === 'number') {
-        if (slide.type === 'tabbed-horizontal' || slide.type === 'tabbed-vertical') {
-          const key = slide.data?.tabs ? 'tabs' : 'items';
-          const list = [...(slide.data?.[key] || [])];
-          if (list[job.tabIndex]) {
-            list[job.tabIndex] = { ...list[job.tabIndex], imageUrl: url };
-            modules[job.mi].slides[job.si] = {
-              ...slide,
-              data: { ...(slide.data || {}), [key]: list },
-            };
-          }
-        } else if (slide.type === 'click-reveal' || slide.type === 'accordion') {
-          const list = [...(slide.data?.items || [])];
-          if (list[job.tabIndex]) {
-            list[job.tabIndex] = { ...list[job.tabIndex], imageUrl: url };
-            modules[job.mi].slides[job.si] = {
-              ...slide,
-              data: { ...(slide.data || {}), items: list },
-            };
-          }
-        }
-      }
-      console.log(`[ImageService] ✓ Content visual for "${job.subject}"`);
     } catch (err) {
       console.warn(`[ImageService] Content visual failed for "${job.subject}":`, err);
     }
+
+    if (url) {
+      await withLock(() => {
+        const slide = modules[job.mi].slides[job.si];
+        if (job.kind === 'slide') {
+          modules[job.mi].slides[job.si] = { ...slide, imageUrl: url };
+        } else if (typeof job.tabIndex === 'number') {
+          if (slide.type === 'tabbed-horizontal' || slide.type === 'tabbed-vertical') {
+            const key = slide.data?.tabs ? 'tabs' : 'items';
+            const list = [...(slide.data?.[key] || [])];
+            if (list[job.tabIndex]) {
+              list[job.tabIndex] = { ...list[job.tabIndex], imageUrl: url };
+              modules[job.mi].slides[job.si] = {
+                ...slide,
+                data: { ...(slide.data || {}), [key]: list },
+              };
+            }
+          } else if (slide.type === 'click-reveal' || slide.type === 'accordion') {
+            const list = [...(slide.data?.items || [])];
+            if (list[job.tabIndex]) {
+              list[job.tabIndex] = { ...list[job.tabIndex], imageUrl: url };
+              modules[job.mi].slides[job.si] = {
+                ...slide,
+                data: { ...(slide.data || {}), items: list },
+              };
+            }
+          }
+        }
+        console.log(`[ImageService] ✓ Content visual for "${job.subject}"`);
+      });
+    }
+
     done++;
     onProgress?.(done, selected.length);
-    if (done < selected.length) await new Promise(r => setTimeout(r, 1400));
-  }
+    await sleep(IMAGE_PACE_MS);
+  });
 
   return { course: { ...course, modules }, jobsAttempted: selected.length };
 }
