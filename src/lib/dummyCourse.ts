@@ -24,7 +24,7 @@ export const DUMMY_COURSE: CourseOutline = {
         'The learner will explain how the accordion interaction reveals content when a heading is selected.',
         'The learner will define key player terminology using the flashcard and click-reveal interactions.',
         'The learner will outline a sequence of events displayed in the timeline interaction.',
-        'The learner will navigate tabbed content and a wheel diagram to explore layered sections.',
+        'The learner will navigate horizontal and vertical tabbed content and a wheel diagram to explore layered sections.',
       ],
     },
     {
@@ -203,9 +203,66 @@ Use Previous and Next in the player bar, or click the seekbar to jump to any sli
           },
         },
         {
+          id: 'slide-tabs-horizontal',
+          type: 'tabbed-horizontal',
+          title: 'Tabs (Horizontal) — Player Layers',
+          content: `- Slide canvas renders each interaction type
+- Player bar handles play, seek, and navigation
+- Themes switch Dark, Light, and Unified
+- Select a tab to continue →`,
+          narration: 'Horizontal tabs keep topics in a bottom bar. Start with the introduction, then open each layer to see how text and images share the panel.',
+          voiceOverText: 'Horizontal tabs keep topics in a bottom bar. Start with the introduction, then open each layer to see how text and images share the panel.',
+          data: {
+            tabs: [
+              {
+                id: 'htab-1',
+                label: 'Canvas',
+                color: '#6366f1',
+                content: `- Central content area
+- Switches by slide type
+- Hosts interactions and media
+- Scales to the player stage`,
+                voiceOverText: 'The slide canvas is the main rendering area. It switches layouts based on the slide type and hosts interactions and media.',
+                imageUrl: '/Characters/BusinessMan_salute.png',
+              },
+              {
+                id: 'htab-2',
+                label: 'Player Bar',
+                color: '#ec4899',
+                content: `- Seekbar and play controls
+- Previous and next navigation
+- Elapsed time display
+- Stays fixed under the stage`,
+                voiceOverText: 'The player bar sits under the stage with seek, play, and navigation controls so learners always know where they are.',
+                imageUrl: '/Characters/BusinessWoman_arms_crossed.png',
+              },
+              {
+                id: 'htab-3',
+                label: 'Themes',
+                color: '#f59e0b',
+                content: `- Dark for low-light review
+- Light for bright classrooms
+- Unified for branded delivery
+- Applies across the player`,
+                voiceOverText: 'Themes change the look of the whole player. Dark, Light, and Unified keep the same interactions with different contrast.',
+              },
+              {
+                id: 'htab-4',
+                label: 'Edit Drawer',
+                color: '#10b981',
+                content: `- Opens from Edit Slide
+- Text tab for on-screen copy
+- Audio tab for narration
+- Saves back into the course`,
+                voiceOverText: 'The edit drawer lets authors tweak on-screen text and narration without leaving the preview player.',
+              },
+            ],
+          },
+        },
+        {
           id: 'slide-tabs-vertical',
           type: 'tabbed-vertical',
-          title: 'Tabs — How Content Is Organized',
+          title: 'Tabs (Vertical) — How Content Is Organized',
           content: 'Select each tab to explore how the player groups related information.',
           narration: 'Use the tabs on the left to move between sections.',
           voiceOverText: 'Select each tab to explore how content is organized.',
