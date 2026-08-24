@@ -1238,6 +1238,8 @@ export default function App() {
   const [showEditMenu, setShowEditMenu] = useState(false);
   /** Ref so runAnalysis (defined earlier) can call finalize after hydrate */
   const finalizeGeneratedCourseRef = useRef<(course: any) => Promise<void>>(async () => {});
+  /** Bumps when a new finalize starts so stale background imagery/QC work aborts safely */
+  const finalizeBackgroundTokenRef = useRef(0);
   
   const [isGenerating, setIsGenerating] = useState(false);
   const [isHydrating, setIsHydrating] = useState(false);
@@ -2596,7 +2598,7 @@ export default function App() {
             // Leave 55–100% for images + audio in finalize
             (pct) => setProgress(20 + Math.round(pct * 0.35))
           );
-          // Apply Course Settings + wait for images/audio before showing Development
+          // Apply Course Settings; preview opens after cover — visuals/QC continue in background
           await finalizeGeneratedCourseRef.current({
             ...finalCourse,
             learningObjectives: result.objectives || learningObjectives,
@@ -3052,7 +3054,7 @@ export default function App() {
           },
           (pct) => setProgress(45 + Math.round(pct * 0.1))
         );
-        // Wait for images + audio before opening Course Development
+        // Preview opens after cover; visuals/QC continue in background
         await finalizeGeneratedCourse(finalCourse);
       } else {
         // Item 7: Jump to 100% when outline generation is done
@@ -3068,7 +3070,7 @@ export default function App() {
     }
   };
 
-  /** Apply Course Settings, finish images + audio, then open Course Development. */
+  /** Apply Course Settings, generate cover, open preview; visuals/QC/TTS continue in background. */
   const finalizeGeneratedCourse = async (finalCourse: any) => {
     const rawObjectives = finalCourse.learningObjectives?.length
       ? finalCourse.learningObjectives
@@ -3116,10 +3118,11 @@ export default function App() {
     setActiveDraftId(null);
     setIsSandboxMode(false);
     setMobileDesignDemo(false);
-    // Do NOT wait for narration — open Course Development after images + QC; TTS runs in background
+    // Perceived speed: open Course Development after cover (and hydrate).
+    // Content visuals, QC, exam await, and TTS continue in the background.
 
-    // Pre-generate mastery quiz in parallel with imagery/QC — we await it
-    // before opening preview so Begin Quiz never kicks off a second generation.
+    // Pre-generate mastery quiz in parallel — await it in background so Begin Quiz
+    // still uses a ready bank without blocking first preview.
     if (examConfig.enabled) {
       setIsGeneratingExam(true);
       setExamError(null);
@@ -3158,6 +3161,8 @@ export default function App() {
       hotspotBackdropSnapshot &&
       (interactionTypes || []).includes('hotspot');
     const runImagery = wantsAi || wantsSource || wantsHotspotBackdrop;
+    const genToken = ++finalizeBackgroundTokenRef.current;
+    const stillActive = () => genToken === finalizeBackgroundTokenRef.current;
 
     const seedFloatingFromCourse = (c: any) => {
       // Strip bad auto-promoted floats from prior beta; keep author uploads only
@@ -3225,11 +3230,47 @@ export default function App() {
       };
     };
 
+    /** After TTS starts, never replace course wholesale — keep blob voiceOverUrls. */
+    const mergeCoursePreservingAudio = (prev: any, next: any) => {
+      if (!prev) return next;
+      if (!next) return prev;
+      const audioById: Record<string, { voiceOverUrl?: string; audioUrl?: string }> = {};
+      for (const m of prev.modules || []) {
+        for (const s of m.slides || []) {
+          if (s?.id && (s.voiceOverUrl || s.audioUrl)) {
+            audioById[s.id] = { voiceOverUrl: s.voiceOverUrl, audioUrl: s.audioUrl };
+          }
+        }
+      }
+      return {
+        ...next,
+        coverImage: next.coverImage || prev.coverImage,
+        modules: (next.modules || []).map((m: any) => ({
+          ...m,
+          slides: (m.slides || []).map((s: any) => {
+            const a = audioById[s.id];
+            if (!a) return s;
+            return {
+              ...s,
+              voiceOverUrl: s.voiceOverUrl || a.voiceOverUrl,
+              audioUrl: s.audioUrl || a.audioUrl,
+            };
+          }),
+        })),
+      };
+    };
+
+    const commitCourse = (next: any) => {
+      working = next;
+      setCourse(prev => mergeCoursePreservingAudio(prev, next));
+      setOriginalCourse(prev => mergeCoursePreservingAudio(prev, next));
+    };
+
     let imgs = sourceSnapshot;
     let working: any = stamped;
     let coverUrl: string | null = null;
 
-    // ── Images (55–78%) ──────────────────────────────────────────────
+    // ── Cover only (blocks preview) ──────────────────────────────────
     if (runImagery) {
       setIsGeneratingImages(true);
       setProgress(56);
@@ -3300,105 +3341,18 @@ export default function App() {
         } else if (coverUrl) {
           showDraftMessage('Title cover set from your uploaded file (AI Images is off).');
         }
-        setProgress(68);
-
-        try {
-          const { enrichHotspotAndCarouselImages } = await import('./services/imageService');
-          working = await enrichHotspotAndCarouselImages(working, imgs, {
-            generateAi: wantsAi || wantsHotspotBackdrop,
-            useSource: wantsSource,
-            hotspotOnly: !wantsAi && wantsHotspotBackdrop,
-          });
-          if (coverUrl) working = { ...working, coverImage: coverUrl };
-          working = seedFloatingFromCourse(working) || working;
-          setCourse(working);
-          setOriginalCourse(working);
-        } catch (err) {
-          console.warn('[ImageService] Hotspot/carousel enrich failed:', err);
-        }
         setProgress(72);
-
-        if (wantsAi) {
-          try {
-            showDraftMessage('Generating content visuals…');
-            working = await generateContentSlideImages(working, (done, total) => {
-              setProgress(72 + Math.round((done / Math.max(1, total)) * 6));
-              if (done === total) showDraftMessage(`Content visuals ready (${total}) ✓`);
-            }).then(r => r.course);
-            if (coverUrl) working = { ...working, coverImage: coverUrl };
-            working = seedFloatingFromCourse(working) || working;
-            setCourse(working);
-            setOriginalCourse(working);
-          } catch (err) {
-            console.warn('[ImageService] Content slide images failed:', err);
-          }
-        }
-      } finally {
-        setIsGeneratingImages(false);
+      } catch (err) {
+        console.warn('[ImageService] Cover phase failed:', err);
       }
+      // Keep isGeneratingImages true while content visuals continue in background
     }
 
-    // ── QC (78–82%) ──────────────────────────────────────────────────
-    setProgress(78);
-    try {
-      setIsRunningQC(true);
-      setQcPhase('structural');
-      const report = await runFullQC(working, voiceSnapshot, (phase) => setQcPhase(phase));
-      setQcReport(report);
-      if (report.issues.some(i => i.autoFixable)) {
-        const { course: fixedCourse } = autoFixCourse(working, report);
-        const merged = mergeImageryInto(fixedCourse, working, coverUrl);
-        working = seedFloatingFromCourse(merged) || merged;
-        setCourse(working);
-        setOriginalCourse(working);
-      }
-    } catch {
-      // QC failure is non-fatal
-    } finally {
-      setIsRunningQC(false);
-      setQcPhase(null);
-    }
-    // Optional: pre-warm Mermaid renders so diagram slides open faster in preview
-    try {
-      const diagramSlides = (working.modules || []).flatMap((m: any) =>
-        (m.slides || []).filter((s: any) => s.type === 'diagram' && s.data?.mermaidCode)
-      );
-      if (diagramSlides.length) {
-        const mermaid = (await import('mermaid')).default;
-        mermaid.initialize({ startOnLoad: false, theme: 'base', securityLevel: 'loose' });
-        for (const s of diagramSlides.slice(0, 8)) {
-          try {
-            await mermaid.render(`prewarm-${s.id}-${Date.now()}`, String(s.data.mermaidCode));
-          } catch { /* non-fatal */ }
-        }
-      }
-    } catch { /* mermaid optional */ }
-
-    setProgress(95);
-
-    // Ensure mastery quiz is ready before Course Development opens — Begin must not generate.
-    if (examGenPromiseRef.current) {
-      try {
-        const qs = await examGenPromiseRef.current;
-        if (qs?.length) {
-          working = { ...working, examQuestions: qs };
-        }
-      } catch (e) {
-        console.warn('[Mastery Quiz] Await pre-generation failed:', e);
-      } finally {
-        setIsGeneratingExam(false);
-        examGenPromiseRef.current = null;
-      }
-    }
-
-    // Open preview FIRST with the final imagery snapshot.
-    // CRITICAL: Do NOT call setCourse(working) again after TTS starts — that wipes
-    // blob voiceOverUrls that generateTTS patches in via functional updates.
     if (coverUrl) {
       working = { ...working, coverImage: coverUrl };
       setCourseBg(coverUrl);
     } else if (wantsAi) {
-      console.warn('[ImageService] AI images enabled but no cover URL after finalize imagery');
+      console.warn('[ImageService] AI images enabled but no cover URL after cover phase');
       showDraftMessage('AI cover did not generate — use Edit → Generate AI images or Upload Image on the title slide.');
     } else if (!wantsAi && !wantsSource) {
       showDraftMessage('Multimedia images are off in Course Settings — enable AI Images to generate a cover.');
@@ -3406,7 +3360,6 @@ export default function App() {
     working = seedFloatingFromCourse(working) || working;
     setCourse(working);
     setOriginalCourse(working);
-    // Re-assert cover via functional update so a concurrent setCourse cannot drop it
     if (coverUrl) {
       const finalCover = coverUrl;
       setCourse((prev: any) => (prev ? { ...prev, coverImage: prev.coverImage || finalCover } : prev));
@@ -3414,20 +3367,15 @@ export default function App() {
       setCourseBg(finalCover);
     }
     setProgress(100);
-    // Re-assert slide 0 in case any interim navigation ran during imagery/QC
     setCurrentSlideIndex(0);
     setHighestVisitedIndex(0);
     setStep('preview');
     navigateTo(ROUTES.courseDevelopment);
 
     // Cancel any prior course's in-flight TTS immediately before starting the new job
-    // (do this late — not at finalize start — so a long exam/imagery wait cannot leave
-    // a cancelled flag racing a premature toast dismiss from the previous course).
     resetTTS();
 
     // ── Audio in background (server job + poll; toast shows progress) ─────
-    // One job covers content slides, tabs, and synthetic cover/objectives/module
-    // clips so narration continues even if the browser tab is busy.
     if (voiceSnapshot) {
       const courseForTts = working;
       const voiceForTts = voiceIdSnapshot;
@@ -3498,7 +3446,110 @@ export default function App() {
     } else {
       showDraftMessage('Voice-over is off in Course Settings — enable it and use Edit → Regenerate all narration if you want audio.');
     }
+
+    // ── Content visuals + QC + exam (after preview) ───────────────────
+    void (async () => {
+      try {
+        if (runImagery) {
+          try {
+            showDraftMessage('Generating content visuals…');
+            const { enrichHotspotAndCarouselImages } = await import('./services/imageService');
+            let next = await enrichHotspotAndCarouselImages(working, imgs, {
+              generateAi: wantsAi || wantsHotspotBackdrop,
+              useSource: wantsSource,
+              hotspotOnly: !wantsAi && wantsHotspotBackdrop,
+            });
+            if (coverUrl) next = { ...next, coverImage: coverUrl };
+            next = seedFloatingFromCourse(next) || next;
+            if (!stillActive()) return;
+            commitCourse(next);
+
+            if (wantsAi) {
+              next = await generateContentSlideImages(next, (done, total) => {
+                if (done === total) showDraftMessage(`Content visuals ready (${total}) ✓`);
+              }).then(r => r.course);
+              if (coverUrl) next = { ...next, coverImage: coverUrl };
+              next = seedFloatingFromCourse(next) || next;
+              if (!stillActive()) return;
+              commitCourse(next);
+            }
+          } catch (err) {
+            console.warn('[ImageService] Background imagery failed:', err);
+          } finally {
+            if (stillActive()) setIsGeneratingImages(false);
+          }
+        }
+
+        if (!stillActive()) return;
+
+        try {
+          setIsRunningQC(true);
+          setQcPhase('structural');
+          showDraftMessage('Running quality check…');
+          const report = await runFullQC(working, voiceSnapshot, (phase) => {
+            if (stillActive()) setQcPhase(phase);
+          });
+          if (!stillActive()) return;
+          setQcReport(report);
+          if (report.issues.some(i => i.autoFixable)) {
+            const { course: fixedCourse } = autoFixCourse(working, report);
+            const merged = mergeImageryInto(fixedCourse, working, coverUrl);
+            const seeded = seedFloatingFromCourse(merged) || merged;
+            if (!stillActive()) return;
+            commitCourse(seeded);
+          }
+          showDraftMessage('Quality check ready ✓');
+        } catch {
+          // QC failure is non-fatal
+        } finally {
+          if (stillActive()) {
+            setIsRunningQC(false);
+            setQcPhase(null);
+          }
+        }
+
+        if (!stillActive()) return;
+
+        try {
+          const diagramSlides = (working.modules || []).flatMap((m: any) =>
+            (m.slides || []).filter((s: any) => s.type === 'diagram' && s.data?.mermaidCode)
+          );
+          if (diagramSlides.length) {
+            const mermaid = (await import('mermaid')).default;
+            mermaid.initialize({ startOnLoad: false, theme: 'base', securityLevel: 'loose' });
+            for (const s of diagramSlides.slice(0, 8)) {
+              try {
+                await mermaid.render(`prewarm-${s.id}-${Date.now()}`, String(s.data.mermaidCode));
+              } catch { /* non-fatal */ }
+            }
+          }
+        } catch { /* mermaid optional */ }
+
+        if (examGenPromiseRef.current) {
+          try {
+            const qs = await examGenPromiseRef.current;
+            if (qs?.length && stillActive()) {
+              commitCourse({ ...working, examQuestions: qs });
+            }
+          } catch (e) {
+            console.warn('[Mastery Quiz] Await pre-generation failed:', e);
+          } finally {
+            if (stillActive()) {
+              setIsGeneratingExam(false);
+              examGenPromiseRef.current = null;
+            }
+          }
+        }
+      } finally {
+        if (stillActive()) {
+          setIsGeneratingImages(false);
+          setIsRunningQC(false);
+          setQcPhase(null);
+        }
+      }
+    })();
   };
+
   finalizeGeneratedCourseRef.current = finalizeGeneratedCourse;
 
   /** Regenerate a blank/empty slide in-place from the course topic. */
@@ -5206,11 +5257,23 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* ✨ Image generation in-progress badge */}
+                  {/* Background work after early preview */}
                   {isGeneratingImages && (
                     <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-purple-900/50 border border-purple-700/50 text-purple-300 text-[10px] font-medium">
                       <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-ping inline-block" />
                       Generating visuals…
+                    </div>
+                  )}
+                  {isRunningQC && (
+                    <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-indigo-900/50 border border-indigo-700/50 text-indigo-300 text-[10px] font-medium">
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-ping inline-block" />
+                      Quality check…
+                    </div>
+                  )}
+                  {isGeneratingExam && examQuestions.length === 0 && (
+                    <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-900/50 border border-amber-700/50 text-amber-300 text-[10px] font-medium">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping inline-block" />
+                      Building quiz…
                     </div>
                   )}
 
