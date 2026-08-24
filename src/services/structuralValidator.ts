@@ -480,6 +480,10 @@ function checkThemeConsistency(slide: any, modIdx: number, slideIdx: number, mod
 function checkColorContrast(slide: any, modIdx: number, slideIdx: number, modTitle: string): QCIssue[] {
   const issues: QCIssue[] = [];
 
+  // Mermaid diagrams use classDef fills/strokes that are not body text on white.
+  // Flagging them as color_contrast is a false positive and Apply can break Mermaid syntax.
+  if (slide.type === 'diagram') return [];
+
   const flagColor = (colorStr: string, field: string) => {
     const rgb = parseColor(colorStr);
     if (!rgb) return;
@@ -503,6 +507,10 @@ function checkColorContrast(slide: any, modIdx: number, slideIdx: number, modTit
   // Recursively scan data object for color-related properties and inline styles
   const scan = (val: any, path: string) => {
     if (!val) return;
+    // Never scan Mermaid source — hex colors there are diagram styling, not slide text
+    if (/(^|\.)mermaidCode(\.|$)/i.test(path) || path === 'mermaidCode' || path.endsWith('.mermaidCode')) {
+      return;
+    }
     if (typeof val === 'string') {
       const key = path.split('.').pop() ?? '';
       // Skip decorative UI fills (carousel/tab/card accent colors). These are
@@ -780,6 +788,20 @@ export function applyFixes(course: any, confirmedIssues: QCIssue[]): any {
   const cloned = JSON.parse(JSON.stringify(course));
 
   confirmedIssues.forEach(issue => {
+    // Safety net: never write color_contrast suggestions into Mermaid source
+    // (hex/classDef tokens are not WCAG body-text colors — Apply would break diagrams).
+    if (issue.type === 'color_contrast') {
+      const field = String(issue.field || '');
+      if (
+        field === 'mermaidCode' ||
+        field.endsWith('.mermaidCode') ||
+        field.endsWith('mermaidCode') ||
+        /(^|\.)mermaidCode(\.|$)/i.test(field)
+      ) {
+        return;
+      }
+    }
+
     const mod = cloned.modules?.[issue.moduleIndex];
     if (!mod) return;
     const slide = mod.slides?.[issue.slideIndex];

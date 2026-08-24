@@ -248,7 +248,7 @@ const sanitizeContent = (content: string) => {
     .replace(/^[-*] \*\*\*\*:\s*/gm, '- ') 
     .replace(/\|\s*$/gm, '') 
     .replace(/\|\s*\|/g, '') 
-    .replace(/^(#.*)$/gm, '') 
+    // Keep markdown headings (### Section) — they are real OST, not chrome to strip.
     // Ensure a blank line between the last list item and the first non-list paragraph
     // so ReactMarkdown renders them as separate block elements with proper spacing
     .replace(/(^[-*+][ \t]+.+)\n(?!\n)(?![ \t]*[-*+][ \t])/gm, '$1\n\n')
@@ -494,6 +494,39 @@ const SlideContent = ({ content, theme, accentColor }: { content: string; theme:
         strong: ({ node, children, ...props }) => (
           <strong {...props} className="font-medium text-inherit">{children}</strong>
         ),
+        h2: ({ node, children, ...props }) => (
+          <h2
+            {...props}
+            className={cn(
+              'text-base font-bold tracking-wide mt-5 mb-2 first:mt-0',
+              theme === 'light' ? 'text-slate-900' : 'text-white'
+            )}
+          >
+            {children}
+          </h2>
+        ),
+        h3: ({ node, children, ...props }) => (
+          <h3
+            {...props}
+            className={cn(
+              'text-sm font-bold tracking-wide mt-4 mb-2 first:mt-0 uppercase',
+              theme === 'light' ? 'text-slate-700' : 'text-slate-200'
+            )}
+          >
+            {children}
+          </h3>
+        ),
+        h4: ({ node, children, ...props }) => (
+          <h4
+            {...props}
+            className={cn(
+              'text-sm font-semibold mt-3 mb-1.5 first:mt-0',
+              theme === 'light' ? 'text-slate-700' : 'text-slate-300'
+            )}
+          >
+            {children}
+          </h4>
+        ),
         // Render ```mermaid code blocks as actual Mermaid diagrams
         code({ node, className, children, ...props }: any) {
           const lang = /language-(\w+)/.exec(className ?? '')?.[1];
@@ -556,6 +589,15 @@ const SmartContent = ({ content, className, theme, accentColor }: { content: str
         ),
         strong: ({ node, children, ...props }) => (
           <strong {...props} className="font-medium text-inherit">{children}</strong>
+        ),
+        h2: ({ node, children, ...props }) => (
+          <h2 {...props} className={cn('text-base font-bold mt-4 mb-2 first:mt-0', theme === 'light' ? 'text-slate-900' : 'text-white')}>{children}</h2>
+        ),
+        h3: ({ node, children, ...props }) => (
+          <h3 {...props} className={cn('text-sm font-bold mt-3 mb-1.5 first:mt-0 uppercase tracking-wide', theme === 'light' ? 'text-slate-700' : 'text-slate-200')}>{children}</h3>
+        ),
+        h4: ({ node, children, ...props }) => (
+          <h4 {...props} className={cn('text-sm font-semibold mt-2 mb-1 first:mt-0', theme === 'light' ? 'text-slate-700' : 'text-slate-300')}>{children}</h4>
         ),
       }}
     >
@@ -4639,16 +4681,47 @@ export default function App() {
                 setQcPhase(null);
               }
             }}
-            onApply={(confirmedIds) => {
+            onApply={(confirmedIds, options) => {
               if (course && qcReport) {
                 const fixed = applyConfirmedFixes(course, confirmedIds, qcReport);
                 pushUndo(); setCourse(fixed);
               }
-              // Clear resolved report after applying
-              setQcReport(null);
+              const dismissRemaining = !!options?.dismissRemaining;
+              const applied = new Set(confirmedIds);
+
+              if (dismissRemaining) {
+                // Legacy: clear report + confirmation state and close (pending discarded)
+                setQcReport(null);
+                setQcConfirmed(new Set());
+                setQcDeclined(new Set());
+                setQcModalOpen(false);
+                return;
+              }
+
+              // Keep pending + declined; remove only the applied issues
+              const remaining = (qcReport?.issues ?? []).filter(i => !applied.has(i.id));
+              if (remaining.length === 0) {
+                setQcReport(null);
+                setQcConfirmed(new Set());
+                setQcDeclined(new Set());
+                setQcModalOpen(false);
+                return;
+              }
+              setQcReport(prev => prev ? {
+                ...prev,
+                issues: remaining,
+                totalIssues: remaining.length,
+                errors: remaining.filter(i => i.severity === 'error').length,
+                warnings: remaining.filter(i => i.severity === 'warning').length,
+                info: remaining.filter(i => i.severity === 'info').length,
+              } : null);
               setQcConfirmed(new Set());
-              setQcDeclined(new Set());
-              setQcModalOpen(false);
+              const remainingIds = new Set(remaining.map(i => i.id));
+              setQcDeclined(prev => {
+                const next = new Set<string>();
+                prev.forEach(id => { if (remainingIds.has(id)) next.add(id); });
+                return next;
+              });
             }}
           />
 
@@ -5643,13 +5716,29 @@ export default function App() {
                           )}>
                                <SlideErrorBoundary
                                  slideId={currentSlide?.id}
-                                 regenerating={regeneratingSlideId === currentSlide?.id}
+                                 regenerating={regeneratingSlideId === currentSlide?.id || isRegenSlideRunning}
                                  onRegenerate={
                                    currentSlide && !['cover', 'player-tour', 'course-objectives', 'module-cover', 'module-overview', 'exam-intro', 'mastery-exam', 'exam-results', 'closing'].includes(currentSlide.type as string)
                                      ? () => regenerateBlankSlide(currentSlide)
                                      : undefined
                                  }
                                >
+                               {/* Subtle overlay while Edit Slide → Regenerate is in flight */}
+                               {isRegenSlideRunning && (
+                                 <div
+                                   className="absolute inset-0 z-40 flex items-center justify-center bg-slate-950/35 backdrop-blur-[1px] pointer-events-none"
+                                   aria-live="polite"
+                                   aria-busy="true"
+                                 >
+                                   <div className="flex flex-col items-center gap-2.5 px-5 py-3.5 rounded-2xl bg-slate-900/85 border border-amber-500/25 shadow-lg">
+                                     <Loader2 className="w-5 h-5 text-amber-400 animate-spin" />
+                                     <p className="text-[11px] font-bold text-amber-200/90 uppercase tracking-wider">Regenerating…</p>
+                                     <div className="relative h-1 w-36 rounded-full bg-amber-900/50 overflow-hidden">
+                                       <div className="regen-progress-indeterminate bg-amber-400" />
+                                     </div>
+                                   </div>
+                                 </div>
+                               )}
                                {/* QA marker for current slide */}
                                {currentSlide?.id && qcReport && (() => {
                                  const pending = qcReport.issues.filter(
@@ -7349,6 +7438,11 @@ export default function App() {
                               <><RefreshCw className="w-4 h-4" /> Regenerate Cover Image</>
                             )}
                           </button>
+                          {(isRegenSlideRunning || isGeneratingImages) && (
+                            <div className="relative h-1.5 w-full rounded-full bg-amber-900/40 overflow-hidden" aria-hidden>
+                              <div className="regen-progress-indeterminate bg-amber-400" />
+                            </div>
+                          )}
                         </div>
                       );
                     }
@@ -7517,6 +7611,11 @@ export default function App() {
                             <><RefreshCw className="w-4 h-4" /> Regenerate This Slide</>
                           )}
                         </button>
+                        {isRegenSlideRunning && (
+                          <div className="relative h-1.5 w-full rounded-full bg-amber-900/40 overflow-hidden" aria-hidden>
+                            <div className="regen-progress-indeterminate bg-amber-400" />
+                          </div>
+                        )}
                       </div>
                     );
                   })()}

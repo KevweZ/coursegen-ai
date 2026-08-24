@@ -21,7 +21,8 @@ interface Props {
   onConfirmAll: (ids: string[]) => void;
   onDeclineAll: (ids: string[]) => void;
   onClose:      () => void;
-  onApply:      (confirmedIssueIds: string[]) => void;
+  /** Apply confirmed fixes. When `dismissRemaining` is true, unselected pending items are cleared (legacy behavior). */
+  onApply:      (confirmedIssueIds: string[], options?: { dismissRemaining?: boolean }) => void;
   onRunScan:    () => void;
   onGoToSlide:  (moduleIndex: number, slideIndex: number, field?: string) => void;
   /** Instantly convert empty interaction to simple content slide */
@@ -279,7 +280,14 @@ export function QCTrackChangesModal({
   focusSlideId = null,
 }: Props) {
   const [filter, setFilter] = useState<FilterTab>('all');
+  /** When Apply runs: if true, also dismiss remaining pending (close/clear like before). Default off. */
+  const [dismissRemaining, setDismissRemaining] = useState(false);
   const listRef = React.useRef<HTMLDivElement>(null);
+
+  // Reset checkbox each time the modal opens or a new scan lands
+  React.useEffect(() => {
+    if (open) setDismissRemaining(false);
+  }, [open, report?.runAt]);
 
   const pendingCount = useMemo(() =>
     report ? report.issues.filter(i => !confirmed.has(i.id) && !declined.has(i.id)).length : 0,
@@ -497,35 +505,50 @@ export function QCTrackChangesModal({
               </div>
 
               {/* Footer */}
-              <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-slate-800 bg-slate-900/60 shrink-0">
-                <div className="flex flex-col gap-0.5">
-                  <p className="text-xs text-slate-500">
-                    {confirmed.size} fix{confirmed.size !== 1 ? 'es' : ''} confirmed · {declined.size} dismissed
-                    {pendingCount > 0 && <span className="text-amber-400 ml-1">· {pendingCount} pending</span>}
-                  </p>
-                  {pendingCount === 0 && report.totalIssues > 0 && (
-                    <button
-                      onClick={onRunScan}
-                      className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-indigo-300 transition-colors"
-                    >
-                      <RefreshCw className="w-3 h-3" /> Run new scan
+              <div className="flex flex-col gap-3 px-6 py-4 border-t border-slate-800 bg-slate-900/60 shrink-0">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-col gap-0.5">
+                    <p className="text-xs text-slate-500">
+                      {confirmed.size} fix{confirmed.size !== 1 ? 'es' : ''} confirmed · {declined.size} dismissed
+                      {pendingCount > 0 && <span className="text-amber-400 ml-1">· {pendingCount} pending</span>}
+                    </p>
+                    {pendingCount === 0 && report.totalIssues > 0 && (
+                      <button
+                        onClick={onRunScan}
+                        className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-indigo-300 transition-colors"
+                      >
+                        <RefreshCw className="w-3 h-3" /> Run new scan
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={onClose} className="px-4 py-2 rounded-xl border border-slate-700 text-slate-400 hover:text-slate-200 text-sm font-bold transition-all hover:bg-slate-800">
+                      Close
                     </button>
-                  )}
+                    {confirmed.size > 0 && (
+                      <button
+                        onClick={() => onApply([...confirmed], { dismissRemaining })}
+                        className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600/90 to-indigo-500/80 text-white text-sm font-semibold transition-all hover:from-indigo-500 hover:to-indigo-400 shadow-md shadow-indigo-500/15 flex items-center gap-2"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        Apply {confirmed.size} Fix{confirmed.size !== 1 ? 'es' : ''}
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <button onClick={onClose} className="px-4 py-2 rounded-xl border border-slate-700 text-slate-400 hover:text-slate-200 text-sm font-bold transition-all hover:bg-slate-800">
-                    Close
-                  </button>
-                  {confirmed.size > 0 && (
-                    <button
-                      onClick={() => onApply([...confirmed])}
-                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600/90 to-indigo-500/80 text-white text-sm font-semibold transition-all hover:from-indigo-500 hover:to-indigo-400 shadow-md shadow-indigo-500/15 flex items-center gap-2"
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      Apply {confirmed.size} Fix{confirmed.size !== 1 ? 'es' : ''}
-                    </button>
-                  )}
-                </div>
+                {confirmed.size > 0 && (
+                  <label className="flex items-center gap-2 cursor-pointer select-none self-end">
+                    <input
+                      type="checkbox"
+                      checked={dismissRemaining}
+                      onChange={e => setDismissRemaining(e.target.checked)}
+                      className="w-3.5 h-3.5 rounded border-slate-600 text-indigo-500 bg-slate-900 focus:ring-indigo-500/40"
+                    />
+                    <span className="text-[11px] text-slate-400">
+                      Also dismiss remaining pending items
+                    </span>
+                  </label>
+                )}
               </div>
             </>
           )}
