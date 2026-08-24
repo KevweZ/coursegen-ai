@@ -248,7 +248,7 @@ const sanitizeContent = (content: string) => {
     .replace(/^[-*] \*\*\*\*:\s*/gm, '- ') 
     .replace(/\|\s*$/gm, '') 
     .replace(/\|\s*\|/g, '') 
-    .replace(/^(#.*)$/gm, '') 
+    // Keep markdown headings (### Section) — they are real OST, not chrome to strip.
     // Ensure a blank line between the last list item and the first non-list paragraph
     // so ReactMarkdown renders them as separate block elements with proper spacing
     .replace(/(^[-*+][ \t]+.+)\n(?!\n)(?![ \t]*[-*+][ \t])/gm, '$1\n\n')
@@ -494,6 +494,39 @@ const SlideContent = ({ content, theme, accentColor }: { content: string; theme:
         strong: ({ node, children, ...props }) => (
           <strong {...props} className="font-medium text-inherit">{children}</strong>
         ),
+        h2: ({ node, children, ...props }) => (
+          <h2
+            {...props}
+            className={cn(
+              'text-base font-bold tracking-wide mt-5 mb-2 first:mt-0',
+              theme === 'light' ? 'text-slate-900' : 'text-white'
+            )}
+          >
+            {children}
+          </h2>
+        ),
+        h3: ({ node, children, ...props }) => (
+          <h3
+            {...props}
+            className={cn(
+              'text-sm font-bold tracking-wide mt-4 mb-2 first:mt-0 uppercase',
+              theme === 'light' ? 'text-slate-700' : 'text-slate-200'
+            )}
+          >
+            {children}
+          </h3>
+        ),
+        h4: ({ node, children, ...props }) => (
+          <h4
+            {...props}
+            className={cn(
+              'text-sm font-semibold mt-3 mb-1.5 first:mt-0',
+              theme === 'light' ? 'text-slate-700' : 'text-slate-300'
+            )}
+          >
+            {children}
+          </h4>
+        ),
         // Render ```mermaid code blocks as actual Mermaid diagrams
         code({ node, className, children, ...props }: any) {
           const lang = /language-(\w+)/.exec(className ?? '')?.[1];
@@ -556,6 +589,15 @@ const SmartContent = ({ content, className, theme, accentColor }: { content: str
         ),
         strong: ({ node, children, ...props }) => (
           <strong {...props} className="font-medium text-inherit">{children}</strong>
+        ),
+        h2: ({ node, children, ...props }) => (
+          <h2 {...props} className={cn('text-base font-bold mt-4 mb-2 first:mt-0', theme === 'light' ? 'text-slate-900' : 'text-white')}>{children}</h2>
+        ),
+        h3: ({ node, children, ...props }) => (
+          <h3 {...props} className={cn('text-sm font-bold mt-3 mb-1.5 first:mt-0 uppercase tracking-wide', theme === 'light' ? 'text-slate-700' : 'text-slate-200')}>{children}</h3>
+        ),
+        h4: ({ node, children, ...props }) => (
+          <h4 {...props} className={cn('text-sm font-semibold mt-2 mb-1 first:mt-0', theme === 'light' ? 'text-slate-700' : 'text-slate-300')}>{children}</h4>
         ),
       }}
     >
@@ -1234,7 +1276,7 @@ export default function App() {
   const [isPortrait, setIsPortrait] = useState(() =>
     typeof window !== 'undefined' && window.innerWidth < 768 && window.innerHeight > window.innerWidth
   );
-  // Compact / phone layouts: use dropdown TOC (not fixed left rail) for max slide space.
+  // Compact / phone layouts: letterbox gutters host TOC (rails or Menu) per playerConfig.
   // Covers mobile preview mode, portrait phones, and landscape phones (short edge < 520).
   const [isCompactViewport, setIsCompactViewport] = useState(() =>
     typeof window !== 'undefined' && Math.min(window.innerWidth, window.innerHeight) < 520
@@ -1245,7 +1287,8 @@ export default function App() {
   );
   /** Real handheld preview — scale-to-fit in landscape; portrait shows a rotate prompt. */
   const isPhoneViewport = isCoarsePointer && isCompactViewport;
-  const useMobileTocDropdown = viewMode === 'mobile' || isPortrait || isPhoneViewport;
+  /** Phone-like preview surfaces that should use gutter TOC instead of a desktop left rail. */
+  const isPhoneLikeToc = viewMode === 'mobile' || isPortrait || isPhoneViewport;
   /** Touch phones in portrait: ask to rotate (no CSS fake-landscape). */
   const needsLandscapeForPreview = isPhoneViewport && isPortrait && !isScormPlayer;
 
@@ -1263,6 +1306,16 @@ export default function App() {
   // Player Properties
   const [showPlayerProperties, setShowPlayerProperties] = useState(false);
   const [playerConfig, setPlayerConfig] = useState<PlayerConfig>(defaultPlayerConfig);
+  const phoneTocPlacement: 'hidden' | 'rail-left' | 'rail-right' | 'dropdown-gutter' | null = !isPhoneLikeToc
+    ? null
+    : playerConfig.tocPosition === 'hidden'
+      ? 'hidden'
+      : playerConfig.tocPosition === 'sidebar-left'
+        ? 'rail-left'
+        : playerConfig.tocPosition === 'sidebar-right'
+          ? 'rail-right'
+          : 'dropdown-gutter';
+  const showDesktopSidebar = !isPhoneLikeToc && playerConfig.tocPosition !== 'hidden';
   
   // Edit Drawer
   const [editDrawerOpen, setEditDrawerOpen] = useState(false);
@@ -4628,16 +4681,47 @@ export default function App() {
                 setQcPhase(null);
               }
             }}
-            onApply={(confirmedIds) => {
+            onApply={(confirmedIds, options) => {
               if (course && qcReport) {
                 const fixed = applyConfirmedFixes(course, confirmedIds, qcReport);
                 pushUndo(); setCourse(fixed);
               }
-              // Clear resolved report after applying
-              setQcReport(null);
+              const dismissRemaining = !!options?.dismissRemaining;
+              const applied = new Set(confirmedIds);
+
+              if (dismissRemaining) {
+                // Legacy: clear report + confirmation state and close (pending discarded)
+                setQcReport(null);
+                setQcConfirmed(new Set());
+                setQcDeclined(new Set());
+                setQcModalOpen(false);
+                return;
+              }
+
+              // Keep pending + declined; remove only the applied issues
+              const remaining = (qcReport?.issues ?? []).filter(i => !applied.has(i.id));
+              if (remaining.length === 0) {
+                setQcReport(null);
+                setQcConfirmed(new Set());
+                setQcDeclined(new Set());
+                setQcModalOpen(false);
+                return;
+              }
+              setQcReport(prev => prev ? {
+                ...prev,
+                issues: remaining,
+                totalIssues: remaining.length,
+                errors: remaining.filter(i => i.severity === 'error').length,
+                warnings: remaining.filter(i => i.severity === 'warning').length,
+                info: remaining.filter(i => i.severity === 'info').length,
+              } : null);
               setQcConfirmed(new Set());
-              setQcDeclined(new Set());
-              setQcModalOpen(false);
+              const remainingIds = new Set(remaining.map(i => i.id));
+              setQcDeclined(prev => {
+                const next = new Set<string>();
+                prev.forEach(id => { if (remainingIds.has(id)) next.add(id); });
+                return next;
+              });
             }}
           />
 
@@ -5107,8 +5191,8 @@ export default function App() {
                 </div>
               )}
               {/* ── Preview Top Bar — hidden in SCORM/published view ── */}
-              {!isScormPlayer && <div className="px-3 bg-slate-900 border-b border-slate-800 shrink-0">
-                <div className="h-11 flex items-center justify-between gap-2">
+              {!isScormPlayer && <div className={cn('px-3 bg-slate-900 border-b border-slate-800 shrink-0', isPhoneViewport && 'px-2')}>
+                <div className={cn('h-11 flex items-center justify-between gap-2', isPhoneViewport && 'h-9 gap-1')}>
                   {/* Left: back + title */}
                   <div className="flex items-center gap-2 min-w-0">
                     <button onClick={goHome} className="p-1.5 -ml-0.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0">
@@ -5415,10 +5499,9 @@ export default function App() {
 
               {/* ── Body: Sidebar + Main Player Area ── */}
               <div className={cn("flex flex-row flex-1 overflow-hidden", playerConfig.playerResolution === 'full' ? 'overflow-x-hidden' : 'min-h-0')}>
-                {/* Course Navigation — fixed left sidebar on desktop only.
-                    Mobile / landscape-phone uses a clickable dropdown inside the
-                    player frame so the TOC never steals content width. */}
-                {!useMobileTocDropdown && (
+                {/* Course Navigation — fixed left sidebar on desktop.
+                    Phone / mobile preview uses letterbox gutters (rails or Menu). */}
+                {showDesktopSidebar && (
                 <CourseNavSidebar
                   modules={course.modules}
                   currentSlideIndex={currentSlideIndex}
@@ -5464,55 +5547,28 @@ export default function App() {
                   onTouchStart={handlePlayerTouchStart}
                   onTouchEnd={handlePlayerTouchEnd}
                 >
-                  {/* Background canvas — scaler measures this div to compute transform scale.
-                      Always plain white behind the frame (the courseBg photo backdrop was removed
-                      per design feedback) -- courseBg/coverImage is still used as the actual COVER
-                      SLIDE's own background further below, this only affects the letterboxed margin
-                      around the scaled frame. */}
+                  {/* Background canvas — scaler measures the center stage (gutters excluded).
+                      Letterbox uses slate; phone TOC rails live in L/R gutters. */}
                   <div
-                    ref={useScaleTransform ? scaler.containerRef : undefined}
                     className={cn(
-                      "relative flex flex-col flex-1 overflow-hidden bg-white min-h-0",
-                      useScaleTransform ? 'items-center justify-center' : undefined,
-                      !useScaleTransform && !isPhoneViewport && viewMode === 'mobile' ? 'items-center justify-center bg-slate-950 gap-2' : undefined,
-                      isPhoneViewport && playerConfig.playerResolution === 'full' ? 'bg-slate-900' : undefined
+                      "relative flex flex-1 overflow-hidden min-h-0",
+                      phoneTocPlacement
+                        ? 'flex-row bg-slate-800'
+                        : cn(
+                            'flex-col',
+                            useScaleTransform ? 'items-center justify-center bg-slate-800' : 'bg-white',
+                            !useScaleTransform && !isPhoneViewport && viewMode === 'mobile' ? 'items-center justify-center bg-slate-950 gap-2' : undefined,
+                            isPhoneViewport && playerConfig.playerResolution === 'full' ? 'bg-slate-900' : undefined
+                          )
                     )}
                   >
-                  {viewMode === 'mobile' && isSandboxMode && !isPhoneViewport && (
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-400/80 shrink-0 pt-2">
-                      Development Demo — Mobile Landscape
-                    </p>
-                  )}
-
-                  {/* Slide frame — aspect ratio driven by playerConfig.playerResolution.
-                      16:9 / 4:3 modes render at a FIXED design size (scaler.frameStyle) and are
-                      visually scaled to fit with CSS transform -- transform never affects layout,
-                      so this can never overflow/crop its container the way the old `zoom`-based
-                      approach did (which double-scaled an already-100%-wide flex box). 'full'
-                      mode intentionally skips scaling and fills the available space directly.
-                      Desktop “Mobile” toggle uses a landscape phone bezel; real phones always
-                      scale-to-fit instead (PlayerBar docks outside this frame). */}
-                  <div className={cn(`theme-${theme}`,
-                    "transition-all duration-500 flex flex-col relative z-10",
-                    useScaleTransform
-                      ? 'overflow-hidden'
-                      : isPhoneViewport
-                        ? 'flex-1 overflow-hidden w-full min-h-0'
-                      : viewMode === 'desktop'
-                        ? 'flex-1 overflow-hidden w-full min-h-0'
-                        : 'shadow-2xl overflow-hidden w-[min(96vw,calc((100vh-7rem)*16/9))] h-[min(calc(100vh-7rem),calc(96vw*9/16))] max-w-[1280px] max-h-[720px] my-2 rounded-[2rem] border-[10px] border-gray-800',
-                    theme === 'light' ? 'bg-white' : theme === 'unified' ? 'bg-indigo-950' : 'bg-slate-900'
-                  )}
-                  style={useScaleTransform
-                    ? {
-                        ...scaler.frameStyle,
-                        borderRadius: isPhoneViewport ? 0 : '1rem',
-                        boxShadow: isPhoneViewport ? 'none' : '0 25px 50px -12px rgba(0,0,0,0.4)',
-                        border: isPhoneViewport ? 'none' : '1px solid rgba(255,255,255,0.12)',
-                      }
-                    : undefined
-                  }>
-                    {useMobileTocDropdown && (
+                  {(phoneTocPlacement === 'rail-left' || phoneTocPlacement === 'dropdown-gutter') && (
+                    <div
+                      className={cn(
+                        'shrink-0 h-full min-h-0 z-20',
+                        phoneTocPlacement === 'dropdown-gutter' ? 'w-[3.25rem]' : 'w-[min(26%,11rem)]'
+                      )}
+                    >
                       <CourseNavSidebar
                         modules={course.modules}
                         currentSlideIndex={currentSlideIndex}
@@ -5529,7 +5585,11 @@ export default function App() {
                         examPhase={examPhase}
                         examIntroIndex={examIntroIndex}
                         highestVisitedIndex={highestVisitedIndex}
-                        variant="dropdown"
+                        defaultCollapsed={false}
+                        variant={phoneTocPlacement === 'rail-left' ? 'gutter-rail' : 'dropdown'}
+                        railSide="left"
+                        gutterHosted={phoneTocPlacement === 'dropdown-gutter'}
+                        dockSafeCorner
                         qcPendingSlideIds={
                           qcReport
                             ? new Set(
@@ -5549,9 +5609,69 @@ export default function App() {
                             : undefined
                         }
                       />
+                    </div>
+                  )}
+                  <div
+                    ref={useScaleTransform ? scaler.containerRef : undefined}
+                    className={cn(
+                      "relative flex flex-col flex-1 overflow-hidden min-h-0 min-w-0",
+                      useScaleTransform || phoneTocPlacement ? 'items-center justify-center' : undefined,
+                      !useScaleTransform && !isPhoneViewport && viewMode === 'mobile' && !phoneTocPlacement ? 'items-center justify-center bg-slate-950 gap-2' : undefined,
+                      !phoneTocPlacement && useScaleTransform ? 'bg-slate-800' : undefined,
+                      !phoneTocPlacement && !useScaleTransform ? 'bg-white' : undefined,
+                      isPhoneViewport && playerConfig.playerResolution === 'full' && !phoneTocPlacement ? 'bg-slate-900' : undefined
                     )}
+                  >
+                  {viewMode === 'mobile' && isSandboxMode && !isPhoneViewport && (
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-400/80 shrink-0 pt-2">
+                      Development Demo — Mobile Landscape
+                    </p>
+                  )}
+
+                  {/* Slide frame — aspect ratio driven by playerConfig.playerResolution.
+                      16:9 / 4:3: outer = visual size (design×scale); inner keeps design size
+                      with transform:scale from top-left. 'full' skips scaling.
+                      Desktop “Mobile” toggle uses a landscape phone bezel; real phones always
+                      scale-to-fit instead (PlayerBar docks outside this frame). */}
+                  <div
+                    style={useScaleTransform ? scaler.outerStyle : undefined}
+                    className={cn(
+                      useScaleTransform
+                        ? 'relative z-10'
+                        : cn(
+                            `theme-${theme}`,
+                            "transition-all duration-500 flex flex-col relative z-10",
+                            isPhoneViewport
+                              ? 'flex-1 overflow-hidden w-full min-h-0'
+                              : viewMode === 'desktop'
+                                ? 'flex-1 overflow-hidden w-full min-h-0'
+                                : 'shadow-2xl overflow-hidden w-[min(96vw,calc((100vh-7rem)*16/9))] h-[min(calc(100vh-7rem),calc(96vw*9/16))] max-w-[1280px] max-h-[720px] my-2 rounded-[2rem] border-[10px] border-gray-800',
+                            theme === 'light' ? 'bg-white' : theme === 'unified' ? 'bg-indigo-950' : 'bg-slate-900'
+                          )
+                    )}
+                  >
+                  <div
+                    className={cn(
+                      useScaleTransform
+                        ? cn(
+                            `theme-${theme}`,
+                            "transition-all duration-500 flex flex-col relative overflow-hidden min-h-0",
+                            theme === 'light' ? 'bg-white' : theme === 'unified' ? 'bg-indigo-950' : 'bg-slate-900'
+                          )
+                        : 'contents'
+                    )}
+                    style={useScaleTransform
+                      ? {
+                          ...scaler.frameStyle,
+                          borderRadius: isPhoneViewport ? 0 : '1rem',
+                          boxShadow: isPhoneViewport ? 'none' : '0 25px 50px -12px rgba(0,0,0,0.4)',
+                          border: isPhoneViewport ? 'none' : '1px solid rgba(255,255,255,0.12)',
+                        }
+                      : undefined
+                    }
+                  >
                     {/* ── Content zone + accent strip ── */}
-                    <div className="flex-1 flex flex-row overflow-hidden">
+                    <div className="flex-1 flex flex-row overflow-hidden min-h-0">
                     {/* Per-module accent strip — flex column, no z-index issues */}
                     {!isFullBleed && (
                       <div
@@ -5559,7 +5679,7 @@ export default function App() {
                         style={{ background: `linear-gradient(to bottom, ${slideAccentColor}, ${slideAccentColor}40)` }}
                       />
                     )}
-                    <div className="flex-1 relative overflow-hidden flex flex-col">
+                    <div className="flex-1 relative overflow-hidden flex flex-col min-h-0">
                     {/* ── Full-bleed slide frame ─────────────────────── */}
                     <AnimatePresence mode="wait">
                       <motion.div
@@ -5569,12 +5689,14 @@ export default function App() {
                         exit={{ opacity: 0 }}
                         transition={{ duration: 0.25 }}
                         className={cn(
-                          "w-full",
+                          "w-full min-h-0",
                           isFullBleed
                             ? "absolute inset-0 overflow-hidden"
                             : cn(
                                 "flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar",
-                                'p-8 md:p-12 pb-4',
+                                isPhoneViewport
+                                  ? 'px-4 pb-6 pt-4'
+                                  : 'px-8 md:px-12 pb-4 pt-8 md:pt-12',
                                 theme === 'light' ? 'bg-white text-slate-900' : theme === 'unified' ? 'bg-indigo-950 text-slate-100' : 'bg-slate-900 text-white'
                               )
                         )}
@@ -5585,22 +5707,38 @@ export default function App() {
                         <div className={cn(
                           isFullBleed
                             ? "w-full h-full"
-                            : "relative z-10 w-full flex flex-col"
+                            : "relative z-10 w-full flex flex-col min-h-full"
                         )}>
                           <div className={cn(
                             isFullBleed
                               ? "w-full h-full relative"
-                              : "flex-1 w-full max-w-6xl flex flex-col justify-start relative"
+                              : "flex-1 w-full max-w-6xl flex flex-col justify-start relative min-h-0"
                           )}>
                                <SlideErrorBoundary
                                  slideId={currentSlide?.id}
-                                 regenerating={regeneratingSlideId === currentSlide?.id}
+                                 regenerating={regeneratingSlideId === currentSlide?.id || isRegenSlideRunning}
                                  onRegenerate={
                                    currentSlide && !['cover', 'player-tour', 'course-objectives', 'module-cover', 'module-overview', 'exam-intro', 'mastery-exam', 'exam-results', 'closing'].includes(currentSlide.type as string)
                                      ? () => regenerateBlankSlide(currentSlide)
                                      : undefined
                                  }
                                >
+                               {/* Subtle overlay while Edit Slide → Regenerate is in flight */}
+                               {isRegenSlideRunning && (
+                                 <div
+                                   className="absolute inset-0 z-40 flex items-center justify-center bg-slate-950/35 backdrop-blur-[1px] pointer-events-none"
+                                   aria-live="polite"
+                                   aria-busy="true"
+                                 >
+                                   <div className="flex flex-col items-center gap-2.5 px-5 py-3.5 rounded-2xl bg-slate-900/85 border border-amber-500/25 shadow-lg">
+                                     <Loader2 className="w-5 h-5 text-amber-400 animate-spin" />
+                                     <p className="text-[11px] font-bold text-amber-200/90 uppercase tracking-wider">Regenerating…</p>
+                                     <div className="relative h-1 w-36 rounded-full bg-amber-900/50 overflow-hidden">
+                                       <div className="regen-progress-indeterminate bg-amber-400" />
+                                     </div>
+                                   </div>
+                                 </div>
+                               )}
                                {/* QA marker for current slide */}
                                {currentSlide?.id && qcReport && (() => {
                                  const pending = qcReport.issues.filter(
@@ -6604,10 +6742,9 @@ export default function App() {
                         </motion.div>
                        </AnimatePresence>
 
-                      {/* Closed Caption Overlay - above player bar. Hides once narration
-                          finishes; reappears automatically on replay or seeking backward
-                          (usePlayer clears isEnded in both of those cases). */}
-                      {showCC && player.hasAudio && !player.isEnded && (
+                      {/* Closed captions stay inside the frame only when PlayerBar is also in-frame.
+                          Phone scale-to-fit docks CC above the outside PlayerBar instead. */}
+                      {!dockPlayerBarOutside && showCC && player.hasAudio && !player.isEnded && (
                         <ClosedCaptionOverlay
                           narrationText={currentSlide?.voiceOverText || (currentSlide as any)?.narration || null}
                           currentTime={player.currentTime}
@@ -6652,13 +6789,69 @@ export default function App() {
                       />
                      </div>
                     )}
-                  </div>{/* end slide frame */}
-                  </div>{/* end bg canvas */}
+                  </div>{/* end inner design frame (or contents) */}
+                  </div>{/* end visual outer / slide frame */}
+                  </div>{/* end scale measure stage */}
+
+                  {phoneTocPlacement === 'rail-right' && (
+                    <div className="w-[min(26%,11rem)] shrink-0 h-full min-h-0 z-20">
+                      <CourseNavSidebar
+                        modules={course.modules}
+                        currentSlideIndex={currentSlideIndex}
+                        allSlides={allSlides}
+                        onNavigate={(idx) => {
+                          if (canNavigateTo(idx)) {
+                            setHighestVisitedIndex(prev => Math.max(prev, idx));
+                            setCurrentSlideIndex(idx);
+                          }
+                        }}
+                        theme={theme}
+                        tocNumbering={playerConfig.tocNumbering}
+                        navigationMode={navigationMode}
+                        examPhase={examPhase}
+                        examIntroIndex={examIntroIndex}
+                        highestVisitedIndex={highestVisitedIndex}
+                        defaultCollapsed={false}
+                        variant="gutter-rail"
+                        railSide="right"
+                        qcPendingSlideIds={
+                          qcReport
+                            ? new Set(
+                                qcReport.issues
+                                  .filter(i => !qcConfirmed.has(i.id) && !qcDeclined.has(i.id))
+                                  .map(i => i.slideId)
+                              )
+                            : undefined
+                        }
+                        qcResolvedSlideIds={
+                          qcReport
+                            ? new Set(
+                                qcReport.issues
+                                  .filter(i => qcConfirmed.has(i.id) || qcDeclined.has(i.id))
+                                  .map(i => i.slideId)
+                              )
+                            : undefined
+                        }
+                      />
+                    </div>
+                  )}
+                  </div>{/* end bg canvas / gutter row */}
 
                   {dockPlayerBarOutside && (
+                    <>
+                      {showCC && player.hasAudio && !player.isEnded && (
+                        <ClosedCaptionOverlay
+                          placement="docked"
+                          narrationText={currentSlide?.voiceOverText || (currentSlide as any)?.narration || null}
+                          currentTime={player.currentTime}
+                          duration={player.duration}
+                          isPlaying={player.isPlaying}
+                        />
+                      )}
                     <div className={cn(
                       "w-full z-[100] shrink-0 border-t backdrop-blur-md",
-                      theme === 'light' ? 'bg-white/80 border-slate-200' : theme === 'unified' ? 'bg-indigo-950 border-indigo-800' : 'bg-slate-900 border-slate-800'
+                      theme === 'light' ? 'bg-white/80 border-slate-200' : theme === 'unified' ? 'bg-indigo-950 border-indigo-800' : 'bg-slate-900 border-slate-800',
+                      isPhoneViewport && 'max-h-[5.5rem]'
                     )}>
                       <PlayerBar
                         player={player}
@@ -6685,6 +6878,7 @@ export default function App() {
                         narrationGenerating={ttsProgress.isRunning}
                       />
                     </div>
+                    </>
                   )}
 
                 </div>{/* end main slide column */}
@@ -7244,6 +7438,11 @@ export default function App() {
                               <><RefreshCw className="w-4 h-4" /> Regenerate Cover Image</>
                             )}
                           </button>
+                          {(isRegenSlideRunning || isGeneratingImages) && (
+                            <div className="relative h-1.5 w-full rounded-full bg-amber-900/40 overflow-hidden" aria-hidden>
+                              <div className="regen-progress-indeterminate bg-amber-400" />
+                            </div>
+                          )}
                         </div>
                       );
                     }
@@ -7412,6 +7611,11 @@ export default function App() {
                             <><RefreshCw className="w-4 h-4" /> Regenerate This Slide</>
                           )}
                         </button>
+                        {isRegenSlideRunning && (
+                          <div className="relative h-1.5 w-full rounded-full bg-amber-900/40 overflow-hidden" aria-hidden>
+                            <div className="regen-progress-indeterminate bg-amber-400" />
+                          </div>
+                        )}
                       </div>
                     );
                   })()}

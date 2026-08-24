@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { useRef, useState, useEffect, useCallback, type CSSProperties } from 'react';
 
 /**
  * useScaleToFit — Articulate-style viewport scaling
@@ -6,8 +6,15 @@ import { useRef, useState, useEffect, useCallback } from 'react';
  * Measures the available canvas area and computes a CSS transform scale factor
  * so the slide frame always fills the container while maintaining its aspect ratio.
  *
- * The container div gets `ref={containerRef}`.
- * The frame div gets `style={frameStyle}` — this applies transform: scale(n).
+ * Layout geometry (critical for overflow clipping):
+ * - Outer wrapper is sized to the *visual* size (designW * scale × designH * scale)
+ *   so parents that use overflow:hidden clip to what the user actually sees.
+ * - Inner frame keeps design dimensions with transform: scale(s) and
+ *   transformOrigin: 'top left' (layout box stays design-sized; paint is smaller).
+ *
+ * The container div gets `ref={containerRef}` (letterbox / measure target).
+ * The visual wrapper gets `style={outerStyle}`.
+ * The frame div gets `style={frameStyle}`.
  */
 
 // Base design dimensions for each aspect ratio mode
@@ -92,16 +99,38 @@ export function useScaleToFit(resolution: Resolution | string, active: boolean =
     };
   }, [scheduleRecalculate]);
 
-  // The frame: fixed design dimensions + CSS scale to fill container
-  const frameStyle: React.CSSProperties = {
-    width:  design.w,
+  const visualW = design.w * scale;
+  const visualH = design.h * scale;
+
+  // Visual wrapper: occupies the on-screen footprint so overflow:hidden parents
+  // clip to what the user sees (not the unscaled design box).
+  const outerStyle: CSSProperties = {
+    width: visualW,
+    height: visualH,
+    overflow: 'hidden',
+    position: 'relative',
+    flexShrink: 0,
+  };
+
+  // Inner frame: fixed design dimensions + CSS scale from top-left
+  const frameStyle: CSSProperties = {
+    width: design.w,
     height: design.h,
     transform: `scale(${scale})`,
-    transformOrigin: 'center center',
+    transformOrigin: 'top left',
     flexShrink: 0,
     // Prevent layout interference from the scaled visual
     willChange: 'transform',
   };
 
-  return { containerRef, frameStyle, scale, designW: design.w, designH: design.h };
+  return {
+    containerRef,
+    outerStyle,
+    frameStyle,
+    scale,
+    visualW,
+    visualH,
+    designW: design.w,
+    designH: design.h,
+  };
 }

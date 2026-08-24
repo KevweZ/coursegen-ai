@@ -453,6 +453,19 @@ img:not([loading]) {
   backface-visibility: hidden;
 }
 
+/* Indeterminate progress (Edit Slide → Regenerate; single API call, no %) */
+@keyframes regen-indeterminate {
+  0% { left: -35%; }
+  100% { left: 100%; }
+}
+.regen-progress-indeterminate {
+  position: absolute;
+  inset-block: 0;
+  width: 35%;
+  border-radius: 9999px;
+  animation: regen-indeterminate 1.2s ease-in-out infinite;
+}
+
 /* -- Marketing preview images: smooth fade-in on load --------------------- */
 @keyframes imgFadeIn {
   from { opacity: 0; transform: scale(1.01); }
