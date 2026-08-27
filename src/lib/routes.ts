@@ -19,6 +19,8 @@ export const ROUTES = {
   /** Password-reset email landing (public; auth gate shows ResetPasswordPage) */
   resetPassword: '/reset-password',
   courseSettings: '/CourseSettings',
+  /** Post-upload review (foundation + structure) — not account Course Settings */
+  courseReview: '/CourseReview',
   courseDevelopment: '/CourseDevelopment',
   playerProperties: '/PlayerProperties',
   myAccount: '/MyAccount',
@@ -38,6 +40,7 @@ export type ParsedAppPath =
   | { kind: 'upload' }
   | { kind: 'building' }
   | { kind: 'courseSettings' }
+  | { kind: 'courseReview' }
   | { kind: 'courseDevelopment' }
   | { kind: 'playerProperties' }
   | { kind: 'myAccount' }
@@ -54,6 +57,7 @@ export function isProtectedPath(pathname: string): boolean {
   if (p === '/upload' || p === '/Building') return true;
   if (
     p === '/CourseSettings' ||
+    p === '/CourseReview' ||
     p === '/CourseDevelopment' ||
     p === '/PlayerProperties' ||
     p === '/MyAccount'
@@ -76,6 +80,7 @@ export function parseAppPath(pathname: string): ParsedAppPath {
   if (p === '/upload') return { kind: 'upload' };
   if (p === '/Building') return { kind: 'building' };
   if (p === '/CourseSettings') return { kind: 'courseSettings' };
+  if (p === '/CourseReview') return { kind: 'courseReview' };
   if (p === '/CourseDevelopment') return { kind: 'courseDevelopment' };
   if (p === '/PlayerProperties') return { kind: 'playerProperties' };
   if (p === '/MyAccount') return { kind: 'myAccount' };

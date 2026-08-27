@@ -12,7 +12,7 @@ interface Props {
   error?: string | null;
   progress?: number;
   sandboxMode?: boolean;
-  /** When true, hide full-page chrome/CTAs — used inside Course Settings Design tab */
+  /** When true, hide full-page chrome/CTAs — used inside Course review Structure tab */
   embedded?: boolean;
   onOutlineChange?: (outline: CourseOutlineDraft) => void;
   onRegenerate?: () => void;
@@ -139,7 +139,7 @@ export function OutlinePreview({
               disabled={!sandboxMode && isHydrating}
               className="text-gray-400 hover:text-white px-8 py-3 rounded-xl border border-slate-700/50 hover:bg-slate-800 transition-colors text-sm font-bold disabled:opacity-50"
             >
-              {sandboxMode ? 'Back to Course Settings' : 'Cancel'}
+              {sandboxMode ? 'Back' : 'Cancel'}
             </button>
           </div>
         </div>
@@ -150,7 +150,7 @@ export function OutlinePreview({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h3 className="text-lg font-bold text-white">Course Structure</h3>
-            <p className="text-sm text-slate-400">Drag slides to reorder. Regenerate after changing interaction settings.</p>
+            <p className="text-sm text-slate-400">Drag slides to reorder. Update structure after changing the course foundation.</p>
           </div>
           {onRegenerate && (
             <button

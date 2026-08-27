@@ -8,6 +8,7 @@ alwaysApply: true
 Agreed with product to **hold** these until after the current closed-beta wave. Do not implement unless the user explicitly restarts them.
 
 ## 2.1 — Separate post-upload review page
+- **Status (main):** done — post-upload customize flow is **Review course** (`/CourseReview`) with Course foundation + Course structure tabs; account **Course Settings** stays at `/CourseSettings`.
 - Rename the in-between workflow away from “Course Settings” (topic / description / objectives / structure).
 - Prefer **two tabs**: Course foundation (topic + description + objectives) and Course structure (outline).
 - Strongly link edits: objective format re-apply to manual objectives; sync structure when objectives change; confirm prompts when edits affect other tabs.

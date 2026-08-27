@@ -204,7 +204,7 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                 <h2 className={cn('font-extrabold text-white', compactMobile ? 'text-lg' : 'text-3xl')}>Course Settings</h2>
                 <p className={cn('text-slate-400 mt-0.5', compactMobile ? 'text-[11px]' : 'text-sm')}>
                   {isDefaults
-                    ? 'Set defaults used when you choose “Build with my defaults” on upload.'
+                    ? 'Account defaults for Build now and Review before build (assessments, interactions, audio).'
                     : isSandboxMode
                     ? (compactMobile ? 'Mobile design demo — settings fit the landscape player.' : 'Sandbox — configure and preview without AI generation.')
                     : 'Review AI-filled settings, then generate your course.'}

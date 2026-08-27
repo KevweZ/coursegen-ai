@@ -84,6 +84,7 @@ import { runFullQC, runStructuralQC, autoFixCourse, applyConfirmedFixes, simplif
 
 import { OutlinePreview } from './components/builder/OutlinePreview';
 import { CourseSettingsPage } from './components/builder/CourseSettingsPage';
+import { CourseReviewPage } from './components/builder/CourseReviewPage';
 import { UploadPathModal, UploadPathChoice } from './components/builder/UploadPathModal';
 import { PlayerPropertiesModal, PlayerConfig, defaultPlayerConfig } from './components/builder/PlayerPropertiesModal';
 import {
@@ -132,6 +133,7 @@ import {
   consumeReturnTo,
 } from './lib/routes';
 import type { SandboxDemo } from './lib/routes';
+import { foundationFingerprint, type FoundationFingerprintInput } from './lib/courseReviewSync';
 import { DraftCoursesPanel } from './components/player/DraftCoursesPanel';
 import { ViewDraftsModal } from './components/player/ViewDraftsModal';
 import { AppImagePickerModal } from './components/player/AppImagePickerModal';
@@ -856,6 +858,20 @@ export default function App() {
     if (design.interactionTypes) setInteractionTypes(design.interactionTypes);
     if (design.scenarioConfig) setScenarioConfig(design.scenarioConfig);
     setOutlineDraft(design.outlineDraft ?? null);
+    setOutlineSourceFingerprint(
+      design.outlineDraft
+        ? foundationFingerprint({
+            courseTitle: design.courseTitle || '',
+            courseDescription: design.courseDescription || '',
+            prompt: design.prompt || '',
+            learningObjectives: design.learningObjectives || [],
+            objectiveFormat: design.objectiveFormat || 'AB',
+            includeModuleTitleSlides: !!design.includeModuleTitleSlides,
+            includeModuleOverviewSlides: !!design.includeModuleOverviewSlides,
+            includeSummarySlides: !!design.includeSummarySlides,
+          })
+        : null
+    );
     if (design.imageMode) setImageMode(normalizeImageMode(design.imageMode));
     if (typeof design.voiceOverEnabled === 'boolean') setVoiceOverEnabled(design.voiceOverEnabled);
     if (design.ttsVoice) setTtsVoice(design.ttsVoice);
@@ -1262,6 +1278,8 @@ export default function App() {
   /** Always-current ref so Save Changes uses the latest course even in stale closures */
   const courseRef = useRef<any>(null);
   const [outlineDraft, setOutlineDraft] = useState<CourseOutlineDraft | null>(null);
+  /** Foundation snapshot that produced `outlineDraft` — drift means structure is stale. */
+  const [outlineSourceFingerprint, setOutlineSourceFingerprint] = useState<string | null>(null);
   const [skipOutlineReview, setSkipOutlineReview] = useState(false);
   
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
@@ -1347,7 +1365,7 @@ export default function App() {
       setCourseDescription('A comprehensive eLearning course covering modern workplace communication strategies.');
       setLearningObjectives([{ terminalObjective: 'Given a workplace scenario, the learner will identify the communication strategy that best supports effective collaboration.', enablingObjectives: [] }]);
       setCourseType('standard'); setPreset('standard');
-      setSettingsMode('session');
+      setSettingsMode('defaults');
       setPreviewModalViewMode('desktop');
       setMobileDesignDemo(false);
       setViewMode('desktop');
@@ -1359,6 +1377,7 @@ export default function App() {
     if (demo === 'designMobile') {
       setCourseTitle('Advanced Workplace Communication');
       setCourseDescription('A comprehensive eLearning course covering modern workplace communication strategies.');
+      setPrompt('Advanced Workplace Communication');
       setLearningObjectives([{ terminalObjective: 'Given a workplace scenario, the learner will identify the communication strategy that best supports effective collaboration.', enablingObjectives: [] }]);
       setCourseType('standard'); setPreset('standard');
       setSettingsMode('session');
@@ -1366,6 +1385,28 @@ export default function App() {
       setMobileDesignDemo(true);
       setViewMode('mobile');
       setIsSandboxMode(true);
+      const dummyOutline = {
+        title: DUMMY_COURSE.title,
+        description: DUMMY_COURSE.description || '',
+        learningObjectives: DUMMY_COURSE.learningObjectives || [],
+        visualTheme: 'light',
+        modules: DUMMY_COURSE.modules.map((m: any) => ({
+          id: m.id,
+          title: m.title,
+          slides: (m.slides || []).map((s: any) => ({ id: s.id, type: s.type, title: s.title })),
+        })),
+      };
+      setOutlineDraft(dummyOutline);
+      setOutlineSourceFingerprint(foundationFingerprint({
+        courseTitle: 'Advanced Workplace Communication',
+        courseDescription: 'A comprehensive eLearning course covering modern workplace communication strategies.',
+        prompt: 'Advanced Workplace Communication',
+        learningObjectives: [{ terminalObjective: 'Given a workplace scenario, the learner will identify the communication strategy that best supports effective collaboration.', enablingObjectives: [] }],
+        objectiveFormat,
+        includeModuleTitleSlides,
+        includeModuleOverviewSlides,
+        includeSummarySlides,
+      }));
       setStep('details');
       if (pushUrl) navigateTo(ROUTES.sandboxDesignMobile);
       return;
@@ -1444,6 +1485,14 @@ export default function App() {
       setIsSandboxMode(false);
       setMobileDesignDemo(false);
       setActiveDraftId(null);
+      setShowPlayerProperties(false);
+      setStep('details');
+      return;
+    }
+    if (parsed.kind === 'courseReview') {
+      setSettingsMode('session');
+      setIsSandboxMode(false);
+      setMobileDesignDemo(false);
       setShowPlayerProperties(false);
       setStep('details');
       return;
@@ -1593,9 +1642,12 @@ export default function App() {
     // /upload vs /Building for step===home is handled in a later effect (needs analyze/generate flags)
     if (step === 'home') return;
     else if (step === 'details' && !isSandboxMode) {
-      if (activeDraftId && !path.startsWith('/design/')) navigateTo(ROUTES.design(activeDraftId), true);
-      else if (!activeDraftId && path !== ROUTES.courseSettings && !path.startsWith('/design/')) {
-        navigateTo(ROUTES.courseSettings, true);
+      if (settingsMode === 'defaults') {
+        if (path !== ROUTES.courseSettings) navigateTo(ROUTES.courseSettings, true);
+      } else if (activeDraftId && !path.startsWith('/design/')) {
+        navigateTo(ROUTES.design(activeDraftId), true);
+      } else if (!activeDraftId && path !== ROUTES.courseReview && !path.startsWith('/design/')) {
+        navigateTo(ROUTES.courseReview, true);
       }
     } else if (step === 'account' && path !== ROUTES.myAccount) navigateTo(ROUTES.myAccount, true);
     else if (step === 'pricing' && path !== ROUTES.pricing) navigateTo(ROUTES.pricing, true);
@@ -1607,7 +1659,7 @@ export default function App() {
         navigateTo(ROUTES.courseDevelopment, true);
       }
     }
-  }, [step, user, isScormPlayer, isSandboxMode, activeDraftId, publicView]);
+  }, [step, user, isScormPlayer, isSandboxMode, activeDraftId, publicView, settingsMode]);
 
   // ── Browser back / forward ────────────────────────────────────────────────
   useEffect(() => {
@@ -2478,7 +2530,7 @@ export default function App() {
   /**
    * Runs the full AI document analysis. Can be called directly for retries.
    * Stays on the analyzing screen on failure — shows error + Retry button in-place.
-   * @param path 'quick' skips settings UI and builds; 'customize' opens Course Settings with outline;
+   * @param path 'quick' skips settings UI and builds; 'customize' opens Course review with outline;
    *             'game' extracts text only; undefined keeps legacy → details without outline.
    */
   const runAnalysis = async (
@@ -2616,7 +2668,7 @@ export default function App() {
         return;
       }
 
-      // Customize path: open Course Settings and generate outline for Design tab
+      // Customize path: open Course review and generate outline for Structure tab
       setSettingsMode('session');
       setIsAnalyzing(false);
       setProgress(0);
@@ -2624,7 +2676,7 @@ export default function App() {
       setIsSandboxMode(false);
       setMobileDesignDemo(false);
       setStep('details');
-      navigateTo(ROUTES.courseSettings);
+      navigateTo(ROUTES.courseReview);
       setIsGeneratingOutline(true);
       try {
         const draft = await generateCourseOutline(
@@ -2647,9 +2699,21 @@ export default function App() {
           }
         );
         setOutlineDraft(draft);
+        setOutlineSourceFingerprint(foundationFingerprint({
+          courseTitle: result.title || file.name,
+          courseDescription: result.summary || '',
+          prompt: result.title || file.name,
+          learningObjectives: result.objectives?.length
+            ? reformatObjectivesClientSide(result.objectives, lockedFmt)
+            : learningObjectives,
+          objectiveFormat: lockedFmt,
+          includeModuleTitleSlides: outlineIncludeModuleTitles,
+          includeModuleOverviewSlides: outlineIncludeModuleOverviews,
+          includeSummarySlides: settingsOverride?.includeSummarySlides ?? includeSummarySlides,
+        }));
       } catch (e: any) {
         console.warn('[runAnalysis] Outline generation failed:', e);
-        setError(e?.message || 'Could not generate course structure. You can retry from the Design tab.');
+        setError(e?.message || 'Could not generate course structure. You can retry from the Course structure tab.');
       } finally {
         setIsGeneratingOutline(false);
       }
@@ -2723,6 +2787,31 @@ export default function App() {
     setUploadedFile(null);
   };
 
+  const captureFoundationFingerprint = (override?: Partial<FoundationFingerprintInput>) => {
+    setOutlineSourceFingerprint(foundationFingerprint({
+      courseTitle: override?.courseTitle ?? courseTitle,
+      courseDescription: override?.courseDescription ?? courseDescription,
+      prompt: override?.prompt ?? prompt,
+      learningObjectives: override?.learningObjectives ?? learningObjectives,
+      objectiveFormat: override?.objectiveFormat ?? objectiveFormat,
+      includeModuleTitleSlides: override?.includeModuleTitleSlides ?? includeModuleTitleSlides,
+      includeModuleOverviewSlides: override?.includeModuleOverviewSlides ?? includeModuleOverviewSlides,
+      includeSummarySlides: override?.includeSummarySlides ?? includeSummarySlides,
+    }));
+  };
+
+  const structureStale = !!outlineDraft && outlineSourceFingerprint != null
+    && foundationFingerprint({
+      courseTitle,
+      courseDescription,
+      prompt,
+      learningObjectives,
+      objectiveFormat,
+      includeModuleTitleSlides,
+      includeModuleOverviewSlides,
+      includeSummarySlides,
+    }) !== outlineSourceFingerprint;
+
   const regenerateOutlineForSettings = async () => {
     setIsGeneratingOutline(true);
     setError(null);
@@ -2730,6 +2819,7 @@ export default function App() {
     try {
       const draft = await buildOutlineFromCurrentSettings();
       setOutlineDraft(draft);
+      captureFoundationFingerprint();
       setProgress(100);
     } catch (e: any) {
       setError(e?.message || 'Failed to regenerate course structure.');
@@ -2993,7 +3083,7 @@ export default function App() {
     setIsSandboxMode(false);
     setMobileDesignDemo(false);
     setStep('details');
-    navigateTo(ROUTES.courseSettings);
+    navigateTo(ROUTES.courseReview);
   };
 
   const handleGenerateGame = async () => {
@@ -3042,6 +3132,7 @@ export default function App() {
         }
       );
       setOutlineDraft(draft);
+      captureFoundationFingerprint();
       if (skipOutlineReview) {
         setProgress(45);
         const finalCourse = await hydrateCourseContent(
@@ -3999,6 +4090,118 @@ export default function App() {
       </div>
     );
   };
+
+  const renderCoursePrepPage = (compactMobile = false) => (
+    settingsMode === 'defaults' ? (
+      <CourseSettingsPage
+        mode="defaults"
+        isSandboxMode={isSandboxMode}
+        compactMobile={compactMobile}
+        isGenerating={isGenerating}
+        isHydrating={isHydrating}
+        isSuggesting={isSuggesting}
+        isGeneratingOutline={isGeneratingOutline}
+        progress={progress}
+        error={error}
+        renderProgressState={renderProgressState}
+        courseTitle={courseTitle}
+        setCourseTitle={setCourseTitle}
+        courseDescription={courseDescription}
+        setCourseDescription={setCourseDescription}
+        prompt={prompt}
+        setPrompt={setPrompt}
+        objectiveFormat={objectiveFormat}
+        learningObjectives={learningObjectives}
+        setLearningObjectives={setLearningObjectives}
+        onFormatChange={(fmt) => setObjectiveFormat(fmt)}
+        onSuggestObjectives={handleSuggestObjectives}
+        examConfig={examConfig}
+        setExamConfig={setExamConfig}
+        navigationMode={navigationMode}
+        setNavigationMode={setNavigationMode}
+        requireInteractionsComplete={requireInteractionsComplete}
+        setRequireInteractionsComplete={setRequireInteractionsComplete}
+        preset={preset}
+        onPresetChange={handlePresetChange}
+        slideCount={slideCount}
+        setSlideCount={setSlideCount}
+        includeModuleTitleSlides={includeModuleTitleSlides}
+        setIncludeModuleTitleSlides={setIncludeModuleTitleSlides}
+        includeModuleOverviewSlides={includeModuleOverviewSlides}
+        setIncludeModuleOverviewSlides={setIncludeModuleOverviewSlides}
+        includeSummarySlides={includeSummarySlides}
+        setIncludeSummarySlides={setIncludeSummarySlides}
+        interactionTypes={interactionTypes}
+        setInteractionTypes={setInteractionTypes}
+        scenarioConfig={scenarioConfig}
+        setScenarioConfig={setScenarioConfig}
+        onPreviewOption={setPreviewModalOption}
+        gameTemplateIds={gameTemplateIds}
+        setGameTemplateIds={setGameTemplateIds}
+        voiceOverEnabled={voiceOverEnabled}
+        setVoiceOverEnabled={setVoiceOverEnabled}
+        ttsVoice={ttsVoice}
+        setTtsVoice={setTtsVoice}
+        subscriptionPlan={userPlan}
+        imageMode={imageMode}
+        setImageMode={setImageMode}
+        hotspotGenerateBackdrop={hotspotGenerateBackdrop}
+        setHotspotGenerateBackdrop={setHotspotGenerateBackdrop}
+        previewingVoice={previewingVoice}
+        onPreviewVoice={previewVoice}
+        outlineDraft={outlineDraft}
+        onOutlineChange={setOutlineDraft}
+        onRegenerateOutline={regenerateOutlineForSettings}
+        onBack={backFromCourseSettings}
+        onReplaceDocument={(e) => { if (e.target.files?.[0]) handleFileUpload(e); }}
+        onSaveSettings={persistCourseSettings}
+        onGenerateCourse={handleGenerateCourseFromSettings}
+        onOpenPlayerProperties={openPlayerPropertiesModal}
+        onSaveDesignDraft={handleSaveDesignDraft}
+        designDraftSavedFlash={designDraftSavedFlash}
+        settingsSavedFlash={settingsSavedFlash}
+      />
+    ) : (
+      <CourseReviewPage
+        compactMobile={compactMobile}
+        isSandboxMode={isSandboxMode}
+        isGenerating={isGenerating}
+        isHydrating={isHydrating}
+        isSuggesting={isSuggesting}
+        isGeneratingOutline={isGeneratingOutline}
+        progress={progress}
+        error={error}
+        renderProgressState={renderProgressState}
+        courseTitle={courseTitle}
+        setCourseTitle={setCourseTitle}
+        courseDescription={courseDescription}
+        setCourseDescription={setCourseDescription}
+        prompt={prompt}
+        setPrompt={setPrompt}
+        objectiveFormat={objectiveFormat}
+        learningObjectives={learningObjectives}
+        setLearningObjectives={setLearningObjectives}
+        onFormatChange={handleFormatChange}
+        onSuggestObjectives={handleSuggestObjectives}
+        includeModuleTitleSlides={includeModuleTitleSlides}
+        setIncludeModuleTitleSlides={setIncludeModuleTitleSlides}
+        includeModuleOverviewSlides={includeModuleOverviewSlides}
+        setIncludeModuleOverviewSlides={setIncludeModuleOverviewSlides}
+        includeSummarySlides={includeSummarySlides}
+        setIncludeSummarySlides={setIncludeSummarySlides}
+        outlineDraft={outlineDraft}
+        onOutlineChange={setOutlineDraft}
+        onRegenerateOutline={regenerateOutlineForSettings}
+        structureStale={structureStale}
+        onBack={backFromCourseSettings}
+        onReplaceDocument={(e) => { if (e.target.files?.[0]) handleFileUpload(e); }}
+        onGenerateCourse={handleGenerateCourseFromSettings}
+        onOpenPlayerProperties={openPlayerPropertiesModal}
+        onSaveDesignDraft={handleSaveDesignDraft}
+        designDraftSavedFlash={designDraftSavedFlash}
+      />
+    )
+  );
 
   // ── Auth Gate ────────────────────────────────────────────────────────────
   // Loading spinner while Supabase session is restoring
@@ -4999,74 +5202,7 @@ export default function App() {
                   </div>
                   <div className="flex-1 min-h-0 overflow-hidden">
                     <LandscapePhoneFrame label="Design Demo — Mobile Landscape" screenClassName="bg-slate-950 overflow-y-auto custom-scrollbar">
-                      <CourseSettingsPage
-                        mode={settingsMode === 'defaults' ? 'defaults' : 'session'}
-                        isSandboxMode={isSandboxMode}
-                        compactMobile
-                        isGenerating={isGenerating}
-                        isHydrating={isHydrating}
-                        isSuggesting={isSuggesting}
-                        isGeneratingOutline={isGeneratingOutline}
-                        progress={progress}
-                        error={error}
-                        renderProgressState={renderProgressState}
-                        courseTitle={courseTitle}
-                        setCourseTitle={setCourseTitle}
-                        courseDescription={courseDescription}
-                        setCourseDescription={setCourseDescription}
-                        prompt={prompt}
-                        setPrompt={setPrompt}
-                        objectiveFormat={objectiveFormat}
-                        learningObjectives={learningObjectives}
-                        setLearningObjectives={setLearningObjectives}
-                        onFormatChange={settingsMode === 'defaults' ? (fmt) => setObjectiveFormat(fmt) : handleFormatChange}
-                        onSuggestObjectives={handleSuggestObjectives}
-                        examConfig={examConfig}
-                        setExamConfig={setExamConfig}
-                        navigationMode={navigationMode}
-                        setNavigationMode={setNavigationMode}
-                        requireInteractionsComplete={requireInteractionsComplete}
-                        setRequireInteractionsComplete={setRequireInteractionsComplete}
-                        preset={preset}
-                        onPresetChange={handlePresetChange}
-                        slideCount={slideCount}
-                        setSlideCount={setSlideCount}
-                        includeModuleTitleSlides={includeModuleTitleSlides}
-                        setIncludeModuleTitleSlides={setIncludeModuleTitleSlides}
-                        includeModuleOverviewSlides={includeModuleOverviewSlides}
-                        setIncludeModuleOverviewSlides={setIncludeModuleOverviewSlides}
-                        includeSummarySlides={includeSummarySlides}
-                        setIncludeSummarySlides={setIncludeSummarySlides}
-                        interactionTypes={interactionTypes}
-                        setInteractionTypes={setInteractionTypes}
-                        scenarioConfig={scenarioConfig}
-                        setScenarioConfig={setScenarioConfig}
-                        onPreviewOption={setPreviewModalOption}
-                        gameTemplateIds={gameTemplateIds}
-                        setGameTemplateIds={setGameTemplateIds}
-                        voiceOverEnabled={voiceOverEnabled}
-                        setVoiceOverEnabled={setVoiceOverEnabled}
-                        ttsVoice={ttsVoice}
-                        setTtsVoice={setTtsVoice}
-                        subscriptionPlan={userPlan}
-                        imageMode={imageMode}
-                        setImageMode={setImageMode}
-                        hotspotGenerateBackdrop={hotspotGenerateBackdrop}
-                        setHotspotGenerateBackdrop={setHotspotGenerateBackdrop}
-                        previewingVoice={previewingVoice}
-                        onPreviewVoice={previewVoice}
-                        outlineDraft={outlineDraft}
-                        onOutlineChange={setOutlineDraft}
-                        onRegenerateOutline={regenerateOutlineForSettings}
-                        onBack={backFromCourseSettings}
-                        onReplaceDocument={(e) => { if (e.target.files?.[0]) handleFileUpload(e); }}
-                        onSaveSettings={persistCourseSettings}
-                        onGenerateCourse={handleGenerateCourseFromSettings}
-                        onOpenPlayerProperties={openPlayerPropertiesModal}
-                        onSaveDesignDraft={handleSaveDesignDraft}
-                        designDraftSavedFlash={designDraftSavedFlash}
-                        settingsSavedFlash={settingsSavedFlash}
-                      />
+                      {renderCoursePrepPage(true)}
                     </LandscapePhoneFrame>
                   </div>
                 </>
@@ -5092,73 +5228,7 @@ export default function App() {
                   </div>
                 </div>
               )}
-              <CourseSettingsPage
-                mode={settingsMode === 'defaults' ? 'defaults' : 'session'}
-                isSandboxMode={isSandboxMode}
-                isGenerating={isGenerating}
-                isHydrating={isHydrating}
-                isSuggesting={isSuggesting}
-                isGeneratingOutline={isGeneratingOutline}
-                progress={progress}
-                error={error}
-                renderProgressState={renderProgressState}
-                courseTitle={courseTitle}
-                setCourseTitle={setCourseTitle}
-                courseDescription={courseDescription}
-                setCourseDescription={setCourseDescription}
-                prompt={prompt}
-                setPrompt={setPrompt}
-                objectiveFormat={objectiveFormat}
-                learningObjectives={learningObjectives}
-                setLearningObjectives={setLearningObjectives}
-                onFormatChange={settingsMode === 'defaults' ? (fmt) => setObjectiveFormat(fmt) : handleFormatChange}
-                onSuggestObjectives={handleSuggestObjectives}
-                examConfig={examConfig}
-                setExamConfig={setExamConfig}
-                navigationMode={navigationMode}
-                setNavigationMode={setNavigationMode}
-                requireInteractionsComplete={requireInteractionsComplete}
-                setRequireInteractionsComplete={setRequireInteractionsComplete}
-                preset={preset}
-                onPresetChange={handlePresetChange}
-                slideCount={slideCount}
-                setSlideCount={setSlideCount}
-                includeModuleTitleSlides={includeModuleTitleSlides}
-                setIncludeModuleTitleSlides={setIncludeModuleTitleSlides}
-                includeModuleOverviewSlides={includeModuleOverviewSlides}
-                setIncludeModuleOverviewSlides={setIncludeModuleOverviewSlides}
-                includeSummarySlides={includeSummarySlides}
-                setIncludeSummarySlides={setIncludeSummarySlides}
-                interactionTypes={interactionTypes}
-                setInteractionTypes={setInteractionTypes}
-                scenarioConfig={scenarioConfig}
-                setScenarioConfig={setScenarioConfig}
-                onPreviewOption={setPreviewModalOption}
-                gameTemplateIds={gameTemplateIds}
-                setGameTemplateIds={setGameTemplateIds}
-                voiceOverEnabled={voiceOverEnabled}
-                setVoiceOverEnabled={setVoiceOverEnabled}
-                ttsVoice={ttsVoice}
-                setTtsVoice={setTtsVoice}
-                subscriptionPlan={userPlan}
-                imageMode={imageMode}
-                setImageMode={setImageMode}
-                hotspotGenerateBackdrop={hotspotGenerateBackdrop}
-                setHotspotGenerateBackdrop={setHotspotGenerateBackdrop}
-                previewingVoice={previewingVoice}
-                onPreviewVoice={previewVoice}
-                outlineDraft={outlineDraft}
-                onOutlineChange={setOutlineDraft}
-                onRegenerateOutline={regenerateOutlineForSettings}
-                onBack={backFromCourseSettings}
-                onReplaceDocument={(e) => { if (e.target.files?.[0]) handleFileUpload(e); }}
-                onSaveSettings={persistCourseSettings}
-                onGenerateCourse={handleGenerateCourseFromSettings}
-                onOpenPlayerProperties={openPlayerPropertiesModal}
-                onSaveDesignDraft={handleSaveDesignDraft}
-                designDraftSavedFlash={designDraftSavedFlash}
-                settingsSavedFlash={settingsSavedFlash}
-              />
+              {renderCoursePrepPage(false)}
               </>
               )}
             </motion.div>
