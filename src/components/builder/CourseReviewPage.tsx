@@ -79,8 +79,18 @@ export function CourseReviewPage(props: CourseReviewPageProps) {
   } = props;
 
   const [activeTab, setActiveTab] = useState<ReviewTab>('foundation');
-  const [confirmKind, setConfirmKind] = useState<null | 'switch-structure' | 'generate'>(null);
+  const [confirmKind, setConfirmKind] = useState<null | 'switch-structure' | 'generate' | 'leave'>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
+
+  React.useEffect(() => {
+    if (isSandboxMode) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [isSandboxMode]);
 
   if ((isGenerating || isHydrating) && renderProgressState) {
     return (
@@ -112,14 +122,18 @@ export function CourseReviewPage(props: CourseReviewPageProps) {
   };
 
   const updateStructureThen = async (after: 'switch' | 'stay') => {
-    setConfirmBusy(true);
-    try {
-      await props.onRegenerateOutline();
-      if (after === 'switch') goToStructure();
-    } finally {
-      setConfirmBusy(false);
-      setConfirmKind(null);
+    setConfirmKind(null);
+    setConfirmBusy(false);
+    if (after === 'switch') goToStructure();
+    await props.onRegenerateOutline();
+  };
+
+  const requestLeave = () => {
+    if (isSandboxMode) {
+      props.onBack();
+      return;
     }
+    setConfirmKind('leave');
   };
 
   const tabs: { id: ReviewTab; label: string; icon: React.ReactNode }[] = [
@@ -137,7 +151,7 @@ export function CourseReviewPage(props: CourseReviewPageProps) {
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div
               className="flex items-center gap-3 cursor-pointer group"
-              onClick={props.onBack}
+              onClick={requestLeave}
             >
               <div className={cn(
                 'rounded-full bg-slate-800 flex items-center justify-center group-hover:bg-indigo-500/20 transition-colors shrink-0',
@@ -514,16 +528,27 @@ export function CourseReviewPage(props: CourseReviewPageProps) {
               </div>
             </div>
 
-            {isGeneratingOutline && !props.outlineDraft && (
-              <div className="flex flex-col items-center justify-center py-16 gap-4 bg-slate-900/80 rounded-2xl border border-slate-800">
+            {isGeneratingOutline && (
+              <div className="flex flex-col items-center justify-center py-16 gap-4 bg-slate-900/80 rounded-2xl border border-indigo-500/30">
                 <Loader2 className="w-10 h-10 text-indigo-400 animate-spin" />
-                <p className="text-slate-300 font-bold">Generating course structure…</p>
-                {typeof progress === 'number' && progress > 0 && (
-                  <p className="text-sm text-slate-500">{Math.round(progress)}%</p>
-                )}
+                <p className="text-slate-300 font-bold">Updating course structure…</p>
+                <p className="text-sm text-slate-500 text-center max-w-md">
+                  Building a new outline from the current title and objectives. This replaces the module list below.
+                </p>
+                <div className="w-full max-w-md">
+                  <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-300"
+                      style={{ width: `${Math.round(Math.max(8, Math.min(99, progress || 15)))}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-indigo-300 font-bold text-center mt-2">
+                    {Math.round(Math.max(8, Math.min(99, progress || 15)))}%
+                  </p>
+                </div>
               </div>
             )}
-            {props.outlineDraft && (
+            {props.outlineDraft && !isGeneratingOutline && (
               <OutlinePreview
                 initialOutline={props.outlineDraft}
                 embedded
@@ -531,7 +556,7 @@ export function CourseReviewPage(props: CourseReviewPageProps) {
                 progress={progress}
                 sandboxMode={isSandboxMode}
                 onApprove={() => requestGenerate()}
-                onCancel={props.onBack}
+                onCancel={requestLeave}
                 onOutlineChange={props.onOutlineChange}
                 onRegenerate={props.onRegenerateOutline}
                 isRegenerating={!!isGeneratingOutline}
@@ -566,6 +591,15 @@ export function CourseReviewPage(props: CourseReviewPageProps) {
         onSecondary={() => { setConfirmKind(null); goToStructure(); }}
         onCancel={() => setConfirmKind(null)}
         busy={confirmBusy}
+      />
+      <ConfirmDialog
+        open={confirmKind === 'leave'}
+        title="Leave this review?"
+        body="You cannot return to this outline from the upload page. Reorder and interaction changes will be lost unless you saved a draft first."
+        primaryLabel="Leave"
+        cancelLabel="Stay"
+        onPrimary={() => { setConfirmKind(null); props.onBack(); }}
+        onCancel={() => setConfirmKind(null)}
       />
       <ConfirmDialog
         open={confirmKind === 'generate'}

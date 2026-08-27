@@ -224,13 +224,14 @@ export function OutlinePreview({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h3 className="text-lg font-bold text-white">Course Structure</h3>
-            <p className="text-sm text-slate-400">Drag slides to reorder. Change a slide’s interaction before you generate.</p>
+            <p className="text-sm text-slate-400">Drag slides to reorder and use the type dropdowns to change interactions. Those edits are kept for Generate Course.</p>
           </div>
           {onRegenerate && (
             <button
               type="button"
               onClick={onRegenerate}
               disabled={isRegenerating || isHydrating}
+              title="Ask AI to build a new outline from the current title and objectives. This replaces the modules below, including any reordering or interaction types you picked. It does not save those edits — they are already kept until you regenerate or leave."
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-700 bg-slate-900 text-slate-200 text-sm font-bold hover:border-indigo-500/50 hover:text-white transition-all disabled:opacity-50"
             >
               {isRegenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 text-indigo-400" />}

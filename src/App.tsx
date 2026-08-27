@@ -1171,8 +1171,12 @@ export default function App() {
     navigateTo(ROUTES.upload);
   };
 
-  /** Back from Course Settings — resume upload chooser if a file is still pending. */
+  /** Back from Course Settings / Review course — resume upload chooser if a file is still pending. */
   const backFromCourseSettings = () => {
+    if (settingsMode !== 'defaults') {
+      setOutlineDraft(null);
+      setOutlineSourceFingerprint(null);
+    }
     if (pendingUploadFile) {
       setStep('home');
       setMobileDesignDemo(false);
@@ -1752,14 +1756,15 @@ export default function App() {
   const [extractedFileText, setExtractedFileText] = useState<string>('');
   const [voiceOverEnabled, setVoiceOverEnabled] = useState(DEFAULT_COURSE_SETTINGS.voiceOverEnabled);
 
-  // Articulate-style scale-to-fit: always called at hook level regardless of step.
-  // 'full' resolution mode intentionally fills the available space responsively
-  // (no fixed aspect-ratio box), so it is excluded from scaling.
-  // Phones always use scale-to-fit in landscape (ignore the desktop “mobile bezel” toggle).
+  // Articulate-style scale-to-fit is for real phones only. Desktop / laptop web
+  // fills the stage (the pre-emulator layout). Applying scale-to-fit on desktop
+  // letterboxed the slide (dark gutters) and cropped the in-window PlayerBar.
+  // 'full' resolution is excluded even on phones (flex-fill, no fixed box).
+  // The desktop “Mobile” bezel toggle uses its own chrome, not this scaler.
   const useScaleTransform =
     step === 'preview' &&
     playerConfig?.playerResolution !== 'full' &&
-    (viewMode === 'desktop' || isPhoneViewport);
+    isPhoneViewport;
   /** PlayerBar must sit outside CSS-scaled frames (and always on phones) or sticky lands mid-slide. */
   const dockPlayerBarOutside = useScaleTransform || isPhoneViewport;
   const scaler = useScaleToFit(
@@ -2675,9 +2680,15 @@ export default function App() {
       setActiveDraftId(null);
       setIsSandboxMode(false);
       setMobileDesignDemo(false);
+      setOutlineDraft(null);
+      setOutlineSourceFingerprint(null);
       setStep('details');
       navigateTo(ROUTES.courseReview);
       setIsGeneratingOutline(true);
+      setProgress(12);
+      const outlineTimer = setInterval(() => {
+        setProgress(prev => (prev < 85 ? Math.min(85, prev + 4) : prev));
+      }, 400);
       try {
         const draft = await generateCourseOutline(
           result.title || file.name,
@@ -2715,7 +2726,9 @@ export default function App() {
         console.warn('[runAnalysis] Outline generation failed:', e);
         setError(e?.message || 'Could not generate course structure. You can retry from the Course structure tab.');
       } finally {
+        clearInterval(outlineTimer);
         setIsGeneratingOutline(false);
+        setProgress(0);
       }
     } catch (err: any) {
       clearInterval(analysisTimer);
@@ -2815,7 +2828,10 @@ export default function App() {
   const regenerateOutlineForSettings = async () => {
     setIsGeneratingOutline(true);
     setError(null);
-    setProgress(15);
+    setProgress(12);
+    const timer = setInterval(() => {
+      setProgress(prev => (prev < 85 ? Math.min(85, prev + 4) : prev));
+    }, 400);
     try {
       const draft = await buildOutlineFromCurrentSettings();
       setOutlineDraft(draft);
@@ -2824,6 +2840,7 @@ export default function App() {
     } catch (e: any) {
       setError(e?.message || 'Failed to regenerate course structure.');
     } finally {
+      clearInterval(timer);
       setIsGeneratingOutline(false);
       setProgress(0);
     }
@@ -4360,8 +4377,7 @@ export default function App() {
       </div>
 
       {/* Global marketing/nav header — hidden during course preview so the player
-          gets the full viewport height (more height => bigger scale-to-fit => a
-          visibly wider/larger player frame, not just taller). */}
+          owns the full viewport height. */}
       {step !== 'preview' && !mobileDesignDemo && (
       <header className="relative z-[600] border-b border-slate-800/80 bg-slate-900/50 backdrop-blur-xl">
         <div className="container mx-auto px-6 h-20 flex items-center justify-between">
@@ -5287,8 +5303,8 @@ export default function App() {
               exit={{ opacity: 0 }}
               className="fixed top-0 left-0 right-0 bottom-0 z-50"
             >
-              {/* Phone portrait: rotate prompt. Landscape/desktop: normal scale-to-fit player.
-                  Tour stays inside this shell and only opens after landscape. */}
+              {/* Phone portrait: rotate prompt. Landscape phones: scale-to-fit.
+                  Desktop web: flex-fill (no letterbox). Tour opens after landscape on phones. */}
               <div
                 className="bg-slate-900 overflow-hidden flex flex-col"
                 style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
@@ -5764,10 +5780,10 @@ export default function App() {
                   )}
 
                   {/* Slide frame — aspect ratio driven by playerConfig.playerResolution.
-                      16:9 / 4:3: outer = visual size (design×scale); inner keeps design size
-                      with transform:scale from top-left. 'full' skips scaling.
-                      Desktop “Mobile” toggle uses a landscape phone bezel; real phones always
-                      scale-to-fit instead (PlayerBar docks outside this frame). */}
+                      Phones (16:9 / 4:3): outer = visual size (design×scale); inner keeps
+                      design size with transform:scale from top-left. Desktop web flex-fills
+                      the stage. 'full' skips scaling. Desktop “Mobile” toggle uses a
+                      landscape phone bezel; real phones scale-to-fit (PlayerBar docks outside). */}
                   <div
                     style={useScaleTransform ? scaler.outerStyle : undefined}
                     className={cn(

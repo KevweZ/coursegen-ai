@@ -1,8 +1,9 @@
 import { useRef, useState, useEffect, useCallback, type CSSProperties } from 'react';
 
 /**
- * useScaleToFit — Articulate-style viewport scaling
+ * useScaleToFit — Articulate-style viewport scaling (phone landscape only)
  *
+ * App.tsx activates this on real phones, not desktop/laptop Course Development.
  * Measures the available canvas area and computes a CSS transform scale factor
  * so the slide frame always fills the container while maintaining its aspect ratio.
  *
