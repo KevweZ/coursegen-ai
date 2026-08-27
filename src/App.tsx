@@ -4193,6 +4193,7 @@ export default function App() {
         onOutlineChange={setOutlineDraft}
         onRegenerateOutline={regenerateOutlineForSettings}
         structureStale={structureStale}
+        interactionTypes={interactionTypes}
         onBack={backFromCourseSettings}
         onReplaceDocument={(e) => { if (e.target.files?.[0]) handleFileUpload(e); }}
         onGenerateCourse={handleGenerateCourseFromSettings}
@@ -5272,6 +5273,7 @@ export default function App() {
                }}
                error={error}
                sandboxMode={isSandboxMode}
+               allowedInteractionTypes={interactionTypes}
              />
           )}
 

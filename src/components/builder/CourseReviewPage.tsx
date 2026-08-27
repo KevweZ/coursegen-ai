@@ -53,6 +53,8 @@ export interface CourseReviewPageProps {
   onRegenerateOutline: () => void | Promise<void>;
 
   structureStale: boolean;
+  /** Course Settings interaction whitelist for structure-row dropdowns */
+  interactionTypes: string[];
 
   onBack: () => void;
   onReplaceDocument?: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -533,6 +535,7 @@ export function CourseReviewPage(props: CourseReviewPageProps) {
                 onOutlineChange={props.onOutlineChange}
                 onRegenerate={props.onRegenerateOutline}
                 isRegenerating={!!isGeneratingOutline}
+                allowedInteractionTypes={props.interactionTypes}
                 error={error}
               />
             )}

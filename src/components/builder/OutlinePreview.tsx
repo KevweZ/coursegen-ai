@@ -1,8 +1,52 @@
 import React, { useState } from 'react';
 import { CourseOutlineDraft } from '../../services/aiService';
-import { GripVertical, Layers, Presentation, Flag, Zap, Library, Target, Gamepad2, CheckCircle, ChevronRight, Loader2, Sparkles, BookOpen, AlertCircle } from 'lucide-react';
+import { GripVertical, Layers, Presentation, Flag, Zap, Library, Target, Gamepad2, CheckCircle, ChevronRight, Loader2, Sparkles, BookOpen, AlertCircle, ChevronDown } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
+
+const SLIDE_TYPE_LABELS: Record<string, string> = {
+  content: 'Content',
+  diagram: 'Diagram',
+  hotspot: 'Hotspot',
+  flashcards: 'Flashcards',
+  timeline: 'Timeline',
+  scenario: 'Scenario',
+  'tabbed-horizontal': 'Tabs (Horizontal)',
+  'tabbed-vertical': 'Tabs (Vertical)',
+  'folder-explorer': 'Folder Explorer',
+  'carousel-panel': 'Carousel Panel',
+  'click-reveal': 'Click & Reveal',
+  accordion: 'Click & Reveal',
+  'key-takeaways': 'Key Takeaways',
+  summary: 'Summary',
+  quiz: 'Quiz',
+  'knowledge-check': 'Knowledge Check',
+  sorting: 'Sorting',
+  matching: 'Matching',
+  'drop-targets': 'Drop Targets',
+  'multiple-choice': 'Multiple Choice',
+  'multiple-answers': 'Multiple Answer',
+};
+
+const PICKABLE_CONTENT_TYPES = [
+  'content',
+  'hotspot',
+  'flashcards',
+  'timeline',
+  'scenario',
+  'tabbed-horizontal',
+  'tabbed-vertical',
+  'folder-explorer',
+  'carousel-panel',
+  'click-reveal',
+] as const;
+
+const LOCKED_SLIDE_TYPES = new Set([
+  'quiz', 'sorting', 'matching', 'drop-targets',
+  'multiple-choice', 'multiple-answers', 'knowledge-check',
+  'key-takeaways', 'summary', 'title', 'intro', 'outro',
+  'game-template', 'module-cover', 'module-overview',
+]);
 
 interface Props {
   initialOutline: CourseOutlineDraft;
@@ -17,6 +61,8 @@ interface Props {
   onOutlineChange?: (outline: CourseOutlineDraft) => void;
   onRegenerate?: () => void;
   isRegenerating?: boolean;
+  /** Course Settings whitelist — content slides can switch among these + Content */
+  allowedInteractionTypes?: string[];
 }
 
 export function OutlinePreview({
@@ -31,6 +77,7 @@ export function OutlinePreview({
   onOutlineChange,
   onRegenerate,
   isRegenerating = false,
+  allowedInteractionTypes = [],
 }: Props) {
   const [outline, setOutline] = useState<CourseOutlineDraft>(initialOutline);
 
@@ -95,6 +142,33 @@ export function OutlinePreview({
     setDraggedItem(null);
   };
 
+  const pickableTypes = React.useMemo(() => {
+    const allowed = new Set(
+      (allowedInteractionTypes || [])
+        .map(t => (t === 'accordion' ? 'click-reveal' : t))
+        .filter(t => (PICKABLE_CONTENT_TYPES as readonly string[]).includes(t))
+    );
+    const ordered: string[] = ['content'];
+    for (const id of PICKABLE_CONTENT_TYPES) {
+      if (id === 'content') continue;
+      if (allowed.has(id)) ordered.push(id);
+    }
+    return ordered;
+  }, [allowedInteractionTypes]);
+
+  const canEditSlideType = (type: string) => !LOCKED_SLIDE_TYPES.has(type);
+
+  const changeSlideType = (mIndex: number, sIndex: number, nextType: string) => {
+    const modules = outline.modules.map((m, mi) => {
+      if (mi !== mIndex) return m;
+      return {
+        ...m,
+        slides: m.slides.map((s, si) => si === sIndex ? { ...s, type: nextType } : s),
+      };
+    });
+    updateOutline({ ...outline, modules });
+  };
+
   return (
     <div className={cn(
       'w-full animate-in fade-in slide-in-from-bottom-8 duration-700',
@@ -150,7 +224,7 @@ export function OutlinePreview({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h3 className="text-lg font-bold text-white">Course Structure</h3>
-            <p className="text-sm text-slate-400">Drag slides to reorder. Update structure after changing the course foundation.</p>
+            <p className="text-sm text-slate-400">Drag slides to reorder. Change a slide’s interaction before you generate.</p>
           </div>
           {onRegenerate && (
             <button
@@ -251,12 +325,38 @@ export function OutlinePreview({
                     </div>
 
                     <div className="px-4 py-4 shrink-0 flex items-center gap-2">
-                      <span className={cn(
-                        "text-[10px] uppercase tracking-wider font-bold px-2 py-1 rounded bg-slate-900 border",
-                        isGame ? "text-emerald-400 border-emerald-500/30" : "text-indigo-400 border-indigo-500/20"
-                      )}>
-                        {isGame ? (slide.gameType || 'Game Review') : slide.type}
-                      </span>
+                      {canEditSlideType(slide.type) ? (
+                        <label
+                          className="relative inline-flex items-center"
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <select
+                            draggable={false}
+                            value={slide.type === 'accordion' ? 'click-reveal' : slide.type}
+                            onChange={(e) => changeSlideType(mIndex, sIndex, e.target.value)}
+                            disabled={isHydrating || isRegenerating}
+                            aria-label={`Interaction type for ${slide.title}`}
+                            className="appearance-none text-[10px] uppercase tracking-wider font-bold pl-2 pr-6 py-1 rounded bg-slate-900 border border-indigo-500/40 text-indigo-300 cursor-pointer hover:border-indigo-400 focus:outline-none focus:border-indigo-400 disabled:opacity-50"
+                          >
+                            {!pickableTypes.includes(slide.type === 'accordion' ? 'click-reveal' : slide.type) && (
+                              <option value={slide.type}>{SLIDE_TYPE_LABELS[slide.type] || slide.type}</option>
+                            )}
+                            {pickableTypes.map(type => (
+                              <option key={type} value={type}>{SLIDE_TYPE_LABELS[type] || type}</option>
+                            ))}
+                          </select>
+                          <ChevronDown className="pointer-events-none absolute right-1.5 w-3 h-3 text-indigo-400" />
+                        </label>
+                      ) : (
+                        <span className={cn(
+                          "text-[10px] uppercase tracking-wider font-bold px-2 py-1 rounded bg-slate-900 border",
+                          isGame ? "text-emerald-400 border-emerald-500/30" : "text-indigo-400 border-indigo-500/20"
+                        )}>
+                          {isGame ? (slide.gameType || 'Game Review') : (SLIDE_TYPE_LABELS[slide.type] || slide.type)}
+                        </span>
+                      )}
                     </div>
 
                     {isOver && (

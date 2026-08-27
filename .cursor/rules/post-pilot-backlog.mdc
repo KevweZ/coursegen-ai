@@ -14,6 +14,7 @@ Agreed with product to **hold** these until after the current closed-beta wave. 
 - Strongly link edits: objective format re-apply to manual objectives; sync structure when objectives change; confirm prompts when edits affect other tabs.
 
 ## 2.2 — Course Structure interaction dropdowns
+- **Status (main):** done — content slides on Course structure use a clickable type dropdown (Course Settings whitelist + Content) before generate.
 - Make each slide’s interaction type on the Design/structure list a **clickable dropdown** (not a static label) so authors can pick another interaction before generate.
 
 ## 1 — Multimedia upload (video + durable GIF story)
