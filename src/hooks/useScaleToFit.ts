@@ -1,9 +1,12 @@
 import { useRef, useState, useEffect, useCallback, type CSSProperties } from 'react';
 
 /**
- * useScaleToFit — Articulate-style viewport scaling (phone landscape only)
+ * useScaleToFit — Articulate-style viewport scaling
  *
- * App.tsx activates this on real phones, not desktop/laptop Course Development.
+ * Phones: always scale the 1280×720 (or 4:3) frame down to fit the stage.
+ * Desktop: App.tsx still measures here, but only *applies* the transform when
+ * scale > 1 (HDMI / large CSS viewports). Typical laptops stay flex-fill.
+ *
  * Measures the available canvas area and computes a CSS transform scale factor
  * so the slide frame always fills the container while maintaining its aspect ratio.
  *
@@ -88,6 +91,20 @@ export function useScaleToFit(resolution: Resolution | string, active: boolean =
     window.addEventListener('orientationchange', scheduleRecalculate);
     window.visualViewport?.addEventListener('resize', scheduleRecalculate);
 
+    // DPI hop when dragging the window between laptop and HDMI (Extend):
+    // resolution media-query change re-attaches to the new devicePixelRatio.
+    let dprMql: MediaQueryList | null = null;
+    const onDprChange = () => {
+      attachDprListener();
+      scheduleRecalculate();
+    };
+    const attachDprListener = () => {
+      dprMql?.removeEventListener('change', onDprChange);
+      dprMql = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+      dprMql.addEventListener('change', onDprChange);
+    };
+    attachDprListener();
+
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
@@ -97,6 +114,7 @@ export function useScaleToFit(resolution: Resolution | string, active: boolean =
       window.removeEventListener('resize', scheduleRecalculate);
       window.removeEventListener('orientationchange', scheduleRecalculate);
       window.visualViewport?.removeEventListener('resize', scheduleRecalculate);
+      dprMql?.removeEventListener('change', onDprChange);
     };
   }, [scheduleRecalculate]);
 

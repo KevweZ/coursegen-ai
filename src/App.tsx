@@ -1756,21 +1756,26 @@ export default function App() {
   const [extractedFileText, setExtractedFileText] = useState<string>('');
   const [voiceOverEnabled, setVoiceOverEnabled] = useState(DEFAULT_COURSE_SETTINGS.voiceOverEnabled);
 
-  // Articulate-style scale-to-fit is for real phones only. Desktop / laptop web
-  // fills the stage (the pre-emulator layout). Applying scale-to-fit on desktop
-  // letterboxed the slide (dark gutters) and cropped the in-window PlayerBar.
-  // 'full' resolution is excluded even on phones (flex-fill, no fixed box).
-  // The desktop “Mobile” bezel toggle uses its own chrome, not this scaler.
-  const useScaleTransform =
+  // Measure 16:9 / 4:3 into the stage on phones and desktop preview.
+  // 'full' skips scaling. Desktop Mobile-bezel toggle uses its own chrome.
+  // Phones always apply the transform. Desktop applies it only when the stage
+  // is larger than the design (HDMI / large CSS viewports); laptops flex-fill.
+  const measureScaleToFit =
     step === 'preview' &&
     playerConfig?.playerResolution !== 'full' &&
-    isPhoneViewport;
-  /** PlayerBar must sit outside CSS-scaled frames (and always on phones) or sticky lands mid-slide. */
-  const dockPlayerBarOutside = useScaleTransform || isPhoneViewport;
+    (viewMode === 'desktop' || isPhoneViewport);
   const scaler = useScaleToFit(
     playerConfig?.playerResolution ?? '16:9',
-    useScaleTransform
+    measureScaleToFit
   );
+  const DESKTOP_SCALE_UP_EPSILON = 1.02;
+  const useScaleTransform =
+    measureScaleToFit &&
+    (isPhoneViewport || scaler.scale > DESKTOP_SCALE_UP_EPSILON);
+  /** Phones dock PlayerBar outside the CSS-scaled frame. Desktop keeps it inside. */
+  const dockPlayerBarOutside = isPhoneViewport;
+  const themeStageBg =
+    theme === 'light' ? 'bg-white' : theme === 'unified' ? 'bg-indigo-950' : 'bg-slate-900';
   const [ttsVoice, setTtsVoice] = useState<string>(DEFAULT_COURSE_SETTINGS.ttsVoice);
   // Creator/free: Alloy only — clamp if plan can't use other voices
   React.useEffect(() => {
@@ -5304,7 +5309,8 @@ export default function App() {
               className="fixed top-0 left-0 right-0 bottom-0 z-50"
             >
               {/* Phone portrait: rotate prompt. Landscape phones: scale-to-fit.
-                  Desktop web: flex-fill (no letterbox). Tour opens after landscape on phones. */}
+                  Desktop web: flex-fill, or scale-up when the stage is larger than the
+                  design (HDMI). Tour opens after landscape on phones. */}
               <div
                 className="bg-slate-900 overflow-hidden flex flex-col"
                 style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
@@ -5699,7 +5705,7 @@ export default function App() {
                   onTouchEnd={handlePlayerTouchEnd}
                 >
                   {/* Background canvas — scaler measures the center stage (gutters excluded).
-                      Letterbox uses slate; phone TOC rails live in L/R gutters. */}
+                      Phone letterbox uses slate; desktop scale-up uses the theme stage color. */}
                   <div
                     className={cn(
                       "relative flex flex-1 overflow-hidden min-h-0",
@@ -5707,7 +5713,9 @@ export default function App() {
                         ? 'flex-row bg-slate-800'
                         : cn(
                             'flex-col',
-                            useScaleTransform ? 'items-center justify-center bg-slate-800' : 'bg-white',
+                            useScaleTransform
+                              ? cn('items-center justify-center', isPhoneViewport ? 'bg-slate-800' : themeStageBg)
+                              : 'bg-white',
                             !useScaleTransform && !isPhoneViewport && viewMode === 'mobile' ? 'items-center justify-center bg-slate-950 gap-2' : undefined,
                             isPhoneViewport && playerConfig.playerResolution === 'full' ? 'bg-slate-900' : undefined
                           )
@@ -5763,12 +5771,14 @@ export default function App() {
                     </div>
                   )}
                   <div
-                    ref={useScaleTransform ? scaler.containerRef : undefined}
+                    ref={measureScaleToFit ? scaler.containerRef : undefined}
                     className={cn(
                       "relative flex flex-col flex-1 overflow-hidden min-h-0 min-w-0",
                       useScaleTransform || phoneTocPlacement ? 'items-center justify-center' : undefined,
                       !useScaleTransform && !isPhoneViewport && viewMode === 'mobile' && !phoneTocPlacement ? 'items-center justify-center bg-slate-950 gap-2' : undefined,
-                      !phoneTocPlacement && useScaleTransform ? 'bg-slate-800' : undefined,
+                      !phoneTocPlacement && useScaleTransform
+                        ? (isPhoneViewport ? 'bg-slate-800' : themeStageBg)
+                        : undefined,
                       !phoneTocPlacement && !useScaleTransform ? 'bg-white' : undefined,
                       isPhoneViewport && playerConfig.playerResolution === 'full' && !phoneTocPlacement ? 'bg-slate-900' : undefined
                     )}
@@ -5780,10 +5790,10 @@ export default function App() {
                   )}
 
                   {/* Slide frame — aspect ratio driven by playerConfig.playerResolution.
-                      Phones (16:9 / 4:3): outer = visual size (design×scale); inner keeps
-                      design size with transform:scale from top-left. Desktop web flex-fills
-                      the stage. 'full' skips scaling. Desktop “Mobile” toggle uses a
-                      landscape phone bezel; real phones scale-to-fit (PlayerBar docks outside). */}
+                      Phones: always scale-to-fit (PlayerBar docks outside). Desktop: flex-fill
+                      unless the stage is larger than the design (HDMI scale-up); PlayerBar
+                      stays inside the frame. 'full' skips scaling. Desktop “Mobile” toggle
+                      uses a landscape phone bezel. */}
                   <div
                     style={useScaleTransform ? scaler.outerStyle : undefined}
                     className={cn(
@@ -5811,15 +5821,7 @@ export default function App() {
                           )
                         : 'contents'
                     )}
-                    style={useScaleTransform
-                      ? {
-                          ...scaler.frameStyle,
-                          borderRadius: isPhoneViewport ? 0 : '1rem',
-                          boxShadow: isPhoneViewport ? 'none' : '0 25px 50px -12px rgba(0,0,0,0.4)',
-                          border: isPhoneViewport ? 'none' : '1px solid rgba(255,255,255,0.12)',
-                        }
-                      : undefined
-                    }
+                    style={useScaleTransform ? scaler.frameStyle : undefined}
                   >
                     {/* ── Content zone + accent strip ── */}
                     <div className="flex-1 flex flex-row overflow-hidden min-h-0">
@@ -6907,8 +6909,8 @@ export default function App() {
                      </div>{/* end accent+content row */}
 
                     {/* Desktop “mobile bezel” demo keeps controls inside the phone chrome.
-                        Scale-to-fit / real phones dock the bar outside the transformed frame
-                        so sticky/transform can’t pin it mid-slide. */}
+                        Real phones dock the bar outside the transformed frame so sticky
+                        cannot pin it mid-slide. Desktop HDMI scale-up keeps the bar inside. */}
                     {!dockPlayerBarOutside && (
                     <div className={cn(
                       "w-full z-[100] shrink-0 border-t backdrop-blur-md",

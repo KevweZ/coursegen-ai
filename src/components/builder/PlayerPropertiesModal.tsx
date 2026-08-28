@@ -60,8 +60,9 @@ export const defaultPlayerConfig: PlayerConfig = {
   showPrevNext: true,
   allowFullscreen: true,
   logoUrl: null,
-  // Desktop web flex-fills the stage (16:9 / 4:3 / full). Scale-to-fit
-  // (useScaleToFit) is phone-only so laptop Course Development is not letterboxed.
+  // Desktop: flex-fill on typical laptops; scale-up when the CSS viewport is
+  // larger than the 16:9 / 4:3 design (HDMI). Phones always scale-to-fit.
+  // 'full' skips scaling.
   playerResolution: '16:9',
   navigationMode: 'free',
   examPresentationMode: 'one-at-a-time',
