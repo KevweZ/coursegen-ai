@@ -150,10 +150,11 @@ export function formatTabIntroOst(opts: {
     body = stripCta(raw);
     const words = body.split(/\s+/).filter(Boolean).length;
     const sentences = body.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 8).length;
-    // Thin OST + richer narration → lift key points into bullets
-    if (words < 45 && sentences <= 2 && vo.length > body.length + 30) {
+    const keepAuthored = /<[a-z][\s\S]*>/i.test(body) || alreadyBulleted(body);
+    // Thin OST + richer narration → lift key points into bullets (don't rewrite authored lists/HTML)
+    if (!keepAuthored && words < 45 && sentences <= 2 && vo.length > body.length + 30) {
       body = toBullets(vo);
-    } else {
+    } else if (!keepAuthored) {
       body = toBullets(body);
     }
   } else if (vo) {

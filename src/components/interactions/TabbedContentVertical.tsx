@@ -1,11 +1,14 @@
 ﻿import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { markdownToHtml } from '../../lib/markdownInline';
 import { formatTabIntroOst, formatTabOstBody } from '../../lib/formatTabIntroOst';
+import { tabAccentHex } from '../../lib/tabAccents';
 import { ChevronRight } from 'lucide-react';
 
 export interface VerticalTab {
   id: string;
   label: string;
+  /** Selected tab box + matching panel header color */
+  color?: string;
   icon?: string;
   content: string;
   /** Optional AI/source image shown below tab text (does not cover copy) */
@@ -151,7 +154,7 @@ export default function TabbedContentVertical({
           </button>
           {normalized.map((tab, i) => {
             const isActive = i === activeIndex;
-            const color = ACCENT_COLORS[i % ACCENT_COLORS.length];
+            const hex = tabAccentHex(tab, i);
             const isDropTarget = highlightTabId === tab.id;
             return (
               <button
@@ -162,12 +165,13 @@ export default function TabbedContentVertical({
                 className={cn(
                   'flex items-center gap-2 w-full text-left px-3 py-2.5 rounded-xl font-bold text-sm transition-all border',
                   isActive
-                    ? `${color.bg} text-white border-transparent shadow-lg ring-2 ${color.ring}`
+                    ? 'text-white border-transparent shadow-lg'
                     : isLight
                     ? 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-800'
                     : 'bg-slate-800/60 text-slate-400 border-slate-700 hover:bg-slate-700/60 hover:text-slate-200',
                   isDropTarget && 'ring-2 ring-indigo-400 ring-offset-1'
                 )}
+                style={isActive ? { background: hex, boxShadow: `0 0 0 2px ${hex}55` } : undefined}
               >
                 {tab.icon && <span className="text-base shrink-0">{tab.icon}</span>}
                 <span className="flex-1 leading-snug" style={{ color: isActive ? '#ffffff' : undefined }} dangerouslySetInnerHTML={{ __html: markdownToHtml(tab.label) }} />
@@ -216,8 +220,12 @@ export default function TabbedContentVertical({
               ) : (
                 <>
                   <div className="flex items-center gap-2 mb-4 w-full">
-                    <div className={`w-1 h-8 rounded-full ${accent.bg}`} />
-                    <h3 className={cn('font-extrabold text-lg', isLight ? accent.textLight : accent.text)} dangerouslySetInnerHTML={{ __html: markdownToHtml(activeTab!.label) }} />
+                    <div className="w-1 h-8 rounded-full" style={{ background: tabAccentHex(activeTab, Math.max(0, activeIndex)) }} />
+                    <h3
+                      className="font-extrabold text-lg"
+                      style={{ color: tabAccentHex(activeTab, Math.max(0, activeIndex)) }}
+                      dangerouslySetInnerHTML={{ __html: markdownToHtml(activeTab!.label) }}
+                    />
                   </div>
                   <div className={cn('text-sm leading-relaxed tab-ost-body w-full', isLight ? 'text-slate-700' : 'text-slate-200')} dangerouslySetInnerHTML={{ __html: markdownToHtml(formatTabOstBody(activeTab!.content)) }} />
                   {activeTab!.imageUrl && (

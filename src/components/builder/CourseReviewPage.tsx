@@ -531,9 +531,13 @@ export function CourseReviewPage(props: CourseReviewPageProps) {
             {isGeneratingOutline && (
               <div className="flex flex-col items-center justify-center py-16 gap-4 bg-slate-900/80 rounded-2xl border border-indigo-500/30">
                 <Loader2 className="w-10 h-10 text-indigo-400 animate-spin" />
-                <p className="text-slate-300 font-bold">Updating course structure…</p>
+                <p className="text-slate-300 font-bold">
+                  {props.outlineDraft ? 'Updating course structure…' : 'Creating course structure…'}
+                </p>
                 <p className="text-sm text-slate-500 text-center max-w-md">
-                  Building a new outline from the current title and objectives. This replaces the module list below.
+                  {props.outlineDraft
+                    ? 'Building a new outline from the current title and objectives. This replaces the module list below.'
+                    : 'Building an outline from the current title and objectives.'}
                 </p>
                 <div className="w-full max-w-md">
                   <div className="h-2 bg-slate-800 rounded-full overflow-hidden">

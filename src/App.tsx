@@ -69,6 +69,7 @@ import {
   GamePreview, ScenarioPreview
 } from './components/interactions/ExtraPreviews';
 import { stripSlideTypePrefix } from './lib/stripSlideTypePrefix';
+import { TAB_ACCENT_HEX, tabAccentHex } from './lib/tabAccents';
 import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft, generateMasteryExam } from './services/aiService';
 import { createScormPackage, ScormVersion } from './services/scormService';
 import { FlashcardGrid } from './components/FlashcardGrid';
@@ -85,6 +86,7 @@ import { runFullQC, runStructuralQC, autoFixCourse, applyConfirmedFixes, simplif
 import { OutlinePreview } from './components/builder/OutlinePreview';
 import { CourseSettingsPage } from './components/builder/CourseSettingsPage';
 import { CourseReviewPage } from './components/builder/CourseReviewPage';
+import { ConfirmDialog } from './components/builder/ConfirmDialog';
 import { UploadPathModal, UploadPathChoice } from './components/builder/UploadPathModal';
 import { PlayerPropertiesModal, PlayerConfig, defaultPlayerConfig } from './components/builder/PlayerPropertiesModal';
 import {
@@ -1359,6 +1361,31 @@ export default function App() {
   const [adminDropdownOpen, setAdminDropdownOpen] = useState(false); // kept for compat
   // Sandbox mode flag (dummy course active)
   const [isSandboxMode, setIsSandboxMode] = useState(false);
+  const [leavePreviewOpen, setLeavePreviewOpen] = useState(false);
+  const leavePreviewConfirmRef = useRef<(() => void) | null>(null);
+  const previewGuardRef = useRef({
+    step: 'home' as string,
+    hasCourse: false,
+    isSandboxMode: false,
+    isScormPlayer: false,
+    activeDraftId: null as string | null,
+  });
+  previewGuardRef.current = {
+    step,
+    hasCourse: !!course,
+    isSandboxMode,
+    isScormPlayer,
+    activeDraftId,
+  };
+  const requestLeavePreview = (onConfirm: () => void) => {
+    const g = previewGuardRef.current;
+    if (g.isScormPlayer || g.isSandboxMode || !g.hasCourse || g.step !== 'preview') {
+      onConfirm();
+      return;
+    }
+    leavePreviewConfirmRef.current = onConfirm;
+    setLeavePreviewOpen(true);
+  };
 
   // ── Sandbox demo launcher (shared by menu + deep links) ───────────────────
   launchSandboxDemoRef.current = (demo: SandboxDemo, pushUrl = true) => {
@@ -1682,6 +1709,18 @@ export default function App() {
         else if (parsed.kind === 'auth') { setPublicView('auth'); setAuthInitialMode(parsed.mode); }
         else setPublicView('homepage');
         return;
+      }
+      const g = previewGuardRef.current;
+      if (g.step === 'preview' && g.hasCourse && !g.isScormPlayer && !g.isSandboxMode) {
+        const parsed = parseAppPath(path);
+        const stillPreview = parsed.kind === 'preview' || parsed.kind === 'courseDevelopment';
+        if (!stillPreview) {
+          const restore = g.activeDraftId ? ROUTES.preview(g.activeDraftId) : ROUTES.courseDevelopment;
+          navigateTo(restore, true);
+          leavePreviewConfirmRef.current = () => applyAuthenticatedPath(path);
+          setLeavePreviewOpen(true);
+          return;
+        }
       }
       applyAuthenticatedPath(path);
     };
@@ -5326,9 +5365,9 @@ export default function App() {
                       Course preview works best in a wide handheld view. Turn your phone sideways to continue — other app pages still work in portrait.
                     </p>
                   </div>
-                  <button
+                    <button
                     type="button"
-                    onClick={goHome}
+                    onClick={() => requestLeavePreview(goHome)}
                     className="mt-2 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-bold border border-slate-600/60"
                   >
                     Back
@@ -5340,7 +5379,7 @@ export default function App() {
                 <div className={cn('h-11 flex items-center justify-between gap-2', isPhoneViewport && 'h-9 gap-1')}>
                   {/* Left: back + title */}
                   <div className="flex items-center gap-2 min-w-0">
-                    <button onClick={goHome} className="p-1.5 -ml-0.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0">
+                    <button onClick={() => requestLeavePreview(goHome)} className="p-1.5 -ml-0.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0">
                       <ChevronLeft className="w-4 h-4" />
                     </button>
                     <div className="flex items-center gap-2 min-w-0">
@@ -7227,8 +7266,17 @@ export default function App() {
                       ) : (
                       <div className="space-y-2">
                         <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest flex items-center justify-between">
-                          <span>On-Screen Text <span className="normal-case font-normal text-slate-600">(Rich Text)</span></span>
+                          <span>
+                            {(editingSlide.type === 'tabbed-horizontal' || editingSlide.type === 'tabbed-vertical')
+                              ? <>Introduction <span className="normal-case font-normal text-slate-600">(Intro tab)</span></>
+                              : <>On-Screen Text <span className="normal-case font-normal text-slate-600">(Rich Text)</span></>}
+                          </span>
                         </label>
+                        {(editingSlide.type === 'tabbed-horizontal' || editingSlide.type === 'tabbed-vertical') && (
+                          <p className="text-[11px] text-slate-500 leading-relaxed">
+                            This is the Intro panel only. Each tab’s heading and body are edited in the list below — that is the text you see after clicking a tab on the slide.
+                          </p>
+                        )}
                         <RichTextEditor
                           key={editingSlide.id}
                           value={editingSlide.content || ''}
@@ -7244,6 +7292,131 @@ export default function App() {
                         />
                       </div>
                       )}
+                      {(editingSlide.type === 'tabbed-horizontal' || editingSlide.type === 'tabbed-vertical') && (() => {
+                        const listKey = Array.isArray(editingSlide.data?.tabs) ? 'tabs' : 'items';
+                        const tabs: any[] = editingSlide.data?.[listKey] || [];
+                        const unify = !!editingSlide.data?.unifyTabColors;
+                        const unifiedHex = tabs[0]?.color || TAB_ACCENT_HEX[0];
+                        const patchTabs = (nextTabs: any[], extraData?: Record<string, unknown>) => {
+                          const updated = {
+                            ...(editingSlideRef.current ?? editingSlide),
+                            data: { ...(editingSlide.data || {}), [listKey]: nextTabs, ...extraData },
+                          };
+                          editingSlideRef.current = updated;
+                          setEditingSlide(updated);
+                        };
+                        return (
+                          <div className="space-y-3 pt-1">
+                            <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">Tab headings &amp; bodies</label>
+                            <label className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-700 bg-slate-950 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={unify}
+                                onChange={(e) => {
+                                  const on = e.target.checked;
+                                  const hex = unifiedHex;
+                                  patchTabs(
+                                    tabs.map((t: any) => (on ? { ...t, color: hex } : t)),
+                                    { unifyTabColors: on }
+                                  );
+                                }}
+                                className="mt-0.5 w-4 h-4 rounded border-slate-600 text-indigo-500"
+                              />
+                              <span className="text-[11px] text-slate-300 leading-relaxed">
+                                Use one color for every selected tab box and matching heading (instead of a different color per tab).
+                              </span>
+                            </label>
+                            {unify && (
+                              <div className="flex items-center gap-2 flex-wrap px-1">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">All tabs</span>
+                                {TAB_ACCENT_HEX.map(hex => (
+                                  <button
+                                    key={hex}
+                                    type="button"
+                                    title={hex}
+                                    onClick={() => patchTabs(tabs.map((t: any) => ({ ...t, color: hex })), { unifyTabColors: true })}
+                                    className={cn(
+                                      'w-6 h-6 rounded-full border-2 transition-transform',
+                                      unifiedHex.toLowerCase() === hex ? 'border-white scale-110' : 'border-transparent'
+                                    )}
+                                    style={{ background: hex }}
+                                  />
+                                ))}
+                                <input
+                                  type="color"
+                                  value={unifiedHex}
+                                  onChange={(e) => patchTabs(tabs.map((t: any) => ({ ...t, color: e.target.value })), { unifyTabColors: true })}
+                                  className="w-7 h-7 rounded cursor-pointer bg-transparent border-0 p-0"
+                                  title="Custom color"
+                                />
+                              </div>
+                            )}
+                            {tabs.length === 0 ? (
+                              <p className="text-xs text-slate-500">No tabs yet — use Regenerate to rebuild this interaction.</p>
+                            ) : tabs.map((tab: any, ti: number) => {
+                              const hex = tabAccentHex(tab, ti);
+                              return (
+                                <div key={tab.id || ti} className="rounded-xl border border-slate-700 bg-slate-950 p-3 space-y-2">
+                                  <input
+                                    value={tab.label || ''}
+                                    onChange={(e) => {
+                                      const next = [...tabs];
+                                      next[ti] = { ...next[ti], label: e.target.value };
+                                      patchTabs(next);
+                                    }}
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm font-bold text-white outline-none focus:border-indigo-500"
+                                    placeholder={`Tab ${ti + 1} heading`}
+                                  />
+                                  {!unify && (
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="text-[10px] text-slate-500 font-bold uppercase">Color</span>
+                                      {TAB_ACCENT_HEX.map(preset => (
+                                        <button
+                                          key={preset}
+                                          type="button"
+                                          title={preset}
+                                          onClick={() => {
+                                            const next = [...tabs];
+                                            next[ti] = { ...next[ti], color: preset };
+                                            patchTabs(next);
+                                          }}
+                                          className={cn(
+                                            'w-5 h-5 rounded-full border-2',
+                                            hex.toLowerCase() === preset ? 'border-white' : 'border-transparent'
+                                          )}
+                                          style={{ background: preset }}
+                                        />
+                                      ))}
+                                      <input
+                                        type="color"
+                                        value={hex}
+                                        onChange={(e) => {
+                                          const next = [...tabs];
+                                          next[ti] = { ...next[ti], color: e.target.value };
+                                          patchTabs(next);
+                                        }}
+                                        className="w-6 h-6 rounded cursor-pointer bg-transparent border-0 p-0"
+                                        title="Custom color"
+                                      />
+                                    </div>
+                                  )}
+                                  <textarea
+                                    rows={4}
+                                    value={tab.content || ''}
+                                    onChange={(e) => {
+                                      const next = [...tabs];
+                                      next[ti] = { ...next[ti], content: e.target.value };
+                                      patchTabs(next);
+                                    }}
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 resize-none"
+                                    placeholder="On-screen text for this tab…"
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
                       {(editingSlide.type === 'click-reveal' || editingSlide.type === 'accordion') && (() => {
                         const items: any[] = editingSlide.data?.items || [];
                         return (
@@ -7548,14 +7721,17 @@ export default function App() {
                             disabled={isRegenSlideRunning || isGeneratingImages}
                             onClick={async () => {
                               if (!editingSlide || !course) return;
+                              const slideSnapshot = editingSlide;
+                              editingSlideRef.current = null;
+                              setEditingSlide(null);
                               setIsRegenSlideRunning(true);
                               try {
-                                const nextTitle = (editingSlide.title || course.title || '').trim();
+                                const nextTitle = (slideSnapshot.title || course.title || '').trim();
                                 pushUndo();
                                 setCourse((prev: any) => prev ? {
                                   ...prev,
                                   title: nextTitle || prev.title,
-                                  description: (editingSlide.content || prev.description || '').trim() || prev.description,
+                                  description: (slideSnapshot.content || prev.description || '').trim() || prev.description,
                                 } : prev);
                                 showDraftMessage('Updating title slide…');
                                 const { generateCourseCoverImage } = await import('./services/imageService');
@@ -7563,7 +7739,7 @@ export default function App() {
                                 try {
                                   const cover = await generateCourseCoverImage(
                                     nextTitle || course.title || 'Course',
-                                    editingSlide.content || course.description || ''
+                                    slideSnapshot.content || course.description || ''
                                   );
                                   if (cover) {
                                     setCourse((prev: any) => prev ? { ...prev, coverImage: cover } : prev);
@@ -7573,8 +7749,6 @@ export default function App() {
                                 } finally {
                                   setIsGeneratingImages(false);
                                 }
-                                editingSlideRef.current = null;
-                                setEditingSlide(null);
                               } catch (err: any) {
                                 console.error('[Edit Slide] Cover regenerate failed:', err);
                                 showDraftMessage(err?.message || 'Could not regenerate title slide.');
@@ -7689,19 +7863,24 @@ export default function App() {
                           disabled={isRegenSlideRunning}
                           onClick={async () => {
                             if (!editingSlide || !course) return;
+                            if (isSynthetic) {
+                              showDraftMessage('This system slide can’t be regenerated as an interaction. Edit its text under Edit Text, or use Media tools for audio.');
+                              return;
+                            }
+                            const slideSnapshot = editingSlide;
+                            const courseTitle = course.title ?? '';
+                            const typeToBuild = effectiveType;
+                            editingSlideRef.current = null;
+                            setEditingSlide(null);
                             setIsRegenSlideRunning(true);
                             try {
-                              if (isSynthetic) {
-                                showDraftMessage('This system slide can’t be regenerated as an interaction. Edit its text under Edit Text, or use Media tools for audio.');
-                                return;
-                              }
                               const result = await regenerateSlideData(
-                                editingSlide,
-                                course.title ?? '',
-                                effectiveType
+                                slideSnapshot,
+                                courseTitle,
+                                typeToBuild
                               );
                               const slideExists = (course.modules || []).some((m: any) =>
-                                (m.slides || []).some((s: any) => s.id === editingSlide.id)
+                                (m.slides || []).some((s: any) => s.id === slideSnapshot.id)
                               );
                               if (!slideExists) {
                                 throw new Error('Could not find this slide in the course to update. Try closing Edit and opening the slide again.');
@@ -7714,7 +7893,7 @@ export default function App() {
                                   modules: prev.modules.map((m: any) => ({
                                     ...m,
                                     slides: m.slides.map((s: any) => {
-                                      if (s.id !== editingSlide.id) return s;
+                                      if (s.id !== slideSnapshot.id) return s;
                                       return {
                                         ...s,
                                         type: result.type,
@@ -7727,20 +7906,10 @@ export default function App() {
                                   })),
                                 };
                               });
-                              const updated = {
-                                ...editingSlide,
-                                type: result.type as any,
-                                data: result.data !== undefined ? result.data : editingSlide.data,
-                                content: result.content != null ? result.content : editingSlide.content,
-                                voiceOverText: result.voiceOverText || editingSlide.voiceOverText,
-                              };
-                              editingSlideRef.current = updated;
-                              setEditingSlide(updated);
-                              setRegenTargetType(normalizeRegenSlideType(updated));
                               setQcReport(prev => prev ? {
                                 ...prev,
                                 issues: prev.issues.filter(i =>
-                                  !(i.slideId === editingSlide.id && (i.type === 'interaction_empty' || i.fixActions?.includes('regenerate')))
+                                  !(i.slideId === slideSnapshot.id && (i.type === 'interaction_empty' || i.fixActions?.includes('regenerate')))
                                 ),
                               } : null);
                               showDraftMessage('Slide regenerated ✓');
@@ -8184,6 +8353,24 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ConfirmDialog
+        open={leavePreviewOpen}
+        title="Leave course development?"
+        body="Drafts are not autosaved. Leave only if you already saved, or you may lose edits on this course."
+        primaryLabel="Leave"
+        cancelLabel="Stay"
+        onPrimary={() => {
+          setLeavePreviewOpen(false);
+          const fn = leavePreviewConfirmRef.current;
+          leavePreviewConfirmRef.current = null;
+          fn?.();
+        }}
+        onCancel={() => {
+          setLeavePreviewOpen(false);
+          leavePreviewConfirmRef.current = null;
+        }}
+      />
 
       </main>
     </div>

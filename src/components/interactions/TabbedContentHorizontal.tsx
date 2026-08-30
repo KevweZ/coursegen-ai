@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { markdownToHtml } from '../../lib/markdownInline';
 import { formatTabIntroOst, formatTabOstBody } from '../../lib/formatTabIntroOst';
+import { TAB_ACCENT_HEX, tabAccentHex } from '../../lib/tabAccents';
 
 export interface HorizontalTab {
   id: string;
@@ -35,10 +36,7 @@ interface Props {
   highlightTabId?: string | null;
 }
 
-const ACCENT_COLORS = [
-  '#6366f1', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#f43f5e',
-];
-const INTRO_COLOR = '#6366f1';
+const INTRO_COLOR = TAB_ACCENT_HEX[0];
 /** Fixed panel height keeps the tab bar docked; content scrolls inside. */
 const PANEL_H = 520;
 
@@ -118,7 +116,7 @@ export default function TabbedContentHorizontal({
 
   const activeColor = inIntro
     ? INTRO_COLOR
-    : (activeTab?.color || ACCENT_COLORS[Math.max(0, activeIndex) % ACCENT_COLORS.length]);
+    : tabAccentHex(activeTab || undefined, Math.max(0, activeIndex));
   const dropZoneId = activeTab?.id || '';
   const panelHighlighted = !!(highlightTabId && dropZoneId && highlightTabId === dropZoneId);
 
@@ -229,7 +227,7 @@ export default function TabbedContentHorizontal({
         </button>
         {normalized.map((tab, i) => {
           const isActive = i === activeIndex;
-          const color = tab.color || ACCENT_COLORS[i % ACCENT_COLORS.length];
+          const color = tabAccentHex(tab, i);
           const isDropTarget = highlightTabId === tab.id;
           return (
             <button
