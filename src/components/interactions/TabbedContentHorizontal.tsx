@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { markdownToHtml } from '../../lib/markdownInline';
 import { formatTabIntroOst, formatTabOstBody } from '../../lib/formatTabIntroOst';
-import { TAB_ACCENT_HEX, tabAccentHex } from '../../lib/tabAccents';
+import { TAB_INTRO_DEFAULT_HEX, tabAccentHex } from '../../lib/tabAccents';
 
 export interface HorizontalTab {
   id: string;
@@ -28,6 +28,8 @@ interface Props {
   onTabAudio?: (tabId: string) => void;
   /** Intro panel copy while no tab is selected (opening narration OST) */
   introContent?: string;
+  /** Color of the Intro tab + intro heading (defaults to indigo) */
+  introColor?: string;
   /** Slide-level narration — used to enrich thin intro OST into short bullets */
   introVoiceOver?: string;
   /** Notify parent of active tab (null = intro) for tab-scoped floating images */
@@ -36,7 +38,7 @@ interface Props {
   highlightTabId?: string | null;
 }
 
-const INTRO_COLOR = TAB_ACCENT_HEX[0];
+const INTRO_COLOR = TAB_INTRO_DEFAULT_HEX;
 /** Fixed panel height keeps the tab bar docked; content scrolls inside. */
 const PANEL_H = 520;
 
@@ -54,6 +56,7 @@ export default function TabbedContentHorizontal({
   onTabView,
   onTabAudio,
   introContent,
+  introColor,
   introVoiceOver,
   onActiveTabChange,
   highlightTabId = null,
@@ -114,8 +117,9 @@ export default function TabbedContentHorizontal({
     }
   };
 
+  const introHex = (introColor && String(introColor).trim()) || INTRO_COLOR;
   const activeColor = inIntro
-    ? INTRO_COLOR
+    ? introHex
     : tabAccentHex(activeTab || undefined, Math.max(0, activeIndex));
   const dropZoneId = activeTab?.id || '';
   const panelHighlighted = !!(highlightTabId && dropZoneId && highlightTabId === dropZoneId);
@@ -150,8 +154,8 @@ export default function TabbedContentHorizontal({
             {inIntro ? (
               <>
                 <div className="flex items-center gap-2 mb-4 w-full">
-                  <div className="w-1 h-8 rounded-full shrink-0" style={{ background: INTRO_COLOR }} />
-                  <h3 className="font-extrabold text-lg" style={{ color: INTRO_COLOR }}>
+                  <div className="w-1 h-8 rounded-full shrink-0" style={{ background: introHex }} />
+                  <h3 className="font-extrabold text-lg" style={{ color: introHex }}>
                     Introduction
                   </h3>
                 </div>
@@ -175,7 +179,11 @@ export default function TabbedContentHorizontal({
                 </div>
                 <div
                   className={`text-sm leading-relaxed tab-ost-body w-full ${isLight ? 'text-slate-700' : 'text-slate-200'}`}
-                  dangerouslySetInnerHTML={{ __html: markdownToHtml(formatTabOstBody(activeTab!.content)) }}
+                  dangerouslySetInnerHTML={{
+                    __html: markdownToHtml(
+                      formatTabOstBody(activeTab!.content) || formatTabOstBody(activeTab!.voiceOverText || '')
+                    ),
+                  }}
                 />
                 {activeTab!.expandedContent && (
                   <div
@@ -220,7 +228,7 @@ export default function TabbedContentHorizontal({
               ? 'text-slate-500 hover:text-slate-800 hover:bg-white'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
           }`}
-          style={inIntro ? { background: INTRO_COLOR } : {}}
+          style={inIntro ? { background: introHex } : {}}
           title="Return to opening introduction"
         >
           Intro

@@ -6,7 +6,11 @@ export const TAB_ACCENT_HEX = [
   '#10b981',
   '#3b82f6',
   '#f43f5e',
+  '#64748b',
+  '#0f172a',
 ] as const;
+
+export const TAB_INTRO_DEFAULT_HEX = TAB_ACCENT_HEX[0];
 
 export function tabAccentHex(tab: { color?: string } | undefined, index: number): string {
   const c = String(tab?.color || '').trim();

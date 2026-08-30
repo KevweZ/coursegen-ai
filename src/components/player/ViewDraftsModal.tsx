@@ -155,7 +155,13 @@ export const ViewDraftsModal: React.FC<Props> = ({
             {!isReady || refreshing ? (
               <div className="flex flex-col items-center justify-center py-16 gap-3 text-slate-400">
                 <Loader2 className="w-8 h-8 animate-spin text-indigo-400" />
-                <p className="text-sm font-medium">Loading drafts…</p>
+                <p className="text-sm font-bold text-white">Syncing drafts to your account…</p>
+                <p className="text-xs text-slate-500 max-w-sm text-center leading-relaxed">
+                  Fetching saved drafts from the cloud. This can take a few seconds if the server is waking up.
+                </p>
+                <div className="relative h-1.5 w-40 rounded-full bg-indigo-950 overflow-hidden mt-1">
+                  <div className="regen-progress-indeterminate bg-indigo-400" />
+                </div>
               </div>
             ) : filtered.length === 0 ? (
               <div className="text-center py-16 space-y-2">

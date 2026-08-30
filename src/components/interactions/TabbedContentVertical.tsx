@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { markdownToHtml } from '../../lib/markdownInline';
 import { formatTabIntroOst, formatTabOstBody } from '../../lib/formatTabIntroOst';
-import { tabAccentHex } from '../../lib/tabAccents';
+import { tabAccentHex, TAB_INTRO_DEFAULT_HEX } from '../../lib/tabAccents';
 import { ChevronRight } from 'lucide-react';
 
 export interface VerticalTab {
@@ -27,6 +27,8 @@ interface Props {
   /** Fired only on user click (not mount) — use for per-tab audio cutover. Pass "__intro__" for intro. */
   onTabAudio?: (tabId: string) => void;
   introContent?: string;
+  /** Color of the Introduction tab + intro heading */
+  introColor?: string;
   /** Slide-level narration — used to enrich thin intro OST into short bullets */
   introVoiceOver?: string;
   /** Notify parent of active tab (null = intro) for tab-scoped floating images */
@@ -35,16 +37,6 @@ interface Props {
   highlightTabId?: string | null;
 }
 
-const ACCENT_COLORS = [
-  { bg: 'bg-indigo-600', ring: 'ring-indigo-500/50', text: 'text-indigo-300', textLight: 'text-indigo-600', dot: '#6366f1' },
-  { bg: 'bg-pink-600', ring: 'ring-pink-500/50', text: 'text-pink-300', textLight: 'text-pink-600', dot: '#ec4899' },
-  { bg: 'bg-amber-600', ring: 'ring-amber-500/50', text: 'text-amber-300', textLight: 'text-amber-600', dot: '#f59e0b' },
-  { bg: 'bg-emerald-600', ring: 'ring-emerald-500/50', text: 'text-emerald-300', textLight: 'text-emerald-600', dot: '#10b981' },
-  { bg: 'bg-blue-600', ring: 'ring-blue-500/50', text: 'text-blue-300', textLight: 'text-blue-600', dot: '#3b82f6' },
-  { bg: 'bg-rose-600', ring: 'ring-rose-500/50', text: 'text-rose-300', textLight: 'text-rose-600', dot: '#f43f5e' },
-];
-
-const INTRO_ACCENT = ACCENT_COLORS[0];
 /** Match horizontal tabs: fill stage height; leave a little room so CC is not cramped. */
 const PANEL_H = 520;
 
@@ -59,6 +51,7 @@ export default function TabbedContentVertical({
   onTabView,
   onTabAudio,
   introContent,
+  introColor,
   introVoiceOver,
   onActiveTabChange,
   highlightTabId = null,
@@ -75,9 +68,9 @@ export default function TabbedContentVertical({
   }, [normalized.map(t => t.id).join('|')]);
 
   const isLight = theme === 'light';
+  const introHex = (introColor && String(introColor).trim()) || TAB_INTRO_DEFAULT_HEX;
   const inIntro = activeIndex < 0 || !normalized.length;
   const activeTab = inIntro ? null : normalized[Math.min(activeIndex, normalized.length - 1)];
-  const accent = inIntro ? INTRO_ACCENT : ACCENT_COLORS[Math.max(0, activeIndex) % ACCENT_COLORS.length];
   const dropZoneId = activeTab?.id || '';
   const panelHighlighted = !!(highlightTabId && dropZoneId && highlightTabId === dropZoneId);
   const panelKey = inIntro ? '__intro__' : (activeTab?.id ?? '__empty__');
@@ -140,11 +133,12 @@ export default function TabbedContentVertical({
             className={cn(
               'flex items-center gap-2 w-full text-left px-3 py-2.5 rounded-xl font-bold text-sm transition-all border',
               inIntro
-                ? `${INTRO_ACCENT.bg} text-white border-transparent shadow-lg ring-2 ${INTRO_ACCENT.ring}`
+                ? 'text-white border-transparent shadow-lg'
                 : isLight
                 ? 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-800'
                 : 'bg-slate-800/60 text-slate-400 border-slate-700 hover:bg-slate-700/60 hover:text-slate-200'
             )}
+            style={inIntro ? { background: introHex, boxShadow: `0 0 0 2px ${introHex}55` } : undefined}
             title="Return to opening introduction"
           >
             <span className="flex-1 leading-snug" style={{ color: inIntro ? '#ffffff' : undefined }}>
@@ -204,8 +198,8 @@ export default function TabbedContentVertical({
               {inIntro ? (
                 <>
                   <div className="flex items-center gap-2 mb-4 w-full">
-                    <div className={`w-1 h-8 rounded-full ${accent.bg}`} />
-                    <h3 className={cn('font-extrabold text-lg', isLight ? accent.textLight : accent.text)}>
+                    <div className="w-1 h-8 rounded-full" style={{ background: introHex }} />
+                    <h3 className="font-extrabold text-lg" style={{ color: introHex }}>
                       Introduction
                     </h3>
                   </div>
@@ -227,7 +221,7 @@ export default function TabbedContentVertical({
                       dangerouslySetInnerHTML={{ __html: markdownToHtml(activeTab!.label) }}
                     />
                   </div>
-                  <div className={cn('text-sm leading-relaxed tab-ost-body w-full', isLight ? 'text-slate-700' : 'text-slate-200')} dangerouslySetInnerHTML={{ __html: markdownToHtml(formatTabOstBody(activeTab!.content)) }} />
+                  <div className={cn('text-sm leading-relaxed tab-ost-body w-full', isLight ? 'text-slate-700' : 'text-slate-200')} dangerouslySetInnerHTML={{ __html: markdownToHtml(formatTabOstBody(activeTab!.content) || formatTabOstBody(activeTab!.voiceOverText || '')) }} />
                   {activeTab!.imageUrl && (
                     <div className="mt-6 pt-4 border-t border-slate-200/80 w-full">
                       <div className="rounded-xl overflow-hidden border border-slate-200/80 shadow-sm max-w-md mx-auto">

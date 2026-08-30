@@ -7,6 +7,8 @@
  * Lists use neutral markers; parent components may restyle via CSS.
  */
 
+import { coerceOstText } from './formatTabIntroOst';
+
 const isHTML = (str: string): boolean => /<[a-z][\s\S]*>/i.test(str);
 
 function escapeHtml(s: string): string {
@@ -31,11 +33,12 @@ function inlineFormat(text: string): string {
  * Avoid putting left padding on <ul> that fights parent CSS — markers are
  * drawn by the host component (e.g. VerticalTimeline accent squares).
  */
-export function markdownToHtml(text: string): string {
-  if (!text) return '';
-  if (isHTML(text)) return text;
+export function markdownToHtml(text: string | unknown): string {
+  const src = coerceOstText(text);
+  if (!src) return '';
+  if (isHTML(src)) return src;
 
-  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  const lines = src.replace(/\r\n/g, '\n').split('\n');
   const out: string[] = [];
   let listDepth = 0;
 

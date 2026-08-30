@@ -5,6 +5,7 @@
  */
 
 import { QCIssue, QCReport, IssueSeverity, IssueType, FixAction, validateCourse, applyFixes } from './structuralValidator';
+import { coerceOstText } from '../lib/formatTabIntroOst';
 
 const BATCH_SIZE = 5;
 /** Always use same-origin /api/* (Cloudflare Worker → Render). Never localhost in production. */
@@ -256,8 +257,8 @@ const SCHEMA_HINTS: Record<string, string> = {
   diagram:         '{ "mermaidCode": "flowchart TD\\n  A[Start] --> B[Step]\\n  B --> C[End]", "caption": "optional short caption" }',
   'carousel-panel':'{ "cards": [{ "id": "string", "label": "string", "color": "#6366f1", "description": "string", "expandedContent": "string" }] }',
   'click-reveal':  '{ "items": [{ "id": "string", "term": "string", "definition": "string" }] }',
-  'tabbed-horizontal': '{ "introContent": "2-4 short educational sentences about the topic (NOT click instructions alone)", "tabs": [{ "id": "string", "label": "string", "content": "- short bullet", "voiceOverText": "spoken elaboration" }] }',
-  'tabbed-vertical':   '{ "introContent": "2-4 short educational sentences about the topic (NOT click instructions alone)", "tabs": [{ "id": "string", "label": "string", "content": "- short bullet", "voiceOverText": "spoken elaboration" }] }',
+  'tabbed-horizontal': '{ "introContent": "2-4 short educational sentences about the topic (NOT click instructions alone)", "tabs": [{ "id": "string", "label": "string", "content": "- short bullet\\n- another bullet", "voiceOverText": "spoken elaboration" }] }',
+  'tabbed-vertical':   '{ "introContent": "2-4 short educational sentences about the topic (NOT click instructions alone)", "tabs": [{ "id": "string", "label": "string", "content": "- short bullet\\n- another bullet", "voiceOverText": "spoken elaboration" }] }',
   hotspot:         '{ "hotspots": [{ "id": "string", "x": 30, "y": 40, "label": "string", "content": "string" }], "imageUrl": "" }',
 };
 
@@ -279,6 +280,35 @@ export function normalizeRegenSlideType(slide: any, preferred?: string): string 
   return raw || 'content';
 }
 
+const TABBED_TYPES = new Set(['tabbed-horizontal', 'tabbed-vertical']);
+
+/** Vertical ↔ horizontal tabs share the same payload — no AI rewrite needed. */
+export function isTabOrientationSwap(slide: any, targetType?: string): boolean {
+  const from = normalizeRegenSlideType(slide);
+  const to = normalizeRegenSlideType(slide, targetType);
+  if (!TABBED_TYPES.has(from) || !TABBED_TYPES.has(to) || from === to) return false;
+  const list = slide?.data?.tabs || slide?.data?.items;
+  return Array.isArray(list) && list.length > 0;
+}
+
+function normalizeTabRecord(tab: any, index: number) {
+  if (!tab || typeof tab !== 'object') {
+    return { id: `tab-${index}`, label: `Tab ${index + 1}`, content: coerceOstText(tab) };
+  }
+  const content = coerceOstText(tab.content)
+    || coerceOstText(tab.body)
+    || coerceOstText(tab.text)
+    || coerceOstText(tab.bullets)
+    || coerceOstText(tab.voiceOverText);
+  return {
+    ...tab,
+    id: (tab.id != null && String(tab.id).trim()) ? String(tab.id) : `tab-${index}`,
+    label: coerceOstText(tab.label) || `Tab ${index + 1}`,
+    content,
+    expandedContent: tab.expandedContent != null ? coerceOstText(tab.expandedContent) : tab.expandedContent,
+  };
+}
+
 /**
  * Regenerates a single slide's interaction data by sending a focused prompt to
  * the AI. Returns `{ type, data, content? }` to merge into the course.
@@ -290,6 +320,19 @@ export async function regenerateSlideData(
   targetType?: string
 ): Promise<{ type: string; data: any; content?: string; voiceOverText?: string }> {
   const type = normalizeRegenSlideType(slide, targetType);
+
+  // Same content, different tab orientation — keep existing tabs (instant).
+  if (isTabOrientationSwap(slide, type)) {
+    const listKey = Array.isArray(slide?.data?.tabs) ? 'tabs' : 'items';
+    const tabs = (slide.data?.[listKey] || []).map((t: any, i: number) => normalizeTabRecord(t, i));
+    return {
+      type,
+      data: { ...(slide.data || {}), [listKey]: tabs },
+      content: slide.content,
+      voiceOverText: slide.voiceOverText || slide.narration,
+    };
+  }
+
   const schema = SCHEMA_HINTS[type] ?? SCHEMA_HINTS.content;
   const isTabbed = type === 'tabbed-horizontal' || type === 'tabbed-vertical';
   const prompt = `Regenerate rich, educational content for this "${type}" slide.
@@ -309,7 +352,7 @@ Rules:
 - For sorting: correctOrder must list every item id in the intended sequence; items should NOT already be in correctOrder
 - For content with bullets: return { "bullets": ["...", "..."] }
 - For diagram: return valid mermaidCode (flowchart/sequence) that illustrates the slide title
-${isTabbed ? '- For tabbed slides: include "introContent" with 2–4 short educational sentences about the topic. Do NOT make introContent only a click instruction. You may end with "Select a tab to continue →".' : ''}
+${isTabbed ? '- For tabbed slides: include "introContent" with 2–4 short educational sentences about the topic. Do NOT make introContent only a click instruction. You may end with "Select a tab to continue →". Each tab "content" MUST be a markdown string of short bullets (never an object or array).' : ''}
 - Do NOT include markdown, backticks, or any explanation — pure JSON only`;
 
   let lastErr: any = null;
@@ -390,12 +433,13 @@ ${isTabbed ? '- For tabbed slides: include "introContent" with 2–4 short educa
   }
 
   if (isTabbed) {
-    const tabs = parsed.tabs || parsed.items || [];
-    const introContent = parsed.introContent || parsed.content || '';
-    const dataKey = Array.isArray(parsed.tabs) ? 'tabs' : 'items';
+    const rawTabs = parsed.tabs || parsed.items || [];
+    const listKey = Array.isArray(parsed.tabs) ? 'tabs' : 'items';
+    const tabs = (Array.isArray(rawTabs) ? rawTabs : []).map((t: any, i: number) => normalizeTabRecord(t, i));
+    const introContent = coerceOstText(parsed.introContent || parsed.content);
     return {
       type,
-      data: { [dataKey]: tabs },
+      data: { [listKey]: tabs },
       content: introContent || slide.content,
       voiceOverText: parsed.voiceOverText,
     };

@@ -7,6 +7,48 @@
  * become bullets; full sentences / paragraphs stay as prose.
  */
 
+/**
+ * Coerce AI/edit payloads into displayable OST.
+ * Models sometimes return `{ bullets: [...] }` or nested objects instead of a string;
+ * `String(obj)` becomes "[object Object]" on the slide.
+ */
+export function coerceOstText(value: unknown): string {
+  if (value == null || value === false) return '';
+  if (typeof value === 'string') {
+    const t = value.trim();
+    return t === '[object Object]' ? '' : value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) {
+    return value
+      .map(v => coerceOstText(v))
+      .map(s => s.trim())
+      .filter(Boolean)
+      .map(s => (/^[-*•]\s+|^\d+[.)]\s+/.test(s) ? s : `- ${s}`))
+      .join('\n');
+  }
+  if (typeof value === 'object') {
+    const o = value as Record<string, unknown>;
+    for (const key of ['content', 'text', 'body', 'html', 'markdown', 'label']) {
+      if (o[key] != null && o[key] !== value) {
+        const inner = coerceOstText(o[key]);
+        if (inner) return inner;
+      }
+    }
+    for (const key of ['bullets', 'items', 'points', 'lines']) {
+      if (Array.isArray(o[key])) {
+        const inner = coerceOstText(o[key]);
+        if (inner) return inner;
+      }
+    }
+    const strings = Object.values(o).filter(
+      (v): v is string => typeof v === 'string' && v.trim() !== '' && v.trim() !== '[object Object]'
+    );
+    if (strings.length) return strings.join('\n');
+  }
+  return '';
+}
+
 /** Bullet/list body with no real words — empty or punctuation-only (e.g. "-", "—", "•"). */
 export function isSymbolOnlyOstLine(line: string): boolean {
   const body = String(line || '')
@@ -62,8 +104,8 @@ export function filterMeaningfulOstLines(lines: string[]): string[] {
  * Sanitize OST markdown/plain text for edit + display:
  * remove empty and symbol-only bullets; normalize remaining list markers.
  */
-export function sanitizeOstText(text: string): string {
-  const raw = String(text || '').trim();
+export function sanitizeOstText(text: unknown): string {
+  const raw = coerceOstText(text).trim();
   if (!raw) return '';
   if (/<[a-z][\s\S]*>/i.test(raw)) {
     // Strip empty / symbol-only list items from HTML (Edit Slide path)
@@ -177,8 +219,8 @@ export function formatTabIntroOst(opts: {
  * - Sentence paragraphs after a list stay as prose (split by blank line)
  * - Long sentence-only blocks stay as paragraphs (no forced bullets)
  */
-export function formatTabOstBody(text: string): string {
-  const raw = sanitizeOstText(text || '').trim();
+export function formatTabOstBody(text: unknown): string {
+  const raw = sanitizeOstText(text).trim();
   if (!raw) return '';
   if (/<[a-z][\s\S]*>/i.test(raw)) return raw; // already HTML from rich editor (sanitized)
 

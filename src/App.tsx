@@ -69,7 +69,7 @@ import {
   GamePreview, ScenarioPreview
 } from './components/interactions/ExtraPreviews';
 import { stripSlideTypePrefix } from './lib/stripSlideTypePrefix';
-import { TAB_ACCENT_HEX, tabAccentHex } from './lib/tabAccents';
+import { TAB_ACCENT_HEX, TAB_INTRO_DEFAULT_HEX, tabAccentHex } from './lib/tabAccents';
 import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft, generateMasteryExam } from './services/aiService';
 import { createScormPackage, ScormVersion } from './services/scormService';
 import { FlashcardGrid } from './components/FlashcardGrid';
@@ -81,12 +81,13 @@ import { DEFAULT_SCENARIO_CONFIG } from './types/scenario';
 
 import { AccordionDarkWrapper } from './components/AccordionDarkWrapper';
 import { QCTrackChangesModal } from './components/QCTrackChangesModal';
-import { runFullQC, runStructuralQC, autoFixCourse, applyConfirmedFixes, simplifySlide, regenerateSlideData, normalizeRegenSlideType, QCReport } from './services/qcService';
+import { runFullQC, runStructuralQC, autoFixCourse, applyConfirmedFixes, simplifySlide, regenerateSlideData, normalizeRegenSlideType, isTabOrientationSwap, QCReport } from './services/qcService';
 
 import { OutlinePreview } from './components/builder/OutlinePreview';
 import { CourseSettingsPage } from './components/builder/CourseSettingsPage';
 import { CourseReviewPage } from './components/builder/CourseReviewPage';
 import { ConfirmDialog } from './components/builder/ConfirmDialog';
+import { EditSlideItemFields, sanitizeInteractionOstOnSave } from './components/builder/EditSlideItemFields';
 import { UploadPathModal, UploadPathChoice } from './components/builder/UploadPathModal';
 import { PlayerPropertiesModal, PlayerConfig, defaultPlayerConfig } from './components/builder/PlayerPropertiesModal';
 import {
@@ -156,7 +157,7 @@ import { HotspotInteraction } from './components/interactions/HotspotInteraction
 import ClickRevealInteraction from './components/interactions/ClickRevealInteraction';
 import { getRecommendedGames } from './lib/gameEngine';
 import { DUMMY_COURSE, DUMMY_EXAM_QUESTIONS } from './lib/dummyCourse';
-import { sanitizeOstText } from './lib/formatTabIntroOst';
+import { sanitizeOstText, coerceOstText } from './lib/formatTabIntroOst';
 import { useScaleToFit } from './hooks/useScaleToFit';
 import { FloatingImageCanvas } from './components/FloatingImageCanvas';
 import { TrialInvitePanel } from './components/TrialInvitePanel';
@@ -376,6 +377,24 @@ const DraftOpeningOverlay: React.FC<{ active: boolean; progress: number; statusT
             className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-fuchsia-500 transition-[width] duration-150 ease-out"
             style={{ width: `${Math.max(4, pct)}%` }}
           />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const DraftsSyncOverlay: React.FC<{ active: boolean }> = ({ active }) => {
+  if (!active) return null;
+  return (
+    <div className="fixed inset-0 z-[800] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center px-6">
+      <div className="flex flex-col items-center gap-3 px-8 py-6 rounded-2xl bg-slate-900/90 border border-indigo-500/25 shadow-lg max-w-sm text-center">
+        <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
+        <p className="text-white font-bold text-base">Syncing drafts to your account…</p>
+        <p className="text-slate-400 text-sm leading-relaxed">
+          Fetching saved drafts from the cloud. This can take a few seconds if the server is waking up.
+        </p>
+        <div className="relative h-1.5 w-44 rounded-full bg-indigo-950/80 overflow-hidden">
+          <div className="regen-progress-indeterminate bg-indigo-400" />
         </div>
       </div>
     </div>
@@ -694,6 +713,7 @@ export default function App() {
   );
   const [showDraftsPanel, setShowDraftsPanel] = React.useState(false);
   const [showViewDraftsModal, setShowViewDraftsModal] = React.useState(false);
+  const [isSyncingDrafts, setIsSyncingDrafts] = React.useState(false);
   const [isLoadingDraft, setIsLoadingDraft] = React.useState(false);
   const [draftLoadProgress, setDraftLoadProgress] = React.useState(0);
   const [draftLoadStatus, setDraftLoadStatus] = React.useState('');
@@ -4591,28 +4611,32 @@ export default function App() {
                     <button
                       onClick={() => {
                         setAdminDropdownOpen(false);
+                        setShowViewDraftsModal(true);
+                        setIsSyncingDrafts(true);
                         void (async () => {
-                          showDraftMessage('Syncing drafts to your account…');
-                          const report = await draftManager.refreshDrafts();
-                          setShowViewDraftsModal(true);
-                          if (report.migrated > 0 && report.failed === 0) {
-                            showDraftMessage(
-                              `Synced ${report.migrated} draft${report.migrated === 1 ? '' : 's'} to your account — open View Drafts on your iPhone to see them.`
-                            );
-                          } else if (report.failed > 0) {
-                            showDraftMessage(
-                              `Cloud sync issue: ${report.errors[0] || `${report.failed} draft(s) failed`}. Local drafts: ${report.localCount}, cloud: ${report.cloudCount}.`
-                            );
-                          } else if (report.cloudCount > 0) {
-                            showDraftMessage(
-                              `Account has ${report.cloudCount} draft${report.cloudCount === 1 ? '' : 's'} ready on other devices.`
-                            );
-                          } else if (report.localCount > 0) {
-                            showDraftMessage(
-                              `Found ${report.localCount} draft(s) on this device but none in the cloud yet. Tap Sync in View Drafts, or re-save the draft.`
-                            );
-                          } else {
-                            showDraftMessage('No drafts found on this device yet.');
+                          try {
+                            const report = await draftManager.refreshDrafts();
+                            if (report.migrated > 0 && report.failed === 0) {
+                              showDraftMessage(
+                                `Synced ${report.migrated} draft${report.migrated === 1 ? '' : 's'} to your account — open View Drafts on your iPhone to see them.`
+                              );
+                            } else if (report.failed > 0) {
+                              showDraftMessage(
+                                `Cloud sync issue: ${report.errors[0] || `${report.failed} draft(s) failed`}. Local drafts: ${report.localCount}, cloud: ${report.cloudCount}.`
+                              );
+                            } else if (report.cloudCount > 0) {
+                              showDraftMessage(
+                                `Account has ${report.cloudCount} draft${report.cloudCount === 1 ? '' : 's'} ready on other devices.`
+                              );
+                            } else if (report.localCount > 0) {
+                              showDraftMessage(
+                                `Found ${report.localCount} draft(s) on this device but none in the cloud yet. Tap Sync in View Drafts, or re-save the draft.`
+                              );
+                            } else {
+                              showDraftMessage('No drafts found on this device yet.');
+                            }
+                          } finally {
+                            setIsSyncingDrafts(false);
                           }
                         })();
                       }}
@@ -4777,9 +4801,13 @@ export default function App() {
 
           {/* AI Edit Drawer — scenario and game-template slides */}
           <AnimatePresence>
-            {showAIEditDrawer && currentSlide && (['scenario', 'game-template', 'knowledge-check', 'mastery-exam'].includes(currentSlide.type)) && (
+            {showAIEditDrawer && currentSlide && (['scenario', 'game-template', 'knowledge-check', 'mastery-exam', 'quiz', 'multiple-choice', 'multiple-answers', 'true-false', 'matching', 'sorting', 'drop-targets'].includes(currentSlide.type)) && (
               <AIEditDrawer
-                slideType={currentSlide.type as any}
+                slideType={
+                  currentSlide.type === 'scenario' || currentSlide.type === 'game-template' || currentSlide.type === 'mastery-exam'
+                    ? currentSlide.type
+                    : 'knowledge-check'
+                }
                 slideTitle={currentSlide.title}
                 currentData={currentSlide.data ?? {}}
                 courseContext={course?.title ?? prompt}
@@ -4838,24 +4866,28 @@ export default function App() {
             slotsUsed={draftManager.slotsUsed}
             slotsTotal={draftManager.slotsTotal}
             onRefresh={async () => {
-              showDraftMessage('Syncing drafts to your account…');
-              const report = await draftManager.refreshDrafts();
-              if (report.migrated > 0 && report.failed === 0) {
-                showDraftMessage(
-                  `Synced ${report.migrated} draft${report.migrated === 1 ? '' : 's'} — they should now appear on your iPhone after refresh.`
-                );
-              } else if (report.failed > 0) {
-                showDraftMessage(
-                  `Sync problem: ${report.errors[0] || 'upload failed'}`
-                );
-              } else if (report.cloudCount > 0) {
-                showDraftMessage(`Up to date — ${report.cloudCount} draft(s) on your account.`);
-              } else {
-                showDraftMessage(
-                  report.localCount > 0
-                    ? 'Drafts are on this device only — re-save a draft, then Sync again.'
-                    : 'No drafts to sync yet.'
-                );
+              setIsSyncingDrafts(true);
+              try {
+                const report = await draftManager.refreshDrafts();
+                if (report.migrated > 0 && report.failed === 0) {
+                  showDraftMessage(
+                    `Synced ${report.migrated} draft${report.migrated === 1 ? '' : 's'} — they should now appear on your iPhone after refresh.`
+                  );
+                } else if (report.failed > 0) {
+                  showDraftMessage(
+                    `Sync problem: ${report.errors[0] || 'upload failed'}`
+                  );
+                } else if (report.cloudCount > 0) {
+                  showDraftMessage(`Up to date — ${report.cloudCount} draft(s) on your account.`);
+                } else {
+                  showDraftMessage(
+                    report.localCount > 0
+                      ? 'Drafts are on this device only — re-save a draft, then Sync again.'
+                      : 'No drafts to sync yet.'
+                  );
+                }
+              } finally {
+                setIsSyncingDrafts(false);
               }
             }}
             onLoad={handleLoadDraft}
@@ -4865,6 +4897,8 @@ export default function App() {
               showDraftMessage(result.message);
             }}
           />
+
+          <DraftsSyncOverlay active={isSyncingDrafts} />
 
           <DraftOpeningOverlay
             active={isLoadingDraft}
@@ -5539,7 +5573,7 @@ export default function App() {
                       )}
                     </div>
 
-                    {(currentSlide?.type === 'scenario' || currentSlide?.type === 'game-template' || ['knowledge-check', 'mastery-exam'].includes(currentSlide?.type ?? '')) && (
+                    {(currentSlide?.type === 'scenario' || currentSlide?.type === 'game-template' || ['knowledge-check', 'mastery-exam', 'quiz', 'multiple-choice', 'multiple-answers', 'true-false', 'matching', 'sorting', 'drop-targets'].includes(currentSlide?.type ?? '')) && (
                       <button
                         title="Edit via AI"
                         onClick={() => setShowAIEditDrawer(true)}
@@ -6500,6 +6534,7 @@ export default function App() {
                                        tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []}
                                        theme={theme as any}
                                        introContent={currentSlide.content || ''}
+                                       introColor={currentSlide.data?.introColor || (currentSlide.data?.unifyTabColors ? tabAccentHex((currentSlide.data?.tabs || currentSlide.data?.items || [])[0], 0) : undefined)}
                                        introVoiceOver={currentSlide.voiceOverText || currentSlide.narration || ''}
                                        onActiveTabChange={setActiveTabForImages}
                                        highlightTabId={dragOverTabId}
@@ -6530,6 +6565,7 @@ export default function App() {
                                      tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []}
                                      theme={theme}
                                      introContent={currentSlide.content || ''}
+                                     introColor={currentSlide.data?.introColor || (currentSlide.data?.unifyTabColors ? tabAccentHex((currentSlide.data?.tabs || currentSlide.data?.items || [])[0], 0) : undefined)}
                                      introVoiceOver={currentSlide.voiceOverText || currentSlide.narration || ''}
                                      onActiveTabChange={setActiveTabForImages}
                                      highlightTabId={dragOverTabId}
@@ -7279,7 +7315,7 @@ export default function App() {
                         )}
                         <RichTextEditor
                           key={editingSlide.id}
-                          value={editingSlide.content || ''}
+                          value={coerceOstText(editingSlide.content)}
                           onChange={(html) => {
                             const updated = {
                               ...(editingSlideRef.current ?? editingSlide),
@@ -7296,7 +7332,10 @@ export default function App() {
                         const listKey = Array.isArray(editingSlide.data?.tabs) ? 'tabs' : 'items';
                         const tabs: any[] = editingSlide.data?.[listKey] || [];
                         const unify = !!editingSlide.data?.unifyTabColors;
-                        const unifiedHex = tabs[0]?.color || TAB_ACCENT_HEX[0];
+                        const introHex = String(editingSlide.data?.introColor || TAB_INTRO_DEFAULT_HEX);
+                        const unifiedHex = unify
+                          ? (editingSlide.data?.introColor || tabs[0]?.color || TAB_ACCENT_HEX[0])
+                          : (tabs[0]?.color || TAB_ACCENT_HEX[0]);
                         const patchTabs = (nextTabs: any[], extraData?: Record<string, unknown>) => {
                           const updated = {
                             ...(editingSlideRef.current ?? editingSlide),
@@ -7305,6 +7344,36 @@ export default function App() {
                           editingSlideRef.current = updated;
                           setEditingSlide(updated);
                         };
+                        const ColorDots = ({
+                          value,
+                          onPick,
+                          size = 'sm',
+                        }: { value: string; onPick: (hex: string) => void; size?: 'sm' | 'md' }) => (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[10px] text-slate-500 font-bold uppercase">Color</span>
+                            {TAB_ACCENT_HEX.map(preset => (
+                              <button
+                                key={preset}
+                                type="button"
+                                title={preset === '#64748b' ? 'Gray' : preset === '#0f172a' ? 'Black' : preset}
+                                onClick={() => onPick(preset)}
+                                className={cn(
+                                  size === 'md' ? 'w-6 h-6' : 'w-5 h-5',
+                                  'rounded-full border-2',
+                                  String(value).toLowerCase() === preset ? 'border-white' : 'border-transparent'
+                                )}
+                                style={{ background: preset }}
+                              />
+                            ))}
+                            <input
+                              type="color"
+                              value={value || '#6366f1'}
+                              onChange={(e) => onPick(e.target.value)}
+                              className={cn(size === 'md' ? 'w-7 h-7' : 'w-6 h-6', 'rounded cursor-pointer bg-transparent border-0 p-0')}
+                              title="Custom color"
+                            />
+                          </div>
+                        );
                         return (
                           <div className="space-y-3 pt-1">
                             <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">Tab headings &amp; bodies</label>
@@ -7317,13 +7386,13 @@ export default function App() {
                                   const hex = unifiedHex;
                                   patchTabs(
                                     tabs.map((t: any) => (on ? { ...t, color: hex } : t)),
-                                    { unifyTabColors: on }
+                                    { unifyTabColors: on, introColor: on ? hex : introHex }
                                   );
                                 }}
                                 className="mt-0.5 w-4 h-4 rounded border-slate-600 text-indigo-500"
                               />
                               <span className="text-[11px] text-slate-300 leading-relaxed">
-                                Use one color for every selected tab box and matching heading (instead of a different color per tab).
+                                Use one color for every selected tab — including Introduction — instead of a different color per tab.
                               </span>
                             </label>
                             {unify && (
@@ -7333,11 +7402,11 @@ export default function App() {
                                   <button
                                     key={hex}
                                     type="button"
-                                    title={hex}
-                                    onClick={() => patchTabs(tabs.map((t: any) => ({ ...t, color: hex })), { unifyTabColors: true })}
+                                    title={hex === '#64748b' ? 'Gray' : hex === '#0f172a' ? 'Black' : hex}
+                                    onClick={() => patchTabs(tabs.map((t: any) => ({ ...t, color: hex })), { unifyTabColors: true, introColor: hex })}
                                     className={cn(
                                       'w-6 h-6 rounded-full border-2 transition-transform',
-                                      unifiedHex.toLowerCase() === hex ? 'border-white scale-110' : 'border-transparent'
+                                      String(unifiedHex).toLowerCase() === hex ? 'border-white scale-110' : 'border-transparent'
                                     )}
                                     style={{ background: hex }}
                                   />
@@ -7345,9 +7414,19 @@ export default function App() {
                                 <input
                                   type="color"
                                   value={unifiedHex}
-                                  onChange={(e) => patchTabs(tabs.map((t: any) => ({ ...t, color: e.target.value })), { unifyTabColors: true })}
+                                  onChange={(e) => patchTabs(tabs.map((t: any) => ({ ...t, color: e.target.value })), { unifyTabColors: true, introColor: e.target.value })}
                                   className="w-7 h-7 rounded cursor-pointer bg-transparent border-0 p-0"
                                   title="Custom color"
+                                />
+                              </div>
+                            )}
+                            {!unify && (
+                              <div className="rounded-xl border border-slate-700 bg-slate-950 p-3 space-y-2">
+                                <p className="text-sm font-bold text-white">Introduction</p>
+                                <p className="text-[11px] text-slate-500">Color of the Intro tab and heading. Body text is edited above.</p>
+                                <ColorDots
+                                  value={introHex}
+                                  onPick={(hex) => patchTabs(tabs, { introColor: hex })}
                                 />
                               </div>
                             )}
@@ -7368,41 +7447,18 @@ export default function App() {
                                     placeholder={`Tab ${ti + 1} heading`}
                                   />
                                   {!unify && (
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <span className="text-[10px] text-slate-500 font-bold uppercase">Color</span>
-                                      {TAB_ACCENT_HEX.map(preset => (
-                                        <button
-                                          key={preset}
-                                          type="button"
-                                          title={preset}
-                                          onClick={() => {
-                                            const next = [...tabs];
-                                            next[ti] = { ...next[ti], color: preset };
-                                            patchTabs(next);
-                                          }}
-                                          className={cn(
-                                            'w-5 h-5 rounded-full border-2',
-                                            hex.toLowerCase() === preset ? 'border-white' : 'border-transparent'
-                                          )}
-                                          style={{ background: preset }}
-                                        />
-                                      ))}
-                                      <input
-                                        type="color"
-                                        value={hex}
-                                        onChange={(e) => {
-                                          const next = [...tabs];
-                                          next[ti] = { ...next[ti], color: e.target.value };
-                                          patchTabs(next);
-                                        }}
-                                        className="w-6 h-6 rounded cursor-pointer bg-transparent border-0 p-0"
-                                        title="Custom color"
-                                      />
-                                    </div>
+                                    <ColorDots
+                                      value={hex}
+                                      onPick={(preset) => {
+                                        const next = [...tabs];
+                                        next[ti] = { ...next[ti], color: preset };
+                                        patchTabs(next);
+                                      }}
+                                    />
                                   )}
                                   <textarea
                                     rows={4}
-                                    value={tab.content || ''}
+                                    value={coerceOstText(tab.content)}
                                     onChange={(e) => {
                                       const next = [...tabs];
                                       next[ti] = { ...next[ti], content: e.target.value };
@@ -7462,6 +7518,13 @@ export default function App() {
                           </div>
                         );
                       })()}
+                      <EditSlideItemFields
+                        slide={editingSlide}
+                        onPatch={(updated) => {
+                          editingSlideRef.current = updated;
+                          setEditingSlide(updated);
+                        }}
+                      />
                     </>
                   )}
 
@@ -7912,7 +7975,11 @@ export default function App() {
                                   !(i.slideId === slideSnapshot.id && (i.type === 'interaction_empty' || i.fixActions?.includes('regenerate')))
                                 ),
                               } : null);
-                              showDraftMessage('Slide regenerated ✓');
+                              showDraftMessage(
+                                isTabOrientationSwap(slideSnapshot, typeToBuild)
+                                  ? 'Tab layout switched — existing content kept ✓'
+                                  : 'Slide regenerated ✓'
+                              );
                             } catch (err: any) {
                               console.error('[Edit Slide] Regenerate failed:', err);
                               const msg = String(err?.message || err || '');
@@ -7977,32 +8044,7 @@ export default function App() {
                           setCourse((prevCourse: any) => {
                             if (!prevCourse) return prevCourse;
                             // Also sanitize tab/item OST so generated courses don't keep symbol-only bullets
-                            const slideToSave = (() => {
-                              const s = { ...latest };
-                              if (Array.isArray(s.data?.tabs)) {
-                                s.data = {
-                                  ...s.data,
-                                  tabs: s.data.tabs.map((t: any) => ({
-                                    ...t,
-                                    content: sanitizeOstText(String(t.content || '')),
-                                    expandedContent: t.expandedContent != null
-                                      ? sanitizeOstText(String(t.expandedContent))
-                                      : t.expandedContent,
-                                  })),
-                                };
-                              }
-                              if (Array.isArray(s.data?.items)) {
-                                s.data = {
-                                  ...s.data,
-                                  items: s.data.items.map((it: any) => ({
-                                    ...it,
-                                    content: it.content != null ? sanitizeOstText(String(it.content)) : it.content,
-                                    definition: it.definition != null ? sanitizeOstText(String(it.definition)) : it.definition,
-                                  })),
-                                };
-                              }
-                              return s;
-                            })();
+                            const slideToSave = sanitizeInteractionOstOnSave(latest);
                             return {
                               ...prevCourse,
                               modules: prevCourse.modules.map((m: any) => ({
