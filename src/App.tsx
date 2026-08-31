@@ -72,7 +72,10 @@ import { stripSlideTypePrefix } from './lib/stripSlideTypePrefix';
 import { TAB_ACCENT_HEX, TAB_INTRO_DEFAULT_HEX, TAB_TITLE_HEX, tabAccentHex } from './lib/tabAccents';
 import { CAROUSEL_CARD_HEX } from './lib/colorContrast';
 import { resolveClickRevealSlide } from './lib/parseHeadingSections';
-import { knowledgeCheckFramingOst } from './lib/knowledgeCheckOst';
+import {
+  splitKnowledgeCheckOst,
+  SORTING_REORDER_HINT,
+} from './lib/knowledgeCheckOst';
 import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft, generateMasteryExam } from './services/aiService';
 import { createScormPackage, ScormVersion } from './services/scormService';
 import { FlashcardGrid } from './components/FlashcardGrid';
@@ -501,7 +504,18 @@ const SlideContent = ({
           );
         },
         ul: ({ node, children, ...props }) => {
-          const twoCol = !hasSideImage && listChildCount(children) >= 4;
+          const n = listChildCount(children);
+          if (n === 1) {
+            const only = React.Children.toArray(children).find(c => React.isValidElement(c)) as
+              | React.ReactElement<{ children?: React.ReactNode }>
+              | undefined;
+            return (
+              <p {...props} className={cn('text-lg mb-4', theme === 'light' ? 'text-gray-800' : 'text-gray-200')}>
+                {only?.props.children}
+              </p>
+            );
+          }
+          const twoCol = !hasSideImage && n >= 4;
           return (
             <ul
               {...props}
@@ -619,9 +633,16 @@ const SmartContent = ({ content, className, theme, accentColor }: { content: str
     <ReactMarkdown
       className={className}
       components={{
-        ul: ({ node, children, ...props }) => (
-          <ul {...props} className="pl-6 space-y-2 list-disc mb-4" style={{ ['--slide-marker' as any]: markerColor }}>{children}</ul>
-        ),
+        ul: ({ node, children, ...props }) => {
+          const items = React.Children.toArray(children).filter(c => React.isValidElement(c));
+          if (items.length === 1) {
+            const inner = (items[0] as React.ReactElement<{ children?: React.ReactNode }>).props.children;
+            return <p className="mb-4">{inner}</p>;
+          }
+          return (
+            <ul {...props} className="pl-6 space-y-2 list-disc mb-4" style={{ ['--slide-marker' as any]: markerColor }}>{children}</ul>
+          );
+        },
         ol: ({ node, children, ...props }) => (
           <ol {...props} className="pl-6 space-y-2 list-decimal mb-4" style={{ ['--slide-marker' as any]: markerColor }}>{children}</ol>
         ),
@@ -644,6 +665,44 @@ const SmartContent = ({ content, className, theme, accentColor }: { content: str
     >
       {stripBulletBold(autoFormatAsBullets(content))}
     </ReactMarkdown>
+  );
+};
+
+/** Synopsis (course content) + optional player-chrome instruction caption. */
+const KnowledgeCheckFraming = ({
+  content,
+  instruction,
+  theme,
+  accentColor,
+}: {
+  content: unknown;
+  instruction?: string;
+  theme?: string;
+  accentColor?: string;
+}) => {
+  const { synopsis, instruction: hint } = splitKnowledgeCheckOst(content, instruction);
+  if (!synopsis && !hint) return null;
+  return (
+    <div className="space-y-2">
+      {synopsis ? (
+        <SmartContent
+          content={sanitizeContent(synopsis)}
+          theme={theme}
+          accentColor={accentColor}
+          className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')}
+        />
+      ) : null}
+      {hint ? (
+        <p
+          className={cn(
+            'text-xs font-semibold leading-relaxed m-0',
+            theme === 'light' ? 'text-slate-600' : 'text-slate-400'
+          )}
+        >
+          {hint}
+        </p>
+      ) : null}
+    </div>
   );
 };
 
@@ -6400,9 +6459,7 @@ export default function App() {
                                   return (
                                     <div className="space-y-6 w-full">
                                       <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                      {knowledgeCheckFramingOst(currentSlide.content) && (
-                                        <SmartContent content={sanitizeContent(knowledgeCheckFramingOst(currentSlide.content))} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
-                                      )}
+                                      <KnowledgeCheckFraming content={currentSlide.content} theme={theme} accentColor={slideAccentColor} />
                                                                              <CustomMatchingActivity
                                         items={matchingProps.items || []}
                                         targets={matchingProps.targets || []}
@@ -6465,7 +6522,7 @@ export default function App() {
                                {currentSlide?.type === 'sorting' && (
                                   <div className="space-y-6 w-full">
                                      <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                     <SmartContent content={sanitizeContent((knowledgeCheckFramingOst(currentSlide.content) ? knowledgeCheckFramingOst(currentSlide.content) + '\n\n' : '') + 'Drag items or use ↑ ↓ arrows to reorder.')} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
+                                     <KnowledgeCheckFraming content={currentSlide.content} instruction={SORTING_REORDER_HINT} theme={theme} accentColor={slideAccentColor} />
                                      <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                         <CustomSortingActivity items={(currentSlide.data || currentSlide.interactions?.[0] || {}).items || []} correctOrder={(currentSlide.data || currentSlide.interactions?.[0] || {}).correctOrder || []} theme={theme} onChecked={() => markKcChecked(currentSlide.id)} />
                                      </div>
@@ -6841,7 +6898,7 @@ export default function App() {
                                     return (
                                       <div className="space-y-6 w-full">
                                         <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                        <SmartContent content={sanitizeContent((knowledgeCheckFramingOst(currentSlide.content) ? knowledgeCheckFramingOst(currentSlide.content) + '\n\n' : '') + 'Drag items or use ↑ ↓ arrows to reorder.')} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
+                                        <KnowledgeCheckFraming content={currentSlide.content} instruction={SORTING_REORDER_HINT} theme={theme} accentColor={slideAccentColor} />
                                         <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                           <CustomSortingActivity items={sortItems} correctOrder={correctOrder} theme={theme} onChecked={() => markKcChecked(currentSlide.id)} />
                                         </div>
@@ -6851,9 +6908,7 @@ export default function App() {
                                   return (
                                   <div className="space-y-6 w-full">
                                      <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                     {knowledgeCheckFramingOst(currentSlide.content) && (
-                                       <SmartContent content={sanitizeContent(knowledgeCheckFramingOst(currentSlide.content))} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
-                                     )}
+                                     <KnowledgeCheckFraming content={currentSlide.content} theme={theme} accentColor={slideAccentColor} />
                                      <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                        <DropTargetsActivity
                                          items={items}
