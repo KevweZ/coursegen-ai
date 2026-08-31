@@ -4,6 +4,7 @@
  */
 import React from 'react';
 import { coerceOstText, sanitizeOstText } from '../../lib/formatTabIntroOst';
+import { CAROUSEL_CARD_HEX, carouselCardHex } from '../../lib/colorContrast';
 
 interface Props {
   slide: any;
@@ -139,6 +140,33 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
               className={fieldClass}
               placeholder={`Card ${i + 1} title`}
             />
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] text-slate-500 font-bold uppercase">Card color</span>
+              {CAROUSEL_CARD_HEX.map(preset => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => {
+                    const next = [...cards];
+                    next[i] = { ...next[i], color: preset };
+                    patchData(slide, { [listKey]: next }, onPatch);
+                  }}
+                  className={`w-5 h-5 rounded-full border-2 ${carouselCardHex(c, i).toLowerCase() === preset ? 'border-white' : 'border-transparent'}`}
+                  style={{ background: preset }}
+                />
+              ))}
+              <input
+                type="color"
+                value={carouselCardHex(c, i)}
+                onChange={(e) => {
+                  const next = [...cards];
+                  next[i] = { ...next[i], color: e.target.value };
+                  patchData(slide, { [listKey]: next }, onPatch);
+                }}
+                className="w-6 h-6 rounded cursor-pointer bg-transparent border-0 p-0"
+                title="Custom color — card text auto-contrasts"
+              />
+            </div>
             <textarea
               rows={2}
               value={coerceOstText(c.description)}

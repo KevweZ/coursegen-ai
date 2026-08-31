@@ -33,6 +33,14 @@ function inlineFormat(text: string): string {
  * Avoid putting left padding on <ul> that fights parent CSS — markers are
  * drawn by the host component (e.g. VerticalTimeline accent squares).
  */
+/** Bold/italic only — no wrapping <p>, so parent color (e.g. tab titles) is inherited. */
+export function markdownToInlineHtml(text: string | unknown): string {
+  const src = coerceOstText(text).trim();
+  if (!src) return '';
+  if (isHTML(src)) return src.replace(/<\/?p[^>]*>/gi, '');
+  return inlineFormat(src.replace(/\s*\n+\s*/g, ' '));
+}
+
 export function markdownToHtml(text: string | unknown): string {
   const src = coerceOstText(text);
   if (!src) return '';

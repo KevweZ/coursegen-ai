@@ -6,6 +6,8 @@
 
 import { QCIssue, QCReport, IssueSeverity, IssueType, FixAction, validateCourse, applyFixes } from './structuralValidator';
 import { coerceOstText } from '../lib/formatTabIntroOst';
+import { parseHeadingBulletSections, resolveClickRevealSlide } from '../lib/parseHeadingSections';
+import { coerceCarouselColor } from '../lib/colorContrast';
 
 const BATCH_SIZE = 5;
 /** Always use same-origin /api/* (Cloudflare Worker → Render). Never localhost in production. */
@@ -255,8 +257,8 @@ const SCHEMA_HINTS: Record<string, string> = {
   'true-false':    '{ "questionText": "string", "options": [{ "id": "a", "text": "True", "isCorrect": true }, { "id": "b", "text": "False", "isCorrect": false }], "feedback": "string" }',
   content:         '{ "bullets": ["key point 1", "key point 2", "key point 3"] }',
   diagram:         '{ "mermaidCode": "flowchart TD\\n  A[Start] --> B[Step]\\n  B --> C[End]", "caption": "optional short caption" }',
-  'carousel-panel':'{ "cards": [{ "id": "string", "label": "string", "color": "#6366f1", "description": "string", "expandedContent": "string" }] }',
-  'click-reveal':  '{ "items": [{ "id": "string", "term": "string", "definition": "string" }] }',
+  'carousel-panel':'{ "cards": [{ "id": "string", "label": "string", "color": "#4f46e5", "description": "string", "expandedContent": "string" }] }',
+  'click-reveal':  '{ "items": [{ "id": "string", "term": "string", "definition": "- short bullet\\n- short bullet" }] }',
   'tabbed-horizontal': '{ "introContent": "2-4 short educational sentences about the topic (NOT click instructions alone)", "tabs": [{ "id": "string", "label": "string", "content": "- short bullet\\n- another bullet", "voiceOverText": "spoken elaboration" }] }',
   'tabbed-vertical':   '{ "introContent": "2-4 short educational sentences about the topic (NOT click instructions alone)", "tabs": [{ "id": "string", "label": "string", "content": "- short bullet\\n- another bullet", "voiceOverText": "spoken elaboration" }] }',
   hotspot:         '{ "hotspots": [{ "id": "string", "x": 30, "y": 40, "label": "string", "content": "string" }], "imageUrl": "" }',
@@ -289,6 +291,18 @@ export function isTabOrientationSwap(slide: any, targetType?: string): boolean {
   if (!TABBED_TYPES.has(from) || !TABBED_TYPES.has(to) || from === to) return false;
   const list = slide?.data?.tabs || slide?.data?.items;
   return Array.isArray(list) && list.length > 0;
+}
+
+function tryContentToClickReveal(slide: any): { type: string; data: any; content: string; voiceOverText?: string } | null {
+  const sections = parseHeadingBulletSections(slide?.content);
+  if (sections.length < 2) return null;
+  const converted = resolveClickRevealSlide(slide);
+  return {
+    type: 'click-reveal',
+    data: { items: converted.items },
+    content: '',
+    voiceOverText: slide.voiceOverText || slide.narration,
+  };
 }
 
 function normalizeTabRecord(tab: any, index: number) {
@@ -333,8 +347,14 @@ export async function regenerateSlideData(
     };
   }
 
+  if (type === 'click-reveal') {
+    const converted = tryContentToClickReveal(slide);
+    if (converted) return converted;
+  }
+
   const schema = SCHEMA_HINTS[type] ?? SCHEMA_HINTS.content;
   const isTabbed = type === 'tabbed-horizontal' || type === 'tabbed-vertical';
+  const isKc = ['quiz', 'matching', 'sorting', 'drop-targets', 'multiple-choice', 'multiple-answers', 'true-false'].includes(type);
   const prompt = `Regenerate rich, educational content for this "${type}" slide.
 
 Slide title: "${slide.title}"
@@ -353,6 +373,9 @@ Rules:
 - For content with bullets: return { "bullets": ["...", "..."] }
 - For diagram: return valid mermaidCode (flowchart/sequence) that illustrates the slide title
 ${isTabbed ? '- For tabbed slides: include "introContent" with 2–4 short educational sentences about the topic. Do NOT make introContent only a click instruction. You may end with "Select a tab to continue →". Each tab "content" MUST be a markdown string of short bullets (never an object or array).' : ''}
+${type === 'click-reveal' ? '- For click-reveal: each item "definition" MUST be 3–5 SHORT BULLETS (5–8 words), not sentences. Put spoken explanation in voiceOverText. Slide-level content must be empty or 1 framing line — do NOT repeat the reveal bullets on the slide.' : ''}
+${type === 'carousel-panel' ? '- For carousel: pick card colors ONLY from this dark set so white text stays readable: #4f46e5, #0f766e, #9f1239, #1d4ed8, #b45309, #6d28d9, #166534, #0f172a. Never white, yellow, pink, or pastels.' : ''}
+${isKc ? '- For knowledge checks: introContent/content is 1–2 framing bullets about WHAT is being tested (e.g. "Match each traffic sign to its function"). Do NOT list answers, meanings, or categories that give away the match. voiceOverText: 2–3 sentences on why this check matters and how to complete it — do not narrate the correct matches. Teaching detail belongs in feedback after submit.' : ''}
 - Do NOT include markdown, backticks, or any explanation — pure JSON only`;
 
   let lastErr: any = null;
@@ -441,6 +464,39 @@ ${isTabbed ? '- For tabbed slides: include "introContent" with 2–4 short educa
       type,
       data: { [listKey]: tabs },
       content: introContent || slide.content,
+      voiceOverText: parsed.voiceOverText,
+    };
+  }
+
+  if (type === 'carousel-panel') {
+    const rawCards = parsed.cards || parsed.items || [];
+    const cards = (Array.isArray(rawCards) ? rawCards : []).map((c: any, i: number) => ({
+      ...c,
+      color: coerceCarouselColor(c?.color, i),
+    }));
+    return { type, data: { cards }, content: parsed.content, voiceOverText: parsed.voiceOverText };
+  }
+
+  if (type === 'click-reveal') {
+    const items = (parsed.items || []).map((it: any, i: number) => ({
+      ...it,
+      id: it.id || `cr-${i + 1}`,
+      term: coerceOstText(it.term || it.label || it.title) || `Item ${i + 1}`,
+      definition: coerceOstText(it.definition || it.content || it.bullets),
+    }));
+    return {
+      type,
+      data: { items },
+      content: coerceOstText(parsed.introContent) || '',
+      voiceOverText: parsed.voiceOverText,
+    };
+  }
+
+  if (isKc && parsed.introContent) {
+    return {
+      type,
+      data: parsed,
+      content: coerceOstText(parsed.introContent),
       voiceOverText: parsed.voiceOverText,
     };
   }

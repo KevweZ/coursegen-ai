@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { markdownToHtml } from '../../lib/markdownInline';
+import { markdownToHtml, markdownToInlineHtml } from '../../lib/markdownInline';
 import { formatTabIntroOst, formatTabOstBody } from '../../lib/formatTabIntroOst';
 import { TAB_INTRO_DEFAULT_HEX, tabAccentHex } from '../../lib/tabAccents';
+import { contrastTextOn } from '../../lib/colorContrast';
 
 export interface HorizontalTab {
   id: string;
   label: string;
   color?: string;
+  /** Selected tab title text (defaults to auto-contrast on the fill). */
+  labelColor?: string;
   content: string;
   expandedContent?: string;
   /** Optional AI/source image shown below tab text (does not cover copy) */
@@ -30,6 +33,8 @@ interface Props {
   introContent?: string;
   /** Color of the Intro tab + intro heading (defaults to indigo) */
   introColor?: string;
+  /** Intro tab title text (defaults to auto-contrast on introColor). */
+  introLabelColor?: string;
   /** Slide-level narration — used to enrich thin intro OST into short bullets */
   introVoiceOver?: string;
   /** Notify parent of active tab (null = intro) for tab-scoped floating images */
@@ -57,6 +62,7 @@ export default function TabbedContentHorizontal({
   onTabAudio,
   introContent,
   introColor,
+  introLabelColor,
   introVoiceOver,
   onActiveTabChange,
   highlightTabId = null,
@@ -118,6 +124,7 @@ export default function TabbedContentHorizontal({
   };
 
   const introHex = (introColor && String(introColor).trim()) || INTRO_COLOR;
+  const introTitleColor = (introLabelColor && String(introLabelColor).trim()) || contrastTextOn(introHex);
   const activeColor = inIntro
     ? introHex
     : tabAccentHex(activeTab || undefined, Math.max(0, activeIndex));
@@ -163,7 +170,7 @@ export default function TabbedContentHorizontal({
                   className={`text-sm leading-relaxed w-full ${isLight ? 'text-slate-700' : 'text-slate-200'}`}
                   dangerouslySetInnerHTML={{ __html: markdownToHtml(introOst) }}
                 />
-                <p className={`mt-6 text-xs font-semibold ${isLight ? 'text-indigo-600' : 'text-indigo-300'}`}>
+                <p className="mt-6 text-xs font-semibold" style={{ color: introHex }}>
                   Select a topic tab below to continue →
                 </p>
               </>
@@ -221,14 +228,14 @@ export default function TabbedContentHorizontal({
           onClick={selectIntro}
           className={`shrink-0 px-3 py-3.5 text-xs font-bold transition-all text-center border-r ${
             isLight ? 'border-slate-200' : 'border-slate-700/60'
-          } ${
+          }           ${
             inIntro
-              ? 'text-white'
+              ? ''
               : isLight
               ? 'text-slate-500 hover:text-slate-800 hover:bg-white'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
           }`}
-          style={inIntro ? { background: introHex } : {}}
+          style={inIntro ? { background: introHex, color: introTitleColor } : {}}
           title="Return to opening introduction"
         >
           Intro
@@ -236,6 +243,7 @@ export default function TabbedContentHorizontal({
         {normalized.map((tab, i) => {
           const isActive = i === activeIndex;
           const color = tabAccentHex(tab, i);
+          const titleColor = (tab.labelColor && String(tab.labelColor).trim()) || contrastTextOn(color);
           const isDropTarget = highlightTabId === tab.id;
           return (
             <button
@@ -247,14 +255,18 @@ export default function TabbedContentHorizontal({
                 isLight ? 'border-slate-200' : 'border-slate-700/60'
               } ${
                 isActive
-                  ? 'text-white'
+                  ? ''
                   : isLight
                   ? 'text-slate-500 hover:text-slate-800 hover:bg-white'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
               } ${isDropTarget ? 'ring-2 ring-indigo-400 ring-inset z-10' : ''}`}
-              style={isActive ? { background: color } : isDropTarget ? { background: 'rgba(99,102,241,0.15)' } : {}}
+              style={isActive ? { background: color, color: titleColor } : isDropTarget ? { background: 'rgba(99,102,241,0.15)' } : {}}
             >
-              <span className="relative z-10" dangerouslySetInnerHTML={{ __html: markdownToHtml(tab.label) }} />
+              <span
+                className="relative z-10"
+                style={isActive ? { color: titleColor } : undefined}
+                dangerouslySetInnerHTML={{ __html: markdownToInlineHtml(tab.label) }}
+              />
             </button>
           );
         })}

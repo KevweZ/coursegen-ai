@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { carouselCardHex, contrastTextOn } from '../../lib/colorContrast';
 
 export interface CarouselCard {
   id: string;
@@ -19,7 +20,6 @@ interface Props {
   onCardView?: (cardId: string) => void;
 }
 
-const DEFAULT_COLORS = ['#fbbf24', '#f87171', '#38bdf8', '#c084fc', '#4ade80'];
 
 export default function CarouselPanel({ cards = [], title, theme = 'dark', onCardView }: Props) {
   const normalized = React.useMemo(
@@ -74,7 +74,8 @@ export default function CarouselPanel({ cards = [], title, theme = 'dark', onCar
         {normalized.map((card, i) => {
           const pos = getPosition(i);
           const isCenter = pos === 0;
-          const cardColor = card.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length];
+          const cardColor = carouselCardHex(card, i);
+          const ink = contrastTextOn(cardColor);
           if (pos < -1 || pos > 1) return null;
 
           return (
@@ -114,13 +115,13 @@ export default function CarouselPanel({ cards = [], title, theme = 'dark', onCar
                   </button>
                 )}
 
-                <div className="border border-white/50 px-4 py-2 w-max mb-4 inline-block shadow-sm">
-                  <h3 className="text-white font-bold text-xl drop-shadow-md pr-6">{card.label}</h3>
+                <div className="px-4 py-2 w-max mb-4 inline-block shadow-sm" style={{ border: `1px solid ${ink}80` }}>
+                  <h3 className="font-bold text-xl drop-shadow-md pr-6" style={{ color: ink }}>{card.label}</h3>
                 </div>
 
                 {card.description && (
-                  <div className="bg-white/10 border border-white/20 p-3 flex-1 mb-4">
-                    <p className="text-white/90 text-sm">{card.description}</p>
+                  <div className="p-3 flex-1 mb-4" style={{ background: ink === '#ffffff' ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.08)', border: `1px solid ${ink}33` }}>
+                    <p className="text-sm" style={{ color: ink, opacity: 0.92 }}>{card.description}</p>
                   </div>
                 )}
 
@@ -154,8 +155,8 @@ export default function CarouselPanel({ cards = [], title, theme = 'dark', onCar
                       )}
                       {card.expandedContent && (
                         <>
-                          <p className="text-white font-bold mb-2">Details:</p>
-                          <p className="text-white/90 text-sm whitespace-pre-wrap leading-relaxed pb-2">
+                          <p className="font-bold mb-2" style={{ color: ink }}>Details:</p>
+                          <p className="text-sm whitespace-pre-wrap leading-relaxed pb-2" style={{ color: ink, opacity: 0.92 }}>
                             {card.expandedContent}
                           </p>
                         </>
@@ -205,7 +206,7 @@ export default function CarouselPanel({ cards = [], title, theme = 'dark', onCar
       >
         {normalized.map((card, i) => {
           const isActive = i === activeIndex;
-          const bg = card.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length];
+          const bg = carouselCardHex(card, i);
           return (
             <button
               key={card.id || i}

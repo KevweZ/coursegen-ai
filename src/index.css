@@ -71,6 +71,14 @@ button, [role="button"], a { cursor: pointer; }
 .interaction-light-fix button {
   color: inherit;
 }
+/* Tab titles / chips set color on the button; inner markdown must inherit
+   instead of picking up the element-level #1e293b rule (black-on-black tabs). */
+.interaction-light-fix button span,
+.interaction-light-fix button strong,
+.interaction-light-fix button em,
+.interaction-light-fix button p {
+  color: inherit;
+}
 .interaction-light-fix [class*="text-indigo"],
 .interaction-light-fix [class*="text-blue"],
 .interaction-light-fix [class*="text-purple"],

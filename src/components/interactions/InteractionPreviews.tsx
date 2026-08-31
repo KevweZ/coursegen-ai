@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, CornerDownLeft, FileText } from 'lucide-react';
+import { contrastTextOn, CAROUSEL_CARD_HEX } from '../../lib/colorContrast';
 
 // ─────────────────────────────────────────────
 // TABBED HORIZONTAL — interactive preview
@@ -325,9 +325,9 @@ export function FolderExplorerPreview() {
 // CAROUSEL PANEL — interactive preview
 // ─────────────────────────────────────────────
 const C_CARDS = [
-  { id: 'c1', label: 'Card A', color: '#6366f1', description: 'First card — introductory overview.', expandedContent: 'Expanded detail for Card A — additional context, real-world examples, and step-by-step guidance appear here after clicking MORE.' },
-  { id: 'c2', label: 'Card B', color: '#ec4899', description: 'Second card — core concepts.', expandedContent: 'Expanded detail for Card B — deeper exploration with supporting analysis and practical takeaways.' },
-  { id: 'c3', label: 'Card C', color: '#f59e0b', description: 'Third card — application exercises.', expandedContent: 'Expanded detail for Card C — practical exercises, case studies, and application guidance to reinforce learning.' },
+  { id: 'c1', label: 'Card A', color: CAROUSEL_CARD_HEX[0], description: 'First card — introductory overview.', expandedContent: 'Expanded detail for Card A — additional context, real-world examples, and step-by-step guidance appear here after clicking MORE.' },
+  { id: 'c2', label: 'Card B', color: CAROUSEL_CARD_HEX[1], description: 'Second card — core concepts.', expandedContent: 'Expanded detail for Card B — deeper exploration with supporting analysis and practical takeaways.' },
+  { id: 'c3', label: 'Card C', color: CAROUSEL_CARD_HEX[2], description: 'Third card — application exercises.', expandedContent: 'Expanded detail for Card C — practical exercises, case studies, and application guidance to reinforce learning.' },
 ];
 
 export function CarouselPanelPreview() {
@@ -362,10 +362,10 @@ export function CarouselPanelPreview() {
               transition={{ type: 'spring', stiffness: 260, damping: 24 }}
               onClick={!s.center ? () => { setActiveIndex(i); setExpanded(false); } : undefined}
             >
-              <div className="border border-white/30 rounded-xl px-3 py-1 mb-2 inline-block">
-                <h3 className="text-white font-extrabold text-sm">{card.label}</h3>
+              <div className="border rounded-xl px-3 py-1 mb-2 inline-block" style={{ borderColor: `${contrastTextOn(card.color)}55` }}>
+                <h3 className="font-extrabold text-sm" style={{ color: contrastTextOn(card.color) }}>{card.label}</h3>
               </div>
-              <p className="text-white/80 text-xs line-clamp-2 mb-2">{card.description}</p>
+              <p className="text-xs line-clamp-2 mb-2" style={{ color: contrastTextOn(card.color), opacity: 0.9 }}>{card.description}</p>
               {s.center && (
                 <button
                   onClick={() => setExpanded(v => !v)}
@@ -398,10 +398,10 @@ export function CarouselPanelPreview() {
           style={{ background: activeCard.color }}
         >
           <div className="px-5 py-4">
-            <div className="border border-white/30 rounded-xl px-3 py-1 mb-3 inline-block">
-              <h3 className="text-white font-extrabold text-sm">{activeCard.label}</h3>
+            <div className="border rounded-xl px-3 py-1 mb-3 inline-block" style={{ borderColor: `${contrastTextOn(activeCard.color)}55` }}>
+              <h3 className="font-extrabold text-sm" style={{ color: contrastTextOn(activeCard.color) }}>{activeCard.label}</h3>
             </div>
-            <p className="text-white/90 text-sm leading-relaxed">{activeCard.expandedContent}</p>
+            <p className="text-sm leading-relaxed" style={{ color: contrastTextOn(activeCard.color), opacity: 0.92 }}>{activeCard.expandedContent}</p>
           </div>
         </motion.div>
       )}

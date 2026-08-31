@@ -69,7 +69,10 @@ import {
   GamePreview, ScenarioPreview
 } from './components/interactions/ExtraPreviews';
 import { stripSlideTypePrefix } from './lib/stripSlideTypePrefix';
-import { TAB_ACCENT_HEX, TAB_INTRO_DEFAULT_HEX, tabAccentHex } from './lib/tabAccents';
+import { TAB_ACCENT_HEX, TAB_INTRO_DEFAULT_HEX, TAB_TITLE_HEX, tabAccentHex } from './lib/tabAccents';
+import { CAROUSEL_CARD_HEX } from './lib/colorContrast';
+import { resolveClickRevealSlide } from './lib/parseHeadingSections';
+import { knowledgeCheckFramingOst } from './lib/knowledgeCheckOst';
 import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft, generateMasteryExam } from './services/aiService';
 import { createScormPackage, ScormVersion } from './services/scormService';
 import { FlashcardGrid } from './components/FlashcardGrid';
@@ -331,13 +334,9 @@ function autoFormatAsBullets(raw: string): string {
   return raw;
 }
 
-/** Count markdown/HTML list items for multi-column layout decisions */
-function countListItems(raw: string): number {
-  if (!raw) return 0;
-  if (/<[uo]l[\s>]/i.test(raw)) {
-    return (raw.match(/<li[\s>]/gi) || []).length;
-  }
-  return raw.split('\n').filter(l => /^\s*([-*+]|\d+\.)\s+/.test(l)).length;
+/** Direct <li> count for a markdown list (ignore nested wrappers / whitespace). */
+function listChildCount(children: React.ReactNode): number {
+  return React.Children.toArray(children).filter(c => React.isValidElement(c)).length;
 }
 
 /**
@@ -435,15 +434,28 @@ const EmptySlideRegenerate = ({
   </div>
 );
 
-const SlideContent = ({ content, theme, accentColor }: { content: string; theme: string; accentColor?: string }) => {
+const SlideContent = ({
+  content,
+  theme,
+  accentColor,
+  hasSideImage = false,
+}: {
+  content: string;
+  theme: string;
+  accentColor?: string;
+  /** Right-column image already occupies the second column — keep bullets stacked. */
+  hasSideImage?: boolean;
+}) => {
   // Bullet markers: use the module accent when provided so lists match the
   // module chrome (header / divider). Fall back to near-black so we never
   // leave the old hardcoded indigo/light-blue markers that clashed with
   // non-indigo modules (e.g. teal Module 2 headers with blue bullets).
   const markerColor = accentColor || (theme === 'light' ? '#0f172a' : '#94a3b8');
-  const bulletCount = countListItems(content);
-  // 7–9 bullets: two columns so dense lists don't stretch into a long single stack
-  const multiCol = bulletCount >= 7 && bulletCount <= 12;
+  // Two columns only when a given list has 4+ items (avoids a dangling 2+1)
+  // and the slide is not already sharing the row with a side image.
+  const htmlMultiCol = !hasSideImage
+    ? '[&_ul:has(>li:nth-child(4))]:columns-2 [&_ul:has(>li:nth-child(4))]:gap-x-8 [&_ul:has(>li:nth-child(4))]:[column-fill:balance] [&_ol:has(>li:nth-child(4))]:columns-2 [&_ol:has(>li:nth-child(4))]:gap-x-8 [&_ol:has(>li:nth-child(4))]:[column-fill:balance] [&_li]:break-inside-avoid'
+    : '';
 
   if (isHTML(content)) {
     return (
@@ -451,7 +463,7 @@ const SlideContent = ({ content, theme, accentColor }: { content: string; theme:
         className={cn(
           'prose max-w-none text-lg lg:text-xl leading-relaxed rich-slide-content',
           theme !== 'light' ? 'prose-invert text-gray-200' : 'text-gray-800',
-          multiCol && '[&_ul]:columns-2 [&_ul]:gap-x-8 [&_ol]:columns-2 [&_ol]:gap-x-8 [&_li]:break-inside-avoid'
+          htmlMultiCol
         )}
         style={{ ['--slide-marker' as any]: markerColor }}
         dangerouslySetInnerHTML={{ __html: stripBulletBold(content) }}
@@ -488,30 +500,36 @@ const SlideContent = ({ content, theme, accentColor }: { content: string; theme:
             </li>
           );
         },
-        ul: ({ node, children, ...props }) => (
-          <ul
-            {...props}
-            className={cn(
-              'pl-6 space-y-2 list-disc border-l-0 mb-4',
-              multiCol && 'columns-2 gap-x-8 [column-fill:balance]'
-            )}
-            style={{ ['--slide-marker' as any]: markerColor }}
-          >
-            {children}
-          </ul>
-        ),
-        ol: ({ node, children, ...props }) => (
-          <ol
-            {...props}
-            className={cn(
-              'pl-6 space-y-2 list-decimal pb-4 marker:[color:var(--slide-marker,#0f172a)]',
-              multiCol && 'columns-2 gap-x-8 [column-fill:balance]'
-            )}
-            style={{ ['--slide-marker' as any]: markerColor }}
-          >
-            {children}
-          </ol>
-        ),
+        ul: ({ node, children, ...props }) => {
+          const twoCol = !hasSideImage && listChildCount(children) >= 4;
+          return (
+            <ul
+              {...props}
+              className={cn(
+                'pl-6 space-y-2 list-disc border-l-0 mb-4',
+                twoCol && 'columns-2 gap-x-8 [column-fill:balance]'
+              )}
+              style={{ ['--slide-marker' as any]: markerColor }}
+            >
+              {children}
+            </ul>
+          );
+        },
+        ol: ({ node, children, ...props }) => {
+          const twoCol = !hasSideImage && listChildCount(children) >= 4;
+          return (
+            <ol
+              {...props}
+              className={cn(
+                'pl-6 space-y-2 list-decimal pb-4 marker:[color:var(--slide-marker,#0f172a)]',
+                twoCol && 'columns-2 gap-x-8 [column-fill:balance]'
+              )}
+              style={{ ['--slide-marker' as any]: markerColor }}
+            >
+              {children}
+            </ol>
+          );
+        },
         // Body bold is intentionally subdued: headers already carry hierarchy, so
         // mid-bullet **keywords** should not compete with the title (looked noisy).
         strong: ({ node, children, ...props }) => (
@@ -6080,7 +6098,7 @@ export default function App() {
                                      compact
                                    />
                                  ) : (
-                                   <SlideContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} />
+                                   <SlideContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} hasSideImage={!!slideImg} />
                                  );
                                  if (!slideImg) {
                                    return (
@@ -6382,7 +6400,9 @@ export default function App() {
                                   return (
                                     <div className="space-y-6 w-full">
                                       <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                      <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
+                                      {knowledgeCheckFramingOst(currentSlide.content) && (
+                                        <SmartContent content={sanitizeContent(knowledgeCheckFramingOst(currentSlide.content))} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
+                                      )}
                                                                              <CustomMatchingActivity
                                         items={matchingProps.items || []}
                                         targets={matchingProps.targets || []}
@@ -6445,7 +6465,7 @@ export default function App() {
                                {currentSlide?.type === 'sorting' && (
                                   <div className="space-y-6 w-full">
                                      <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                     <SmartContent content={sanitizeContent(currentSlide.content) + '\n\nDrag items or use ↑ ↓ arrows to reorder.'} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
+                                     <SmartContent content={sanitizeContent((knowledgeCheckFramingOst(currentSlide.content) ? knowledgeCheckFramingOst(currentSlide.content) + '\n\n' : '') + 'Drag items or use ↑ ↓ arrows to reorder.')} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                      <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                         <CustomSortingActivity items={(currentSlide.data || currentSlide.interactions?.[0] || {}).items || []} correctOrder={(currentSlide.data || currentSlide.interactions?.[0] || {}).correctOrder || []} theme={theme} onChecked={() => markKcChecked(currentSlide.id)} />
                                      </div>
@@ -6535,6 +6555,7 @@ export default function App() {
                                        theme={theme as any}
                                        introContent={currentSlide.content || ''}
                                        introColor={currentSlide.data?.introColor || (currentSlide.data?.unifyTabColors ? tabAccentHex((currentSlide.data?.tabs || currentSlide.data?.items || [])[0], 0) : undefined)}
+                                       introLabelColor={currentSlide.data?.introLabelColor}
                                        introVoiceOver={currentSlide.voiceOverText || currentSlide.narration || ''}
                                        onActiveTabChange={setActiveTabForImages}
                                        highlightTabId={dragOverTabId}
@@ -6566,6 +6587,7 @@ export default function App() {
                                      theme={theme}
                                      introContent={currentSlide.content || ''}
                                      introColor={currentSlide.data?.introColor || (currentSlide.data?.unifyTabColors ? tabAccentHex((currentSlide.data?.tabs || currentSlide.data?.items || [])[0], 0) : undefined)}
+                                     introLabelColor={currentSlide.data?.introLabelColor}
                                      introVoiceOver={currentSlide.voiceOverText || currentSlide.narration || ''}
                                      onActiveTabChange={setActiveTabForImages}
                                      highlightTabId={dragOverTabId}
@@ -6611,13 +6633,13 @@ export default function App() {
 
                                {/* CLICK & REVEAL INTERACTION */}
                                {currentSlide?.type === 'click-reveal' && (() => {
-                                 const crItems = currentSlide.data?.items || currentSlide.interactions?.[0]?.items || [];
+                                 const cr = resolveClickRevealSlide(currentSlide);
                                  return (
                                    <div className="space-y-6 w-full">
                                      <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                     {currentSlide.content && <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />}
+                                     {cr.content && <SmartContent content={sanitizeContent(cr.content)} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />}
                                      <ClickRevealInteraction
-                                       items={crItems}
+                                       items={cr.items}
                                        theme={theme as any}
                                        onItemReveal={(id) => markInteractionExplored(currentSlide.id, id)}
                                      />
@@ -6819,7 +6841,7 @@ export default function App() {
                                     return (
                                       <div className="space-y-6 w-full">
                                         <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                        <SmartContent content={sanitizeContent(currentSlide.content) + '\n\nDrag items or use ↑ ↓ arrows to reorder.'} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
+                                        <SmartContent content={sanitizeContent((knowledgeCheckFramingOst(currentSlide.content) ? knowledgeCheckFramingOst(currentSlide.content) + '\n\n' : '') + 'Drag items or use ↑ ↓ arrows to reorder.')} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                         <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                           <CustomSortingActivity items={sortItems} correctOrder={correctOrder} theme={theme} onChecked={() => markKcChecked(currentSlide.id)} />
                                         </div>
@@ -6829,7 +6851,9 @@ export default function App() {
                                   return (
                                   <div className="space-y-6 w-full">
                                      <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                     <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
+                                     {knowledgeCheckFramingOst(currentSlide.content) && (
+                                       <SmartContent content={sanitizeContent(knowledgeCheckFramingOst(currentSlide.content))} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
+                                     )}
                                      <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                        <DropTargetsActivity
                                          items={items}
@@ -7333,6 +7357,7 @@ export default function App() {
                         const tabs: any[] = editingSlide.data?.[listKey] || [];
                         const unify = !!editingSlide.data?.unifyTabColors;
                         const introHex = String(editingSlide.data?.introColor || TAB_INTRO_DEFAULT_HEX);
+                        const introTitleHex = String(editingSlide.data?.introLabelColor || '');
                         const unifiedHex = unify
                           ? (editingSlide.data?.introColor || tabs[0]?.color || TAB_ACCENT_HEX[0])
                           : (tabs[0]?.color || TAB_ACCENT_HEX[0]);
@@ -7344,6 +7369,28 @@ export default function App() {
                           editingSlideRef.current = updated;
                           setEditingSlide(updated);
                         };
+                        const TitleDots = ({
+                          value,
+                          onPick,
+                        }: { value?: string; onPick: (hex: string) => void }) => (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[10px] text-slate-500 font-bold uppercase">Title text</span>
+                            {TAB_TITLE_HEX.map(preset => (
+                              <button
+                                key={preset}
+                                type="button"
+                                title={preset === '#ffffff' ? 'White' : preset === '#e2e8f0' ? 'Light gray' : 'Black'}
+                                onClick={() => onPick(preset)}
+                                className={cn(
+                                  'w-5 h-5 rounded-full border-2',
+                                  String(value || '').toLowerCase() === preset ? 'border-white' : 'border-slate-600'
+                                )}
+                                style={{ background: preset }}
+                              />
+                            ))}
+                            <span className="text-[10px] text-slate-600">Auto-contrast if unset</span>
+                          </div>
+                        );
                         const ColorDots = ({
                           value,
                           onPick,
@@ -7396,7 +7443,8 @@ export default function App() {
                               </span>
                             </label>
                             {unify && (
-                              <div className="flex items-center gap-2 flex-wrap px-1">
+                              <div className="space-y-2 px-1">
+                                <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">All tabs</span>
                                 {TAB_ACCENT_HEX.map(hex => (
                                   <button
@@ -7418,15 +7466,24 @@ export default function App() {
                                   className="w-7 h-7 rounded cursor-pointer bg-transparent border-0 p-0"
                                   title="Custom color"
                                 />
+                                </div>
+                                <TitleDots
+                                  value={introTitleHex}
+                                  onPick={(hex) => patchTabs(tabs.map((t: any) => ({ ...t, labelColor: hex })), { introLabelColor: hex })}
+                                />
                               </div>
                             )}
                             {!unify && (
                               <div className="rounded-xl border border-slate-700 bg-slate-950 p-3 space-y-2">
                                 <p className="text-sm font-bold text-white">Introduction</p>
-                                <p className="text-[11px] text-slate-500">Color of the Intro tab and heading. Body text is edited above.</p>
+                                <p className="text-[11px] text-slate-500">Fill of the Intro tab. Title text is separate so dark fills stay readable.</p>
                                 <ColorDots
                                   value={introHex}
                                   onPick={(hex) => patchTabs(tabs, { introColor: hex })}
+                                />
+                                <TitleDots
+                                  value={introTitleHex}
+                                  onPick={(hex) => patchTabs(tabs, { introLabelColor: hex })}
                                 />
                               </div>
                             )}
@@ -7447,6 +7504,7 @@ export default function App() {
                                     placeholder={`Tab ${ti + 1} heading`}
                                   />
                                   {!unify && (
+                                    <>
                                     <ColorDots
                                       value={hex}
                                       onPick={(preset) => {
@@ -7455,6 +7513,15 @@ export default function App() {
                                         patchTabs(next);
                                       }}
                                     />
+                                    <TitleDots
+                                      value={tab.labelColor}
+                                      onPick={(preset) => {
+                                        const next = [...tabs];
+                                        next[ti] = { ...next[ti], labelColor: preset };
+                                        patchTabs(next);
+                                      }}
+                                    />
+                                    </>
                                   )}
                                   <textarea
                                     rows={4}
@@ -7511,7 +7578,7 @@ export default function App() {
                                     setEditingSlide(updated);
                                   }}
                                   className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 resize-none"
-                                  placeholder="Revealed text…"
+                                  placeholder="Short bullets shown on reveal (one per line). Put spoken explanation in Narration, not here."
                                 />
                               </div>
                             ))}
@@ -8256,10 +8323,10 @@ export default function App() {
                          {previewModalOption === 'Carousel Panel' && (
                             <div className="w-full max-w-2xl">
                               <CarouselPanel theme="light" cards={[
-                                { id: 'c1', label: 'Discover', description: 'Gather requirements, understand learner needs, and analyze existing content to identify key learning gaps.', color: '#6366f1', expandedContent: 'During the discovery phase, we use surveys, interviews, and performance data to build a clear picture of what learners already know and what they need to learn.' },
-                                { id: 'c2', label: 'Design', description: 'Develop the instructional design blueprint including objectives, module structure, and interaction types.', color: '#ec4899', expandedContent: 'In the design phase, we create storyboards, wireframes, and learning maps that guide the content authoring process.' },
-                                { id: 'c3', label: 'Develop', description: 'Build the actual course content, interactions, assessments, and media elements.', color: '#f59e0b', expandedContent: 'Development transforms the design documents into a fully functional eLearning experience using tools like NexCourse AI.' },
-                                { id: 'c4', label: 'Deliver', description: 'Deploy the course to your LMS and roll it out to your learner audience.', color: '#10b981', expandedContent: 'During delivery, we ensure SCORM compliance, LMS compatibility, and learner access before launch.' },
+                                { id: 'c1', label: 'Discover', description: 'Gather requirements, understand learner needs, and analyze existing content to identify key learning gaps.', color: CAROUSEL_CARD_HEX[0], expandedContent: 'During the discovery phase, we use surveys, interviews, and performance data to build a clear picture of what learners already know and what they need to learn.' },
+                                { id: 'c2', label: 'Design', description: 'Develop the instructional design blueprint including objectives, module structure, and interaction types.', color: CAROUSEL_CARD_HEX[1], expandedContent: 'In the design phase, we create storyboards, wireframes, and learning maps that guide the content authoring process.' },
+                                { id: 'c3', label: 'Develop', description: 'Build the actual course content, interactions, assessments, and media elements.', color: CAROUSEL_CARD_HEX[2], expandedContent: 'Development transforms the design documents into a fully functional eLearning experience using tools like NexCourse AI.' },
+                                { id: 'c4', label: 'Deliver', description: 'Deploy the course to your LMS and roll it out to your learner audience.', color: CAROUSEL_CARD_HEX[3], expandedContent: 'During delivery, we ensure SCORM compliance, LMS compatibility, and learner access before launch.' },
                               ]} />
                             </div>
                          )}

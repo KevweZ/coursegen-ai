@@ -1,4 +1,5 @@
 import { CourseOutline, TerminalObjectiveGroup, ExamConfig, ExamQuestion } from "../types/course";
+import { coerceCarouselColor } from "../lib/colorContrast";
 
 // ── Secure AI Proxy Client ───────────────────────────────────────────────────
 // API keys live ONLY in server.js — never in the browser bundle.
@@ -661,7 +662,8 @@ export async function hydrateCourseContent(
   - questionText MUST be a complete question sentence ending with "?"
   - Must have EXACTLY 4 options: 1 correct (isCorrect: true) + 3 plausible distractors
   - options[].text must be meaningful (10+ chars). NEVER: "A", "B", "True", "False" unless it's genuinely a T/F slide
-  - feedback: string explaining why the correct answer is right
+  - feedback: string explaining why the correct answer is right (this is where teaching detail goes AFTER submit)
+  - Slide-level content and voiceOverText must NOT give away the answer. content: 1 framing bullet about what is being tested. voiceOverText: 2–3 sentences on why this check matters and how to answer — never list the correct option or walk through each choice.
   - FAIL CONDITION: missing questionText or fewer than 2 options -> regenerate
 
   ACCORDION (DEPRECATED — use click-reveal instead):
@@ -672,6 +674,7 @@ export async function hydrateCourseContent(
   - Use when the learner must arrange items in a correct operational or chronological order
   - Schema: { items: [{ id, content }], correctOrder: [id, ...] } — correctOrder lists item ids from first to last
   - NEVER use drop-targets for "arrange in order / sequence / phases" questions
+  - Slide-level content/voiceOverText: frame the sorting task only; do not list the correct order.
 
   DROP-TARGETS (categorization bins):
   - Use ONLY when the learner must choose which bin each item belongs to
@@ -680,9 +683,12 @@ export async function hydrateCourseContent(
   - category = exact category label for correct items; use "" (empty) for distractors that do NOT belong in any bin
   - FORBIDDEN: one category with every item assigned to it and no distractors (that is sorting — use sorting instead)
   - Min 3, max 8 items
+  - Slide-level content/voiceOverText: same knowledge-check rule as matching — frame the task, do not list which item belongs in which bin.
 
   MATCHING:
   - Items and targets must be parallel in structure. Max 5 pairs.
+  - Slide-level content: 1–2 framing bullets about the TASK ("Match each sign to its function"). NEVER a cheat sheet of correct matches, color meanings, or definitions the learner is supposed to recall.
+  - voiceOverText: 2–3 sentences on why this check matters and how to complete it. Do NOT narrate each pair or define the answers. Teaching detail belongs after the learner submits.
 
   FLASHCARDS:
   - front = a direct question or key term (not a sentence fragment)
@@ -728,19 +734,20 @@ export async function hydrateCourseContent(
 
   CAROUSEL-PANEL (type: "carousel-panel"):
   - data.cards: array of 3-5 card objects
-  - Each card: { "id": "c1", "label": "Card Title", "color": "#6366f1", "description": "Short 1-2 sentence preview", "expandedContent": "Full detail shown after MORE is clicked. 3-5 sentences." }
-  - Use distinct colors per card. description <= 30 words. expandedContent must exist.
+  - Each card: { "id": "c1", "label": "Card Title", "color": "#4f46e5", "description": "Short 1-2 sentence preview", "expandedContent": "Full detail shown after MORE is clicked. 3-5 sentences." }
+  - Color MUST be one of these dark fills so white text stays readable: #4f46e5, #0f766e, #9f1239, #1d4ed8, #b45309, #6d28d9, #166534, #0f172a. NEVER white, yellow, pink, light gray, or pastels — do not pick a fill to "match" the topic (e.g. do not use white for "White Signs").
+  - description <= 30 words. expandedContent must exist.
   - FAIL CONDITION: fewer than 2 cards, or missing expandedContent -> regenerate
 
   CLICK-REVEAL (type: "click-reveal"):
-  - Use this for key term/definition slides, glossary slides, learning objectives with explanations, or key takeaway lists.
-  - data.items: array of 4-8 reveal items
-  - Each item: { "id": "r1", "term": "Key Term or Concept", "definition": "Full explanation, 1-3 sentences." }
-  - term: the bold clickable label (2-6 words, bold key concept — NO markdown asterisks in the term field itself)
-  - definition: the revealed content (1-3 sentences explaining the term, with context and examples)
-  - COUNT ALIGNMENT (STRICT): voiceOverText must mention the SAME number of items as data.items.length
-    (e.g. if there are 4 items, say "four"; never introduce a 5th concept that is not in data.items).
-  - FAIL CONDITION: fewer than 3 items, or any item missing definition -> regenerate
+  - Use this for grouped topics (### headings with bullets), key terms, or comparison lists the learner should open one at a time.
+  - data.items: array of 3-6 reveal items (not 8 — too long vertically)
+  - Each item: { "id": "r1", "term": "Section heading (2-6 words)", "definition": "- short bullet\\n- short bullet\\n- short bullet" }
+  - term: the clickable label only (NO markdown asterisks)
+  - definition: the REVEALED on-screen text — SHORT BULLETS only (3–5 bullets, 5–8 words each). These ARE the scannable points. NEVER put 1–3 explanatory sentences in definition — that belongs in voiceOverText.
+  - Slide-level "content" must NOT repeat the same bullets as the items. Leave content empty, or use at most 1 framing line such as "Select each topic to reveal the key points." The player already shows the clickable terms.
+  - voiceOverText: spoken teaching that expands the bullets (2–5 sentences). Do not re-read every bullet.
+  - FAIL CONDITION: fewer than 3 items, paragraph-only definitions, or slide content that duplicates every item -> regenerate
 
   DIAGRAM (type: "diagram"):
   - USE FOR: process flows, decision trees, multi-step workflows, system hierarchies, onboarding journeys, approval chains, troubleshooting trees
@@ -857,7 +864,8 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     // must NOT be treated as success, otherwise it skips every retry tier and the
     // learner sees a blank slide (Bug #7). Throwing here routes back through the
     // caller's catch block so the next fallback tier gets a chance.
-    if (!parsed.content?.trim() || !parsed.voiceOverText?.trim()) {
+    const revealOk = parsed.type === 'click-reveal' && Array.isArray(parsed.data?.items) && parsed.data.items.length > 0;
+    if ((!parsed.content?.trim() && !revealOk) || !parsed.voiceOverText?.trim()) {
       throw new Error(`Single slide response for "${slide.title}" has empty content or voiceOverText.`);
     }
     return parsed;
@@ -872,7 +880,8 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     const takeawayEmpty = slide.type === 'key-takeaways'
       && !(slide.data?.objectives?.length || slide.interactions?.length)
       && !String(slide.content || '').replace(/^#{1,6}.*/gm, '').replace(/[-*•]/g, '').trim();
-    if (slide.content?.trim() && slide.voiceOverText?.trim() && !takeawayEmpty) return slide;
+    const revealOk = slide.type === 'click-reveal' && Array.isArray(slide.data?.items) && slide.data.items.length > 0;
+    if ((slide.content?.trim() || revealOk) && slide.voiceOverText?.trim() && !takeawayEmpty) return slide;
     for (let i = 0; i < attempts; i++) {
       try {
         const retried = await hydrateSingleSlide(slide, moduleTitle);
@@ -892,6 +901,16 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
 
   // --- Helper: validate and normalize a parsed slide ---
   function processSlide(slide: any): any[] {
+    if (slide.type === 'carousel-panel') {
+      const cards = slide.data?.cards || slide.data?.items;
+      if (Array.isArray(cards)) {
+        slide.data = {
+          ...(slide.data || {}),
+          cards: cards.map((c: any, i: number) => ({ ...c, color: coerceCarouselColor(c?.color, i) })),
+        };
+      }
+    }
+
     const isMissingData = (type: string, field: string) =>
       slide.type === type && (!slide.data || !slide.data[field] || slide.data[field].length === 0);
 
@@ -1135,7 +1154,10 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     // blank (Bug #7) — retries empty slides with the same concurrency bound. ──
     const needsContent = hydratedSlides
       .map((s, i) => ({ s, i }))
-      .filter(({ s }) => !s.content?.trim() || !s.voiceOverText?.trim());
+      .filter(({ s }) => {
+        const revealOk = s.type === 'click-reveal' && Array.isArray(s.data?.items) && s.data.items.length > 0;
+        return (!s.content?.trim() && !revealOk) || !s.voiceOverText?.trim();
+      });
     if (needsContent.length) {
       const fixed = await mapWithConcurrency(
         needsContent,

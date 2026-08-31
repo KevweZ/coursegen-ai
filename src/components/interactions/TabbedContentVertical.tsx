@@ -1,7 +1,8 @@
 ﻿import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { markdownToHtml } from '../../lib/markdownInline';
+import { markdownToHtml, markdownToInlineHtml } from '../../lib/markdownInline';
 import { formatTabIntroOst, formatTabOstBody } from '../../lib/formatTabIntroOst';
 import { tabAccentHex, TAB_INTRO_DEFAULT_HEX } from '../../lib/tabAccents';
+import { contrastTextOn } from '../../lib/colorContrast';
 import { ChevronRight } from 'lucide-react';
 
 export interface VerticalTab {
@@ -9,6 +10,8 @@ export interface VerticalTab {
   label: string;
   /** Selected tab box + matching panel header color */
   color?: string;
+  /** Selected tab title text (defaults to auto-contrast on the fill). */
+  labelColor?: string;
   icon?: string;
   content: string;
   /** Optional AI/source image shown below tab text (does not cover copy) */
@@ -29,6 +32,7 @@ interface Props {
   introContent?: string;
   /** Color of the Introduction tab + intro heading */
   introColor?: string;
+  introLabelColor?: string;
   /** Slide-level narration — used to enrich thin intro OST into short bullets */
   introVoiceOver?: string;
   /** Notify parent of active tab (null = intro) for tab-scoped floating images */
@@ -52,6 +56,7 @@ export default function TabbedContentVertical({
   onTabAudio,
   introContent,
   introColor,
+  introLabelColor,
   introVoiceOver,
   onActiveTabChange,
   highlightTabId = null,
@@ -69,6 +74,7 @@ export default function TabbedContentVertical({
 
   const isLight = theme === 'light';
   const introHex = (introColor && String(introColor).trim()) || TAB_INTRO_DEFAULT_HEX;
+  const introTitleColor = (introLabelColor && String(introLabelColor).trim()) || contrastTextOn(introHex);
   const inIntro = activeIndex < 0 || !normalized.length;
   const activeTab = inIntro ? null : normalized[Math.min(activeIndex, normalized.length - 1)];
   const dropZoneId = activeTab?.id || '';
@@ -133,15 +139,15 @@ export default function TabbedContentVertical({
             className={cn(
               'flex items-center gap-2 w-full text-left px-3 py-2.5 rounded-xl font-bold text-sm transition-all border',
               inIntro
-                ? 'text-white border-transparent shadow-lg'
+                ? 'border-transparent shadow-lg'
                 : isLight
                 ? 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-800'
                 : 'bg-slate-800/60 text-slate-400 border-slate-700 hover:bg-slate-700/60 hover:text-slate-200'
             )}
-            style={inIntro ? { background: introHex, boxShadow: `0 0 0 2px ${introHex}55` } : undefined}
+            style={inIntro ? { background: introHex, boxShadow: `0 0 0 2px ${introHex}55`, color: introTitleColor } : undefined}
             title="Return to opening introduction"
           >
-            <span className="flex-1 leading-snug" style={{ color: inIntro ? '#ffffff' : undefined }}>
+            <span className="flex-1 leading-snug" style={{ color: inIntro ? introTitleColor : undefined }}>
               Introduction
             </span>
             {inIntro && <ChevronRight className="w-4 h-4 shrink-0" />}
@@ -149,6 +155,7 @@ export default function TabbedContentVertical({
           {normalized.map((tab, i) => {
             const isActive = i === activeIndex;
             const hex = tabAccentHex(tab, i);
+            const titleColor = (tab.labelColor && String(tab.labelColor).trim()) || contrastTextOn(hex);
             const isDropTarget = highlightTabId === tab.id;
             return (
               <button
@@ -159,16 +166,16 @@ export default function TabbedContentVertical({
                 className={cn(
                   'flex items-center gap-2 w-full text-left px-3 py-2.5 rounded-xl font-bold text-sm transition-all border',
                   isActive
-                    ? 'text-white border-transparent shadow-lg'
+                    ? 'border-transparent shadow-lg'
                     : isLight
                     ? 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-800'
                     : 'bg-slate-800/60 text-slate-400 border-slate-700 hover:bg-slate-700/60 hover:text-slate-200',
                   isDropTarget && 'ring-2 ring-indigo-400 ring-offset-1'
                 )}
-                style={isActive ? { background: hex, boxShadow: `0 0 0 2px ${hex}55` } : undefined}
+                style={isActive ? { background: hex, boxShadow: `0 0 0 2px ${hex}55`, color: titleColor } : undefined}
               >
                 {tab.icon && <span className="text-base shrink-0">{tab.icon}</span>}
-                <span className="flex-1 leading-snug" style={{ color: isActive ? '#ffffff' : undefined }} dangerouslySetInnerHTML={{ __html: markdownToHtml(tab.label) }} />
+                <span className="flex-1 leading-snug" style={{ color: isActive ? titleColor : undefined }} dangerouslySetInnerHTML={{ __html: markdownToInlineHtml(tab.label) }} />
                 {isActive && <ChevronRight className="w-4 h-4 shrink-0" />}
               </button>
             );
@@ -207,7 +214,7 @@ export default function TabbedContentVertical({
                     className={cn('text-sm leading-relaxed w-full', isLight ? 'text-slate-700' : 'text-slate-200')}
                     dangerouslySetInnerHTML={{ __html: markdownToHtml(introOst) }}
                   />
-                  <p className={cn('mt-6 text-xs font-semibold', isLight ? 'text-indigo-600' : 'text-indigo-300')}>
+                  <p className="mt-6 text-xs font-semibold" style={{ color: introHex }}>
                     Select a topic tab to continue →
                   </p>
                 </>

@@ -12,6 +12,9 @@ export const TAB_ACCENT_HEX = [
 
 export const TAB_INTRO_DEFAULT_HEX = TAB_ACCENT_HEX[0];
 
+/** Title text on a selected tab (overrides auto-contrast). */
+export const TAB_TITLE_HEX = ['#ffffff', '#e2e8f0', '#0f172a'] as const;
+
 export function tabAccentHex(tab: { color?: string } | undefined, index: number): string {
   const c = String(tab?.color || '').trim();
   if (c) return c;
