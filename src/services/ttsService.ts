@@ -87,6 +87,58 @@ function parseProxyError(status: number, raw: string): TTSRequestError {
   }
 }
 
+/** Browser/network drop — safe to retry (Render cold start, flaky proxy, large poll). */
+export function isTransientTtsNetworkError(err: unknown): boolean {
+  if (err instanceof TTSRequestError) {
+    if (err.code === 'TTS_NETWORK' || err.code === 'COLD_START') return true;
+    if (err.status === 502 || err.status === 503 || err.status === 504) return true;
+  }
+  const msg = String(err instanceof Error ? err.message : err || '').toLowerCase();
+  return (
+    msg.includes('failed to fetch') ||
+    msg.includes('networkerror') ||
+    msg.includes('load failed') ||
+    msg.includes('network request failed') ||
+    msg.includes('warming up') ||
+    msg.includes('cold_start') ||
+    msg.includes('api proxy error')
+  );
+}
+
+async function fetchTtsWithRetry(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  opts?: { retries?: number },
+): Promise<Response> {
+  const retries = opts?.retries ?? 4;
+  let lastNetworkErr: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(input, init);
+      if (response.ok) return response;
+
+      const retryableStatus = response.status === 502 || response.status === 503 || response.status === 504;
+      if (retryableStatus && attempt < retries) {
+        // Drain body so the connection can close cleanly before retrying.
+        await response.text().catch(() => '');
+        await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+        continue;
+      }
+      return response;
+    } catch (err) {
+      lastNetworkErr = err;
+      if (!isTransientTtsNetworkError(err) && !(err instanceof TypeError)) throw err;
+      if (attempt >= retries) break;
+      await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+    }
+  }
+  if (lastNetworkErr instanceof TTSRequestError) throw lastNetworkErr;
+  throw new TTSRequestError(
+    'Connection to the narration server dropped. The app will retry automatically when possible.',
+    { status: 503, code: 'TTS_NETWORK', retryAfterMs: 5000 },
+  );
+}
+
 /** User-facing label for toast / draft messages. */
 export function formatTtsErrorForUser(err: unknown): string {
   if (err instanceof TTSRequestError) {
@@ -105,9 +157,15 @@ export function formatTtsErrorForUser(err: unknown): string {
         return 'Narration is already running in another tab. Finish or close that run, then retry.';
       case 'TTS_AUTH_REQUIRED':
         return 'Sign in required to generate narration.';
+      case 'TTS_NETWORK':
+      case 'COLD_START':
+        return err.message || 'Narration server connection dropped. Retry — finished slides are kept and only missing audio is regenerated.';
       default:
         return err.message;
     }
+  }
+  if (isTransientTtsNetworkError(err)) {
+    return 'Narration server connection dropped. Retry — finished slides are kept and only missing audio is regenerated.';
   }
   return err instanceof Error ? err.message : 'Narration failed';
 }
@@ -166,7 +224,7 @@ export async function createTtsJob(opts: {
       code: 'TTS_AUTH_REQUIRED',
     });
   }
-  const response = await fetch(`${TTS_PROXY_URL}/jobs`, {
+  const response = await fetchTtsWithRetry(`${TTS_PROXY_URL}/jobs`, {
     method: 'POST',
     headers,
     body: JSON.stringify({
@@ -175,7 +233,7 @@ export async function createTtsJob(opts: {
       speed: opts.speed ?? 1.0,
       items: opts.items,
     }),
-  });
+  }, { retries: 5 });
   if (!response.ok) {
     const errText = await response.text().catch(() => response.statusText);
     throw parseProxyError(response.status, errText);
@@ -185,10 +243,10 @@ export async function createTtsJob(opts: {
 
 /** Poll job status and consume any newly finished audio clips. */
 export async function pollTtsJob(jobId: string): Promise<TtsJobSnapshot> {
-  const response = await fetch(`${TTS_PROXY_URL}/jobs/${encodeURIComponent(jobId)}`, {
+  const response = await fetchTtsWithRetry(`${TTS_PROXY_URL}/jobs/${encodeURIComponent(jobId)}`, {
     method: 'GET',
     headers: await authHeaders(),
-  });
+  }, { retries: 6 });
   if (!response.ok) {
     const errText = await response.text().catch(() => response.statusText);
     throw parseProxyError(response.status, errText);

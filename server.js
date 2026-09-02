@@ -1926,6 +1926,10 @@ const ttsJobs = new Map(); // jobId -> job
 const ttsActiveJobByUser = new Map(); // userId -> jobId
 const TTS_JOB_TTL_MS = 2 * 60 * 60 * 1000; // 2h
 const TTS_JOB_MAX_ITEMS = 200;
+/** Keep poll JSON small — base64 MP3 clips are large; send at most one per poll. */
+const TTS_JOB_RESULTS_BATCH = 1;
+/** If the client falls behind, pause synthesis so Render memory doesn't balloon. */
+const TTS_JOB_MAX_PENDING = 3;
 
 function cleanupTtsJobs() {
   const now = Date.now();
@@ -1953,8 +1957,12 @@ function publicTtsJob(job, { includeResults = true, consumeResults = false } = {
     updatedAt: job.updatedAt,
   };
   if (includeResults) {
-    payload.results = job.pendingResults.slice();
-    if (consumeResults) job.pendingResults = [];
+    // One clip per poll keeps Cloudflare→browser payloads small on long courses.
+    const batch = job.pendingResults.slice(0, TTS_JOB_RESULTS_BATCH);
+    payload.results = batch;
+    if (consumeResults && batch.length) {
+      job.pendingResults = job.pendingResults.slice(batch.length);
+    }
   }
   return payload;
 }
@@ -1974,6 +1982,19 @@ async function runTtsJob(job) {
     job.current = i + 1;
     job.currentTitle = item.title || item.id;
     job.updatedAt = Date.now();
+
+    // Backpressure: wait for the browser to drain pending base64 clips before synthesizing more.
+    // Prevents Render OOM / proxy timeouts on large courses when a poll is delayed.
+    while (job.pendingResults.length >= TTS_JOB_MAX_PENDING) {
+      if (job.cancelRequested) break;
+      await new Promise(r => setTimeout(r, 800));
+      job.updatedAt = Date.now();
+    }
+    if (job.cancelRequested) {
+      job.status = 'cancelled';
+      job.updatedAt = Date.now();
+      break;
+    }
 
     try {
       // Re-check trial/credits periodically so a long job stops cleanly
