@@ -204,11 +204,16 @@ export function useTTSGeneration() {
       onlyMissing?: boolean;
       synthetic?: Array<{ id: string; text: string; title?: string }>;
       setSyntheticAudioMap?: (updater: (prev: Record<string, string>) => Record<string, string>) => void;
-      /** Internal: already attempted one auto-resume after a network drop. */
-      _resumeAttempted?: boolean;
+      /**
+       * Internal: how many auto-resumes already ran after network drops.
+       * Cap keeps runaway loops from burning credits on a dead connection.
+       */
+      _resumeCount?: number;
     },
   ) => {
-    const runId = ++runIdRef.current;
+    // Preserve run id across auto-resumes so cancel still works and we don't reset progress UI.
+    const resumeCount = opts?._resumeCount ?? 0;
+    const runId = resumeCount > 0 ? runIdRef.current : ++runIdRef.current;
     const { items, skipped } = buildCourseNarrationItems(course, {
       onlyMissing: opts?.onlyMissing,
       synthetic: opts?.synthetic,
@@ -216,30 +221,37 @@ export function useTTSGeneration() {
 
     if (items.length === 0) {
       if (isActive(runId)) {
-        setProgress({
+        setProgress(prev => ({
           isRunning: false,
           isDone: true,
-          currentSlide: 0,
-          totalSlides: 0,
+          // Keep prior progress when only-missing resume finds nothing left to do.
+          currentSlide: opts?.onlyMissing ? prev.currentSlide : 0,
+          totalSlides: opts?.onlyMissing ? prev.totalSlides : 0,
           currentSlideTitle: '',
           error: opts?.onlyMissing ? null : 'No narratable slide text found',
           skipped,
-        });
+        }));
       }
       return;
     }
 
-    setProgress({
+    setProgress(prev => ({
       isRunning: true,
       isDone: false,
-      currentSlide: 0,
-      totalSlides: items.length,
+      // On resume, keep prior applied count visible instead of resetting to 0.
+      currentSlide: resumeCount > 0 ? Math.max(prev.currentSlide, 0) : 0,
+      totalSlides: items.length + (resumeCount > 0 ? Math.max(0, prev.currentSlide) : 0),
       currentSlideTitle: '',
-      error: null,
+      error: resumeCount > 0 ? 'Connection dropped — resuming remaining slides…' : null,
       skipped,
-    });
+    }));
 
     let appliedCount = 0;
+    const appliedSyntheticIds = new Set<string>();
+    const MAX_AUTO_RESUMES = 3;
+    const remainingSynthetics = () =>
+      (opts?.synthetic || []).filter(s => s?.id && !appliedSyntheticIds.has(s.id));
+
     try {
       const created = await createTtsJob({ voice, items });
       if (!isActive(runId)) {
@@ -260,13 +272,18 @@ export function useTTSGeneration() {
         if (batch.length) {
           applyJobResults(batch, setCourse, opts?.setSyntheticAudioMap);
           appliedCount += batch.length;
+          for (const r of batch) {
+            if (r.target === 'synthetic' || (r.id.startsWith('__') && r.id.endsWith('__'))) {
+              appliedSyntheticIds.add(r.id);
+            }
+          }
         }
 
         setProgress(prev => ({
           ...prev,
           isRunning: snap.status === 'queued' || snap.status === 'running',
-          currentSlide: Math.max(snap.successCount || 0, snap.current || 0, appliedCount),
-          totalSlides: snap.total || prev.totalSlides,
+          currentSlide: Math.max(snap.successCount || 0, snap.current || 0, appliedCount, prev.currentSlide),
+          totalSlides: Math.max(snap.total || 0, prev.totalSlides, items.length),
           currentSlideTitle: snap.currentTitle || prev.currentSlideTitle,
           error: snap.error || null,
         }));
@@ -287,14 +304,44 @@ export function useTTSGeneration() {
             ...prev,
             isRunning: false,
             isDone: true,
-            currentSlide: success,
-            totalSlides: snap.total || prev.totalSlides,
+            currentSlide: Math.max(success, prev.currentSlide, appliedCount),
+            totalSlides: Math.max(snap.total || 0, prev.totalSlides),
             error: errorMsg,
           }));
           if (snap.status === 'cancelled' || success === 0) {
+            // Not a proxy/network blip — don't use 502 or auto-resume will treat this as transient.
             throw new TTSRequestError(errorMsg || 'Narration failed', {
-              status: 502,
-              code: snap.code || 'TTS_ERROR',
+              status: snap.status === 'cancelled' ? 499 : 500,
+              code: snap.code || (snap.status === 'cancelled' ? 'TTS_CANCELLED' : 'TTS_ERROR'),
+            });
+          }
+          // Partial job failure (some clips failed server-side): auto-resume missing only.
+          if (
+            failed > 0 &&
+            success > 0 &&
+            resumeCount < MAX_AUTO_RESUMES &&
+            isActive(runId)
+          ) {
+            setProgress(prev => ({
+              ...prev,
+              isRunning: true,
+              isDone: false,
+              error: `Retrying ${failed} failed clip${failed === 1 ? '' : 's'}…`,
+            }));
+            activeJobIdRef.current = null;
+            let latestCourse: any = course;
+            setCourse((prev: any) => {
+              latestCourse = prev;
+              return prev;
+            });
+            await sleep(1500);
+            if (!isActive(runId)) return;
+            const synthLeft = remainingSynthetics();
+            return generateTTS(latestCourse, setCourse, voice, onSlideProgress, {
+              onlyMissing: true,
+              synthetic: synthLeft.length ? synthLeft : undefined,
+              setSyntheticAudioMap: opts?.setSyntheticAudioMap,
+              _resumeCount: resumeCount + 1,
             });
           }
           break;
@@ -306,13 +353,12 @@ export function useTTSGeneration() {
       const fatal = err instanceof TTSRequestError && TTS_FATAL_CODES.has(err.code);
       const transient = isTransientTtsNetworkError(err);
 
-      // Auto-resume once: start a new job for only-missing clips after a mid-run network drop.
+      // Auto-resume up to MAX_AUTO_RESUMES after network drops (including create/poll before any clip).
       // Finished audio is already patched onto `course` via setCourse functional updates.
       if (
         transient &&
         !fatal &&
-        !opts?._resumeAttempted &&
-        appliedCount > 0 &&
+        resumeCount < MAX_AUTO_RESUMES &&
         isActive(runId)
       ) {
         setProgress(prev => ({
@@ -320,7 +366,7 @@ export function useTTSGeneration() {
           isRunning: true,
           isDone: false,
           currentSlide: Math.max(prev.currentSlide, appliedCount),
-          error: 'Connection dropped — resuming remaining slides…',
+          error: `Connection dropped — resuming remaining slides (attempt ${resumeCount + 1}/${MAX_AUTO_RESUMES})…`,
         }));
         const staleJobId = activeJobIdRef.current;
         activeJobIdRef.current = null;
@@ -330,13 +376,16 @@ export function useTTSGeneration() {
           latestCourse = prev;
           return prev;
         });
-        await sleep(2000);
+        // Back off a bit more on later resumes (cold starts / flaky proxy).
+        await sleep(2000 + resumeCount * 1500);
         if (!isActive(runId)) return;
-        // New job for clips still missing; skip synthetics (already applied or optional).
+        // New job for clips still missing, including unfinished cover/module synthetics.
+        const synthLeft = remainingSynthetics();
         return generateTTS(latestCourse, setCourse, voice, onSlideProgress, {
           onlyMissing: true,
+          synthetic: synthLeft.length ? synthLeft : undefined,
           setSyntheticAudioMap: opts?.setSyntheticAudioMap,
-          _resumeAttempted: true,
+          _resumeCount: resumeCount + 1,
         });
       }
 

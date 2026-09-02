@@ -90,7 +90,9 @@ function parseProxyError(status: number, raw: string): TTSRequestError {
 /** Browser/network drop — safe to retry (Render cold start, flaky proxy, large poll). */
 export function isTransientTtsNetworkError(err: unknown): boolean {
   if (err instanceof TTSRequestError) {
+    if (TTS_FATAL_CODES.has(err.code)) return false;
     if (err.code === 'TTS_NETWORK' || err.code === 'COLD_START') return true;
+    // Real proxy/gateway responses (not app-level job failures, which use 4xx/500).
     if (err.status === 502 || err.status === 503 || err.status === 504) return true;
   }
   const msg = String(err instanceof Error ? err.message : err || '').toLowerCase();
@@ -289,7 +291,7 @@ export async function generateSlideTTS(
     });
   }
 
-  const response = await fetch(TTS_PROXY_URL, {
+  const response = await fetchTtsWithRetry(TTS_PROXY_URL, {
     method: 'POST',
     headers,
     body: JSON.stringify({
@@ -298,7 +300,7 @@ export async function generateSlideTTS(
       model,
       speed,
     }),
-  });
+  }, { retries: 4 });
 
   if (!response.ok) {
     const errText = await response.text().catch(() => response.statusText);

@@ -440,16 +440,18 @@ export async function generateCourseOutline(
   const gameIds: string[] = [];
   const QUIZ_ONLY = new Set(['sorting', 'matching', 'drop-targets', 'multiple-choice', 'multiple-answers', 'quiz', 'mc', 'ma', 'tf']);
   const contentInteractions = (configParams.interactionTypes || []).filter(t => !QUIZ_ONLY.has(t));
-  const quizActivities = (configParams.quizActivityTypes || []).map(t => {
+  const quizActivities = (Array.isArray(configParams.quizActivityTypes)
+    ? configParams.quizActivityTypes
+    : ['sorting', 'matching', 'drop-targets']
+  ).map(t => {
     if (t === 'mc' || t === 'ma' || t === 'tf') return 'quiz';
     return t;
   });
-  const uniqueQuizActivities = [...new Set(
-    quizActivities.length ? quizActivities : ['sorting', 'matching', 'drop-targets']
-  )];
+  // Honor explicit arrays including [] — never re-expand to sorting/matching when the user cleared types.
+  const uniqueQuizActivities = [...new Set(quizActivities)];
   const kcMode = configParams.knowledgeCheckMode || 'per-module';
   const kcCount = Math.max(1, configParams.knowledgeCheckCount ?? 1);
-  const kcDirective = configParams.includeKnowledgeChecks === false
+  const kcDirective = configParams.includeKnowledgeChecks === false || uniqueQuizActivities.length === 0
     ? 'NO knowledge check slides'
     : kcMode === 'per-module'
     ? `Exactly ${kcCount} Knowledge Check slide(s) per module (type must be one of: ${uniqueQuizActivities.join(', ')}). Title MUST start with "Knowledge Check:".`

@@ -1356,7 +1356,9 @@ export default function App() {
   const [regeneratingSlideId, setRegeneratingSlideId] = useState<string | null>(null);
   const [showEditMenu, setShowEditMenu] = useState(false);
   /** Ref so runAnalysis (defined earlier) can call finalize after hydrate */
-  const finalizeGeneratedCourseRef = useRef<(course: any) => Promise<void>>(async () => {});
+  const finalizeGeneratedCourseRef = useRef<
+    (course: any, settingsOverride?: SavedCourseSettings | null) => Promise<void>
+  >(async () => {});
   /** Bumps when a new finalize starts so stale background imagery/QC work aborts safely */
   const finalizeBackgroundTokenRef = useRef(0);
   
@@ -2522,8 +2524,8 @@ export default function App() {
     clearColdStartCountdown();
     setAnalyzeError(null);
     if (lastUploadPath) {
-      const override = lastUploadPath === 'quick' ? resolveCourseSettings(user?.id) : null;
-      if (override) applySavedSettings(override);
+      const override = resolveCourseSettings(user?.id);
+      applySavedSettings(override);
       runAnalysis(uploadedFile, lastUploadPath, override);
     } else {
       runAnalysis(uploadedFile);
@@ -2600,6 +2602,9 @@ export default function App() {
 
   const persistCourseSettings = () => {
     saveCourseSettings(collectCurrentSettings(), user?.id);
+    try {
+      sessionStorage.setItem('nexcourse.courseSettings.savedAt', String(Date.now()));
+    } catch { /* ignore */ }
     setSettingsSavedFlash(true);
     setTimeout(() => setSettingsSavedFlash(false), 2000);
   };
@@ -2618,7 +2623,18 @@ export default function App() {
       const localSettings = resolveCourseSettings(user.id);
       const localPlayer = loadPlayerProperties(user.id);
 
-      if (cloud?.courseSettings && typeof cloud.courseSettings === 'object') {
+      // Prefer this device's fresh Save for ~60s so a slow cloud round-trip cannot
+      // overwrite Course Settings the user just edited before Build now / Review.
+      let preferLocal = false;
+      try {
+        const savedAt = Number(sessionStorage.getItem('nexcourse.courseSettings.savedAt') || 0);
+        preferLocal = !!savedAt && Date.now() - savedAt < 60_000;
+      } catch { /* ignore */ }
+
+      if (preferLocal && localSettings) {
+        applySavedSettings(localSettings);
+        void pushAccountPreferences({ courseSettings: localSettings });
+      } else if (cloud?.courseSettings && typeof cloud.courseSettings === 'object') {
         cacheCourseSettings(cloud.courseSettings as SavedCourseSettings, user.id);
         applySavedSettings(cloud.courseSettings as SavedCourseSettings);
       } else {
@@ -2662,9 +2678,10 @@ export default function App() {
         includeKnowledgeChecks: true,
         knowledgeCheckMode: examConfig.knowledgeCheckMode || 'per-module',
         knowledgeCheckCount: examConfig.knowledgeCheckCount ?? 1,
-        quizActivityTypes: (examConfig.knowledgeCheckQuestionTypes?.length
-          ? examConfig.knowledgeCheckQuestionTypes
-          : ['sorting', 'matching', 'drop-targets']
+        quizActivityTypes: (
+          Array.isArray(examConfig.knowledgeCheckQuestionTypes)
+            ? examConfig.knowledgeCheckQuestionTypes
+            : ['sorting', 'matching', 'drop-targets']
         ).filter(t =>
           ['sorting', 'matching', 'drop-targets', 'mc', 'ma', 'tf'].includes(t)
         ),
@@ -2733,28 +2750,20 @@ export default function App() {
       let outlineSlideCount = settingsOverride?.slideCount ?? slideCount;
       let outlineIncludeModuleTitles = settingsOverride?.includeModuleTitleSlides ?? includeModuleTitleSlides;
       let outlineIncludeModuleOverviews = settingsOverride?.includeModuleOverviewSlides ?? includeModuleOverviewSlides;
+      const outlineIncludeSummarySlides = settingsOverride?.includeSummarySlides ?? includeSummarySlides;
       const outlineExamCfg = settingsOverride?.examConfig ?? examConfig;
+      // Explicit array (including []) must win — never re-expand to factory KC types when the user cleared some.
+      const outlineQuizActivityTypes = (
+        Array.isArray(outlineExamCfg.knowledgeCheckQuestionTypes)
+          ? outlineExamCfg.knowledgeCheckQuestionTypes
+          : ['sorting', 'matching', 'drop-targets']
+      ).filter(t =>
+        ['sorting', 'matching', 'drop-targets', 'mc', 'ma', 'tf'].includes(t)
+      );
 
-      // Quick build: keep user-saved defaults. Customize: allow AI preset recommendations —
-      // but never overwrite the user's chosen objectiveFormat.
-      if (effectivePath !== 'quick') {
-        if (result.recommendedPreset) {
-          const rp = result.recommendedPreset as 'quick' | 'standard' | 'comprehensive';
-          setPreset(rp);
-          setCourseType(rp);
-          const config = getPresetConfig('corporate', rp);
-          setSlideCount(config.slideCountTarget);
-          setInteractionTypes(mapToGridIds(config.interactions).filter(
-            t => !['sorting', 'matching', 'drop-targets', 'quiz'].includes(t)
-          ));
-          // Keep lockedFmt — do not apply config.objectiveFormat
-          outlineCourseType = rp;
-          outlineInteractions = mapToGridIds(config.interactions).filter(
-            t => !['sorting', 'matching', 'drop-targets', 'quiz'].includes(t)
-          );
-          outlineSlideCount = config.slideCountTarget;
-        }
-      }
+      // Both Build now and Review before build honor saved Course Settings.
+      // Do NOT let AI recommendedPreset overwrite interactions, slide count, or KC types —
+      // that was wiping carousel / sorting / multimedia choices made in Course Settings.
 
       await new Promise(r => setTimeout(r, 300));
 
@@ -2773,13 +2782,12 @@ export default function App() {
               slideCount: outlineSlideCount,
               includeModuleTitleSlides: outlineIncludeModuleTitles,
               includeModuleOverviewSlides: outlineIncludeModuleOverviews,
+              includeSummarySlides: outlineIncludeSummarySlides,
               gameTemplateIds: undefined,
               includeKnowledgeChecks: true,
               knowledgeCheckMode: outlineExamCfg.knowledgeCheckMode || 'per-module',
               knowledgeCheckCount: outlineExamCfg.knowledgeCheckCount ?? 1,
-              quizActivityTypes: outlineExamCfg.knowledgeCheckQuestionTypes?.length
-                ? outlineExamCfg.knowledgeCheckQuestionTypes
-                : ['sorting', 'matching', 'drop-targets'],
+              quizActivityTypes: outlineQuizActivityTypes,
               objectiveFormat: settingsOverride?.objectiveFormat ?? objectiveFormat,
             }
           );
@@ -2797,12 +2805,15 @@ export default function App() {
             (pct) => setProgress(20 + Math.round(pct * 0.35))
           );
           // Apply Course Settings; preview opens after cover — visuals/QC continue in background
-          await finalizeGeneratedCourseRef.current({
-            ...finalCourse,
-            learningObjectives: result.objectives || learningObjectives,
-            title: result.title || finalCourse.title,
-            description: result.summary || finalCourse.description,
-          });
+          await finalizeGeneratedCourseRef.current(
+            {
+              ...finalCourse,
+              learningObjectives: result.objectives || learningObjectives,
+              title: result.title || finalCourse.title,
+              description: result.summary || finalCourse.description,
+            },
+            settingsOverride
+          );
         } catch (e: any) {
           setError(e?.message || 'Quick build failed.');
           setSettingsMode('session');
@@ -2840,13 +2851,12 @@ export default function App() {
             slideCount: outlineSlideCount,
             includeModuleTitleSlides: outlineIncludeModuleTitles,
             includeModuleOverviewSlides: outlineIncludeModuleOverviews,
+            includeSummarySlides: outlineIncludeSummarySlides,
             gameTemplateIds: undefined,
             includeKnowledgeChecks: true,
             knowledgeCheckMode: outlineExamCfg.knowledgeCheckMode || 'per-module',
             knowledgeCheckCount: outlineExamCfg.knowledgeCheckCount ?? 1,
-            quizActivityTypes: outlineExamCfg.knowledgeCheckQuestionTypes?.length
-              ? outlineExamCfg.knowledgeCheckQuestionTypes
-              : ['sorting', 'matching', 'drop-targets'],
+            quizActivityTypes: outlineQuizActivityTypes,
             objectiveFormat: settingsOverride?.objectiveFormat ?? objectiveFormat,
           }
         );
@@ -2861,7 +2871,7 @@ export default function App() {
           objectiveFormat: lockedFmt,
           includeModuleTitleSlides: outlineIncludeModuleTitles,
           includeModuleOverviewSlides: outlineIncludeModuleOverviews,
-          includeSummarySlides: settingsOverride?.includeSummarySlides ?? includeSummarySlides,
+          includeSummarySlides: outlineIncludeSummarySlides,
         }));
       } catch (e: any) {
         console.warn('[runAnalysis] Outline generation failed:', e);
@@ -2923,15 +2933,31 @@ export default function App() {
 
   const confirmUploadPath = async (choice: UploadPathChoice) => {
     const file = pendingUploadFile || uploadedFile;
+    // Capture before clearing — defaults mode means user just reviewed/edited Course Settings mid-upload.
+    const cameFromSettings = settingsMode === 'defaults';
     setShowUploadPathModal(false);
     setPendingUploadFile(null);
     setLastUploadPath(choice);
     if (!file) return;
-    let settingsOverride: SavedCourseSettings | null = null;
-    if (choice === 'quick') {
+    // Both Build now and Review before build must honor Course Settings
+    // (interactions, knowledge-check types, multimedia). Prefer live React state when the
+    // user just edited/saved settings so we never regenerate from a stale localStorage/cloud copy.
+    let preferLive = cameFromSettings;
+    try {
+      const savedAt = Number(sessionStorage.getItem('nexcourse.courseSettings.savedAt') || 0);
+      if (savedAt && Date.now() - savedAt < 60_000) preferLive = true;
+    } catch { /* ignore */ }
+    let settingsOverride: SavedCourseSettings;
+    if (preferLive) {
+      settingsOverride = collectCurrentSettings();
+      saveCourseSettings(settingsOverride, user?.id);
+      try {
+        sessionStorage.setItem('nexcourse.courseSettings.savedAt', String(Date.now()));
+      } catch { /* ignore */ }
+    } else {
       settingsOverride = resolveCourseSettings(user?.id);
-      applySavedSettings(settingsOverride);
     }
+    applySavedSettings(settingsOverride);
     await runAnalysis(file, choice, settingsOverride);
   };
 
@@ -3283,9 +3309,13 @@ export default function App() {
           includeKnowledgeChecks: true,
           knowledgeCheckMode: examConfig.knowledgeCheckMode || 'per-module',
           knowledgeCheckCount: examConfig.knowledgeCheckCount ?? 1,
-          quizActivityTypes: examConfig.knowledgeCheckQuestionTypes?.length
-            ? examConfig.knowledgeCheckQuestionTypes
-            : ['sorting', 'matching', 'drop-targets'],
+          quizActivityTypes: (
+            Array.isArray(examConfig.knowledgeCheckQuestionTypes)
+              ? examConfig.knowledgeCheckQuestionTypes
+              : ['sorting', 'matching', 'drop-targets']
+          ).filter(t =>
+            ['sorting', 'matching', 'drop-targets', 'mc', 'ma', 'tf'].includes(t)
+          ),
           objectiveFormat,
         }
       );
@@ -3293,18 +3323,19 @@ export default function App() {
       captureFoundationFingerprint();
       if (skipOutlineReview) {
         setProgress(45);
+        const settingsSnap = collectCurrentSettings();
         const finalCourse = await hydrateCourseContent(
           draft,
           prompt,
           {
-            courseType,
-            scenarioConfig: interactionTypes.includes('scenario') ? scenarioConfig : undefined,
+            courseType: settingsSnap.preset,
+            scenarioConfig: contentInteractions.includes('scenario') ? scenarioConfig : undefined,
             interactionTypes: contentInteractions,
           },
           (pct) => setProgress(45 + Math.round(pct * 0.1))
         );
         // Preview opens after cover; visuals/QC continue in background
-        await finalizeGeneratedCourse(finalCourse);
+        await finalizeGeneratedCourse(finalCourse, settingsSnap);
       } else {
         // Item 7: Jump to 100% when outline generation is done
         setProgress(100);
@@ -3320,22 +3351,38 @@ export default function App() {
   };
 
   /** Apply Course Settings, generate cover, open preview; visuals/QC/TTS continue in background. */
-  const finalizeGeneratedCourse = async (finalCourse: any) => {
+  const finalizeGeneratedCourse = async (
+    finalCourse: any,
+    settingsOverride?: SavedCourseSettings | null
+  ) => {
+    // Snapshot from override when provided — React state can still be stale right after
+    // applySavedSettings (imageMode / interactions / exam) during quick build.
+    const objectiveFormatSnap = (settingsOverride?.objectiveFormat ?? objectiveFormat) as 'AB' | 'ABC' | 'ABCD';
+    const examConfigSnap = settingsOverride?.examConfig ?? examConfig;
+    const navigationModeSnap = settingsOverride?.navigationMode ?? navigationMode;
+    const voiceSnapshot = settingsOverride?.voiceOverEnabled ?? voiceOverEnabled;
+    const voiceIdSnapshot = settingsOverride?.ttsVoice ?? ttsVoice;
+    const includeModuleTitlesSnapshot = settingsOverride?.includeModuleTitleSlides ?? includeModuleTitleSlides;
+    const includeModuleOverviewsSnapshot = settingsOverride?.includeModuleOverviewSlides ?? includeModuleOverviewSlides;
+    const modeSnapshot = normalizeImageMode(settingsOverride?.imageMode ?? imageMode);
+    const hotspotBackdropSnapshot = settingsOverride?.hotspotGenerateBackdrop ?? hotspotGenerateBackdrop;
+    const interactionTypesSnap = settingsOverride?.interactionTypes ?? interactionTypes;
+
     const rawObjectives = finalCourse.learningObjectives?.length
       ? finalCourse.learningObjectives
       : learningObjectives;
     const formattedObjectives = reformatObjectivesClientSide(
       rawObjectives,
-      objectiveFormat as 'AB' | 'ABC' | 'ABCD'
+      objectiveFormatSnap
     );
     setLearningObjectives(formattedObjectives);
     const stamped = {
       ...finalCourse,
-      examConfig,
-      navigationMode,
+      examConfig: examConfigSnap,
+      navigationMode: navigationModeSnap,
       settings: {
         ...(finalCourse.settings || {}),
-        voiceOverEnabled,
+        voiceOverEnabled: voiceSnapshot,
         soundEffectsEnabled,
         theme: finalCourse.settings?.theme || 'light',
       },
@@ -3372,10 +3419,10 @@ export default function App() {
 
     // Pre-generate mastery quiz in parallel — await it in background so Begin Quiz
     // still uses a ready bank without blocking first preview.
-    if (examConfig.enabled) {
+    if (examConfigSnap.enabled) {
       setIsGeneratingExam(true);
       setExamError(null);
-      const examCfg = examConfig;
+      const examCfg = examConfigSnap;
       examGenPromiseRef.current = generateMasteryExam(stamped, examCfg)
         .then((questions) => {
           if (questions?.length) {
@@ -3396,19 +3443,13 @@ export default function App() {
       setIsGeneratingExam(false);
     }
 
-    const modeSnapshot = imageMode;
     const fileSnapshot = uploadedFile;
     const sourceSnapshot = sourceImages;
-    const voiceSnapshot = voiceOverEnabled;
-    const voiceIdSnapshot = ttsVoice;
-    const includeModuleTitlesSnapshot = includeModuleTitleSlides;
-    const includeModuleOverviewsSnapshot = includeModuleOverviewSlides;
     const syntheticOverridesSnapshot = syntheticSlideOverrides;
-    const hotspotBackdropSnapshot = hotspotGenerateBackdrop;
     const { ai: wantsAi, source: wantsSource } = imageModeFlags(modeSnapshot);
     const wantsHotspotBackdrop =
       hotspotBackdropSnapshot &&
-      (interactionTypes || []).includes('hotspot');
+      (interactionTypesSnap || []).includes('hotspot');
     const runImagery = wantsAi || wantsSource || wantsHotspotBackdrop;
     const genToken = ++finalizeBackgroundTokenRef.current;
     const stillActive = () => genToken === finalizeBackgroundTokenRef.current;
@@ -3479,30 +3520,46 @@ export default function App() {
       };
     };
 
-    /** After TTS starts, never replace course wholesale — keep blob voiceOverUrls. */
+    /** After TTS starts, never replace course wholesale — keep slide + tab voiceOverUrls. */
     const mergeCoursePreservingAudio = (prev: any, next: any) => {
       if (!prev) return next;
       if (!next) return prev;
-      const audioById: Record<string, { voiceOverUrl?: string; audioUrl?: string }> = {};
+      const prevById: Record<string, any> = {};
       for (const m of prev.modules || []) {
         for (const s of m.slides || []) {
-          if (s?.id && (s.voiceOverUrl || s.audioUrl)) {
-            audioById[s.id] = { voiceOverUrl: s.voiceOverUrl, audioUrl: s.audioUrl };
-          }
+          if (s?.id) prevById[s.id] = s;
         }
       }
+      const mergeTabAudio = (baseList: any[] | undefined, prevList: any[] | undefined) => {
+        if (!Array.isArray(baseList)) return baseList;
+        if (!Array.isArray(prevList) || !prevList.length) return baseList;
+        const prevTabById = new Map(prevList.filter((t: any) => t?.id).map((t: any) => [t.id, t]));
+        return baseList.map((item: any) => {
+          const fromPrev = item?.id ? prevTabById.get(item.id) : null;
+          if (!fromPrev?.voiceOverUrl || item?.voiceOverUrl) return item;
+          return { ...item, voiceOverUrl: fromPrev.voiceOverUrl };
+        });
+      };
       return {
         ...next,
         coverImage: next.coverImage || prev.coverImage,
         modules: (next.modules || []).map((m: any) => ({
           ...m,
           slides: (m.slides || []).map((s: any) => {
-            const a = audioById[s.id];
-            if (!a) return s;
+            const p = prevById[s.id];
+            if (!p) return s;
+            const data = s.data || p.data
+              ? {
+                  ...(s.data || {}),
+                  tabs: mergeTabAudio(s.data?.tabs, p.data?.tabs),
+                  items: mergeTabAudio(s.data?.items, p.data?.items),
+                }
+              : s.data;
             return {
               ...s,
-              voiceOverUrl: s.voiceOverUrl || a.voiceOverUrl,
-              audioUrl: s.audioUrl || a.audioUrl,
+              voiceOverUrl: s.voiceOverUrl || p.voiceOverUrl,
+              audioUrl: s.audioUrl || p.audioUrl,
+              data,
             };
           }),
         })),
@@ -3913,7 +3970,9 @@ export default function App() {
       }))
       .filter(j => j.text.length > 0);
 
-  /** Rebuild TTS for every narratable slide + synthetic cover/objectives/module audio. */
+  /** Rebuild TTS for narratable slides + synthetic cover/objectives/module audio.
+   *  If some clips already exist (e.g. after a Failed-to-fetch mid-run), only fill gaps
+   *  so finished audio is not wiped or re-billed. */
   const regenerateAllNarration = async () => {
     if (!course?.modules) return;
     if (ttsProgress.isRunning) {
@@ -3921,21 +3980,39 @@ export default function App() {
       return;
     }
     setShowEditMenu(false);
-    showDraftMessage('Regenerating all narration…');
+    let existingClips = 0;
+    for (const m of course.modules || []) {
+      for (const s of m.slides || []) {
+        if (s?.voiceOverUrl) existingClips += 1;
+        for (const key of ['tabs', 'items'] as const) {
+          for (const t of s?.data?.[key] || []) {
+            if (t?.voiceOverUrl) existingClips += 1;
+          }
+        }
+      }
+    }
+    existingClips += Object.keys(syntheticAudioMap || {}).length;
+    const onlyMissing = existingClips > 0;
+    showDraftMessage(onlyMissing ? 'Resuming missing narration…' : 'Regenerating all narration…');
     try {
-      const syntheticJobs = collectSyntheticNarrationJobs(allSlides).map(j => ({
-        ...j,
-        title: j.id,
-      }));
+      const syntheticJobs = collectSyntheticNarrationJobs(allSlides)
+        .filter(j => !(onlyMissing && syntheticAudioMap[j.id]))
+        .map(j => ({
+          ...j,
+          title: j.id,
+        }));
       await generateTTS(course, setCourse, ttsVoice, undefined, {
+        onlyMissing,
         synthetic: syntheticJobs,
         setSyntheticAudioMap,
       });
       setVoiceOverEnabled(true);
       showDraftMessage(
-        syntheticJobs.length > 0
-          ? 'All narration regenerated (content + system slides). Save the draft to keep audio for next time.'
-          : 'Content narration regenerated. No system-slide narration text was found — check Edit → Audio on module title/overview slides.'
+        onlyMissing
+          ? 'Missing narration filled in. Save the draft to keep audio for next time.'
+          : syntheticJobs.length > 0
+            ? 'All narration regenerated (content + system slides). Save the draft to keep audio for next time.'
+            : 'Content narration regenerated. No system-slide narration text was found — check Edit → Audio on module title/overview slides.'
       );
     } catch (err: any) {
       console.error('[TTS] Regenerate all failed:', err);
@@ -4041,20 +4118,23 @@ export default function App() {
     setIsHydrating(true);
     setProgress(10);
     try {
+      // Snapshot live Course Settings so multimedia / VO aren't stale vs React batching.
+      const settingsSnap = collectCurrentSettings();
+      const contentInteractions = (settingsSnap.interactionTypes || []).filter(
+        t => !['sorting', 'matching', 'drop-targets', 'multiple-choice', 'multiple-answers', 'quiz'].includes(t)
+      );
       const finalCourse = await hydrateCourseContent(
         outlineDraft!,
         prompt,
         {
-          courseType,
-          scenarioConfig: interactionTypes.includes('scenario') ? scenarioConfig : undefined,
-          interactionTypes: (interactionTypes || []).filter(
-            t => !['sorting', 'matching', 'drop-targets', 'multiple-choice', 'multiple-answers', 'quiz'].includes(t)
-          ),
+          courseType: settingsSnap.preset,
+          scenarioConfig: contentInteractions.includes('scenario') ? scenarioConfig : undefined,
+          interactionTypes: contentInteractions,
         },
         // Leave 55–100% for images + audio in finalize
         (pct) => setProgress(Math.round(pct * 0.55))
       );
-      await finalizeGeneratedCourse(finalCourse);
+      await finalizeGeneratedCourse(finalCourse, settingsSnap);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -5218,8 +5298,8 @@ export default function App() {
                            onClick={() => {
                              if (!uploadedFile) return;
                              if (lastUploadPath) {
-                               const override = lastUploadPath === 'quick' ? resolveCourseSettings(user?.id) : null;
-                               if (override) applySavedSettings(override);
+                               const override = resolveCourseSettings(user?.id);
+                               applySavedSettings(override);
                                runAnalysis(uploadedFile, lastUploadPath, override);
                              } else {
                                setPendingUploadFile(uploadedFile);
