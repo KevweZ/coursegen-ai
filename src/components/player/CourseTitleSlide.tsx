@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Camera, Loader2, ImageOff } from 'lucide-react';
+import { splitCourseTitle } from '../../lib/splitCourseTitle';
 
 type Theme = 'light' | 'dark' | 'unified';
 
@@ -49,33 +50,6 @@ const THEME_STRIP: Record<Theme, string> = {
   unified: '#312e81',
 };
 
-/**
- * Split course title into bold headline + lighter subtitle.
- * Prefer "Subject: Rest…" so "Pumps: Principles, Types, and Components"
- * becomes ["Pumps:", "Principles, Types, and Components"] — not a naive
- * two-word cut that leaves "Principles," on the bold line.
- */
-function splitTitle(title: string): [string, string] {
-  const t = title.trim().replace(/\s+/g, ' ');
-  if (!t) return ['', ''];
-
-  const colonIdx = t.indexOf(':');
-  if (colonIdx > 0 && colonIdx < t.length - 1) {
-    const before = t.slice(0, colonIdx).trim();
-    const after = t.slice(colonIdx + 1).trim();
-    if (before && after) return [`${before}:`, after];
-  }
-
-  const dash = t.match(/^(.+?)\s+[—–]\s+(.+)$/);
-  if (dash?.[1] && dash?.[2]) return [dash[1].trim(), dash[2].trim()];
-
-  const words = t.split(' ').filter(Boolean);
-  if (words.length <= 2) return [words.join(' '), ''];
-  // Balanced fallback for titles without a colon
-  const n = Math.min(Math.max(1, Math.ceil(words.length * 0.4)), 3);
-  return [words.slice(0, n).join(' '), words.slice(n).join(' ')];
-}
-
 export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
   title,
   description,
@@ -92,7 +66,7 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
   const descColor = THEME_DESC_COLOR[theme];
   const stripBg  = THEME_STRIP[theme];
 
-  const [line1, line2] = splitTitle(title);
+  const { primary, secondary, secondaryFirst } = splitCourseTitle(title);
   const [hovering, setHovering] = useState(false);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
 
@@ -108,6 +82,40 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
     onImageUpload?.(url);
   };
 
+  const primaryStyle: React.CSSProperties = {
+    fontSize: showImagePanel
+      ? 'clamp(2.4rem, 5.5vw, 4.25rem)'
+      : 'clamp(2.6rem, 6vw, 4.75rem)',
+    color: darkText,
+    wordBreak: 'keep-all',
+  };
+
+  const secondaryStyle: React.CSSProperties = {
+    fontSize: showImagePanel
+      ? 'clamp(1.15rem, 2.4vw, 1.75rem)'
+      : 'clamp(1.25rem, 2.8vw, 2rem)',
+    color: darkText,
+    opacity: 0.82,
+    wordBreak: 'break-word',
+    overflowWrap: 'break-word',
+    maxWidth: '100%',
+  };
+
+  const primaryLine = (
+    <div className="font-extrabold leading-tight tracking-tight" style={primaryStyle}>
+      {primary}
+    </div>
+  );
+
+  const secondaryLine = secondary ? (
+    <div
+      className={`font-semibold leading-snug tracking-tight ${secondaryFirst ? 'mb-1' : 'mt-1'}`}
+      style={secondaryStyle}
+    >
+      {secondary}
+    </div>
+  ) : null;
+
   const titleBlock = (
     <motion.div
       initial={{ opacity: 0, x: showImagePanel ? -24 : 0, y: showImagePanel ? 0 : 12 }}
@@ -116,35 +124,16 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
       style={{ maxWidth: showImagePanel ? '100%' : '46rem' }}
       className={showImagePanel ? undefined : 'mx-auto text-center'}
     >
-      <div
-        className="font-extrabold leading-tight tracking-tight"
-        style={{
-          fontSize: showImagePanel
-            ? 'clamp(2.4rem, 5.5vw, 4.25rem)'
-            : 'clamp(2.6rem, 6vw, 4.75rem)',
-          color: darkText,
-          wordBreak: 'keep-all',
-        }}
-      >
-        {line1}
-      </div>
-
-      {line2 && (
-        <div
-          className="font-semibold leading-snug tracking-tight mt-1"
-          style={{
-            fontSize: showImagePanel
-              ? 'clamp(1.15rem, 2.4vw, 1.75rem)'
-              : 'clamp(1.25rem, 2.8vw, 2rem)',
-            color: darkText,
-            opacity: 0.82,
-            wordBreak: 'break-word',
-            overflowWrap: 'break-word',
-            maxWidth: '100%',
-          }}
-        >
-          {line2}
-        </div>
+      {secondaryFirst ? (
+        <>
+          {secondaryLine}
+          {primaryLine}
+        </>
+      ) : (
+        <>
+          {primaryLine}
+          {secondaryLine}
+        </>
       )}
 
       {description && description.trim() && (
