@@ -1898,27 +1898,19 @@ export default function App() {
   const [extractedFileText, setExtractedFileText] = useState<string>('');
   const [voiceOverEnabled, setVoiceOverEnabled] = useState(DEFAULT_COURSE_SETTINGS.voiceOverEnabled);
 
-  // Measure 16:9 / 4:3 into the stage on phones and desktop preview.
-  // 'full' skips scaling. Desktop Mobile-bezel toggle uses its own chrome.
-  // Phones always apply the transform. Desktop applies it only when the stage
-  // is larger than the design (HDMI / large CSS viewports); laptops flex-fill.
+  // Phones: always CSS-scale the 16:9 / 4:3 design into the stage.
+  // Desktop: always flex-fill. HDMI "scale-up when stage > design" toggled
+  // against flex-fill whenever the toolbar/visuals banner changed height and
+  // produced a full-screen ↔ small-frame loop.
   const measureScaleToFit =
     step === 'preview' &&
     playerConfig?.playerResolution !== 'full' &&
-    (viewMode === 'desktop' || isPhoneViewport);
+    isPhoneViewport;
   const scaler = useScaleToFit(
     playerConfig?.playerResolution ?? '16:9',
     measureScaleToFit
   );
-  // Hysteresis: toggling scale-to-fit around ~1.0 remounts the 1280×720 frame
-  // with transform-origin top-left and looks like a diagonal animation loop.
-  const desktopScaleUpRef = useRef(false);
-  const desktopScaleUp =
-    scaler.scale > (desktopScaleUpRef.current ? 1.005 : 1.04);
-  desktopScaleUpRef.current = desktopScaleUp;
-  const useScaleTransform =
-    measureScaleToFit &&
-    (isPhoneViewport || desktopScaleUp);
+  const useScaleTransform = measureScaleToFit;
   /** Phones dock PlayerBar outside the CSS-scaled frame. Desktop keeps it inside. */
   const dockPlayerBarOutside = isPhoneViewport;
   const themeStageBg =

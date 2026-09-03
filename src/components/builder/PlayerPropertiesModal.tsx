@@ -60,8 +60,7 @@ export const defaultPlayerConfig: PlayerConfig = {
   showPrevNext: true,
   allowFullscreen: true,
   logoUrl: null,
-  // Desktop: flex-fill on typical laptops; scale-up when the CSS viewport is
-  // larger than the 16:9 / 4:3 design (HDMI). Phones always scale-to-fit.
+  // Desktop: flex-fill. Phones always scale-to-fit.
   // 'full' skips scaling.
   playerResolution: '16:9',
   navigationMode: 'free',

@@ -4,8 +4,8 @@ import { useRef, useState, useEffect, useCallback, type CSSProperties } from 're
  * useScaleToFit — Articulate-style viewport scaling
  *
  * Phones: always scale the 1280×720 (or 4:3) frame down to fit the stage.
- * Desktop: App.tsx still measures here, but only *applies* the transform when
- * scale > 1 (HDMI / large CSS viewports). Typical laptops stay flex-fill.
+ * Desktop preview flex-fills and does not use this transform (toggling HDMI
+ * scale-up vs fill caused a full-screen ↔ small-frame loop).
  *
  * Measures the available canvas area and computes a CSS transform scale factor
  * so the slide frame always fills the container while maintaining its aspect ratio.
