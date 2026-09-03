@@ -28,6 +28,11 @@ export interface SourceImage {
   dataUrl: string;
   width: number;
   height: number;
+  /**
+   * Higher = more diagram/photo-like for placement ranking.
+   * Theme/layout decorations are excluded before this is used.
+   */
+  contentScore?: number;
 }
 
 export interface ParsedDocumentMetadata {
@@ -219,30 +224,382 @@ function isLikelyFullSlideCapture(width: number, height: number): boolean {
   return false;
 }
 
-function loadImageProps(dataUrl: string, flattenTransparent: boolean): Promise<{ width: number; height: number; src: string }> {
+function loadImageProps(
+  dataUrl: string,
+  flattenTransparent: boolean,
+  byteLengthHint?: number
+): Promise<{
+  width: number;
+  height: number;
+  src: string;
+  decorative: boolean;
+  reason: string;
+  contentScore: number;
+}> {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      if (flattenTransparent && img.width > 0 && img.height > 0) {
-        try {
-          const canvas = document.createElement('canvas');
-          canvas.width = img.width;
-          canvas.height = img.height;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(img, 0, 0);
-            resolve({ width: img.width, height: img.height, src: canvas.toDataURL('image/jpeg', 0.92) });
-            return;
-          }
-        } catch { /* fall through */ }
+      if (img.width <= 0 || img.height <= 0) {
+        resolve({ width: 0, height: 0, src: '', decorative: false, reason: '', contentScore: 1 });
+        return;
       }
-      resolve({ width: img.width, height: img.height, src: dataUrl });
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) {
+          resolve({
+            width: img.width,
+            height: img.height,
+            src: dataUrl,
+            decorative: false,
+            reason: '',
+            contentScore: 50,
+          });
+          return;
+        }
+        if (flattenTransparent) {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+        ctx.drawImage(img, 0, 0);
+        // Score before trim so white-field theme waves keep their signature
+        const verdict = isLikelyThemeDecorativeArt(canvas, byteLengthHint);
+        if (verdict.decorative) {
+          canvas.width = 0;
+          canvas.height = 0;
+          resolve({
+            width: img.width,
+            height: img.height,
+            src: '',
+            decorative: true,
+            reason: verdict.reason,
+            contentScore: verdict.contentScore,
+          });
+          return;
+        }
+        const trimmed = trimImageMargins(canvas);
+        resolve({
+          width: trimmed.width,
+          height: trimmed.height,
+          src: trimmed.toDataURL('image/jpeg', 0.92),
+          decorative: false,
+          reason: '',
+          contentScore: verdict.contentScore,
+        });
+        if (trimmed !== canvas) {
+          trimmed.width = 0;
+          trimmed.height = 0;
+        }
+        canvas.width = 0;
+        canvas.height = 0;
+        return;
+      } catch { /* fall through */ }
+      resolve({
+        width: img.width,
+        height: img.height,
+        src: dataUrl,
+        decorative: false,
+        reason: '',
+        contentScore: 50,
+      });
     };
-    img.onerror = () => resolve({ width: 0, height: 0, src: '' });
+    img.onerror = () =>
+      resolve({ width: 0, height: 0, src: '', decorative: false, reason: '', contentScore: 1 });
     img.src = dataUrl;
   });
+}
+
+/** Sample RGBA from ImageData; treat near-white / transparent as empty margin. */
+function isEmptyMarginPixel(data: Uint8ClampedArray, i: number, bg: { r: number; g: number; b: number } | null): boolean {
+  const r = data[i];
+  const g = data[i + 1];
+  const b = data[i + 2];
+  const a = data[i + 3];
+  if (a < 40) return true;
+  if (r > 245 && g > 245 && b > 245) return true;
+  // Uniform solid backgrounds (e.g. corporate blue) — trim only when clearly empty margin
+  if (bg) {
+    const dr = Math.abs(r - bg.r);
+    const dg = Math.abs(g - bg.g);
+    const db = Math.abs(b - bg.b);
+    if (dr + dg + db <= 18) return true;
+  }
+  return false;
+}
+
+/**
+ * Crop near-white (and optional uniform corner-color) margins so diagrams fill the frame.
+ * No-ops when the content already spans most of the canvas.
+ */
+function trimImageMargins(source: HTMLCanvasElement): HTMLCanvasElement {
+  const w = source.width;
+  const h = source.height;
+  if (w < 8 || h < 8) return source;
+  const ctx = source.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return source;
+  const { data } = ctx.getImageData(0, 0, w, h);
+
+  // Corner consensus → optional solid-bg trim (molecular models on blue, logos on black)
+  const corners = [
+    0,
+    (w - 1) * 4,
+    (h - 1) * w * 4,
+    ((h - 1) * w + (w - 1)) * 4,
+  ].map((i) => ({ r: data[i], g: data[i + 1], b: data[i + 2], a: data[i + 3] }));
+  let bg: { r: number; g: number; b: number } | null = null;
+  if (corners.every((c) => c.a > 200)) {
+    const avg = {
+      r: Math.round(corners.reduce((s, c) => s + c.r, 0) / 4),
+      g: Math.round(corners.reduce((s, c) => s + c.g, 0) / 4),
+      b: Math.round(corners.reduce((s, c) => s + c.b, 0) / 4),
+    };
+    const cornerSpread = corners.reduce(
+      (s, c) => s + Math.abs(c.r - avg.r) + Math.abs(c.g - avg.g) + Math.abs(c.b - avg.b),
+      0
+    );
+    // Only treat as solid bg when corners agree and aren't near-white (white handled above)
+    if (cornerSpread <= 36 && !(avg.r > 240 && avg.g > 240 && avg.b > 240)) {
+      bg = avg;
+    }
+  }
+
+  let minX = w;
+  let minY = h;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      if (!isEmptyMarginPixel(data, i, bg)) {
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (maxX < minX || maxY < minY) return source;
+
+  const pad = 6;
+  minX = Math.max(0, minX - pad);
+  minY = Math.max(0, minY - pad);
+  maxX = Math.min(w - 1, maxX + pad);
+  maxY = Math.min(h - 1, maxY + pad);
+  const cw = maxX - minX + 1;
+  const ch = maxY - minY + 1;
+  // Skip tiny trims; require meaningful shrink
+  if (cw >= w * 0.92 && ch >= h * 0.92) return source;
+  if (cw < 80 || ch < 80) return source;
+
+  const out = document.createElement('canvas');
+  out.width = cw;
+  out.height = ch;
+  const octx = out.getContext('2d');
+  if (!octx) return source;
+  octx.fillStyle = '#ffffff';
+  octx.fillRect(0, 0, cw, ch);
+  octx.drawImage(source, minX, minY, cw, ch, 0, 0, cw, ch);
+  return out;
+}
+
+function rgbToHsv(r: number, g: number, b: number): { h: number; s: number; v: number } {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+  let h = 0;
+  if (d !== 0) {
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+  return { h, s: max === 0 ? 0 : d / max, v: max };
+}
+
+/**
+ * Heuristic for PowerPoint Design-theme decorations (green→blue waves/triangles on white).
+ * Conservative: ink-heavy diagrams and full-bleed photos are kept.
+ */
+function isLikelyThemeDecorativeArt(
+  canvas: HTMLCanvasElement,
+  byteLengthHint?: number
+): { decorative: boolean; reason: string; contentScore: number } {
+  const w = canvas.width;
+  const h = canvas.height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx || w < 40 || h < 40) {
+    return { decorative: false, reason: '', contentScore: 1 };
+  }
+
+  const tw = Math.min(w, 160);
+  const th = Math.max(1, Math.round((h * tw) / w));
+  const tmp = document.createElement('canvas');
+  tmp.width = tw;
+  tmp.height = th;
+  const tctx = tmp.getContext('2d', { willReadFrequently: true });
+  if (!tctx) return { decorative: false, reason: '', contentScore: 1 };
+  tctx.drawImage(canvas, 0, 0, tw, th);
+  const { data } = tctx.getImageData(0, 0, tw, th);
+  const n = tw * th;
+
+  let whiteish = 0;
+  let content = 0;
+  let ink = 0;
+  let chroma = 0;
+  let greenBlueSoft = 0;
+  let horizEdges = 0;
+  let vertEdges = 0;
+  let hChecks = 0;
+  let vChecks = 0;
+
+  for (let y = 0; y < th; y++) {
+    for (let x = 0; x < tw; x++) {
+      const i = (y * tw + x) * 4;
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const a = data[i + 3];
+      if (a < 40 || (r > 245 && g > 245 && b > 245)) {
+        whiteish++;
+        continue;
+      }
+      content++;
+      const { h: hue, s, v } = rgbToHsv(r, g, b);
+      const isInk = (s < 0.15 && v < 0.5) || (r < 40 && g < 40 && b < 40);
+      if (isInk) ink++;
+      else if (s > 0.2 && v > 0.3) {
+        chroma++;
+        if (hue >= 100 && hue <= 240 && s > 0.25 && v > 0.4) greenBlueSoft++;
+      }
+      if (x > 0) {
+        const j = i - 4;
+        const l1 = 0.299 * r + 0.587 * g + 0.114 * b;
+        const l0 = 0.299 * data[j] + 0.587 * data[j + 1] + 0.114 * data[j + 2];
+        if (Math.abs(l1 - l0) > 22) horizEdges++;
+        hChecks++;
+      }
+      if (y > 0) {
+        const j = ((y - 1) * tw + x) * 4;
+        const l1 = 0.299 * r + 0.587 * g + 0.114 * b;
+        const l0 = 0.299 * data[j] + 0.587 * data[j + 1] + 0.114 * data[j + 2];
+        if (Math.abs(l1 - l0) > 22) vertEdges++;
+        vChecks++;
+      }
+    }
+  }
+
+  // Left→right hue drift on mid row (wave gradients)
+  const midY = Math.floor(th / 2);
+  let leftH = 0;
+  let leftN = 0;
+  let rightH = 0;
+  let rightN = 0;
+  for (let x = 0; x < tw; x++) {
+    const i = (midY * tw + x) * 4;
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const a = data[i + 3];
+    if (a < 40 || (r > 245 && g > 245 && b > 245)) continue;
+    const { h: hue, s } = rgbToHsv(r, g, b);
+    if (s < 0.2) continue;
+    if (x < tw / 3) { leftH += hue; leftN++; }
+    if (x > (2 * tw) / 3) { rightH += hue; rightN++; }
+  }
+  const hueDrift = leftN > 5 && rightN > 5 ? Math.abs(leftH / leftN - rightH / rightN) : 0;
+
+  const whiteRatio = whiteish / n;
+  const contentRatio = content / n;
+  const inkRatio = content ? ink / content : 0;
+  const chromaRatio = content ? chroma / content : 0;
+  const gbRatio = content ? greenBlueSoft / content : 0;
+  const hEdge = hChecks ? horizEdges / hChecks : 0;
+  const vEdge = vChecks ? vertEdges / vChecks : 0;
+  const bpp = byteLengthHint && w * h > 0 ? byteLengthHint / (w * h) : 0.2;
+
+  // Content score for ranking (diagrams/photos score high; theme bands low)
+  let contentScore =
+    Math.round(
+      (1 - whiteRatio) * 40 +
+        inkRatio * 35 +
+        Math.min(hEdge, 0.35) * 80 +
+        Math.min(bpp, 0.5) * 40
+    );
+
+  // Soft green→blue geometric bands / triangles on white fields
+  let themeHits = 0;
+  let reason = '';
+  if (gbRatio > 0.35 && inkRatio < 0.15 && chromaRatio > 0.5 && bpp < 0.22 && whiteRatio > 0.35) {
+    themeHits += 2;
+    reason = 'gb-wave-sparse';
+  }
+  if (hueDrift > 28 && gbRatio > 0.25 && inkRatio < 0.2 && whiteRatio > 0.4) {
+    themeHits += 3;
+    reason = reason || `hue-drift-${Math.round(hueDrift)}`;
+  }
+  if (whiteRatio > 0.55 && gbRatio > 0.3 && inkRatio < 0.12 && hEdge < 0.18 && vEdge > hEdge * 1.2) {
+    themeHits += 2;
+    reason = reason || 'band-anisotropy';
+  }
+  // Extreme whitespace + tiny chromatic motif (layout corner decorations)
+  if (whiteRatio > 0.78 && contentRatio < 0.22 && gbRatio > 0.4 && inkRatio < 0.1) {
+    themeHits += 2;
+    reason = reason || 'tiny-gb-motif';
+  }
+
+  // Protect real content
+  if (inkRatio > 0.25 || (hEdge > 0.14 && inkRatio > 0.08)) {
+    themeHits = 0;
+  }
+  // Full-bleed solid backgrounds with complex centers (molecule renders)
+  if (whiteRatio < 0.08 && contentRatio > 0.85 && hueDrift < 20) {
+    themeHits = 0;
+  }
+
+  if (themeHits >= 3) {
+    contentScore = Math.min(contentScore, 8);
+    return { decorative: true, reason: reason || 'theme-geo', contentScore };
+  }
+
+  contentScore = Math.max(1, Math.min(100, contentScore));
+  tmp.width = 0;
+  tmp.height = 0;
+  return { decorative: false, reason: '', contentScore };
+}
+
+async function getPptxThemeOnlyMediaNames(zip: JSZip): Promise<Set<string>> {
+  const layoutMedia = new Set<string>();
+  const slideMedia = new Set<string>();
+
+  const scan = async (name: string, into: Set<string>) => {
+    try {
+      const xml = await zip.files[name].async('string');
+      const re = /media\/([^"]+)/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(xml))) into.add(m[1]);
+    } catch { /* ignore */ }
+  };
+
+  await Promise.all(
+    Object.keys(zip.files).map(async (name) => {
+      if (zip.files[name].dir) return;
+      if (/^ppt\/(slideLayouts|slideMasters)\/_rels\//.test(name)) {
+        await scan(name, layoutMedia);
+      } else if (/^ppt\/slides\/_rels\//.test(name)) {
+        await scan(name, slideMedia);
+      }
+    })
+  );
+
+  const themeOnly = new Set<string>();
+  for (const m of layoutMedia) {
+    if (!slideMedia.has(m)) themeOnly.add(m);
+  }
+  return themeOnly;
 }
 
 /** GIF logical screen size from header — avoids decoding large animated GIFs just for dims. */
@@ -272,14 +629,19 @@ export async function extractImagesFromFile(file: File): Promise<SourceImage[]> 
       const mediaFiles = Object.keys(zip.files).filter(
         name => name.startsWith('ppt/media/') && !zip.files[name].dir
       );
+      const themeOnlyMedia = await getPptxThemeOnlyMediaNames(zip);
 
       let imgIndex = 0;
       let skippedSlideShots = 0;
       let skippedSmall = 0;
       let skippedUnsupported = 0;
+      let skippedThemeLayout = 0;
+      let skippedDecorative = 0;
       let keptGif = 0;
       const keptLog: string[] = [];
       const skippedLog: string[] = [];
+      const skippedDecorativeLog: string[] = [];
+
       for (const filename of mediaFiles) {
         const ext = filename.split('.').pop()?.toLowerCase();
         // EMF/WMF/WDP need server-side conversion — P1. Keep GIF/PNG/JPEG/WebP in-browser.
@@ -289,28 +651,67 @@ export async function extractImagesFromFile(file: File): Promise<SourceImage[]> 
         }
 
         const shortName = filename.replace(/^ppt\/media\//, '');
-        let imgProps: { width: number; height: number; src: string };
+
+        // Structural: slideLayout / slideMaster-only theme assets (waves, triangles, logos)
+        if (themeOnlyMedia.has(shortName)) {
+          skippedThemeLayout++;
+          if (skippedDecorativeLog.length < 16) {
+            skippedDecorativeLog.push(`${shortName} (layout/master)`);
+          }
+          continue;
+        }
+
+        let imgProps: {
+          width: number;
+          height: number;
+          src: string;
+          decorative?: boolean;
+          reason?: string;
+          contentScore?: number;
+        };
+        let byteHint = 0;
 
         if (ext === 'gif') {
-          // Keep animated GIF as-is (no canvas flatten). Dims from header when possible.
+          // Keep animated GIF as-is (no canvas flatten / trim). Dims from header when possible.
           const raw = await zip.files[filename].async('uint8array');
+          byteHint = raw.byteLength;
           const hdr = gifHeaderDims(raw);
           const fileData = await zip.files[filename].async('base64');
           const dataUrl = `data:image/gif;base64,${fileData}`;
           if (hdr && hdr.width >= 120 && hdr.height >= 120) {
-            imgProps = { width: hdr.width, height: hdr.height, src: dataUrl };
+            imgProps = { width: hdr.width, height: hdr.height, src: dataUrl, contentScore: Math.min(100, Math.round(40 + Math.min(byteHint / 50000, 40))) };
           } else {
-            // Fallback decode — still never flatten (preserves animation)
-            imgProps = await loadImageProps(dataUrl, false);
+            // Dims-only decode — never flatten/trim (preserves animation)
+            const dims = await new Promise<{ width: number; height: number }>((resolve) => {
+              const img = new Image();
+              img.onload = () => resolve({ width: img.width, height: img.height });
+              img.onerror = () => resolve({ width: 0, height: 0 });
+              img.src = dataUrl;
+            });
+            imgProps = {
+              width: dims.width,
+              height: dims.height,
+              src: dataUrl,
+              contentScore: Math.min(100, Math.round(40 + Math.min(byteHint / 50000, 40))),
+            };
           }
         } else {
+          const raw = await zip.files[filename].async('uint8array');
+          byteHint = raw.byteLength;
           const fileData = await zip.files[filename].async('base64');
           const mimeType =
             (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg'
             : `image/${ext}`;
           const dataUrl = `data:${mimeType};base64,${fileData}`;
-          // Flatten transparent PNG → JPEG for reliable slide backgrounds; never touch GIF
-          imgProps = await loadImageProps(dataUrl, ext === 'png');
+          // Flatten transparent PNG → JPEG; score theme art; trim margins
+          imgProps = await loadImageProps(dataUrl, ext === 'png' || ext === 'webp', byteHint);
+          if (imgProps.decorative) {
+            skippedDecorative++;
+            if (skippedDecorativeLog.length < 16) {
+              skippedDecorativeLog.push(`${shortName} (${imgProps.reason || 'theme-geo'})`);
+            }
+            continue;
+          }
         }
 
         if (!imgProps.src || imgProps.width < 120 || imgProps.height < 120) {
@@ -327,23 +728,33 @@ export async function extractImagesFromFile(file: File): Promise<SourceImage[]> 
           continue;
         }
 
+        const contentScore = imgProps.contentScore ?? 50;
+
         if (ext === 'gif') keptGif++;
         if (keptLog.length < 12) {
-          keptLog.push(`${shortName} ${imgProps.width}×${imgProps.height}`);
+          keptLog.push(`${shortName} ${imgProps.width}×${imgProps.height} score=${contentScore}`);
         }
         images.push({
           pageIndex: imgIndex++,
           dataUrl: imgProps.src,
           width: imgProps.width,
           height: imgProps.height,
+          contentScore,
         });
       }
       console.log(
         `[extractImagesFromFile] PPTX "${file.name}": ${images.length} kept from ${mediaFiles.length} media ` +
-        `(gif ${keptGif}; skipped slide-canvas ${skippedSlideShots}, small ${skippedSmall}, unsupported ${skippedUnsupported})`
+        `(gif ${keptGif}; skipped slide-canvas ${skippedSlideShots}, small ${skippedSmall}, ` +
+        `unsupported ${skippedUnsupported}, theme-layout ${skippedThemeLayout}, decorative ${skippedDecorative})`
       );
       if (keptLog.length) console.log(`[extractImagesFromFile] kept sample: ${keptLog.join(' | ')}`);
       if (skippedLog.length) console.log(`[extractImagesFromFile] skipped slide-canvas sample: ${skippedLog.join(' | ')}`);
+      if (skippedDecorativeLog.length) {
+        console.log(
+          `[extractImagesFromFile] skipped-as-decorative (${skippedThemeLayout + skippedDecorative}): ` +
+          skippedDecorativeLog.join(' | ')
+        );
+      }
     } catch (err) {
       console.warn('[extractImagesFromFile] Failed to extract PPTX images:', err);
     }
@@ -357,6 +768,7 @@ export async function extractImagesFromFile(file: File): Promise<SourceImage[]> 
     const data = new Uint8Array(await file.arrayBuffer());
     const pdf = await loadPdfDocument(data);
     let imgIndex = 0;
+    let skippedDecorative = 0;
 
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
       const page = await pdf.getPage(pageNum);
@@ -401,7 +813,7 @@ export async function extractImagesFromFile(file: File): Promise<SourceImage[]> 
           const canvas = document.createElement('canvas');
           canvas.width = imgData.width;
           canvas.height = imgData.height;
-          const ctx = canvas.getContext('2d');
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
           if (!ctx) continue;
 
           const imageData = ctx.createImageData(imgData.width, imgData.height);
@@ -421,12 +833,27 @@ export async function extractImagesFromFile(file: File): Promise<SourceImage[]> 
             continue;
           }
           ctx.putImageData(imageData, 0, 0);
+
+          const verdict = isLikelyThemeDecorativeArt(canvas);
+          if (verdict.decorative) {
+            skippedDecorative++;
+            canvas.width = 0;
+            canvas.height = 0;
+            continue;
+          }
+
+          const trimmed = trimImageMargins(canvas);
           images.push({
             pageIndex: imgIndex++,
-            dataUrl: canvas.toDataURL('image/jpeg', 0.9),
-            width: imgData.width,
-            height: imgData.height,
+            dataUrl: trimmed.toDataURL('image/jpeg', 0.9),
+            width: trimmed.width,
+            height: trimmed.height,
+            contentScore: verdict.contentScore,
           });
+          if (trimmed !== canvas) {
+            trimmed.width = 0;
+            trimmed.height = 0;
+          }
           canvas.width = 0;
           canvas.height = 0;
         } catch {
@@ -434,7 +861,10 @@ export async function extractImagesFromFile(file: File): Promise<SourceImage[]> 
         }
       }
     }
-    console.log(`[extractImagesFromFile] PDF "${file.name}": ${images.length} embedded image(s)`);
+    console.log(
+      `[extractImagesFromFile] PDF "${file.name}": ${images.length} embedded image(s)` +
+      (skippedDecorative ? `, skipped decorative ${skippedDecorative}` : '')
+    );
   } catch (err) {
     console.warn('[extractImagesFromFile] Failed to extract PDF images:', err);
   }

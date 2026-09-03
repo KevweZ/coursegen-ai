@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { markdownToHtml } from '../../lib/markdownInline';
+import { EnlargeableImage } from '../player/EnlargeableImage';
 
 export interface RevealItem {
   id: string;
@@ -176,13 +177,11 @@ const ClickRevealInteraction: React.FC<ClickRevealProps> = ({ items = [], theme 
                   />
                   {item.imageUrl && (
                     <div className="px-5 pb-5">
-                      <div className="rounded-xl overflow-hidden border border-black/10 shadow-sm max-w-md">
-                        <img
-                          src={item.imageUrl}
-                          alt=""
-                          className="w-full h-auto max-h-56 object-contain bg-white/60"
-                        />
-                      </div>
+                      <EnlargeableImage
+                        src={item.imageUrl}
+                        wrapperClassName="max-w-xl"
+                        className="max-h-80 bg-transparent"
+                      />
                     </div>
                   )}
                 </motion.div>

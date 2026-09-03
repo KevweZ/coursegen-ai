@@ -188,14 +188,20 @@ export async function generateModuleImages(
  */
 export function attachSourceImagesToCourse(
   course: any,
-  images: Array<{ dataUrl: string; width: number; height: number }>
+  images: Array<{ dataUrl: string; width: number; height: number; contentScore?: number }>
 ): any {
   if (!course?.modules?.length || !images?.length) return course;
-  // Prefer larger diagrams / GIFs first so default tabs get useful visuals
-  const pool = [...images].sort((a, b) => (b.width * b.height) - (a.width * a.height));
+  // Prefer diagram-like / high contentScore, then larger rasters — demote sparse leftovers
+  const pool = [...images].sort((a, b) => {
+    const scoreA = a.contentScore ?? 40;
+    const scoreB = b.contentScore ?? 40;
+    if (scoreB !== scoreA) return scoreB - scoreA;
+    return (b.width * b.height) - (a.width * a.height);
+  });
   let imgIdx = 0;
   const nextImg = () => {
     if (!pool.length) return null;
+    // Soft round-robin: walk pool once preferring unused high-score images before wrapping
     const img = pool[imgIdx % pool.length];
     imgIdx++;
     return img;
@@ -300,14 +306,20 @@ export function attachSourceImagesToCourse(
  */
 export async function enrichHotspotAndCarouselImages(
   course: any,
-  sourceImages: Array<{ dataUrl: string; width: number; height: number }>,
+  sourceImages: Array<{ dataUrl: string; width: number; height: number; contentScore?: number }>,
   opts: { generateAi: boolean; useSource: boolean; hotspotOnly?: boolean }
 ): Promise<any> {
   if (!course?.modules?.length) return course;
+  const ranked = [...sourceImages].sort((a, b) => {
+    const scoreA = a.contentScore ?? 40;
+    const scoreB = b.contentScore ?? 40;
+    if (scoreB !== scoreA) return scoreB - scoreA;
+    return (b.width * b.height) - (a.width * a.height);
+  });
   let srcIdx = 0;
   const nextSrc = () => {
-    if (!opts.useSource || !sourceImages.length) return null;
-    const img = sourceImages[srcIdx % sourceImages.length];
+    if (!opts.useSource || !ranked.length) return null;
+    const img = ranked[srcIdx % ranked.length];
     srcIdx++;
     return img?.dataUrl || null;
   };

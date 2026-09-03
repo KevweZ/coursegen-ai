@@ -147,6 +147,7 @@ import { foundationFingerprint, type FoundationFingerprintInput } from './lib/co
 import { DraftCoursesPanel } from './components/player/DraftCoursesPanel';
 import { ViewDraftsModal } from './components/player/ViewDraftsModal';
 import { AppImagePickerModal } from './components/player/AppImagePickerModal';
+import { EnlargeableImage } from './components/player/EnlargeableImage';
 import { CourseTitleSlide } from './components/player/CourseTitleSlide';
 import { ClosingSlide } from './components/player/ClosingSlide';
 import { ModuleCoverSlide } from './components/player/ModuleCoverSlide';
@@ -6291,8 +6292,11 @@ export default function App() {
                                      {headerBlock}
                                      <div className="w-full flex flex-row gap-6 items-start">
                                        <div className="min-w-0 flex-1">{bodyBlock}</div>
-                                       <div className="hidden md:block relative w-[38%] max-w-[340px] shrink-0 rounded-xl overflow-hidden border border-slate-200 shadow-md mt-1 group/slideimg">
-                                         <img src={slideImg} alt="" className="w-full h-auto max-h-72 object-contain bg-slate-50" />
+                                       <div className="hidden md:block relative w-[46%] max-w-[480px] shrink-0 mt-1 group/slideimg">
+                                         <EnlargeableImage
+                                           src={slideImg}
+                                           className="max-h-[28rem] bg-transparent"
+                                         />
                                          {!isScormPlayer && (
                                            <button
                                              type="button"
@@ -6301,7 +6305,7 @@ export default function App() {
                                                pushUndo();
                                                handleUpdateSlideMedia(currentSlide.id, { imageUrl: undefined });
                                              }}
-                                             className="absolute top-2 right-2 opacity-0 group-hover/slideimg:opacity-100 transition-opacity bg-red-500 hover:bg-red-400 text-white rounded-full p-1.5 shadow"
+                                             className="absolute top-2 right-2 z-[2] opacity-0 group-hover/slideimg:opacity-100 transition-opacity bg-red-500 hover:bg-red-400 text-white rounded-full p-1.5 shadow"
                                            >
                                              <Trash2 className="w-3.5 h-3.5" />
                                            </button>

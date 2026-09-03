@@ -3,6 +3,7 @@ import { markdownToHtml, markdownToInlineHtml } from '../../lib/markdownInline';
 import { formatTabIntroOst, formatTabOstBody } from '../../lib/formatTabIntroOst';
 import { TAB_INTRO_DEFAULT_HEX, tabAccentHex } from '../../lib/tabAccents';
 import { contrastTextOn } from '../../lib/colorContrast';
+import { EnlargeableImage } from '../player/EnlargeableImage';
 
 export interface HorizontalTab {
   id: string;
@@ -175,14 +176,12 @@ export default function TabbedContentHorizontal({
                 />
                 {introImageUrl && (
                   <div className="mt-6 pt-4 border-t border-slate-200/80 w-full">
-                    <div className="rounded-xl overflow-hidden border border-slate-200/80 shadow-sm max-w-md mx-auto">
-                      <img
-                        src={introImageUrl}
-                        alt=""
-                        className="w-full h-auto max-h-72 object-contain bg-slate-50"
-                        onLoad={resetScrollTop}
-                      />
-                    </div>
+                    <EnlargeableImage
+                      src={introImageUrl}
+                      wrapperClassName="max-w-2xl mx-auto"
+                      className="max-h-[28rem] bg-transparent"
+                      onLoad={resetScrollTop}
+                    />
                   </div>
                 )}
                 <p className="mt-6 text-xs font-semibold" style={{ color: introHex }}>
@@ -217,14 +216,12 @@ export default function TabbedContentHorizontal({
                 )}
                 {activeTab!.imageUrl && (
                   <div className="mt-6 pt-4 border-t border-slate-200/80 w-full">
-                    <div className="rounded-xl overflow-hidden border border-slate-200/80 shadow-sm max-w-md mx-auto">
-                      <img
-                        src={activeTab!.imageUrl}
-                        alt=""
-                        className="w-full h-auto max-h-72 object-contain bg-slate-50"
-                        onLoad={resetScrollTop}
-                      />
-                    </div>
+                    <EnlargeableImage
+                      src={activeTab!.imageUrl}
+                      wrapperClassName="max-w-2xl mx-auto"
+                      className="max-h-[28rem] bg-transparent"
+                      onLoad={resetScrollTop}
+                    />
                   </div>
                 )}
               </>

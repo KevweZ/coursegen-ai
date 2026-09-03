@@ -4,6 +4,7 @@ import { formatTabIntroOst, formatTabOstBody } from '../../lib/formatTabIntroOst
 import { tabAccentHex, TAB_INTRO_DEFAULT_HEX } from '../../lib/tabAccents';
 import { contrastTextOn } from '../../lib/colorContrast';
 import { ChevronRight } from 'lucide-react';
+import { EnlargeableImage } from '../player/EnlargeableImage';
 
 export interface VerticalTab {
   id: string;
@@ -219,14 +220,12 @@ export default function TabbedContentVertical({
                   />
                   {introImageUrl && (
                     <div className="mt-6 pt-4 border-t border-slate-200/80 w-full">
-                      <div className="rounded-xl overflow-hidden border border-slate-200/80 shadow-sm max-w-md mx-auto">
-                        <img
-                          src={introImageUrl}
-                          alt=""
-                          className="w-full h-auto max-h-72 object-contain bg-slate-50"
-                          onLoad={resetScrollTop}
-                        />
-                      </div>
+                      <EnlargeableImage
+                        src={introImageUrl}
+                        wrapperClassName="max-w-2xl mx-auto"
+                        className="max-h-[28rem] bg-transparent"
+                        onLoad={resetScrollTop}
+                      />
                     </div>
                   )}
                   <p className="mt-6 text-xs font-semibold" style={{ color: introHex }}>
@@ -246,14 +245,12 @@ export default function TabbedContentVertical({
                   <div className={cn('text-sm leading-relaxed tab-ost-body w-full', isLight ? 'text-slate-700' : 'text-slate-200')} dangerouslySetInnerHTML={{ __html: markdownToHtml(formatTabOstBody(activeTab!.content) || formatTabOstBody(activeTab!.voiceOverText || '')) }} />
                   {activeTab!.imageUrl && (
                     <div className="mt-6 pt-4 border-t border-slate-200/80 w-full">
-                      <div className="rounded-xl overflow-hidden border border-slate-200/80 shadow-sm max-w-md mx-auto">
-                        <img
-                          src={activeTab!.imageUrl}
-                          alt=""
-                          className="w-full h-auto max-h-72 object-contain bg-slate-50"
-                          onLoad={resetScrollTop}
-                        />
-                      </div>
+                      <EnlargeableImage
+                        src={activeTab!.imageUrl}
+                        wrapperClassName="max-w-2xl mx-auto"
+                        className="max-h-[28rem] bg-transparent"
+                        onLoad={resetScrollTop}
+                      />
                     </div>
                   )}
                 </>
