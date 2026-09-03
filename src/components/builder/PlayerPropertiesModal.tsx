@@ -60,8 +60,8 @@ export const defaultPlayerConfig: PlayerConfig = {
   showPrevNext: true,
   allowFullscreen: true,
   logoUrl: null,
-  // Desktop + phones: scale-to-fit the 16:9 / 4:3 frame (no flex-fill toggle).
-  // 'full' skips scaling.
+  // Desktop + phones: scale-to-fit the 16:9 / 4:3 frame. Measure an empty
+  // stage layer (never the player). 'full' skips scaling.
   playerResolution: '16:9',
   navigationMode: 'free',
   examPresentationMode: 'one-at-a-time',

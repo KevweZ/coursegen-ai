@@ -1898,9 +1898,9 @@ export default function App() {
   const [extractedFileText, setExtractedFileText] = useState<string>('');
   const [voiceOverEnabled, setVoiceOverEnabled] = useState(DEFAULT_COURSE_SETTINGS.voiceOverEnabled);
 
-  // Phones and desktop 16:9/4:3: always CSS-scale the design frame into the
-  // stage (HDMI included). Never toggle with flex-fill — that bounce was the
-  // full-screen ↔ small-frame loop. Desktop “Mobile” bezel uses its own chrome.
+  // Phones and desktop 16:9/4:3: scale the design frame into the stage.
+  // Measure an empty absolute layer (not the player) — never toggle flex-fill
+  // vs transform. Desktop “Mobile” bezel uses its own chrome.
   const measureScaleToFit =
     step === 'preview' &&
     playerConfig?.playerResolution !== 'full' &&
@@ -6084,11 +6084,12 @@ export default function App() {
                     </div>
                   )}
                   <div
-                    ref={measureScaleToFit ? scaler.containerRef : undefined}
                     className={cn(
                       "relative flex flex-col flex-1 overflow-hidden min-h-0 min-w-0",
-                      useScaleTransform || phoneTocPlacement ? 'items-center justify-center' : undefined,
-                      !useScaleTransform && !isPhoneViewport && viewMode === 'mobile' && !phoneTocPlacement ? 'items-center justify-center bg-slate-950 gap-2' : undefined,
+                      !useScaleTransform && (phoneTocPlacement || (!isPhoneViewport && viewMode === 'mobile'))
+                        ? 'items-center justify-center'
+                        : undefined,
+                      !useScaleTransform && !isPhoneViewport && viewMode === 'mobile' && !phoneTocPlacement ? 'bg-slate-950 gap-2' : undefined,
                       !phoneTocPlacement && useScaleTransform
                         ? (isPhoneViewport ? 'bg-slate-800' : themeStageBg)
                         : undefined,
@@ -6096,16 +6097,23 @@ export default function App() {
                       isPhoneViewport && playerConfig.playerResolution === 'full' && !phoneTocPlacement ? 'bg-slate-900' : undefined
                     )}
                   >
+                  {measureScaleToFit && (
+                    <div
+                      ref={scaler.containerRef}
+                      className="absolute inset-0 pointer-events-none"
+                      aria-hidden
+                    />
+                  )}
                   {viewMode === 'mobile' && isSandboxMode && !isPhoneViewport && (
                     <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-400/80 shrink-0 pt-2">
                       Development Demo — Mobile Landscape
                     </p>
                   )}
 
-                  {/* Slide frame — aspect ratio driven by playerConfig.playerResolution.
-                      Phones and desktop 16:9/4:3 always scale-to-fit (no flex-fill toggle).
-                      PlayerBar stays inside on desktop, docks outside on phones. 'full' skips
-                      scaling. Desktop “Mobile” toggle uses a landscape phone bezel. */}
+                  {/* Slide frame — 16:9 / 4:3 scale-to-fit. The player is out of flow so
+                      the stage size cannot follow the scaled box (that shrinks the canvas).
+                      No CSS size/transform transition. 'full' and desktop Mobile bezel skip this. */}
+                  <div className={useScaleTransform ? 'absolute inset-0 z-10 flex items-center justify-center overflow-hidden' : 'contents'}>
                   <div
                     style={useScaleTransform ? scaler.outerStyle : undefined}
                     className={cn(
@@ -6113,7 +6121,7 @@ export default function App() {
                         ? 'relative z-10'
                         : cn(
                             `theme-${theme}`,
-                            "transition-all duration-500 flex flex-col relative z-10",
+                            "flex flex-col relative z-10",
                             isPhoneViewport
                               ? 'flex-1 overflow-hidden w-full min-h-0'
                               : viewMode === 'desktop'
@@ -7240,6 +7248,7 @@ export default function App() {
                     )}
                   </div>{/* end inner design frame (or contents) */}
                   </div>{/* end visual outer / slide frame */}
+                  </div>{/* end absolute center host (or contents) */}
                   </div>{/* end scale measure stage */}
 
                   {phoneTocPlacement === 'rail-right' && (
