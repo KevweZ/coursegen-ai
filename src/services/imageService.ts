@@ -81,6 +81,202 @@ export function imageModeFromFlags(ai: boolean, source: boolean): CourseImageMod
   return 'none';
 }
 
+/** Source pool entry used by attach / enrich (extends extract metadata). */
+export type AttachableSourceImage = {
+  dataUrl: string;
+  width: number;
+  height: number;
+  contentScore?: number;
+  sourceSlideIndex?: number;
+  sourceContextText?: string;
+  mediaName?: string;
+};
+
+const RELEVANCE_STOPWORDS = new Set([
+  'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had', 'her', 'was', 'one', 'our',
+  'out', 'has', 'have', 'been', 'from', 'they', 'this', 'that', 'with', 'will', 'your', 'what',
+  'when', 'were', 'been', 'been', 'into', 'than', 'then', 'them', 'these', 'those', 'also',
+  'such', 'only', 'over', 'after', 'before', 'about', 'their', 'there', 'where', 'which',
+  'while', 'would', 'could', 'should', 'using', 'used', 'same', 'key', 'steps', 'step',
+  'how', 'does', 'work', 'next', 'some', 'any', 'each', 'both', 'more', 'most', 'other',
+  'content', 'slide', 'module', 'course', 'learn', 'learning', 'objective', 'objectives',
+]);
+
+/** Cooling / fridge analogy markers — demote when panel is facility-focused. */
+const COOLING_MARKERS = [
+  'fridge', 'refrigerator', 'refrigeration', 'refrigerant', 'evaporator', 'condenser',
+  'domestic', 'freezer', 'vapour', 'vapor', 'mollier',
+];
+
+/** Facility / JV markers — used with cooling demotion for Sadara-vs-fridge cases. */
+const FACILITY_MARKERS = [
+  'sadara', 'yanbu', 'jubail', 'aramco', 'facility', 'facilities', 'venture', 'licensor',
+  'licensing', 'capacity', 'kta', 'complex', 'joint', 'dow', 'partnership', 'polymers',
+];
+
+/** Minimum keyword overlap score to place a context-tagged source image. */
+const MIN_RELEVANCE_SCORE = 3;
+
+function normalizeRelevanceToken(t: string): string {
+  // Light stemming so facilities↔facility, crackers↔cracker still overlap
+  if (t.endsWith('ies') && t.length > 5) return `${t.slice(0, -3)}y`;
+  if (t.endsWith('ses') && t.length > 5) return t.slice(0, -2);
+  if (t.endsWith('s') && !t.endsWith('ss') && t.length > 4) return t.slice(0, -1);
+  return t;
+}
+
+function tokenizeForRelevance(text: string): string[] {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/&amp;/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .split(/\s+/)
+    .map((t) => normalizeRelevanceToken(t.trim()))
+    .filter((t) => t.length >= 3 && !RELEVANCE_STOPWORDS.has(t));
+}
+
+function setHasMarker(tokens: Set<string>, markers: string[]): boolean {
+  for (const m of markers) {
+    if (tokens.has(m)) return true;
+    for (const t of tokens) {
+      if (t.startsWith(m) || m.startsWith(t)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Keyword overlap between course panel text and PPTX source-slide context.
+ * Returns 0 for strong domain mismatches (e.g. fridge diagram vs Sadara facility tab).
+ */
+export function scoreSourceImageRelevance(panelText: string, imageContextText: string): number {
+  const panelTokens = tokenizeForRelevance(panelText);
+  const imgTokens = tokenizeForRelevance(imageContextText);
+  if (!panelTokens.length || !imgTokens.length) return 0;
+
+  const panelSet = new Set(panelTokens);
+  const imgSet = new Set(imgTokens);
+
+  let score = 0;
+  for (const t of panelSet) {
+    if (!imgSet.has(t)) continue;
+    // Prefer distinctive terms (proper nouns / technical words)
+    score += t.length >= 7 ? 4 : t.length >= 5 ? 3 : 2;
+  }
+
+  const imgCooling = setHasMarker(imgSet, COOLING_MARKERS);
+  const panelCooling = setHasMarker(panelSet, COOLING_MARKERS);
+  const panelFacility = setHasMarker(panelSet, FACILITY_MARKERS);
+
+  // Fridge / refrigeration analogy must not land on facility-JV panels
+  if (imgCooling && !panelCooling && (panelFacility || score < 8)) {
+    return 0;
+  }
+
+  return score;
+}
+
+function buildSlidePanelText(slide: any): string {
+  return [
+    slide?.title,
+    slide?.content,
+    slide?.voiceOverText,
+    slide?.narration,
+    slide?.data?.introContent,
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+function buildTabPanelText(slide: any, tab: any): string {
+  return [
+    slide?.title,
+    tab?.title,
+    tab?.label,
+    tab?.name,
+    tab?.content,
+    tab?.body,
+    tab?.text,
+    tab?.voiceOverText,
+    tab?.narration,
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+function buildItemPanelText(slide: any, item: any): string {
+  return [
+    slide?.title,
+    item?.title,
+    item?.label,
+    item?.heading,
+    item?.content,
+    item?.body,
+    item?.text,
+    item?.voiceOverText,
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+/**
+ * Pick the best unused source image for a panel.
+ * When PPTX slide context exists: require keyword overlap; leave empty rather than a wrong diagram.
+ * When no context (PDF / legacy): keep contentScore + size ranking.
+ */
+function pickRelevantSourceImage(
+  pool: AttachableSourceImage[],
+  used: Set<number>,
+  panelText: string
+): AttachableSourceImage | null {
+  if (!pool.length) return null;
+
+  const hasContext = pool.some((img) => !!img.sourceContextText?.trim());
+
+  if (!hasContext) {
+    for (let i = 0; i < pool.length; i++) {
+      if (!used.has(i)) {
+        used.add(i);
+        return pool[i];
+      }
+    }
+    // Soft reuse only when no slide context is available
+    const idx = used.size % pool.length;
+    return pool[idx] || null;
+  }
+
+  let bestIdx = -1;
+  let bestScore = -1;
+
+  const consider = (i: number, unusedOnly: boolean) => {
+    if (unusedOnly && used.has(i)) return;
+    const img = pool[i];
+    const ctx = img.sourceContextText || '';
+    if (!ctx.trim()) return;
+    let score = scoreSourceImageRelevance(panelText, ctx);
+    if (score < MIN_RELEVANCE_SCORE) return;
+    // Light tie-break: diagram-like contentScore, then area
+    score += (img.contentScore ?? 40) / 200;
+    score += Math.min((img.width * img.height) / 2_000_000, 0.5);
+    // Prefer unused at equal-ish score
+    if (!unusedOnly && !used.has(i)) score += 0.25;
+    if (score > bestScore) {
+      bestScore = score;
+      bestIdx = i;
+    }
+  };
+
+  for (let i = 0; i < pool.length; i++) consider(i, true);
+  // Allow reuse of a still-relevant image (intro + matching tab) rather than leaving empty
+  if (bestIdx < 0) {
+    for (let i = 0; i < pool.length; i++) consider(i, false);
+  }
+
+  if (bestIdx < 0) return null;
+  used.add(bestIdx);
+  return pool[bestIdx];
+}
+
 function buildModuleBannerPrompt(moduleTitle: string, courseTitle: string): string {
   return (
     `Professional eLearning course module banner image. ` +
@@ -185,10 +381,14 @@ export async function generateModuleImages(
  * Prefer source on content/summary/hotspot AND default interactions
  * (tabbed-horizontal/vertical, click-reveal, accordion) so AI only fills gaps.
  * Quiz/matching/scenario/etc. stay skipped.
+ *
+ * When images carry PPTX slide context text, placement uses keyword overlap
+ * (source slide ↔ panel title/body). No good match → leave empty for AI / blank
+ * rather than round-robin a wrong diagram (e.g. fridge on Sadara tab).
  */
 export function attachSourceImagesToCourse(
   course: any,
-  images: Array<{ dataUrl: string; width: number; height: number; contentScore?: number }>
+  images: Array<AttachableSourceImage>
 ): any {
   if (!course?.modules?.length || !images?.length) return course;
   // Prefer diagram-like / high contentScore, then larger rasters — demote sparse leftovers
@@ -198,14 +398,8 @@ export function attachSourceImagesToCourse(
     if (scoreB !== scoreA) return scoreB - scoreA;
     return (b.width * b.height) - (a.width * a.height);
   });
-  let imgIdx = 0;
-  const nextImg = () => {
-    if (!pool.length) return null;
-    // Soft round-robin: walk pool once preferring unused high-score images before wrapping
-    const img = pool[imgIdx % pool.length];
-    imgIdx++;
-    return img;
-  };
+  const used = new Set<number>();
+  const take = (panelText: string) => pickRelevantSourceImage(pool, used, panelText);
 
   const skipEntirely = new Set([
     'multiple-choice', 'multiple-answers', 'true-false', 'quiz', 'knowledge-check',
@@ -217,6 +411,7 @@ export function attachSourceImagesToCourse(
   ]);
 
   let placed = 0;
+  let skippedNoMatch = 0;
 
   const result = {
     ...course,
@@ -227,8 +422,8 @@ export function attachSourceImagesToCourse(
 
         if (s.type === 'hotspot') {
           if (s.coverImage || s.imageUrl || s.data?.imageUrl) return s;
-          const img = nextImg();
-          if (!img) return s;
+          const img = take(buildSlidePanelText(s));
+          if (!img) { skippedNoMatch++; return s; }
           placed++;
           return {
             ...s,
@@ -242,25 +437,32 @@ export function attachSourceImagesToCourse(
           const list = [...(s.data?.[key] || [])];
           let data = { ...(s.data || {}) };
           let changed = false;
-          // Intro panel first (shown during opening narration) — not in tabs[]
-          if (!data.introImageUrl) {
-            const introImg = nextImg();
-            if (introImg) {
-              data = { ...data, introImageUrl: introImg.dataUrl };
-              changed = true;
-              placed++;
-            }
-          }
+          // Tabs first (specific panels), then intro — avoids facility diagrams being
+          // consumed by a generic intro before Sadara/Yanbu tabs can claim them.
           if (list.length) {
             const next = list.map((tab: any) => {
               if (tab?.imageUrl) return tab;
-              const img = nextImg();
-              if (!img) return tab;
+              const img = take(buildTabPanelText(s, tab));
+              if (!img) {
+                skippedNoMatch++;
+                return tab;
+              }
               changed = true;
               placed++;
               return { ...tab, imageUrl: img.dataUrl };
             });
             data = { ...data, [key]: next };
+          }
+          // Intro panel (opening narration) — slide-level text only (do not mix tab titles)
+          if (!data.introImageUrl) {
+            const introImg = take(buildSlidePanelText(s));
+            if (introImg) {
+              data = { ...data, introImageUrl: introImg.dataUrl };
+              changed = true;
+              placed++;
+            } else {
+              skippedNoMatch++;
+            }
           }
           if (!changed) return s;
           return { ...s, data };
@@ -272,8 +474,11 @@ export function attachSourceImagesToCourse(
           let changed = false;
           const next = list.map((item: any) => {
             if (item?.imageUrl) return item;
-            const img = nextImg();
-            if (!img) return item;
+            const img = take(buildItemPanelText(s, item));
+            if (!img) {
+              skippedNoMatch++;
+              return item;
+            }
             changed = true;
             placed++;
             return { ...item, imageUrl: img.dataUrl };
@@ -286,16 +491,18 @@ export function attachSourceImagesToCourse(
 
         // Text / summary — imageUrl drives a dedicated right column
         if (s.type !== 'content' && s.type !== 'summary' && s.type !== 'key-takeaways') return s;
-        const img = nextImg();
-        if (!img) return s;
+        const img = take(buildSlidePanelText(s));
+        if (!img) { skippedNoMatch++; return s; }
         placed++;
         return { ...s, imageUrl: img.dataUrl };
       }),
     })),
   };
 
+  const withCtx = images.filter((i) => i.sourceContextText?.trim()).length;
   console.log(
-    `[ImageService] attachSourceImagesToCourse: placed ${placed} image(s) from pool of ${images.length}`
+    `[ImageService] attachSourceImagesToCourse: placed ${placed} image(s) from pool of ${images.length}` +
+    ` (slide-context ${withCtx}; skipped-no-match ${skippedNoMatch})`
   );
   return result;
 }
@@ -306,7 +513,7 @@ export function attachSourceImagesToCourse(
  */
 export async function enrichHotspotAndCarouselImages(
   course: any,
-  sourceImages: Array<{ dataUrl: string; width: number; height: number; contentScore?: number }>,
+  sourceImages: Array<AttachableSourceImage>,
   opts: { generateAi: boolean; useSource: boolean; hotspotOnly?: boolean }
 ): Promise<any> {
   if (!course?.modules?.length) return course;
@@ -316,11 +523,10 @@ export async function enrichHotspotAndCarouselImages(
     if (scoreB !== scoreA) return scoreB - scoreA;
     return (b.width * b.height) - (a.width * a.height);
   });
-  let srcIdx = 0;
-  const nextSrc = () => {
+  const used = new Set<number>();
+  const nextSrc = (panelText: string) => {
     if (!opts.useSource || !ranked.length) return null;
-    const img = ranked[srcIdx % ranked.length];
-    srcIdx++;
+    const img = pickRelevantSourceImage(ranked, used, panelText);
     return img?.dataUrl || null;
   };
 
@@ -343,7 +549,7 @@ export async function enrichHotspotAndCarouselImages(
       if (slide.type === 'hotspot') {
         const existing = slide.imageUrl || slide.data?.imageUrl || slide.coverImage;
         if (!existing) {
-          const url = nextSrc();
+          const url = nextSrc(buildSlidePanelText(slide));
           if (url) {
             modules[mi].slides[si] = {
               ...slide,
@@ -368,7 +574,7 @@ export async function enrichHotspotAndCarouselImages(
         if (Array.isArray(cards) && cards.length) {
           const nextCards = cards.map((c: any, cardIndex: number) => {
             if (c.imageUrl) return c;
-            const url = nextSrc();
+            const url = nextSrc(buildItemPanelText(slide, c));
             if (url) return { ...c, imageUrl: url };
             if (opts.generateAi) {
               aiJobs.push({
@@ -406,22 +612,24 @@ export async function enrichHotspotAndCarouselImages(
           const list = [...(slide.data?.[key] || [])];
           let data = { ...(modules[mi].slides[si].data || {}) };
           let changed = false;
-          if (!data.introImageUrl) {
-            const url = nextSrc();
-            if (url) {
-              data = { ...data, introImageUrl: url };
-              changed = true;
-            }
-          }
+          // Tabs before intro so specific panels claim the best source matches first
           if (list.length) {
             const next = list.map((tab: any) => {
               if (tab?.imageUrl) return tab;
-              const url = nextSrc();
+              const url = nextSrc(buildTabPanelText(slide, tab));
               if (!url) return tab;
               changed = true;
               return { ...tab, imageUrl: url };
             });
             data = { ...data, [key]: next };
+          }
+          if (!data.introImageUrl) {
+            // Slide-level text only — avoid mixing tab domain keywords into intro matching
+            const url = nextSrc(buildSlidePanelText(slide));
+            if (url) {
+              data = { ...data, introImageUrl: url };
+              changed = true;
+            }
           }
           if (changed) {
             modules[mi].slides[si] = { ...modules[mi].slides[si], data };
@@ -432,7 +640,7 @@ export async function enrichHotspotAndCarouselImages(
             let changed = false;
             const next = list.map((item: any) => {
               if (item?.imageUrl) return item;
-              const url = nextSrc();
+              const url = nextSrc(buildItemPanelText(slide, item));
               if (!url) return item;
               changed = true;
               return { ...item, imageUrl: url };

@@ -33,6 +33,18 @@ export interface SourceImage {
    * Theme/layout decorations are excluded before this is used.
    */
   contentScore?: number;
+  /**
+   * 1-based PPTX slide index that references this media (first if shared).
+   * Used with sourceContextText for relevance-aware placement.
+   */
+  sourceSlideIndex?: number;
+  /**
+   * Text from the source slide(s) (+ notes when present) that reference this media.
+   * Enables keyword overlap vs course panel title/body without vision API cost.
+   */
+  sourceContextText?: string;
+  /** Original ppt/media filename (e.g. image121.jpeg) */
+  mediaName?: string;
 }
 
 export interface ParsedDocumentMetadata {
@@ -602,6 +614,93 @@ async function getPptxThemeOnlyMediaNames(zip: JSZip): Promise<Set<string>> {
   return themeOnly;
 }
 
+function extractPptxXmlText(xml: string): string {
+  return (xml.match(/<a:t[^>]*>([^<]*)<\/a:t>/g) ?? [])
+    .map((m) => m.replace(/<[^>]*>/g, '').trim())
+    .filter(Boolean)
+    .join(' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Map ppt/media filenames → slide indices + concatenated slide/notes text.
+ * Uses ppt/slides/_rels/slideN.xml.rels Target="…/media/…" links (no vision API).
+ */
+async function buildPptxMediaSlideContext(zip: JSZip): Promise<{
+  mediaToSlides: Map<string, number[]>;
+  slideTexts: Map<number, string>;
+}> {
+  const mediaToSlides = new Map<string, number[]>();
+  const slideTexts = new Map<number, string>();
+
+  const slideFiles = Object.keys(zip.files).filter(
+    (name) => /^ppt\/slides\/slide\d+\.xml$/.test(name) && !zip.files[name].dir
+  );
+
+  await Promise.all(
+    slideFiles.map(async (slidePath) => {
+      const num = parseInt(slidePath.match(/slide(\d+)/)?.[1] ?? '0', 10);
+      if (!num) return;
+
+      try {
+        const slideXml = await zip.files[slidePath].async('string');
+        let text = extractPptxXmlText(slideXml);
+        const notesPath = `ppt/notesSlides/notesSlide${num}.xml`;
+        if (zip.files[notesPath]) {
+          try {
+            const notesXml = await zip.files[notesPath].async('string');
+            const notesText = extractPptxXmlText(notesXml);
+            if (notesText) text = text ? `${text} ${notesText}` : notesText;
+          } catch { /* ignore notes */ }
+        }
+        if (text) slideTexts.set(num, text.slice(0, 6000));
+      } catch { /* ignore slide text */ }
+
+      const relPath = `ppt/slides/_rels/slide${num}.xml.rels`;
+      if (!zip.files[relPath]) return;
+      try {
+        const relXml = await zip.files[relPath].async('string');
+        const re = /Target="([^"]*media\/([^"]+))"/g;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(relXml))) {
+          const shortName = m[2];
+          if (!shortName) continue;
+          const list = mediaToSlides.get(shortName) || [];
+          if (!list.includes(num)) list.push(num);
+          mediaToSlides.set(shortName, list);
+        }
+      } catch { /* ignore rels */ }
+    })
+  );
+
+  return { mediaToSlides, slideTexts };
+}
+
+function contextForMedia(
+  shortName: string,
+  mediaToSlides: Map<string, number[]>,
+  slideTexts: Map<number, string>
+): { sourceSlideIndex?: number; sourceContextText?: string } {
+  const slides = mediaToSlides.get(shortName) || [];
+  if (!slides.length) return {};
+  const sourceSlideIndex = slides[0];
+  const sourceContextText = slides
+    .map((n) => slideTexts.get(n) || '')
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 8000);
+  return {
+    sourceSlideIndex,
+    ...(sourceContextText ? { sourceContextText } : {}),
+  };
+}
+
 /** GIF logical screen size from header — avoids decoding large animated GIFs just for dims. */
 function gifHeaderDims(bytes: Uint8Array): { width: number; height: number } | null {
   if (bytes.length < 10) return null;
@@ -630,6 +729,7 @@ export async function extractImagesFromFile(file: File): Promise<SourceImage[]> 
         name => name.startsWith('ppt/media/') && !zip.files[name].dir
       );
       const themeOnlyMedia = await getPptxThemeOnlyMediaNames(zip);
+      const { mediaToSlides, slideTexts } = await buildPptxMediaSlideContext(zip);
 
       let imgIndex = 0;
       let skippedSlideShots = 0;
@@ -638,6 +738,7 @@ export async function extractImagesFromFile(file: File): Promise<SourceImage[]> 
       let skippedThemeLayout = 0;
       let skippedDecorative = 0;
       let keptGif = 0;
+      let withContext = 0;
       const keptLog: string[] = [];
       const skippedLog: string[] = [];
       const skippedDecorativeLog: string[] = [];
@@ -729,10 +830,13 @@ export async function extractImagesFromFile(file: File): Promise<SourceImage[]> 
         }
 
         const contentScore = imgProps.contentScore ?? 50;
+        const ctx = contextForMedia(shortName, mediaToSlides, slideTexts);
+        if (ctx.sourceContextText) withContext++;
 
         if (ext === 'gif') keptGif++;
         if (keptLog.length < 12) {
-          keptLog.push(`${shortName} ${imgProps.width}×${imgProps.height} score=${contentScore}`);
+          const slideHint = ctx.sourceSlideIndex ? ` slide=${ctx.sourceSlideIndex}` : '';
+          keptLog.push(`${shortName} ${imgProps.width}×${imgProps.height} score=${contentScore}${slideHint}`);
         }
         images.push({
           pageIndex: imgIndex++,
@@ -740,11 +844,13 @@ export async function extractImagesFromFile(file: File): Promise<SourceImage[]> 
           width: imgProps.width,
           height: imgProps.height,
           contentScore,
+          mediaName: shortName,
+          ...ctx,
         });
       }
       console.log(
         `[extractImagesFromFile] PPTX "${file.name}": ${images.length} kept from ${mediaFiles.length} media ` +
-        `(gif ${keptGif}; skipped slide-canvas ${skippedSlideShots}, small ${skippedSmall}, ` +
+        `(gif ${keptGif}; with-slide-context ${withContext}; skipped slide-canvas ${skippedSlideShots}, small ${skippedSmall}, ` +
         `unsupported ${skippedUnsupported}, theme-layout ${skippedThemeLayout}, decorative ${skippedDecorative})`
       );
       if (keptLog.length) console.log(`[extractImagesFromFile] kept sample: ${keptLog.join(' | ')}`);
