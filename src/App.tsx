@@ -4068,6 +4068,7 @@ export default function App() {
             if (next.data && typeof next.data === 'object') {
               const data = { ...next.data };
               delete data.imageUrl;
+              delete data.introImageUrl;
               for (const key of ['tabs', 'items', 'cards'] as const) {
                 if (!Array.isArray(data[key])) continue;
                 data[key] = data[key].map((item: any) => {
@@ -6731,6 +6732,7 @@ export default function App() {
                                        introColor={currentSlide.data?.introColor || (currentSlide.data?.unifyTabColors ? tabAccentHex((currentSlide.data?.tabs || currentSlide.data?.items || [])[0], 0) : undefined)}
                                        introLabelColor={currentSlide.data?.introLabelColor}
                                        introVoiceOver={currentSlide.voiceOverText || currentSlide.narration || ''}
+                                       introImageUrl={currentSlide.data?.introImageUrl}
                                        onActiveTabChange={setActiveTabForImages}
                                        highlightTabId={dragOverTabId}
                                        onTabView={(id) => { if (id !== '__intro__') markInteractionExplored(currentSlide.id, id); }}
@@ -6750,6 +6752,7 @@ export default function App() {
                                        introColor={currentSlide.data?.introColor || (currentSlide.data?.unifyTabColors ? tabAccentHex((currentSlide.data?.tabs || currentSlide.data?.items || [])[0], 0) : undefined)}
                                        introLabelColor={currentSlide.data?.introLabelColor}
                                        introVoiceOver={currentSlide.voiceOverText || currentSlide.narration || ''}
+                                       introImageUrl={currentSlide.data?.introImageUrl}
                                        onActiveTabChange={setActiveTabForImages}
                                        highlightTabId={dragOverTabId}
                                        onTabView={(id) => { if (id !== '__intro__') markInteractionExplored(currentSlide.id, id); }}

@@ -234,18 +234,30 @@ export function attachSourceImagesToCourse(
         if (s.type === 'tabbed-horizontal' || s.type === 'tabbed-vertical') {
           const key = s.data?.tabs ? 'tabs' : (Array.isArray(s.data?.items) ? 'items' : 'tabs');
           const list = [...(s.data?.[key] || [])];
-          if (!list.length) return s;
+          let data = { ...(s.data || {}) };
           let changed = false;
-          const next = list.map((tab: any) => {
-            if (tab?.imageUrl) return tab;
-            const img = nextImg();
-            if (!img) return tab;
-            changed = true;
-            placed++;
-            return { ...tab, imageUrl: img.dataUrl };
-          });
+          // Intro panel first (shown during opening narration) — not in tabs[]
+          if (!data.introImageUrl) {
+            const introImg = nextImg();
+            if (introImg) {
+              data = { ...data, introImageUrl: introImg.dataUrl };
+              changed = true;
+              placed++;
+            }
+          }
+          if (list.length) {
+            const next = list.map((tab: any) => {
+              if (tab?.imageUrl) return tab;
+              const img = nextImg();
+              if (!img) return tab;
+              changed = true;
+              placed++;
+              return { ...tab, imageUrl: img.dataUrl };
+            });
+            data = { ...data, [key]: next };
+          }
           if (!changed) return s;
-          return { ...s, data: { ...(s.data || {}), [key]: next } };
+          return { ...s, data };
         }
 
         if (s.type === 'click-reveal' || s.type === 'accordion') {
@@ -380,8 +392,16 @@ export async function enrichHotspotAndCarouselImages(
         if (slide.type === 'tabbed-horizontal' || slide.type === 'tabbed-vertical') {
           const key = slide.data?.tabs ? 'tabs' : (Array.isArray(slide.data?.items) ? 'items' : 'tabs');
           const list = [...(slide.data?.[key] || [])];
+          let data = { ...(modules[mi].slides[si].data || {}) };
+          let changed = false;
+          if (!data.introImageUrl) {
+            const url = nextSrc();
+            if (url) {
+              data = { ...data, introImageUrl: url };
+              changed = true;
+            }
+          }
           if (list.length) {
-            let changed = false;
             const next = list.map((tab: any) => {
               if (tab?.imageUrl) return tab;
               const url = nextSrc();
@@ -389,12 +409,10 @@ export async function enrichHotspotAndCarouselImages(
               changed = true;
               return { ...tab, imageUrl: url };
             });
-            if (changed) {
-              modules[mi].slides[si] = {
-                ...modules[mi].slides[si],
-                data: { ...(modules[mi].slides[si].data || {}), [key]: next },
-              };
-            }
+            data = { ...data, [key]: next };
+          }
+          if (changed) {
+            modules[mi].slides[si] = { ...modules[mi].slides[si], data };
           }
         } else {
           const list = [...(slide.data?.items || [])];
@@ -542,8 +560,9 @@ export async function generateContentSlideImages(
 ): Promise<ContentImageGenResult> {
   if (!course?.modules?.length) return { course, jobsAttempted: 0 };
 
-  type Job = { kind: 'slide' | 'tab'; mi: number; si: number; tabIndex?: number; subject: string; slideTitle: string };
+  type Job = { kind: 'slide' | 'tab' | 'intro'; mi: number; si: number; tabIndex?: number; subject: string; slideTitle: string };
   const jobs: Job[] = [];
+  const introJobs: Job[] = [];
 
   course.modules.forEach((m: any, mi: number) => {
     (m.slides || []).forEach((s: any, si: number) => {
@@ -558,17 +577,34 @@ export async function generateContentSlideImages(
 
       if (s.type === 'tabbed-horizontal' || s.type === 'tabbed-vertical') {
         const tabs = s.data?.tabs || s.data?.items || [];
+        // Intro panel first — prioritize within MAX_CONTENT_AI_IMAGES budget
+        if (!s.data?.introImageUrl) {
+          const introBody = s.content || s.data?.introContent || s.voiceOverText || s.narration || '';
+          if (topicBenefitsFromVisual(s.title || '', introBody)) {
+            introJobs.push({
+              kind: 'intro',
+              mi,
+              si,
+              subject: s.title || 'course topic',
+              slideTitle: s.title || '',
+            });
+          }
+        }
         if (!Array.isArray(tabs)) return;
         tabs.forEach((tab: any, tabIndex: number) => {
           if (tab?.imageUrl) return;
           const label = tab?.label || tab?.title || `Tab ${tabIndex + 1}`;
-          if (!topicBenefitsFromVisual(label, tab?.content || '')) return;
+          // Generic labels like "Introduction" still qualify via slide title + tab body
+          const body = `${tab?.content || ''} ${s.title || ''}`;
+          if (!topicBenefitsFromVisual(label, body) && !topicBenefitsFromVisual(s.title || '', tab?.content || '')) return;
           jobs.push({
             kind: 'tab',
             mi,
             si,
             tabIndex,
-            subject: label,
+            subject: /^(introduction|overview|summary)$/i.test(String(label).trim())
+              ? (s.title || label)
+              : label,
             slideTitle: s.title || label,
           });
         });
@@ -596,7 +632,8 @@ export async function generateContentSlideImages(
     });
   });
 
-  const selected = jobs.slice(0, MAX_CONTENT_AI_IMAGES);
+  // Intro panels before content tabs / slides so opening narration is not left text-only
+  const selected = [...introJobs, ...jobs].slice(0, MAX_CONTENT_AI_IMAGES);
   if (!selected.length) return { course, jobsAttempted: 0 };
 
   // Deep-clone modules we will mutate
@@ -626,6 +663,11 @@ export async function generateContentSlideImages(
         const slide = modules[job.mi].slides[job.si];
         if (job.kind === 'slide') {
           modules[job.mi].slides[job.si] = { ...slide, imageUrl: url };
+        } else if (job.kind === 'intro') {
+          modules[job.mi].slides[job.si] = {
+            ...slide,
+            data: { ...(slide.data || {}), introImageUrl: url },
+          };
         } else if (typeof job.tabIndex === 'number') {
           if (slide.type === 'tabbed-horizontal' || slide.type === 'tabbed-vertical') {
             const key = slide.data?.tabs ? 'tabs' : 'items';

@@ -37,6 +37,8 @@ interface Props {
   introLabelColor?: string;
   /** Slide-level narration — used to enrich thin intro OST into short bullets */
   introVoiceOver?: string;
+  /** Optional source/AI image under intro panel text (opening narration) */
+  introImageUrl?: string;
   /** Notify parent of active tab (null = intro) for tab-scoped floating images */
   onActiveTabChange?: (tabId: string | null) => void;
   /** While dragging a floating image over a tab zone, highlight it */
@@ -64,6 +66,7 @@ export default function TabbedContentHorizontal({
   introColor,
   introLabelColor,
   introVoiceOver,
+  introImageUrl,
   onActiveTabChange,
   highlightTabId = null,
 }: Props) {
@@ -170,6 +173,18 @@ export default function TabbedContentHorizontal({
                   className={`text-sm leading-relaxed w-full ${isLight ? 'text-slate-700' : 'text-slate-200'}`}
                   dangerouslySetInnerHTML={{ __html: markdownToHtml(introOst) }}
                 />
+                {introImageUrl && (
+                  <div className="mt-6 pt-4 border-t border-slate-200/80 w-full">
+                    <div className="rounded-xl overflow-hidden border border-slate-200/80 shadow-sm max-w-md mx-auto">
+                      <img
+                        src={introImageUrl}
+                        alt=""
+                        className="w-full h-auto max-h-72 object-contain bg-slate-50"
+                        onLoad={resetScrollTop}
+                      />
+                    </div>
+                  </div>
+                )}
                 <p className="mt-6 text-xs font-semibold" style={{ color: introHex }}>
                   Select a topic tab below to continue →
                 </p>
