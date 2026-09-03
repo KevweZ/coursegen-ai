@@ -1910,10 +1910,15 @@ export default function App() {
     playerConfig?.playerResolution ?? '16:9',
     measureScaleToFit
   );
-  const DESKTOP_SCALE_UP_EPSILON = 1.02;
+  // Hysteresis: toggling scale-to-fit around ~1.0 remounts the 1280×720 frame
+  // with transform-origin top-left and looks like a diagonal animation loop.
+  const desktopScaleUpRef = useRef(false);
+  const desktopScaleUp =
+    scaler.scale > (desktopScaleUpRef.current ? 1.005 : 1.04);
+  desktopScaleUpRef.current = desktopScaleUp;
   const useScaleTransform =
     measureScaleToFit &&
-    (isPhoneViewport || scaler.scale > DESKTOP_SCALE_UP_EPSILON);
+    (isPhoneViewport || desktopScaleUp);
   /** Phones dock PlayerBar outside the CSS-scaled frame. Desktop keeps it inside. */
   const dockPlayerBarOutside = isPhoneViewport;
   const themeStageBg =
@@ -6133,7 +6138,7 @@ export default function App() {
                       useScaleTransform
                         ? cn(
                             `theme-${theme}`,
-                            "transition-all duration-500 flex flex-col relative overflow-hidden min-h-0",
+                            "flex flex-col relative overflow-hidden min-h-0",
                             theme === 'light' ? 'bg-white' : theme === 'unified' ? 'bg-indigo-950' : 'bg-slate-900'
                           )
                         : 'contents'

@@ -60,7 +60,9 @@ export function useScaleToFit(resolution: Resolution | string, active: boolean =
     const scaleY = (h - SAFETY_PX) / design.h;
     // 0.99 factor -- frame fills nearly the entire available area while still
     // leaving a hair of breathing room so nothing sits flush against the edge.
-    setScale(Math.min(scaleX, scaleY) * 0.99);
+    const next = Math.min(scaleX, scaleY) * 0.99;
+    if (!Number.isFinite(next) || next <= 0) return;
+    setScale(prev => (Math.abs(prev - next) < 0.004 ? prev : next));
   }, [active, design.w, design.h]);
 
   // Schedule recalculate via rAF so layout is always settled before measuring
@@ -138,8 +140,6 @@ export function useScaleToFit(resolution: Resolution | string, active: boolean =
     transform: `scale(${scale})`,
     transformOrigin: 'top left',
     flexShrink: 0,
-    // Prevent layout interference from the scaled visual
-    willChange: 'transform',
   };
 
   return {
