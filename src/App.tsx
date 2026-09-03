@@ -1423,6 +1423,8 @@ export default function App() {
   const [editingSlide, setEditingSlide] = useState<any>(null);
   const [showImageGalleryForSlide, setShowImageGalleryForSlide] = useState<string | null>(null);
   const [sourceImages, setSourceImages] = useState<SourceImage[]>([]);
+  const sourceImagesRef = useRef<SourceImage[]>([]);
+  sourceImagesRef.current = sourceImages;
 
   // Interaction Previews
   const [previewModalOption, setPreviewModalOption] = useState<string | null>(null);
@@ -3471,7 +3473,10 @@ export default function App() {
     }
 
     const fileSnapshot = uploadedFile;
-    const sourceSnapshot = sourceImages;
+    // Prefer live ref — generate/hydrate can outlive the render that closed over sourceImages,
+    // so a stale [] here would re-run a multi-minute PPTX extract at 56%.
+    let imgs =
+      sourceImagesRef.current.length > 0 ? sourceImagesRef.current : sourceImages;
     const syntheticOverridesSnapshot = syntheticSlideOverrides;
     const { ai: wantsAi, source: wantsSource } = imageModeFlags(modeSnapshot);
     const wantsHotspotBackdrop =
@@ -3599,7 +3604,6 @@ export default function App() {
       setOriginalCourse(prev => mergeCoursePreservingAudio(prev, next));
     };
 
-    let imgs = sourceSnapshot;
     let working: any = stamped;
     let coverUrl: string | null = null;
 
@@ -3608,19 +3612,27 @@ export default function App() {
       setIsGeneratingImages(true);
       setProgress(56);
       try {
-        if (wantsSource && imgs.length === 0 && fileSnapshot) {
-          try {
-            imgs = await extractImagesFromFile(fileSnapshot);
-            if (imgs.length) {
-              setSourceImages(imgs);
-              showDraftMessage(`Extracted ${imgs.length} image(s) from ${fileSnapshot.name}`);
-            } else {
-              console.warn('[ImageService] Source extract returned 0 images from', fileSnapshot.name);
-              showDraftMessage('No extractable images found in the uploaded file (PNG/JPEG in PPTX media).');
+        // Always resolve via extract cache when Source is on — avoids stale [] from
+        // generate's closed-over sourceImages after a long hydrate.
+        if (wantsSource && fileSnapshot) {
+          if (imgs.length === 0) {
+            try {
+              imgs = await extractImagesFromFile(fileSnapshot, (done, total) => {
+                // Stay in the "Adding course visuals" band (56–59) while media extracts
+                const pct = 56 + Math.min(3, Math.round((done / Math.max(1, total)) * 3));
+                setProgress(pct);
+              });
+              if (imgs.length) {
+                setSourceImages(imgs);
+                showDraftMessage(`Extracted ${imgs.length} image(s) from ${fileSnapshot.name}`);
+              } else {
+                console.warn('[ImageService] Source extract returned 0 images from', fileSnapshot.name);
+                showDraftMessage('No extractable images found in the uploaded file (PNG/JPEG in PPTX media).');
+              }
+            } catch (e) {
+              console.warn('[ImageService] Late source extract failed:', e);
+              showDraftMessage('Could not extract images from the uploaded file.');
             }
-          } catch (e) {
-            console.warn('[ImageService] Late source extract failed:', e);
-            showDraftMessage('Could not extract images from the uploaded file.');
           }
         }
         setProgress(60);

@@ -163,7 +163,7 @@ export default function TabbedContentVertical({
             const isDropTarget = highlightTabId === tab.id;
             return (
               <button
-                key={tab.id}
+                key={tab.id || `vtab-${i}`}
                 type="button"
                 data-tab-drop-zone={tab.id}
                 onClick={() => selectTab(i)}

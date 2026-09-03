@@ -259,7 +259,7 @@ export default function TabbedContentHorizontal({
           const isDropTarget = highlightTabId === tab.id;
           return (
             <button
-              key={tab.id}
+              key={tab.id || `tab-${i}`}
               type="button"
               data-tab-drop-zone={tab.id}
               onClick={() => selectTab(i)}

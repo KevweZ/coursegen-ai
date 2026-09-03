@@ -94,7 +94,7 @@ const ClickRevealInteraction: React.FC<ClickRevealProps> = ({ items = [], theme 
 
         return (
           <motion.div
-            key={item.id}
+            key={item.id || `reveal-${idx}`}
             layout
             initial={false}
             className="rounded-xl overflow-hidden"
