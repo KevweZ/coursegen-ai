@@ -6,6 +6,8 @@ export interface RevealItem {
   id: string;
   term: string;
   definition: string;
+  /** Optional AI/source image shown under the revealed definition */
+  imageUrl?: string;
 }
 
 interface ClickRevealProps {
@@ -172,6 +174,17 @@ const ClickRevealInteraction: React.FC<ClickRevealProps> = ({ items = [], theme 
                     }}
                     dangerouslySetInnerHTML={{ __html: markdownToHtml(item.definition) }}
                   />
+                  {item.imageUrl && (
+                    <div className="px-5 pb-5">
+                      <div className="rounded-xl overflow-hidden border border-black/10 shadow-sm max-w-md">
+                        <img
+                          src={item.imageUrl}
+                          alt=""
+                          className="w-full h-auto max-h-56 object-contain bg-white/60"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>

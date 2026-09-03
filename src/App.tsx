@@ -55,6 +55,7 @@ import {
   SlidersHorizontal,
   FolderOpen,
   RefreshCw,
+  Library,
 } from 'lucide-react';
 import { 
   Accordion, 
@@ -1970,6 +1971,8 @@ export default function App() {
   );
   /** Per-tab narration override while on a tabbed slide (cleared on slide change) */
   const [activeTabAudioUrl, setActiveTabAudioUrl] = useState<string | null>(null);
+  /** Per-tab CC script paired with activeTabAudioUrl (null = use slide-level voiceOverText) */
+  const [activeTabNarrationText, setActiveTabNarrationText] = useState<string | null>(null);
   /** Active content tab id for tab-scoped floating images (null = intro / non-tab slide) */
   const [activeTabForImages, setActiveTabForImages] = useState<string | null>(null);
   /** Tab id under the pointer while dragging a floating image */
@@ -2338,12 +2341,34 @@ export default function App() {
   // the current slide over and over, resetting playback mid-sentence.
   const currentSyntheticUrl = syntheticAudioMap[currentSlide?.id ?? ''] ?? null;
 
-  // Clear per-tab audio / tab-image scope when leaving a slide
+  // Clear per-tab audio / CC / tab-image scope when leaving a slide
   useEffect(() => {
     setActiveTabAudioUrl(null);
+    setActiveTabNarrationText(null);
     setActiveTabForImages(null);
     setDragOverTabId(null);
   }, [currentSlide?.id]);
+
+  /** Switch tab audio + CC together so captions never lag on intro script. */
+  const handleTabAudio = (tabId: string) => {
+    if (!voiceOverEnabled || !currentSlide) return;
+    if (tabId === '__intro__') {
+      setActiveTabAudioUrl(null);
+      setActiveTabNarrationText(null);
+      return;
+    }
+    const tabs = currentSlide.data?.tabs || currentSlide.data?.items || [];
+    const tab = (tabs || []).find((t: any) => t.id === tabId);
+    if (tab?.voiceOverUrl) {
+      setActiveTabAudioUrl(tab.voiceOverUrl);
+      const script = String(tab.voiceOverText || tab.narration || '').trim();
+      setActiveTabNarrationText(script || null);
+    } else {
+      player.pause();
+      setActiveTabAudioUrl(null);
+      setActiveTabNarrationText(null);
+    }
+  };
 
   useEffect(() => {
     // Only load/play audio while the course player is visible — never during generate/upload
@@ -3408,6 +3433,7 @@ export default function App() {
       passed: null,
     });
     setActiveTabAudioUrl(null);
+    setActiveTabNarrationText(null);
     setActiveTabForImages(null);
     setDragOverTabId(null);
     // Leaving Design phase — unsaved design draft id must not stick to Development
@@ -5764,6 +5790,17 @@ export default function App() {
                       />
                     </label>
 
+                    {sourceImages.length > 0 && currentSlide?.id && (
+                      <button
+                        type="button"
+                        title={`Source Image (${sourceImages.length} from upload)`}
+                        onClick={() => setShowImageGalleryForSlide(currentSlide.id)}
+                        className="flex items-center gap-1 px-2 py-1 rounded-md border border-teal-700/50 hover:bg-teal-800/20 text-teal-300 text-[11px] font-semibold"
+                      >
+                        <Library className="w-3 h-3" /><span className="hidden lg:inline">Source Image</span>
+                      </button>
+                    )}
+
                     <button
                       title={undoHistory.length > 0 ? `Undo (${undoHistory.length})` : 'Nothing to undo'}
                       onClick={handleUndo}
@@ -6697,21 +6734,7 @@ export default function App() {
                                        onActiveTabChange={setActiveTabForImages}
                                        highlightTabId={dragOverTabId}
                                        onTabView={(id) => { if (id !== '__intro__') markInteractionExplored(currentSlide.id, id); }}
-                                       onTabAudio={(id) => {
-                                         if (!voiceOverEnabled) return;
-                                         if (id === '__intro__') {
-                                           // Return to slide-level intro narration
-                                           setActiveTabAudioUrl(null);
-                                           return;
-                                         }
-                                         const tabs = currentSlide.data?.tabs || currentSlide.data?.items || [];
-                                         const tab = (tabs || []).find((t: any) => t.id === id);
-                                         if (tab?.voiceOverUrl) setActiveTabAudioUrl(tab.voiceOverUrl);
-                                         else {
-                                           player.pause();
-                                           setActiveTabAudioUrl(null);
-                                         }
-                                       }}
+                                       onTabAudio={handleTabAudio}
                                      />
                                    </div>
                                  </div>
@@ -6719,31 +6742,20 @@ export default function App() {
                                {currentSlide?.type === 'tabbed-vertical' && (
                                  <div className="space-y-6 w-full">
                                    <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                   <TabbedVertical
-                                     tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []}
-                                     theme={theme}
-                                     introContent={currentSlide.content || ''}
-                                     introColor={currentSlide.data?.introColor || (currentSlide.data?.unifyTabColors ? tabAccentHex((currentSlide.data?.tabs || currentSlide.data?.items || [])[0], 0) : undefined)}
-                                     introLabelColor={currentSlide.data?.introLabelColor}
-                                     introVoiceOver={currentSlide.voiceOverText || currentSlide.narration || ''}
-                                     onActiveTabChange={setActiveTabForImages}
-                                     highlightTabId={dragOverTabId}
-                                     onTabView={(id) => { if (id !== '__intro__') markInteractionExplored(currentSlide.id, id); }}
-                                     onTabAudio={(id) => {
-                                       if (!voiceOverEnabled) return;
-                                       if (id === '__intro__') {
-                                         setActiveTabAudioUrl(null);
-                                         return;
-                                       }
-                                       const tabs = currentSlide.data?.tabs || currentSlide.data?.items || [];
-                                       const tab = (tabs || []).find((t: any) => t.id === id);
-                                       if (tab?.voiceOverUrl) setActiveTabAudioUrl(tab.voiceOverUrl);
-                                       else {
-                                         player.pause();
-                                         setActiveTabAudioUrl(null);
-                                       }
-                                     }}
-                                   />
+                                   <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
+                                     <TabbedVertical
+                                       tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []}
+                                       theme={theme as any}
+                                       introContent={currentSlide.content || ''}
+                                       introColor={currentSlide.data?.introColor || (currentSlide.data?.unifyTabColors ? tabAccentHex((currentSlide.data?.tabs || currentSlide.data?.items || [])[0], 0) : undefined)}
+                                       introLabelColor={currentSlide.data?.introLabelColor}
+                                       introVoiceOver={currentSlide.voiceOverText || currentSlide.narration || ''}
+                                       onActiveTabChange={setActiveTabForImages}
+                                       highlightTabId={dragOverTabId}
+                                       onTabView={(id) => { if (id !== '__intro__') markInteractionExplored(currentSlide.id, id); }}
+                                       onTabAudio={handleTabAudio}
+                                     />
+                                   </div>
                                  </div>
                                )}
                                {currentSlide?.type === 'folder-explorer' && (
@@ -7043,11 +7055,7 @@ export default function App() {
 
                            </div>
 
-                           {/* Slide media tools — Edit/Reset/Upload are in the top bar.
-                               "Source Image" was removed from here: it duplicated the identical
-                               "Source Image" option already in the top bar's Add Image dropdown,
-                               and this on-slide absolutely-positioned copy was prone to being
-                               clipped at the slide edge on some layouts. */}
+                           {/* Slide media tools — Edit/Reset/Upload/Source Image live in the top bar. */}
                            <div className="absolute top-2 right-2 z-[100] flex flex-wrap max-w-sm justify-end gap-2 shrink-0">
                              {currentSlide?.mediaUrl && (
                                <button 
@@ -7133,7 +7141,11 @@ export default function App() {
                           Phone scale-to-fit docks CC above the outside PlayerBar instead. */}
                       {!dockPlayerBarOutside && showCC && player.hasAudio && !player.isEnded && (
                         <ClosedCaptionOverlay
-                          narrationText={currentSlide?.voiceOverText || (currentSlide as any)?.narration || null}
+                          narrationText={
+                            activeTabAudioUrl
+                              ? activeTabNarrationText
+                              : (currentSlide?.voiceOverText || (currentSlide as any)?.narration || null)
+                          }
                           currentTime={player.currentTime}
                           duration={player.duration}
                           isPlaying={player.isPlaying}
@@ -7229,7 +7241,11 @@ export default function App() {
                       {showCC && player.hasAudio && !player.isEnded && (
                         <ClosedCaptionOverlay
                           placement="docked"
-                          narrationText={currentSlide?.voiceOverText || (currentSlide as any)?.narration || null}
+                          narrationText={
+                            activeTabAudioUrl
+                              ? activeTabNarrationText
+                              : (currentSlide?.voiceOverText || (currentSlide as any)?.narration || null)
+                          }
                           currentTime={player.currentTime}
                           duration={player.duration}
                           isPlaying={player.isPlaying}
@@ -7301,7 +7317,11 @@ export default function App() {
                   <button onClick={() => setShowImageGalleryForSlide(null)} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition-colors">Close</button>
                 </div>
                 <div className="p-6 overflow-y-auto grid grid-cols-2 md:grid-cols-3 gap-4">
-                  {sourceImages.map((img: any, i: number) => (
+                  {sourceImages.length === 0 ? (
+                    <p className="col-span-full text-sm text-slate-400 text-center py-8">
+                      No source images extracted from the uploaded file yet.
+                    </p>
+                  ) : sourceImages.map((img: any, i: number) => (
                     <div 
                       key={i} 
                       onClick={() => {

@@ -181,40 +181,49 @@ export async function generateModuleImages(
 }
 
 /**
- * Attach extracted source images onto slides that can show them without overlapping
- * interactive UI. Plain content/summary get a right-side imageUrl; hotspots get a
- * background only when empty. Quiz/matching/scenario/etc. are skipped entirely.
+ * Attach extracted source images onto slides that can show them.
+ * Prefer source on content/summary/hotspot AND default interactions
+ * (tabbed-horizontal/vertical, click-reveal, accordion) so AI only fills gaps.
+ * Quiz/matching/scenario/etc. stay skipped.
  */
 export function attachSourceImagesToCourse(
   course: any,
   images: Array<{ dataUrl: string; width: number; height: number }>
 ): any {
   if (!course?.modules?.length || !images?.length) return course;
-  const pool = [...images];
+  // Prefer larger diagrams / GIFs first so default tabs get useful visuals
+  const pool = [...images].sort((a, b) => (b.width * b.height) - (a.width * a.height));
   let imgIdx = 0;
-
-  const isInteractive = (s: any) => {
-    const t = s.type;
-    return [
-      'multiple-choice', 'multiple-answers', 'true-false', 'quiz', 'knowledge-check',
-      'matching', 'sorting', 'drop-targets', 'scenario', 'flashcards', 'timeline',
-      'tabbed-horizontal', 'tabbed-vertical', 'folder-explorer', 'carousel-panel',
-      'click-reveal', 'accordion', 'game-template', 'mastery-exam', 'exam-intro',
-    ].includes(t);
+  const nextImg = () => {
+    if (!pool.length) return null;
+    const img = pool[imgIdx % pool.length];
+    imgIdx++;
+    return img;
   };
 
-  return {
+  const skipEntirely = new Set([
+    'multiple-choice', 'multiple-answers', 'true-false', 'quiz', 'knowledge-check',
+    'matching', 'sorting', 'drop-targets', 'scenario', 'flashcards', 'timeline',
+    'folder-explorer', 'carousel-panel', // carousel filled by enrichHotspotAndCarouselImages
+    'game-template', 'mastery-exam', 'exam-intro', 'exam-results', 'closing',
+    'title', 'cover', 'module-cover', 'module-overview', 'course-objectives',
+    'learning-objectives', 'objectives', 'player-tour',
+  ]);
+
+  let placed = 0;
+
+  const result = {
     ...course,
     modules: course.modules.map((m: any) => ({
       ...m,
       slides: (m.slides || []).map((s: any) => {
-        if (isInteractive(s)) return s;
-        if (s.coverImage || s.imageUrl || s.data?.imageUrl) return s;
+        if (skipEntirely.has(s.type)) return s;
 
         if (s.type === 'hotspot') {
-          const img = pool[imgIdx % pool.length];
+          if (s.coverImage || s.imageUrl || s.data?.imageUrl) return s;
+          const img = nextImg();
           if (!img) return s;
-          imgIdx++;
+          placed++;
           return {
             ...s,
             imageUrl: img.dataUrl,
@@ -222,18 +231,55 @@ export function attachSourceImagesToCourse(
           };
         }
 
-        // Text / summary only — imageUrl drives a dedicated right column
-        if (s.type !== 'content' && s.type !== 'summary') return s;
-        const img = pool[imgIdx % pool.length];
+        if (s.type === 'tabbed-horizontal' || s.type === 'tabbed-vertical') {
+          const key = s.data?.tabs ? 'tabs' : (Array.isArray(s.data?.items) ? 'items' : 'tabs');
+          const list = [...(s.data?.[key] || [])];
+          if (!list.length) return s;
+          let changed = false;
+          const next = list.map((tab: any) => {
+            if (tab?.imageUrl) return tab;
+            const img = nextImg();
+            if (!img) return tab;
+            changed = true;
+            placed++;
+            return { ...tab, imageUrl: img.dataUrl };
+          });
+          if (!changed) return s;
+          return { ...s, data: { ...(s.data || {}), [key]: next } };
+        }
+
+        if (s.type === 'click-reveal' || s.type === 'accordion') {
+          const list = [...(s.data?.items || [])];
+          if (!list.length) return s;
+          let changed = false;
+          const next = list.map((item: any) => {
+            if (item?.imageUrl) return item;
+            const img = nextImg();
+            if (!img) return item;
+            changed = true;
+            placed++;
+            return { ...item, imageUrl: img.dataUrl };
+          });
+          if (!changed) return s;
+          return { ...s, data: { ...(s.data || {}), items: next } };
+        }
+
+        if (s.coverImage || s.imageUrl || s.data?.imageUrl) return s;
+
+        // Text / summary — imageUrl drives a dedicated right column
+        if (s.type !== 'content' && s.type !== 'summary' && s.type !== 'key-takeaways') return s;
+        const img = nextImg();
         if (!img) return s;
-        imgIdx++;
-        return {
-          ...s,
-          imageUrl: img.dataUrl,
-        };
+        placed++;
+        return { ...s, imageUrl: img.dataUrl };
       }),
     })),
   };
+
+  console.log(
+    `[ImageService] attachSourceImagesToCourse: placed ${placed} image(s) from pool of ${images.length}`
+  );
+  return result;
 }
 
 /**
@@ -323,6 +369,53 @@ export async function enrichHotspotAndCarouselImages(
           };
         }
       }
+
+      // Gap-fill tabs / click-reveal / accordion from source (prefer source before AI content pass)
+      if (!opts.hotspotOnly && opts.useSource && (
+        slide.type === 'tabbed-horizontal' ||
+        slide.type === 'tabbed-vertical' ||
+        slide.type === 'click-reveal' ||
+        slide.type === 'accordion'
+      )) {
+        if (slide.type === 'tabbed-horizontal' || slide.type === 'tabbed-vertical') {
+          const key = slide.data?.tabs ? 'tabs' : (Array.isArray(slide.data?.items) ? 'items' : 'tabs');
+          const list = [...(slide.data?.[key] || [])];
+          if (list.length) {
+            let changed = false;
+            const next = list.map((tab: any) => {
+              if (tab?.imageUrl) return tab;
+              const url = nextSrc();
+              if (!url) return tab;
+              changed = true;
+              return { ...tab, imageUrl: url };
+            });
+            if (changed) {
+              modules[mi].slides[si] = {
+                ...modules[mi].slides[si],
+                data: { ...(modules[mi].slides[si].data || {}), [key]: next },
+              };
+            }
+          }
+        } else {
+          const list = [...(slide.data?.items || [])];
+          if (list.length) {
+            let changed = false;
+            const next = list.map((item: any) => {
+              if (item?.imageUrl) return item;
+              const url = nextSrc();
+              if (!url) return item;
+              changed = true;
+              return { ...item, imageUrl: url };
+            });
+            if (changed) {
+              modules[mi].slides[si] = {
+                ...modules[mi].slides[si],
+                data: { ...(modules[mi].slides[si].data || {}), items: next },
+              };
+            }
+          }
+        }
+      }
     });
   });
 
@@ -410,8 +503,8 @@ export function topicBenefitsFromVisual(label: string, content?: string): boolea
     return false;
   }
 
-  // Strong concrete visual cues
-  if (/\b(sign|signal|stop|yield|light|traffic|vehicle|car|truck|bus|highway|school zone|residential|equipment|pump|valve|hvac|duct|motor|engine|pipe|panel|meter|gauge|tool|device|machine|intersection|crosswalk|lane|brake|steering|airbag|helmet|ppe)\b/i.test(lower)) {
+  // Strong concrete visual cues (incl. industrial / process-plant SME decks)
+  if (/\b(sign|signal|stop|yield|light|traffic|vehicle|car|truck|bus|highway|school zone|residential|equipment|pump|valve|hvac|duct|motor|engine|pipe|panel|meter|gauge|tool|device|machine|intersection|crosswalk|lane|brake|steering|airbag|helmet|ppe|furnace|cracker|olefin|ethylene|reactor|distill|refinery|pipeline|compressor|tower|column|exchanger|catalyst|feedstock|vessel|tank|flare|steam|heat|process|schematic|diagram|plant|unit)\b/i.test(lower)) {
     return true;
   }
 
@@ -479,6 +572,7 @@ export async function generateContentSlideImages(
             slideTitle: s.title || label,
           });
         });
+        return;
       }
 
       if (s.type === 'click-reveal' || s.type === 'accordion') {
@@ -486,8 +580,9 @@ export async function generateContentSlideImages(
         if (!Array.isArray(items)) return;
         items.forEach((item: any, tabIndex: number) => {
           if (item?.imageUrl) return;
-          const label = item?.title || item?.label || `Item ${tabIndex + 1}`;
-          if (!topicBenefitsFromVisual(label, item?.content || '')) return;
+          const label = item?.title || item?.label || item?.term || `Item ${tabIndex + 1}`;
+          const body = item?.content || item?.definition || '';
+          if (!topicBenefitsFromVisual(label, body)) return;
           jobs.push({
             kind: 'tab',
             mi,

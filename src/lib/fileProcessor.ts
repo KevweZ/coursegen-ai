@@ -187,15 +187,36 @@ export async function extractTextFromFile(file: File): Promise<string> {
 }
 
 /**
- * True when an image looks like a full slide screenshot / slide background
- * (wide slide aspect + large dimensions) rather than a content photo/diagram.
+ * Common PowerPoint / Keynote slide canvas sizes. Only near-exact matches are
+ * treated as full-slide captures — large ~16:9 diagrams must stay extractable.
+ */
+const SLIDE_CAPTURE_SIZES: Array<[number, number]> = [
+  // 16:9
+  [1920, 1080], [1280, 720], [960, 540], [1600, 900], [1366, 768],
+  [1024, 576], [2560, 1440], [3840, 2160],
+  // 4:3
+  [1024, 768], [800, 600], [1600, 1200], [2048, 1536], [1280, 960], [1440, 1080],
+  // 16:10
+  [1920, 1200], [1680, 1050], [1440, 900], [1280, 800],
+];
+
+function nearExactSize(w: number, h: number, tw: number, th: number, tol = 0.02): boolean {
+  if (tw <= 0 || th <= 0) return false;
+  return Math.abs(w - tw) / tw <= tol && Math.abs(h - th) / th <= tol;
+}
+
+/**
+ * True only for near-exact common slide backgrounds / exported slide screenshots.
+ * Wide process diagrams at arbitrary sizes (even ~16:9) are kept.
  */
 function isLikelyFullSlideCapture(width: number, height: number): boolean {
-  if (width < 700 || height < 400) return false;
-  const ar = width / Math.max(1, height);
-  const is169 = ar >= 1.55 && ar <= 1.95;
-  const is43 = ar >= 1.25 && ar <= 1.45;
-  return is169 || is43;
+  if (width < 600 || height < 400) return false;
+  for (const [tw, th] of SLIDE_CAPTURE_SIZES) {
+    if (nearExactSize(width, height, tw, th) || nearExactSize(width, height, th, tw)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function loadImageProps(dataUrl: string, flattenTransparent: boolean): Promise<{ width: number; height: number; src: string }> {
@@ -224,6 +245,17 @@ function loadImageProps(dataUrl: string, flattenTransparent: boolean): Promise<{
   });
 }
 
+/** GIF logical screen size from header — avoids decoding large animated GIFs just for dims. */
+function gifHeaderDims(bytes: Uint8Array): { width: number; height: number } | null {
+  if (bytes.length < 10) return null;
+  const sig = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5]);
+  if (sig !== 'GIF87a' && sig !== 'GIF89a') return null;
+  const width = bytes[6] | (bytes[7] << 8);
+  const height = bytes[8] | (bytes[9] << 8);
+  if (width < 1 || height < 1) return null;
+  return { width, height };
+}
+
 /**
  * Extract embedded content images from PPTX/PDF.
  * PPTX: individual files under ppt/media/ (not full-slide screenshots).
@@ -243,26 +275,62 @@ export async function extractImagesFromFile(file: File): Promise<SourceImage[]> 
 
       let imgIndex = 0;
       let skippedSlideShots = 0;
+      let skippedSmall = 0;
+      let skippedUnsupported = 0;
+      let keptGif = 0;
+      const keptLog: string[] = [];
+      const skippedLog: string[] = [];
       for (const filename of mediaFiles) {
         const ext = filename.split('.').pop()?.toLowerCase();
-        // EMF/WMF are common in corporate decks but not decodable in-browser — skip
-        if (!['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext || '')) continue;
-
-        const fileData = await zip.files[filename].async('base64');
-        const mimeType =
-          (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg'
-          : `image/${ext}`;
-        const dataUrl = `data:${mimeType};base64,${fileData}`;
-        const imgProps = await loadImageProps(dataUrl, ext === 'png');
-
-        if (!imgProps.src || imgProps.width < 120 || imgProps.height < 120) continue;
-
-        // Drop full-slide backgrounds / exported slide screenshots
-        if (isLikelyFullSlideCapture(imgProps.width, imgProps.height)) {
-          skippedSlideShots++;
+        // EMF/WMF/WDP need server-side conversion — P1. Keep GIF/PNG/JPEG/WebP in-browser.
+        if (!['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext || '')) {
+          skippedUnsupported++;
           continue;
         }
 
+        const shortName = filename.replace(/^ppt\/media\//, '');
+        let imgProps: { width: number; height: number; src: string };
+
+        if (ext === 'gif') {
+          // Keep animated GIF as-is (no canvas flatten). Dims from header when possible.
+          const raw = await zip.files[filename].async('uint8array');
+          const hdr = gifHeaderDims(raw);
+          const fileData = await zip.files[filename].async('base64');
+          const dataUrl = `data:image/gif;base64,${fileData}`;
+          if (hdr && hdr.width >= 120 && hdr.height >= 120) {
+            imgProps = { width: hdr.width, height: hdr.height, src: dataUrl };
+          } else {
+            // Fallback decode — still never flatten (preserves animation)
+            imgProps = await loadImageProps(dataUrl, false);
+          }
+        } else {
+          const fileData = await zip.files[filename].async('base64');
+          const mimeType =
+            (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg'
+            : `image/${ext}`;
+          const dataUrl = `data:${mimeType};base64,${fileData}`;
+          // Flatten transparent PNG → JPEG for reliable slide backgrounds; never touch GIF
+          imgProps = await loadImageProps(dataUrl, ext === 'png');
+        }
+
+        if (!imgProps.src || imgProps.width < 120 || imgProps.height < 120) {
+          skippedSmall++;
+          continue;
+        }
+
+        // Drop only near-exact slide canvases — keep large diagrams (incl. ~16:9)
+        if (isLikelyFullSlideCapture(imgProps.width, imgProps.height)) {
+          skippedSlideShots++;
+          if (skippedLog.length < 12) {
+            skippedLog.push(`${shortName} ${imgProps.width}×${imgProps.height}`);
+          }
+          continue;
+        }
+
+        if (ext === 'gif') keptGif++;
+        if (keptLog.length < 12) {
+          keptLog.push(`${shortName} ${imgProps.width}×${imgProps.height}`);
+        }
         images.push({
           pageIndex: imgIndex++,
           dataUrl: imgProps.src,
@@ -271,9 +339,11 @@ export async function extractImagesFromFile(file: File): Promise<SourceImage[]> 
         });
       }
       console.log(
-        `[extractImagesFromFile] PPTX "${file.name}": ${images.length} content image(s) ` +
-        `from ${mediaFiles.length} media file(s) (skipped ${skippedSlideShots} slide-sized)`
+        `[extractImagesFromFile] PPTX "${file.name}": ${images.length} kept from ${mediaFiles.length} media ` +
+        `(gif ${keptGif}; skipped slide-canvas ${skippedSlideShots}, small ${skippedSmall}, unsupported ${skippedUnsupported})`
       );
+      if (keptLog.length) console.log(`[extractImagesFromFile] kept sample: ${keptLog.join(' | ')}`);
+      if (skippedLog.length) console.log(`[extractImagesFromFile] skipped slide-canvas sample: ${skippedLog.join(' | ')}`);
     } catch (err) {
       console.warn('[extractImagesFromFile] Failed to extract PPTX images:', err);
     }
@@ -320,7 +390,13 @@ export async function extractImagesFromFile(file: File): Promise<SourceImage[]> 
 
           if (!imgData?.width || !imgData?.height || !imgData?.data) continue;
           if (imgData.width < 120 || imgData.height < 120) continue;
-          if (isLikelyFullSlideCapture(imgData.width, imgData.height)) continue;
+          // Same softened rule as PPTX — keep large diagrams; drop exact slide canvases
+          if (isLikelyFullSlideCapture(imgData.width, imgData.height)) {
+            console.log(
+              `[extractImagesFromFile] PDF page ${pageNum}: skipped slide-canvas ${imgData.width}×${imgData.height}`
+            );
+            continue;
+          }
 
           const canvas = document.createElement('canvas');
           canvas.width = imgData.width;
