@@ -227,7 +227,8 @@ function buildItemPanelText(slide: any, item: any): string {
 function pickRelevantSourceImage(
   pool: AttachableSourceImage[],
   used: Set<number>,
-  panelText: string
+  panelText: string,
+  opts?: { titleText?: string }
 ): AttachableSourceImage | null {
   if (!pool.length) return null;
 
@@ -247,6 +248,9 @@ function pickRelevantSourceImage(
 
   let bestIdx = -1;
   let bestScore = -1;
+  const titleText = opts?.titleText?.trim() || '';
+  const distinctiveTitle =
+    tokenizeForRelevance(titleText).filter((t) => t.length >= 5).length >= 2;
 
   const consider = (i: number, unusedOnly: boolean) => {
     if (unusedOnly && used.has(i)) return;
@@ -255,6 +259,13 @@ function pickRelevantSourceImage(
     if (!ctx.trim()) return;
     let score = scoreSourceImageRelevance(panelText, ctx);
     if (score < MIN_RELEVANCE_SCORE) return;
+    if (distinctiveTitle) {
+      const titleScore = scoreSourceImageRelevance(titleText, ctx);
+      // Accordion/tab titles like "Chemical Reactivity" must match the source
+      // slide — shared deck words in the body (ethylene, molecule) are not enough.
+      if (titleScore < 2) return;
+      score += titleScore * 1.5;
+    }
     // Light tie-break: diagram-like contentScore, then area
     score += (img.contentScore ?? 40) / 200;
     score += Math.min((img.width * img.height) / 2_000_000, 0.5);
@@ -399,7 +410,8 @@ export function attachSourceImagesToCourse(
     return (b.width * b.height) - (a.width * a.height);
   });
   const used = new Set<number>();
-  const take = (panelText: string) => pickRelevantSourceImage(pool, used, panelText);
+  const take = (panelText: string, titleText?: string) =>
+    pickRelevantSourceImage(pool, used, panelText, titleText ? { titleText } : undefined);
 
   const skipEntirely = new Set([
     'multiple-choice', 'multiple-answers', 'true-false', 'quiz', 'knowledge-check',
@@ -422,7 +434,7 @@ export function attachSourceImagesToCourse(
 
         if (s.type === 'hotspot') {
           if (s.coverImage || s.imageUrl || s.data?.imageUrl) return s;
-          const img = take(buildSlidePanelText(s));
+          const img = take(buildSlidePanelText(s), s.title);
           if (!img) { skippedNoMatch++; return s; }
           placed++;
           return {
@@ -442,7 +454,10 @@ export function attachSourceImagesToCourse(
           if (list.length) {
             const next = list.map((tab: any) => {
               if (tab?.imageUrl) return tab;
-              const img = take(buildTabPanelText(s, tab));
+              const img = take(
+                buildTabPanelText(s, tab),
+                [tab?.title, tab?.label, tab?.name].filter(Boolean).join(' ')
+              );
               if (!img) {
                 skippedNoMatch++;
                 return tab;
@@ -455,7 +470,7 @@ export function attachSourceImagesToCourse(
           }
           // Intro panel (opening narration) — slide-level text only (do not mix tab titles)
           if (!data.introImageUrl) {
-            const introImg = take(buildSlidePanelText(s));
+            const introImg = take(buildSlidePanelText(s), s.title);
             if (introImg) {
               data = { ...data, introImageUrl: introImg.dataUrl };
               changed = true;
@@ -474,7 +489,10 @@ export function attachSourceImagesToCourse(
           let changed = false;
           const next = list.map((item: any) => {
             if (item?.imageUrl) return item;
-            const img = take(buildItemPanelText(s, item));
+            const img = take(
+              buildItemPanelText(s, item),
+              [item?.title, item?.label, item?.heading].filter(Boolean).join(' ')
+            );
             if (!img) {
               skippedNoMatch++;
               return item;
@@ -491,7 +509,7 @@ export function attachSourceImagesToCourse(
 
         // Text / summary — imageUrl drives a dedicated right column
         if (s.type !== 'content' && s.type !== 'summary' && s.type !== 'key-takeaways') return s;
-        const img = take(buildSlidePanelText(s));
+        const img = take(buildSlidePanelText(s), s.title);
         if (!img) { skippedNoMatch++; return s; }
         placed++;
         return { ...s, imageUrl: img.dataUrl };

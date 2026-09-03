@@ -796,6 +796,7 @@ type SlidePic = {
   y: number;
   cx: number;
   cy: number;
+  groupId?: string;
 };
 
 function xfrmFrom(el: Element | null): { x: number; y: number; cx: number; cy: number; chX: number; chY: number; chCx: number; chCy: number } | null {
@@ -824,7 +825,8 @@ function walkSlidePics(
   ox: number,
   oy: number,
   sx: number,
-  sy: number
+  sy: number,
+  groupId?: string
 ): void {
   const name = el.localName;
   if (name === 'pic') {
@@ -843,6 +845,7 @@ function walkSlidePics(
         y: oy + xf.y * sy,
         cx: xf.cx * sx,
         cy: xf.cy * sy,
+        groupId,
       });
     }
     return;
@@ -854,14 +857,16 @@ function walkSlidePics(
       const ny = oy + xf.y * sy;
       const nsx = sx * (xf.cx / xf.chCx);
       const nsy = sy * (xf.cy / xf.chCy);
+      // Keep the outermost group id so a grouped illustration stays one image.
+      const gid = groupId || `g${Math.round(xf.x)}_${Math.round(xf.y)}_${Math.round(xf.cx)}`;
       for (const child of Array.from(el.children)) {
-        walkSlidePics(child as Element, ridToMedia, acc, nx - xf.chX * nsx, ny - xf.chY * nsy, nsx, nsy);
+        walkSlidePics(child as Element, ridToMedia, acc, nx - xf.chX * nsx, ny - xf.chY * nsy, nsx, nsy, gid);
       }
       return;
     }
   }
   for (const child of Array.from(el.children)) {
-    walkSlidePics(child as Element, ridToMedia, acc, ox, oy, sx, sy);
+    walkSlidePics(child as Element, ridToMedia, acc, ox, oy, sx, sy, groupId);
   }
 }
 
@@ -889,6 +894,9 @@ function parseSlidePictureBoxes(slideXml: string, relXml: string): SlidePic[] {
   }
 }
 
+const SLIDE_W_EMU = 12192000; // 13.333" 16:9
+const SLIDE_H_EMU = 6858000;
+
 function clusterPics(pics: SlidePic[], padEmu: number): SlidePic[][] {
   const n = pics.length;
   if (n < 2) return pics.map((p) => [p]);
@@ -899,6 +907,16 @@ function clusterPics(pics: SlidePic[], padEmu: number): SlidePic[][] {
     const pb = find(b);
     if (pa !== pb) parent[pa] = pb;
   };
+  const byGroup = new Map<string, number[]>();
+  pics.forEach((p, i) => {
+    if (!p.groupId) return;
+    const list = byGroup.get(p.groupId) || [];
+    list.push(i);
+    byGroup.set(p.groupId, list);
+  });
+  for (const idxs of byGroup.values()) {
+    for (let k = 1; k < idxs.length; k++) union(idxs[0], idxs[k]);
+  }
   const inflated = pics.map((p) => ({
     x1: p.x - padEmu,
     y1: p.y - padEmu,
@@ -919,7 +937,33 @@ function clusterPics(pics: SlidePic[], padEmu: number): SlidePic[][] {
     list.push(p);
     groups.set(r, list);
   });
-  return [...groups.values()];
+  return mergeSameVisualColumn([...groups.values()]);
+}
+
+/** Text-left / photos-right SME layouts: keep the photo column as one illustration. */
+function mergeSameVisualColumn(groups: SlidePic[][]): SlidePic[][] {
+  if (groups.length < 2) return groups;
+  const meta = groups.map((g) => {
+    const cx = g.reduce((s, p) => s + p.x + p.cx / 2, 0) / g.length;
+    return { g, cx };
+  });
+  const right = meta.filter((m) => m.cx >= SLIDE_W_EMU * 0.38);
+  const left = meta.filter((m) => m.cx < SLIDE_W_EMU * 0.38);
+  const out: SlidePic[][] = [];
+  if (right.length >= 2) out.push(right.flatMap((m) => m.g));
+  else out.push(...right.map((m) => m.g));
+  if (left.length >= 2) {
+    const xs = left.flatMap((m) => m.g.map((p) => [p.x, p.x + p.cx])).flat();
+    const ys = left.flatMap((m) => m.g.map((p) => [p.y, p.y + p.cy])).flat();
+    const compact =
+      Math.max(...xs) - Math.min(...xs) < SLIDE_W_EMU * 0.5 &&
+      Math.max(...ys) - Math.min(...ys) < SLIDE_H_EMU * 0.85;
+    if (compact) out.push(left.flatMap((m) => m.g));
+    else out.push(...left.map((m) => m.g));
+  } else {
+    out.push(...left.map((m) => m.g));
+  }
+  return out.filter((g) => g.length);
 }
 
 function loadHtmlImage(src: string): Promise<HTMLImageElement | null> {
@@ -1025,7 +1069,7 @@ async function mergeClusteredSlidePictures(
       (p) => byMedia.has(p.media) && !themeOnly.has(p.media)
     );
     if (pics.length < 2) continue;
-    const pad = 914400 * 0.35; // ~0.35" — nearby pieces of one illustration
+    const pad = 914400; // 1" — nearby pieces / photo grids of one illustration
     const groups = clusterPics(pics, pad);
     for (const g of groups) {
       if (g.length < 2) continue;
@@ -1033,6 +1077,9 @@ async function mergeClusteredSlidePictures(
       if (names.length < 2) continue;
       const composed = await compositePicCluster(g, byMedia);
       if (!composed) continue;
+      const slideText = extractPptxXmlText(slideXml).slice(0, 6000);
+      composed.sourceSlideIndex = num;
+      if (slideText) composed.sourceContextText = slideText;
       composites.push(composed);
       names.forEach((n) => usedInCluster.add(n));
     }

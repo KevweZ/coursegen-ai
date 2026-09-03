@@ -6103,10 +6103,9 @@ export default function App() {
                   )}
 
                   {/* Slide frame — aspect ratio driven by playerConfig.playerResolution.
-                      Phones: always scale-to-fit (PlayerBar docks outside). Desktop: flex-fill
-                      unless the stage is larger than the design (HDMI scale-up); PlayerBar
-                      stays inside the frame. 'full' skips scaling. Desktop “Mobile” toggle
-                      uses a landscape phone bezel. */}
+                      Phones and desktop 16:9/4:3 always scale-to-fit (no flex-fill toggle).
+                      PlayerBar stays inside on desktop, docks outside on phones. 'full' skips
+                      scaling. Desktop “Mobile” toggle uses a landscape phone bezel. */}
                   <div
                     style={useScaleTransform ? scaler.outerStyle : undefined}
                     className={cn(
