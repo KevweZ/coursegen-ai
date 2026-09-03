@@ -1898,14 +1898,13 @@ export default function App() {
   const [extractedFileText, setExtractedFileText] = useState<string>('');
   const [voiceOverEnabled, setVoiceOverEnabled] = useState(DEFAULT_COURSE_SETTINGS.voiceOverEnabled);
 
-  // Phones: always CSS-scale the 16:9 / 4:3 design into the stage.
-  // Desktop: always flex-fill. HDMI "scale-up when stage > design" toggled
-  // against flex-fill whenever the toolbar/visuals banner changed height and
-  // produced a full-screen ↔ small-frame loop.
+  // Phones and desktop 16:9/4:3: always CSS-scale the design frame into the
+  // stage (HDMI included). Never toggle with flex-fill — that bounce was the
+  // full-screen ↔ small-frame loop. Desktop “Mobile” bezel uses its own chrome.
   const measureScaleToFit =
     step === 'preview' &&
     playerConfig?.playerResolution !== 'full' &&
-    isPhoneViewport;
+    (isPhoneViewport || viewMode === 'desktop');
   const scaler = useScaleToFit(
     playerConfig?.playerResolution ?? '16:9',
     measureScaleToFit

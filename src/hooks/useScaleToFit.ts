@@ -3,9 +3,8 @@ import { useRef, useState, useEffect, useCallback, type CSSProperties } from 're
 /**
  * useScaleToFit — Articulate-style viewport scaling
  *
- * Phones: always scale the 1280×720 (or 4:3) frame down to fit the stage.
- * Desktop preview flex-fills and does not use this transform (toggling HDMI
- * scale-up vs fill caused a full-screen ↔ small-frame loop).
+ * Phones and desktop 16:9/4:3 preview always scale the design frame into the
+ * stage (no flex-fill toggle — that caused a size-bounce loop).
  *
  * Measures the available canvas area and computes a CSS transform scale factor
  * so the slide frame always fills the container while maintaining its aspect ratio.

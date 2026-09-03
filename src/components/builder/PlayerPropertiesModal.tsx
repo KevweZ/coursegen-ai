@@ -60,7 +60,7 @@ export const defaultPlayerConfig: PlayerConfig = {
   showPrevNext: true,
   allowFullscreen: true,
   logoUrl: null,
-  // Desktop: flex-fill. Phones always scale-to-fit.
+  // Desktop + phones: scale-to-fit the 16:9 / 4:3 frame (no flex-fill toggle).
   // 'full' skips scaling.
   playerResolution: '16:9',
   navigationMode: 'free',

@@ -788,6 +788,266 @@ function contextForMedia(
   };
 }
 
+const EMU_PER_PX = 9525; // 914400 EMU/in at 96dpi
+
+type SlidePic = {
+  media: string;
+  x: number;
+  y: number;
+  cx: number;
+  cy: number;
+};
+
+function xfrmFrom(el: Element | null): { x: number; y: number; cx: number; cy: number; chX: number; chY: number; chCx: number; chCy: number } | null {
+  if (!el) return null;
+  const xfrm = Array.from(el.getElementsByTagName('*')).find((n) => n.localName === 'xfrm') as Element | undefined;
+  if (!xfrm) return null;
+  const off = Array.from(xfrm.children).find((n) => n.localName === 'off') as Element | undefined;
+  const ext = Array.from(xfrm.children).find((n) => n.localName === 'ext') as Element | undefined;
+  const chOff = Array.from(xfrm.children).find((n) => n.localName === 'chOff') as Element | undefined;
+  const chExt = Array.from(xfrm.children).find((n) => n.localName === 'chExt') as Element | undefined;
+  const x = parseInt(off?.getAttribute('x') || '0', 10);
+  const y = parseInt(off?.getAttribute('y') || '0', 10);
+  const cx = parseInt(ext?.getAttribute('cx') || '0', 10);
+  const cy = parseInt(ext?.getAttribute('cy') || '0', 10);
+  const chX = parseInt(chOff?.getAttribute('x') || '0', 10);
+  const chY = parseInt(chOff?.getAttribute('y') || '0', 10);
+  const chCx = parseInt(chExt?.getAttribute('cx') || String(cx || 1), 10) || 1;
+  const chCy = parseInt(chExt?.getAttribute('cy') || String(cy || 1), 10) || 1;
+  return { x, y, cx, cy, chX, chY, chCx, chCy };
+}
+
+function walkSlidePics(
+  el: Element,
+  ridToMedia: Map<string, string>,
+  acc: SlidePic[],
+  ox: number,
+  oy: number,
+  sx: number,
+  sy: number
+): void {
+  const name = el.localName;
+  if (name === 'pic') {
+    const blip = Array.from(el.getElementsByTagName('*')).find((n) => n.localName === 'blip') as Element | undefined;
+    const rid =
+      blip?.getAttribute('r:embed') ||
+      blip?.getAttribute('embed') ||
+      blip?.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'embed') ||
+      '';
+    const media = ridToMedia.get(rid);
+    const xf = xfrmFrom(el);
+    if (media && xf && xf.cx > 0 && xf.cy > 0) {
+      acc.push({
+        media,
+        x: ox + xf.x * sx,
+        y: oy + xf.y * sy,
+        cx: xf.cx * sx,
+        cy: xf.cy * sy,
+      });
+    }
+    return;
+  }
+  if (name === 'grpSp') {
+    const xf = xfrmFrom(el);
+    if (xf) {
+      const nx = ox + xf.x * sx;
+      const ny = oy + xf.y * sy;
+      const nsx = sx * (xf.cx / xf.chCx);
+      const nsy = sy * (xf.cy / xf.chCy);
+      for (const child of Array.from(el.children)) {
+        walkSlidePics(child as Element, ridToMedia, acc, nx - xf.chX * nsx, ny - xf.chY * nsy, nsx, nsy);
+      }
+      return;
+    }
+  }
+  for (const child of Array.from(el.children)) {
+    walkSlidePics(child as Element, ridToMedia, acc, ox, oy, sx, sy);
+  }
+}
+
+function parseSlidePictureBoxes(slideXml: string, relXml: string): SlidePic[] {
+  if (typeof DOMParser === 'undefined') return [];
+  const rels = new Map<string, string>();
+  const relRe = /Id="([^"]+)"[^>]*Target="([^"]+)"|Target="([^"]+)"[^>]*Id="([^"]+)"/gi;
+  let rm: RegExpExecArray | null;
+  while ((rm = relRe.exec(relXml))) {
+    const id = rm[1] || rm[4];
+    const target = (rm[2] || rm[3] || '').replace(/\\/g, '/');
+    const media = target.split('/').pop()?.split('?')[0] || '';
+    if (id && media && /media\//i.test(target)) rels.set(id, media);
+  }
+  if (!rels.size) return [];
+  try {
+    const doc = new DOMParser().parseFromString(slideXml, 'application/xml');
+    const root = doc.documentElement;
+    if (!root || root.localName === 'parsererror') return [];
+    const acc: SlidePic[] = [];
+    walkSlidePics(root, rels, acc, 0, 0, 1, 1);
+    return acc;
+  } catch {
+    return [];
+  }
+}
+
+function clusterPics(pics: SlidePic[], padEmu: number): SlidePic[][] {
+  const n = pics.length;
+  if (n < 2) return pics.map((p) => [p]);
+  const parent = pics.map((_, i) => i);
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  const union = (a: number, b: number) => {
+    const pa = find(a);
+    const pb = find(b);
+    if (pa !== pb) parent[pa] = pb;
+  };
+  const inflated = pics.map((p) => ({
+    x1: p.x - padEmu,
+    y1: p.y - padEmu,
+    x2: p.x + p.cx + padEmu,
+    y2: p.y + p.cy + padEmu,
+  }));
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const a = inflated[i];
+      const b = inflated[j];
+      if (a.x1 < b.x2 && a.x2 > b.x1 && a.y1 < b.y2 && a.y2 > b.y1) union(i, j);
+    }
+  }
+  const groups = new Map<number, SlidePic[]>();
+  pics.forEach((p, i) => {
+    const r = find(i);
+    const list = groups.get(r) || [];
+    list.push(p);
+    groups.set(r, list);
+  });
+  return [...groups.values()];
+}
+
+function loadHtmlImage(src: string): Promise<HTMLImageElement | null> {
+  if (typeof Image === 'undefined') return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+async function compositePicCluster(
+  cluster: SlidePic[],
+  byMedia: Map<string, SourceImage>
+): Promise<SourceImage | null> {
+  if (typeof document === 'undefined') return null;
+  const members = cluster
+    .map((p) => ({ pic: p, src: byMedia.get(p.media) }))
+    .filter((m): m is { pic: SlidePic; src: SourceImage } => !!m.src?.dataUrl);
+  if (members.length < 2) return null;
+  const minX = Math.min(...members.map((m) => m.pic.x));
+  const minY = Math.min(...members.map((m) => m.pic.y));
+  const maxX = Math.max(...members.map((m) => m.pic.x + m.pic.cx));
+  const maxY = Math.max(...members.map((m) => m.pic.y + m.pic.cy));
+  const emuW = Math.max(1, maxX - minX);
+  const emuH = Math.max(1, maxY - minY);
+  const pxW = Math.min(1600, Math.max(160, Math.round(emuW / EMU_PER_PX)));
+  const scale = pxW / emuW;
+  const pxH = Math.max(120, Math.round(emuH * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = pxW;
+  canvas.height = pxH;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, pxW, pxH);
+  for (const m of members) {
+    const img = await loadHtmlImage(m.src.dataUrl);
+    if (!img) continue;
+    const dx = (m.pic.x - minX) * scale;
+    const dy = (m.pic.y - minY) * scale;
+    const dw = Math.max(1, m.pic.cx * scale);
+    const dh = Math.max(1, m.pic.cy * scale);
+    try {
+      ctx.drawImage(img, dx, dy, dw, dh);
+    } catch { /* skip */ }
+  }
+  let dataUrl: string;
+  try {
+    dataUrl = canvas.toDataURL('image/jpeg', 0.86);
+  } catch {
+    return null;
+  }
+  const first = members[0].src;
+  return {
+    pageIndex: 0,
+    dataUrl,
+    width: pxW,
+    height: pxH,
+    contentScore: 92,
+    sourceSlideIndex: first.sourceSlideIndex,
+    sourceContextText: first.sourceContextText,
+    mediaName: `composite-s${first.sourceSlideIndex || 0}-${members.map((m) => m.pic.media).join('+').slice(0, 80)}`,
+  };
+}
+
+/**
+ * SME decks often build one illustration from many ppt/media pictures (molecules,
+ * coil photos, exploded diagrams). Cluster overlapping/nearby pictures per slide
+ * and emit one composite so we don't place a lone molecule out of context.
+ */
+async function mergeClusteredSlidePictures(
+  zip: JSZip,
+  images: SourceImage[],
+  themeOnly: Set<string>
+): Promise<SourceImage[]> {
+  if (images.length < 2 || typeof DOMParser === 'undefined') return images;
+  const byMedia = new Map<string, SourceImage>();
+  for (const img of images) {
+    if (img.mediaName) byMedia.set(img.mediaName, img);
+  }
+  const usedInCluster = new Set<string>();
+  const composites: SourceImage[] = [];
+  const slideFiles = Object.keys(zip.files).filter(
+    (name) => /^ppt\/slides\/slide\d+\.xml$/.test(name) && !zip.files[name].dir
+  );
+
+  for (const slidePath of slideFiles) {
+    const num = parseInt(slidePath.match(/slide(\d+)/)?.[1] ?? '0', 10);
+    if (!num) continue;
+    const relPath = `ppt/slides/_rels/slide${num}.xml.rels`;
+    if (!zip.files[relPath]) continue;
+    let slideXml: string;
+    let relXml: string;
+    try {
+      slideXml = await zip.files[slidePath].async('string');
+      relXml = await zip.files[relPath].async('string');
+    } catch {
+      continue;
+    }
+    const pics = parseSlidePictureBoxes(slideXml, relXml).filter(
+      (p) => byMedia.has(p.media) && !themeOnly.has(p.media)
+    );
+    if (pics.length < 2) continue;
+    const pad = 914400 * 0.35; // ~0.35" — nearby pieces of one illustration
+    const groups = clusterPics(pics, pad);
+    for (const g of groups) {
+      if (g.length < 2) continue;
+      const names = [...new Set(g.map((p) => p.media))];
+      if (names.length < 2) continue;
+      const composed = await compositePicCluster(g, byMedia);
+      if (!composed) continue;
+      composites.push(composed);
+      names.forEach((n) => usedInCluster.add(n));
+    }
+  }
+
+  if (!composites.length) return images;
+  const leftovers = images.filter((img) => !img.mediaName || !usedInCluster.has(img.mediaName));
+  const merged = [...composites, ...leftovers];
+  console.log(
+    `[extractImagesFromFile] slide composites: ${composites.length} illustration(s) from clustered pictures; ` +
+    `hid ${usedInCluster.size} piece(s)`
+  );
+  return merged.slice(0, MAX_KEPT_SOURCE_IMAGES);
+}
+
 /** GIF logical screen size from header — avoids decoding large animated GIFs just for dims. */
 function gifHeaderDims(bytes: Uint8Array): { width: number; height: number } | null {
   if (bytes.length < 10) return null;
@@ -1094,6 +1354,15 @@ async function doExtractImagesFromFile(
         console.warn(
           `[extractImagesFromFile] Hit ${EXTRACT_DEADLINE_MS}ms deadline — returning ${images.length} partial image(s)`
         );
+      }
+      if (images.length >= 2 && performance.now() - startedAt < EXTRACT_DEADLINE_MS - 1500) {
+        try {
+          const merged = await mergeClusteredSlidePictures(zip, images, themeOnlyMedia);
+          images.length = 0;
+          images.push(...merged);
+        } catch (compErr) {
+          console.warn('[extractImagesFromFile] slide composite failed:', compErr);
+        }
       }
     } catch (err) {
       console.warn('[extractImagesFromFile] Failed to extract PPTX images:', err);
