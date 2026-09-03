@@ -107,7 +107,7 @@ import {
 import { loadPlayerProperties, savePlayerProperties, cachePlayerProperties } from './lib/playerPropertiesStorage';
 import { fetchAccountPreferences, pushAccountPreferences } from './lib/accountPreferences';
 import { CourseOutline, Slide, TerminalObjectiveGroup, ExamConfig, ExamQuestion, ExamSessionState, NavigationMode } from './types/course';
-import { extractTextFromFile, extractImagesFromFile, SourceImage } from './lib/fileProcessor';
+import { extractTextFromFile, extractImagesFromFile, EXTRACT_DEADLINE_MS, SourceImage } from './lib/fileProcessor';
 import { generateGameTemplate, generateStandaloneGame } from './services/aiGameService';
 import { GameContainer } from './components/game-templates/core/GameContainer';
 import { getRandomBackgroundForTheme } from './lib/backgrounds';
@@ -3612,17 +3612,44 @@ export default function App() {
       setIsGeneratingImages(true);
       setProgress(56);
       try {
-        // Always resolve via extract cache when Source is on — avoids stale [] from
-        // generate's closed-over sourceImages after a long hydrate.
+        // Prefer early-upload extract (ref/cache). Never re-run a full extract when we
+        // already have images — and never block cover/preview > EXTRACT_DEADLINE_MS.
         if (wantsSource && fileSnapshot) {
           if (imgs.length === 0) {
             try {
-              imgs = await extractImagesFromFile(fileSnapshot, (done, total) => {
+              const extractPromise = extractImagesFromFile(fileSnapshot, (done, total) => {
                 // Stay in the "Adding course visuals" band (56–59) while media extracts
                 const pct = 56 + Math.min(3, Math.round((done / Math.max(1, total)) * 3));
                 setProgress(pct);
               });
-              if (imgs.length) {
+              let timedOut = false;
+              imgs = await Promise.race([
+                extractPromise,
+                new Promise<SourceImage[]>((resolve) => {
+                  setTimeout(() => {
+                    timedOut = true;
+                    // Prefer whatever the upload effect already stored
+                    resolve(sourceImagesRef.current.length ? sourceImagesRef.current : []);
+                  }, EXTRACT_DEADLINE_MS);
+                }),
+              ]);
+              // If race returned empty due to timeout but extract later fills ref, don't wait —
+              // cover phase must proceed. Background extract still updates sourceImages via upload effect.
+              if (timedOut) {
+                console.warn(
+                  `[ImageService] Source extract hit ${EXTRACT_DEADLINE_MS}ms cover deadline — proceeding with ${imgs.length} image(s)`
+                );
+                if (imgs.length) {
+                  setSourceImages(imgs);
+                  showDraftMessage(
+                    `Using ${imgs.length} image(s) from your upload (extract time-capped so preview can open).`
+                  );
+                } else {
+                  showDraftMessage(
+                    'Source image extract is taking too long — continuing without them for now. You can still insert from the gallery later if they finish loading.'
+                  );
+                }
+              } else if (imgs.length) {
                 setSourceImages(imgs);
                 showDraftMessage(`Extracted ${imgs.length} image(s) from ${fileSnapshot.name}`);
               } else {
@@ -4872,7 +4899,10 @@ export default function App() {
       )}
 
       <main className="relative">
-        <AnimatePresence mode="wait">
+        {/* Do NOT use mode="wait" here: modals + drafts panel are siblings of step pages.
+            mode=wait + unkeyed siblings flooded console with empty key "" + multiple-children
+            warnings on every setProgress during Building, thrashing the main thread. */}
+        <AnimatePresence>
           {step === 'pricing' && (
             <motion.div
               key="pricing"
@@ -4940,7 +4970,7 @@ export default function App() {
 
           {/* Publish Warning — pending QC items */}
           {showQcPublishWarning && (
-            <div className="fixed inset-0 z-[900] flex items-center justify-center p-4">
+            <div key="qc-publish-warning" className="fixed inset-0 z-[900] flex items-center justify-center p-4">
               <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowQcPublishWarning(false)} />
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -4983,6 +5013,7 @@ export default function App() {
 
           {/* App Image Picker Modal */}
           <AppImagePickerModal
+            key="app-image-picker"
             isOpen={showAppImagePicker}
             onClose={() => setShowAppImagePicker(false)}
             theme={theme}
@@ -5000,6 +5031,7 @@ export default function App() {
           <AnimatePresence>
             {showAIEditDrawer && currentSlide && (['scenario', 'game-template', 'knowledge-check', 'mastery-exam', 'quiz', 'multiple-choice', 'multiple-answers', 'true-false', 'matching', 'sorting', 'drop-targets'].includes(currentSlide.type)) && (
               <AIEditDrawer
+                key="ai-edit-drawer"
                 slideType={
                   currentSlide.type === 'scenario' || currentSlide.type === 'game-template' || currentSlide.type === 'mastery-exam'
                     ? currentSlide.type
@@ -5027,9 +5059,10 @@ export default function App() {
             )}
           </AnimatePresence>
 
-          {/* Draft Courses Panel - Pro feature */}
-          {course && (
+          {/* Draft Courses Panel - Pro feature (skip while Building — avoids presence key thrash) */}
+          {course && !isGenerating && (
             <DraftCoursesPanel
+              key="draft-courses-panel"
               isOpen={showDraftsPanel}
               onClose={() => setShowDraftsPanel(false)}
               theme={theme}
@@ -5055,6 +5088,7 @@ export default function App() {
           )}
 
           <ViewDraftsModal
+            key="view-drafts-modal"
             isOpen={showViewDraftsModal}
             onClose={() => setShowViewDraftsModal(false)}
             drafts={draftManager.drafts}
@@ -5098,6 +5132,7 @@ export default function App() {
           <DraftsSyncOverlay active={isSyncingDrafts} />
 
           <DraftOpeningOverlay
+            key="draft-opening-overlay"
             active={isLoadingDraft}
             progress={draftLoadProgress}
             statusText={draftLoadStatus}
@@ -5105,6 +5140,7 @@ export default function App() {
 
           {/* QC Track Changes Modal — overlays preview, persists across open/close */}
           <QCTrackChangesModal
+            key="qc-track-changes"
             open={qcModalOpen}
             report={qcReportWithTocRefs}
             loading={qcLoading}
@@ -6117,7 +6153,7 @@ export default function App() {
                     {/* ── Full-bleed slide frame ─────────────────────── */}
                     <AnimatePresence mode="wait">
                       <motion.div
-                        key={currentSlide?.id || currentSlideIndex}
+                        key={currentSlide?.id || `slide-${currentSlideIndex}`}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
@@ -7407,7 +7443,7 @@ export default function App() {
                     { id: 'regenerate', icon: '↻', label: 'Regenerate', activeColor: 'border-amber-500 text-amber-300 bg-amber-500/10' },
                   ].map(tab => (
                     <button
-                      key={tab.id}
+                      key={tab.id || `edit-tab-${ti}`}
                       onClick={() => {
                         setEditDrawerTab(tab.id as any);
                         if (tab.id === 'regenerate' && editingSlide) {
@@ -8121,7 +8157,7 @@ export default function App() {
                               <div className="grid grid-cols-2 gap-2">
                                 {primaryOptions.map(opt => (
                                   <button
-                                    key={opt.id}
+                                    key={opt.id || `regen-primary-${opt.label}`}
                                     type="button"
                                     onClick={() => setRegenTargetType(opt.id)}
                                     className={cn(
@@ -8146,7 +8182,7 @@ export default function App() {
                               <div className="grid grid-cols-2 gap-2">
                                 {secondaryOptions.map(opt => (
                                   <button
-                                    key={opt.id}
+                                    key={opt.id || `regen-secondary-${opt.label}`}
                                     type="button"
                                     onClick={() => setRegenTargetType(opt.id)}
                                     className={cn(

@@ -799,6 +799,50 @@ function gifHeaderDims(bytes: Uint8Array): { width: number; height: number } | n
   return { width, height };
 }
 
+/** PNG IHDR dims — no decode. */
+function pngHeaderDims(bytes: Uint8Array): { width: number; height: number } | null {
+  if (bytes.length < 24) return null;
+  if (bytes[0] !== 0x89 || bytes[1] !== 0x50 || bytes[2] !== 0x4e || bytes[3] !== 0x47) return null;
+  const width = ((bytes[16] << 24) | (bytes[17] << 16) | (bytes[18] << 8) | bytes[19]) >>> 0;
+  const height = ((bytes[20] << 24) | (bytes[21] << 16) | (bytes[22] << 8) | bytes[23]) >>> 0;
+  if (width < 1 || height < 1 || width > 30000 || height > 30000) return null;
+  return { width, height };
+}
+
+/** JPEG SOF dims — scan markers, no decode. */
+function jpegHeaderDims(bytes: Uint8Array): { width: number; height: number } | null {
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return null;
+  let i = 2;
+  while (i + 9 < bytes.length) {
+    if (bytes[i] !== 0xff) { i++; continue; }
+    const marker = bytes[i + 1];
+    if (marker === 0xd9 || marker === 0xda) break;
+    const len = (bytes[i + 2] << 8) | bytes[i + 3];
+    if (len < 2) break;
+    // SOF0–SOF3, SOF5–SOF7, SOF9–SOF11, SOF13–SOF15
+    const isSof =
+      (marker >= 0xc0 && marker <= 0xc3) ||
+      (marker >= 0xc5 && marker <= 0xc7) ||
+      (marker >= 0xc9 && marker <= 0xcb) ||
+      (marker >= 0xcd && marker <= 0xcf);
+    if (isSof && i + 8 < bytes.length) {
+      const height = (bytes[i + 5] << 8) | bytes[i + 6];
+      const width = (bytes[i + 7] << 8) | bytes[i + 8];
+      if (width >= 1 && height >= 1) return { width, height };
+      return null;
+    }
+    i += 2 + len;
+  }
+  return null;
+}
+
+function rasterHeaderDims(bytes: Uint8Array, ext: string): { width: number; height: number } | null {
+  if (ext === 'png') return pngHeaderDims(bytes);
+  if (ext === 'jpg' || ext === 'jpeg') return jpegHeaderDims(bytes);
+  if (ext === 'gif') return gifHeaderDims(bytes);
+  return null;
+}
+
 function uint8ToBase64(bytes: Uint8Array): string {
   // Keep chunks small — spreading 32k+ args into fromCharCode can throw on some engines
   const chunk = 0x2000;
@@ -812,6 +856,13 @@ function uint8ToBase64(bytes: Uint8Array): string {
 function yieldToMain(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
+
+/** Large decks: skip canvas trim/decorative — header dims + raw data URLs only. */
+const FAST_EXTRACT_MEDIA_THRESHOLD = 36;
+/** Never block cover/preview longer than this (ms) on a single extract pass. */
+export const EXTRACT_DEADLINE_MS = 22_000;
+/** Cap pool size so attach/rank stays cheap. */
+const MAX_KEPT_SOURCE_IMAGES = 64;
 
 /** Deduplicate concurrent + repeated extracts for the same File (upload effect + finalize). */
 const extractInFlight = new WeakMap<File, Promise<SourceImage[]>>();
@@ -856,6 +907,7 @@ async function doExtractImagesFromFile(
 
   if (extension === 'pptx') {
     try {
+      const startedAt = performance.now();
       const arrayBuffer = await file.arrayBuffer();
       const zip = await JSZip.loadAsync(arrayBuffer);
       const mediaFiles = Object.keys(zip.files).filter(
@@ -872,23 +924,33 @@ async function doExtractImagesFromFile(
       let skippedDecorative = 0;
       let keptGif = 0;
       let withContext = 0;
+      let timedOut = false;
+      let usedFastPath = 0;
       const keptLog: string[] = [];
       const skippedLog: string[] = [];
       const skippedDecorativeLog: string[] = [];
       const totalMedia = mediaFiles.length;
+      // Steam-cracker-class decks: canvas trim/decode per file = multi-minute main-thread freeze.
+      const forceFastPath =
+        totalMedia >= FAST_EXTRACT_MEDIA_THRESHOLD || file.size >= 8 * 1024 * 1024;
       let processed = 0;
 
       for (const filename of mediaFiles) {
-        processed++;
-        if (processed % 3 === 0 || processed === totalMedia) {
+        if (performance.now() - startedAt > EXTRACT_DEADLINE_MS) {
+          timedOut = true;
           onProgress?.(processed, totalMedia);
-          await yieldToMain();
+          break;
         }
+        if (images.length >= MAX_KEPT_SOURCE_IMAGES) break;
+
+        processed++;
+        onProgress?.(processed, totalMedia);
+        await yieldToMain();
 
         try {
-          const ext = filename.split('.').pop()?.toLowerCase();
+          const ext = filename.split('.').pop()?.toLowerCase() || '';
           // EMF/WMF/WDP need server-side conversion — P1. Keep GIF/PNG/JPEG/WebP in-browser.
-          if (!['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext || '')) {
+          if (!['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) {
             skippedUnsupported++;
             continue;
           }
@@ -915,38 +977,45 @@ async function doExtractImagesFromFile(
           let byteHint = 0;
           // Pixel decorative check only for orphans — content-slide media is never theme-only
           const onContentSlide = (mediaToSlides.get(shortName)?.length ?? 0) > 0;
+          const remainingMs = EXTRACT_DEADLINE_MS - (performance.now() - startedAt);
+          // Fast path: header dims + raw bytes. No Image()/canvas/trim (seconds vs minutes).
+          const useFast =
+            forceFastPath ||
+            remainingMs < 8_000 ||
+            ext === 'gif' ||
+            (onContentSlide && ext !== 'webp');
 
-          if (ext === 'gif') {
-            // Keep animated GIF as-is (no canvas flatten / trim). Dims from header when possible.
-            const raw = await zip.files[filename].async('uint8array');
-            byteHint = raw.byteLength;
-            const hdr = gifHeaderDims(raw);
-            const dataUrl = `data:image/gif;base64,${uint8ToBase64(raw)}`;
-            if (hdr && hdr.width >= 120 && hdr.height >= 120) {
-              imgProps = { width: hdr.width, height: hdr.height, src: dataUrl, contentScore: Math.min(100, Math.round(40 + Math.min(byteHint / 50000, 40))) };
-            } else {
-              // Dims-only decode — never flatten/trim (preserves animation)
+          const raw = await zip.files[filename].async('uint8array');
+          byteHint = raw.byteLength;
+          const mimeType =
+            (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg'
+            : `image/${ext}`;
+          const dataUrl = `data:${mimeType};base64,${uint8ToBase64(raw)}`;
+
+          if (useFast) {
+            usedFastPath++;
+            const hdr = rasterHeaderDims(raw, ext);
+            let width = hdr?.width ?? 0;
+            let height = hdr?.height ?? 0;
+            // WebP / rare bad headers: one Image() dim read, never trim
+            if ((!width || !height) && typeof Image !== 'undefined') {
               const dims = await new Promise<{ width: number; height: number }>((resolve) => {
                 const img = new Image();
                 img.onload = () => resolve({ width: img.width, height: img.height });
                 img.onerror = () => resolve({ width: 0, height: 0 });
                 img.src = dataUrl;
               });
-              imgProps = {
-                width: dims.width,
-                height: dims.height,
-                src: dataUrl,
-                contentScore: Math.min(100, Math.round(40 + Math.min(byteHint / 50000, 40))),
-              };
+              width = dims.width;
+              height = dims.height;
             }
+            imgProps = {
+              width,
+              height,
+              src: dataUrl,
+              contentScore: Math.min(100, Math.round(40 + Math.min(byteHint / 50000, 40))),
+            };
           } else {
-            const raw = await zip.files[filename].async('uint8array');
-            byteHint = raw.byteLength;
-            const mimeType =
-              (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg'
-              : `image/${ext}`;
-            const dataUrl = `data:${mimeType};base64,${uint8ToBase64(raw)}`;
-            // Flatten transparent PNG → JPEG; score theme art only for non-slide orphans; trim margins
+            // Small decks / orphans: flatten + optional decorative + margin trim
             imgProps = await loadImageProps(
               dataUrl,
               ext === 'png' || ext === 'webp',
@@ -1005,9 +1074,12 @@ async function doExtractImagesFromFile(
           console.warn(`[extractImagesFromFile] skip ${filename}:`, fileErr);
         }
       }
+      const elapsedMs = Math.round(performance.now() - startedAt);
       console.log(
         `[extractImagesFromFile] PPTX "${file.name}": ${images.length} kept from ${mediaFiles.length} media ` +
-        `(gif ${keptGif}; with-slide-context ${withContext}; skipped slide-canvas ${skippedSlideShots}, small ${skippedSmall}, ` +
+        `in ${elapsedMs}ms (fastPath ${usedFastPath}${forceFastPath ? ' forced' : ''}` +
+        `${timedOut ? '; DEADLINE partial' : ''}; gif ${keptGif}; with-slide-context ${withContext}; ` +
+        `skipped slide-canvas ${skippedSlideShots}, small ${skippedSmall}, ` +
         `unsupported ${skippedUnsupported}, theme-layout ${skippedThemeLayout}, decorative ${skippedDecorative})`
       );
       if (keptLog.length) console.log(`[extractImagesFromFile] kept sample: ${keptLog.join(' | ')}`);
@@ -1016,6 +1088,11 @@ async function doExtractImagesFromFile(
         console.log(
           `[extractImagesFromFile] skipped-as-decorative (${skippedThemeLayout + skippedDecorative}): ` +
           skippedDecorativeLog.join(' | ')
+        );
+      }
+      if (timedOut && images.length > 0) {
+        console.warn(
+          `[extractImagesFromFile] Hit ${EXTRACT_DEADLINE_MS}ms deadline — returning ${images.length} partial image(s)`
         );
       }
     } catch (err) {
