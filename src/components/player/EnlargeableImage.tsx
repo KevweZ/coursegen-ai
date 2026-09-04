@@ -14,11 +14,44 @@ function measurePromoteRect(el: HTMLElement): Omit<InFlowPromoteInfo, 'src'> {
   const sr = stage.getBoundingClientRect();
   const scale = sr.width / Math.max(1, stage.offsetWidth);
   if (scale < 0.05) return fallback;
+
+  const originX = (wr.left - sr.left) / scale;
+  const originY = (wr.top - sr.top) / scale;
+  const boxW = wr.width / scale;
+  const boxH = wr.height / scale;
+
+  const img = el.querySelector('img');
+  const natW = img?.naturalWidth || 0;
+  const natH = img?.naturalHeight || 0;
+  let width = boxW;
+  let height = boxH;
+  let x = originX;
+  let y = originY;
+  if (natW > 0 && natH > 0) {
+    const imgAspect = natW / natH;
+    const boxAspect = boxW / Math.max(1, boxH);
+    if (imgAspect > boxAspect) {
+      width = boxW;
+      height = boxW / imgAspect;
+      y = originY + (boxH - height) / 2;
+    } else {
+      height = boxH;
+      width = boxH * imgAspect;
+      x = originX + (boxW - width) / 2;
+    }
+  }
+
+  const sw = stage.offsetWidth || 1280;
+  const sh = stage.offsetHeight || 720;
+  width = Math.min(Math.max(80, width), Math.max(80, sw - 16));
+  height = Math.min(Math.max(80, height), Math.max(80, sh - 16));
+  x = Math.min(Math.max(0, x), Math.max(0, sw - width));
+  y = Math.min(Math.max(0, y), Math.max(0, sh - height));
   return {
-    x: Math.round((wr.left - sr.left) / scale),
-    y: Math.round((wr.top - sr.top) / scale),
-    width: Math.max(80, Math.round(wr.width / scale)),
-    height: Math.max(80, Math.round(wr.height / scale)),
+    x: Math.round(x),
+    y: Math.round(y),
+    width: Math.round(width),
+    height: Math.round(height),
   };
 }
 

@@ -4268,13 +4268,15 @@ export default function App() {
   ) => {
     if (!currentSlide?.id) return;
     const slideId = currentSlide.id;
+    const w = Number.isFinite(info.width) && info.width > 32 ? info.width : 240;
+    const h = Number.isFinite(info.height) && info.height > 32 ? info.height : 180;
     const newImg: FloatingImage = {
       id: `fi-${Date.now()}`,
       url: info.src,
-      x: info.x,
-      y: info.y,
-      width: info.width,
-      height: info.height,
+      x: Number.isFinite(info.x) ? info.x : 40,
+      y: Number.isFinite(info.y) ? info.y : 40,
+      width: w,
+      height: h,
       tabId,
     };
     pushUndo();
@@ -4288,6 +4290,44 @@ export default function App() {
           slides: (mod.slides || []).map((s: any) => {
             if (s.id !== slideId) return s;
             return clear({ ...s, floatingMedia: [...(s.floatingMedia || []), newImg] });
+          }),
+        })),
+      };
+    });
+  };
+
+  const pinFloatBackToFlow = (img: FloatingImage) => {
+    if (!currentSlide?.id) return;
+    const slideId = currentSlide.id;
+    pushUndo();
+    const next = (floatingImagesMap[slideId] || []).filter(i => i.id !== img.id);
+    setFloatingImagesMap(prev => ({ ...prev, [slideId]: next }));
+    setCourse(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        modules: (prev.modules || []).map((mod: any) => ({
+          ...mod,
+          slides: (mod.slides || []).map((s: any) => {
+            if (s.id !== slideId) return s;
+            const floatingMedia = (s.floatingMedia || []).filter((i: FloatingImage) => i.id !== img.id);
+            if (img.tabId === '__intro__') {
+              return { ...s, floatingMedia, data: { ...s.data, introImageUrl: img.url } };
+            }
+            if (img.tabId) {
+              const key = s.data?.tabs ? 'tabs' : 'items';
+              return {
+                ...s,
+                floatingMedia,
+                data: {
+                  ...s.data,
+                  [key]: (s.data?.[key] || []).map((t: any) =>
+                    t.id === img.tabId ? { ...t, imageUrl: img.url } : t
+                  ),
+                },
+              };
+            }
+            return { ...s, floatingMedia, imageUrl: img.url };
           }),
         })),
       };
@@ -7340,6 +7380,7 @@ export default function App() {
                            const next = (floatingImagesMap[currentSlide.id] || []).filter(i => i.id !== id);
                            syncFloatingImages(currentSlide.id, next);
                          }}
+                         onPinBack={pinFloatBackToFlow}
                        />
                         </motion.div>
                        </AnimatePresence>

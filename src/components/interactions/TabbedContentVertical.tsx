@@ -525,7 +525,7 @@ function VerticalTabsBlocksSkin({
                 <EnlargeableImage
                   src={imageUrl}
                   wrapperClassName="absolute inset-0 h-full w-full"
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-contain object-center"
                   onLoad={resetScrollTop}
                   onRemove={onRemoveImage}
                   onCrop={onCropImage}
