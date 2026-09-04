@@ -117,6 +117,20 @@ const FACILITY_MARKERS = [
 /** Minimum keyword overlap score to place a context-tagged source image. */
 const MIN_RELEVANCE_SCORE = 3;
 
+/** Tab/item titles that should not force a 1:1 source-slide title match. */
+const GENERIC_PANEL_TITLE = /^(introduction|intro|overview|summary|key takeaways|conclusion)$/i;
+
+function distinctiveTitleTokens(titleText: string): string[] {
+  return tokenizeForRelevance(titleText).filter((t) => t.length >= 5);
+}
+
+/** True when a panel title like "Propylene" or "Ethane" must appear in the source slide text. */
+function titleMustMatchSource(titleText: string): boolean {
+  const trimmed = titleText.trim();
+  if (!trimmed || GENERIC_PANEL_TITLE.test(trimmed)) return false;
+  return distinctiveTitleTokens(trimmed).length >= 1;
+}
+
 function normalizeRelevanceToken(t: string): string {
   // Light stemming so facilities↔facility, crackers↔cracker still overlap
   if (t.endsWith('ies') && t.length > 5) return `${t.slice(0, -3)}y`;
@@ -251,8 +265,7 @@ function pickRelevantSourceImage(
   let bestIdx = -1;
   let bestScore = -1;
   const titleText = opts?.titleText?.trim() || '';
-  const distinctiveTitle =
-    tokenizeForRelevance(titleText).filter((t) => t.length >= 5).length >= 2;
+  const requireTitle = titleMustMatchSource(titleText);
 
   const consider = (i: number, unusedOnly: boolean) => {
     if (unusedOnly && used.has(i)) return;
@@ -261,10 +274,10 @@ function pickRelevantSourceImage(
     if (!ctx.trim()) return;
     let score = scoreSourceImageRelevance(panelText, ctx);
     if (score < MIN_RELEVANCE_SCORE) return;
-    if (distinctiveTitle) {
+    if (requireTitle) {
       const titleScore = scoreSourceImageRelevance(titleText, ctx);
-      // Accordion/tab titles like "Chemical Reactivity" must match the source
-      // slide — shared deck words in the body (ethylene, molecule) are not enough.
+      // "Propylene" / "Ethane" must appear on the source slide — shared deck
+      // words in the body (olefin, steam, cracker) are not enough.
       if (titleScore < 2) return;
       score += titleScore * 1.5;
     }

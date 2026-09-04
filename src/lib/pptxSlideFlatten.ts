@@ -356,7 +356,19 @@ function paintShape(ctx: CanvasRenderingContext2D, cmd: DrawShape, scale: number
   ctx.restore();
 }
 
+/**
+ * DrawingML flowsheets/tables we cannot paint faithfully (elbow arrows, a:tbl).
+ * Skip these rather than attaching a broken sketch. Real ppt/media rasters still extract.
+ */
+export function slideIsSpaghettiSketch(slideXml: string): boolean {
+  const pics = (slideXml.match(/<p:pic[\s>]/g) || []).length;
+  const connectors = (slideXml.match(/<p:cxnSp[\s>]/g) || []).length;
+  if (/<a:tbl[\s>]/.test(slideXml)) return true;
+  return connectors >= 8 && pics < 2;
+}
+
 export function slideLooksLikeIllustration(slideXml: string): boolean {
+  if (slideIsSpaghettiSketch(slideXml)) return false;
   const pics = (slideXml.match(/<p:pic[\s>]/g) || []).length;
   const shapes = (slideXml.match(/<p:sp[\s>]/g) || []).length;
   const connectors = (slideXml.match(/<p:cxnSp[\s>]/g) || []).length;
@@ -385,7 +397,10 @@ export async function flattenOnePptxSlide(
   walkDrawables(root, rels, cmds, 0, 0, 1, 1);
   const pics = cmds.filter((c): c is DrawPic => c.kind === 'pic');
   const drawn = cmds.filter((c) => c.kind !== 'pic');
+  const lines = cmds.filter((c) => c.kind === 'line');
   if (pics.length + drawn.length < 2) return null;
+  // Straight-line connectors cannot reconstruct elbow PFDs — don't emit a sketch.
+  if (lines.length >= 8 && pics.length < 2) return null;
 
   let minX = Infinity;
   let minY = Infinity;
@@ -504,6 +519,7 @@ export async function flattenPptxSlideIllustrations(
     });
 
   const out: FlattenedSlideImage[] = [];
+  let skippedSpaghetti = 0;
   for (const slidePath of slideFiles) {
     if (out.length >= MAX_FLATTEN_SLIDES) break;
     if (performance.now() > deadlineAt) break;
@@ -519,6 +535,10 @@ export async function flattenPptxSlideIllustrations(
       slideXml = await slideFile.async('string');
       relXml = await relFile.async('string');
     } catch {
+      continue;
+    }
+    if (slideIsSpaghettiSketch(slideXml)) {
+      skippedSpaghetti++;
       continue;
     }
     if (!slideLooksLikeIllustration(slideXml)) continue;
@@ -546,6 +566,9 @@ export async function flattenPptxSlideIllustrations(
       console.warn(`[pptxSlideFlatten] slide ${num} failed:`, err);
     }
     await new Promise((r) => setTimeout(r, 0));
+  }
+  if (skippedSpaghetti) {
+    console.log(`[pptxSlideFlatten] skipped ${skippedSpaghetti} spaghetti sketch slide(s) (connectors/tables)`);
   }
   return out;
 }
