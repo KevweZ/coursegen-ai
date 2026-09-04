@@ -3,7 +3,7 @@ import { markdownToHtml, markdownToInlineHtml } from '../../lib/markdownInline';
 import { formatTabIntroOst, formatTabOstBody } from '../../lib/formatTabIntroOst';
 import { tabAccentHex, TAB_INTRO_DEFAULT_HEX } from '../../lib/tabAccents';
 import { contrastTextOn } from '../../lib/colorContrast';
-import { ChevronRight } from 'lucide-react';
+import { Check, ChevronRight } from 'lucide-react';
 import { EnlargeableImage } from '../player/EnlargeableImage';
 
 export interface VerticalTab {
@@ -21,12 +21,19 @@ export interface VerticalTab {
   voiceOverUrl?: string;
 }
 
+/** Presentation only. `'default'` is the current rounded tabs; `'blocks'` is the Blind Spot-style stack. */
+export type VerticalTabSkin = 'default' | 'blocks';
+
 type TVTheme = 'light' | 'dark' | 'unified';
 
 interface Props {
   tabs: VerticalTab[];
   title?: string;
   theme?: TVTheme;
+  /** Opt-in visual skin. Omit or `'default'` keeps the current look. */
+  skin?: VerticalTabSkin | string;
+  /** Tab ids the learner has opened (checkmarks on the blocks skin). */
+  visitedTabIds?: string[];
   onTabView?: (tabId: string) => void;
   /** Fired only on user click (not mount) — use for per-tab audio cutover. Pass "__intro__" for intro. */
   onTabAudio?: (tabId: string) => void;
@@ -48,15 +55,23 @@ interface Props {
 
 /** Match horizontal tabs: fill stage height; leave a little room so CC is not cramped. */
 const PANEL_H = 520;
+const BLOCKS_WELL = '#0b1220';
+const BLOCKS_INK = '#f8fafc';
 
 function cn(...classes: (string | false | undefined | null)[]): string {
   return classes.filter(Boolean).join(' ');
+}
+
+function isBlocksSkin(skin?: string | null): boolean {
+  return String(skin || '').trim().toLowerCase() === 'blocks';
 }
 
 export default function TabbedContentVertical({
   tabs = [],
   title,
   theme = 'light',
+  skin = 'default',
+  visitedTabIds,
   onTabView,
   onTabAudio,
   introContent,
@@ -74,10 +89,12 @@ export default function TabbedContentVertical({
     [tabs]
   );
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [localVisited, setLocalVisited] = useState<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setActiveIndex(-1);
+    setLocalVisited([]);
   }, [normalized.map(t => t.id).join('|')]);
 
   const isLight = theme === 'light';
@@ -88,6 +105,11 @@ export default function TabbedContentVertical({
   const dropZoneId = activeTab?.id || '';
   const panelHighlighted = !!(highlightTabId && dropZoneId && highlightTabId === dropZoneId);
   const panelKey = inIntro ? '__intro__' : (activeTab?.id ?? '__empty__');
+  const visited = useMemo(() => {
+    const s = new Set<string>(visitedTabIds || []);
+    localVisited.forEach(id => s.add(id));
+    return s;
+  }, [visitedTabIds, localVisited]);
 
   const introOst = useMemo(
     () => formatTabIntroOst({ introContent, voiceOverText: introVoiceOver, title }),
@@ -122,10 +144,38 @@ export default function TabbedContentVertical({
     setActiveIndex(i);
     const id = normalized[i]?.id;
     if (id) {
+      setLocalVisited(prev => (prev.includes(id) ? prev : [...prev, id]));
       onTabView?.(id);
       onTabAudio?.(id);
     }
   };
+
+  if (isBlocksSkin(skin)) {
+    return (
+      <VerticalTabsBlocksSkin
+        title={title}
+        normalized={normalized}
+        inIntro={inIntro}
+        activeIndex={activeIndex}
+        activeTab={activeTab}
+        introHex={introHex}
+        introTitleColor={introTitleColor}
+        introOst={introOst}
+        introImageUrl={introImageUrl}
+        panelKey={panelKey}
+        dropZoneId={dropZoneId}
+        panelHighlighted={panelHighlighted}
+        highlightTabId={highlightTabId}
+        visited={visited}
+        scrollRef={scrollRef}
+        resetScrollTop={resetScrollTop}
+        selectIntro={selectIntro}
+        selectTab={selectTab}
+        onRemoveIntroImage={onRemoveIntroImage}
+        onRemoveTabImage={onRemoveTabImage}
+      />
+    );
+  }
 
   return (
     <div className="w-full flex flex-col gap-3 select-none min-h-0 flex-1">
@@ -262,6 +312,189 @@ export default function TabbedContentVertical({
                 </>
               )}
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface BlocksSkinProps {
+  title?: string;
+  normalized: VerticalTab[];
+  inIntro: boolean;
+  activeIndex: number;
+  activeTab: VerticalTab | null;
+  introHex: string;
+  introTitleColor: string;
+  introOst: string;
+  introImageUrl?: string;
+  panelKey: string;
+  dropZoneId: string;
+  panelHighlighted: boolean;
+  highlightTabId: string | null;
+  visited: Set<string>;
+  scrollRef: React.RefObject<HTMLDivElement>;
+  resetScrollTop: () => void;
+  selectIntro: () => void;
+  selectTab: (i: number) => void;
+  onRemoveIntroImage?: () => void;
+  onRemoveTabImage?: (tabId: string) => void;
+}
+
+function blockFillStyle(hex: string, isActive: boolean, ink: string): React.CSSProperties {
+  return {
+    background: hex,
+    color: ink,
+    ['--tab-ink' as string]: ink,
+    opacity: isActive ? 1 : 0.92,
+    boxShadow: isActive ? 'inset 0 0 0 2px rgba(255,255,255,0.88)' : undefined,
+    filter: isActive ? 'brightness(1.06)' : undefined,
+  };
+}
+
+function VerticalTabsBlocksSkin({
+  title,
+  normalized,
+  inIntro,
+  activeIndex,
+  activeTab,
+  introHex,
+  introTitleColor,
+  introOst,
+  introImageUrl,
+  panelKey,
+  dropZoneId,
+  panelHighlighted,
+  highlightTabId,
+  visited,
+  scrollRef,
+  resetScrollTop,
+  selectIntro,
+  selectTab,
+  onRemoveIntroImage,
+  onRemoveTabImage,
+}: BlocksSkinProps) {
+  const imageUrl = inIntro ? introImageUrl : activeTab?.imageUrl;
+  const bodyHtml = inIntro
+    ? markdownToHtml(introOst)
+    : markdownToHtml(formatTabOstBody(activeTab?.content || '') || formatTabOstBody(activeTab?.voiceOverText || ''));
+  const headingHtml = inIntro ? null : markdownToHtml(activeTab?.label || '');
+  const onRemoveImage = inIntro
+    ? onRemoveIntroImage
+    : (onRemoveTabImage && activeTab?.id ? () => onRemoveTabImage(activeTab.id) : undefined);
+
+  return (
+    <div className="tab-skin-blocks w-full flex flex-col gap-2 select-none min-h-0 flex-1" style={{ color: BLOCKS_INK }}>
+      {title && (
+        <p className="text-sm font-bold text-center uppercase tracking-widest mb-1 shrink-0" style={{ color: '#64748b' }}>{title}</p>
+      )}
+
+      <div className="flex w-full min-h-0 overflow-hidden" style={{ height: PANEL_H, minHeight: PANEL_H }}>
+        <div
+          className="flex flex-col w-[168px] sm:w-[196px] shrink-0 min-h-0 overflow-y-auto custom-scrollbar"
+          style={{ maxHeight: PANEL_H, gap: 2, background: '#ffffff' }}
+        >
+          <button
+            type="button"
+            onClick={selectIntro}
+            className="relative flex items-center justify-center w-full flex-1 min-h-[64px] px-3 py-2 text-center font-extrabold text-[11px] sm:text-xs leading-tight uppercase tracking-wide border-0"
+            style={blockFillStyle(introHex, inIntro, inIntro ? introTitleColor : contrastTextOn(introHex))}
+            title="Return to opening introduction"
+          >
+            <span className="block w-full" style={{ color: inIntro ? introTitleColor : contrastTextOn(introHex) }}>
+              Introduction
+            </span>
+          </button>
+          {normalized.map((tab, i) => {
+            const isActive = i === activeIndex;
+            const hex = tabAccentHex(tab, i);
+            const titleColor = (tab.labelColor && String(tab.labelColor).trim()) || contrastTextOn(hex);
+            const isDropTarget = highlightTabId === tab.id;
+            const seen = visited.has(tab.id);
+            return (
+              <button
+                key={tab.id || `vtab-${i}`}
+                type="button"
+                data-tab-drop-zone={tab.id}
+                onClick={() => selectTab(i)}
+                aria-current={isActive ? 'true' : undefined}
+                className={cn(
+                  'relative flex items-center justify-center w-full flex-1 min-h-[64px] px-3 py-2 text-center font-extrabold text-[11px] sm:text-xs leading-tight uppercase tracking-wide border-0',
+                  isDropTarget && 'ring-2 ring-indigo-400 ring-inset'
+                )}
+                style={blockFillStyle(hex, isActive, titleColor)}
+              >
+                {seen && (
+                  <Check
+                    className="absolute top-1.5 left-1.5 w-3.5 h-3.5 pointer-events-none"
+                    style={{ color: titleColor }}
+                    strokeWidth={3}
+                    aria-hidden
+                  />
+                )}
+                {tab.icon && <span className="absolute top-1.5 right-1.5 text-sm leading-none">{tab.icon}</span>}
+                <span
+                  className="block w-full px-2"
+                  style={{ color: titleColor }}
+                  dangerouslySetInnerHTML={{ __html: markdownToInlineHtml(tab.label) }}
+                />
+              </button>
+            );
+          })}
+        </div>
+
+        <div
+          data-tab-drop-zone={dropZoneId || undefined}
+          className={cn('flex-1 min-w-0 relative overflow-hidden', panelHighlighted && 'ring-4 ring-indigo-400/80 ring-inset')}
+          style={{ height: PANEL_H, minHeight: PANEL_H, background: BLOCKS_WELL, color: BLOCKS_INK }}
+        >
+          {panelHighlighted && (
+            <div className="absolute inset-x-0 top-0 z-10 px-3 py-1.5 text-center text-[11px] font-bold pointer-events-none" style={{ color: '#fff', background: 'rgba(79,70,229,0.92)' }}>
+              Drop here to attach image to this tab
+            </div>
+          )}
+          <div key={panelKey} className="flex h-full min-h-0 w-full" style={{ color: BLOCKS_INK }}>
+            <div
+              ref={scrollRef}
+              className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden custom-scrollbar"
+              style={{ overflowAnchor: 'none' }}
+            >
+              <div className="box-border w-full p-6 sm:p-7 text-left" style={{ color: BLOCKS_INK }}>
+                {inIntro ? (
+                  <h3 className="font-extrabold text-lg uppercase tracking-wide mb-4" style={{ color: '#ffffff' }}>
+                    Introduction
+                  </h3>
+                ) : (
+                  <h3
+                    className="font-extrabold text-lg uppercase tracking-wide mb-4"
+                    style={{ color: '#ffffff' }}
+                    dangerouslySetInnerHTML={{ __html: headingHtml || '' }}
+                  />
+                )}
+                <div
+                  className="text-sm leading-relaxed tab-ost-body w-full"
+                  style={{ color: BLOCKS_INK }}
+                  dangerouslySetInnerHTML={{ __html: bodyHtml }}
+                />
+                {inIntro && (
+                  <p className="mt-6 text-xs font-semibold" style={{ color: introHex }}>
+                    Select a topic tab to continue →
+                  </p>
+                )}
+              </div>
+            </div>
+            {imageUrl && (
+              <div className="relative w-[42%] max-w-[360px] shrink-0 h-full min-h-0" style={{ background: '#000' }}>
+                <EnlargeableImage
+                  src={imageUrl}
+                  wrapperClassName="absolute inset-0 h-full w-full"
+                  className="w-full h-full object-cover"
+                  onLoad={resetScrollTop}
+                  onRemove={onRemoveImage}
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -6812,6 +6812,8 @@ export default function App() {
                                      <TabbedVertical
                                        tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []}
                                        theme={theme as any}
+                                       skin={currentSlide.data?.tabSkin === 'blocks' ? 'blocks' : 'default'}
+                                       visitedTabIds={exploredBySlide[currentSlide.id] || []}
                                        introContent={currentSlide.content || ''}
                                        introColor={currentSlide.data?.introColor || (currentSlide.data?.unifyTabColors ? tabAccentHex((currentSlide.data?.tabs || currentSlide.data?.items || [])[0], 0) : undefined)}
                                        introLabelColor={currentSlide.data?.introLabelColor}
@@ -7672,9 +7674,44 @@ export default function App() {
                             />
                           </div>
                         );
+                        const tabSkin = editingSlide.data?.tabSkin === 'blocks' ? 'blocks' : 'default';
                         return (
                           <div className="space-y-3 pt-1">
                             <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">Tab headings &amp; bodies</label>
+                            {editingSlide.type === 'tabbed-vertical' && (
+                              <div className="rounded-xl border border-slate-700 bg-slate-950 p-3 space-y-2">
+                                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Tab layout</p>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => patchTabs(tabs, { tabSkin: 'default' })}
+                                    className={cn(
+                                      'px-3 py-2 rounded-lg border text-xs font-bold transition-all',
+                                      tabSkin === 'default'
+                                        ? 'border-indigo-400 bg-indigo-500/15 text-indigo-200'
+                                        : 'border-slate-700 bg-slate-900 text-slate-400 hover:border-slate-500'
+                                    )}
+                                  >
+                                    Classic
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => patchTabs(tabs, { tabSkin: 'blocks' })}
+                                    className={cn(
+                                      'px-3 py-2 rounded-lg border text-xs font-bold transition-all',
+                                      tabSkin === 'blocks'
+                                        ? 'border-indigo-400 bg-indigo-500/15 text-indigo-200'
+                                        : 'border-slate-700 bg-slate-900 text-slate-400 hover:border-slate-500'
+                                    )}
+                                  >
+                                    Blocks
+                                  </button>
+                                </div>
+                                <p className="text-[11px] text-slate-500 leading-relaxed">
+                                  Classic is the current rounded tabs. Blocks is a full-bleed stack with a dark content well. Same interaction — switch back anytime.
+                                </p>
+                              </div>
+                            )}
                             <label className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-700 bg-slate-950 cursor-pointer">
                               <input
                                 type="checkbox"
@@ -8275,10 +8312,14 @@ export default function App() {
                                     ...m,
                                     slides: m.slides.map((s: any) => {
                                       if (s.id !== slideSnapshot.id) return s;
+                                      const nextData = result.data !== undefined ? { ...result.data } : { ...(s.data || {}) };
+                                      if (result.type === 'tabbed-vertical' && slideSnapshot.data?.tabSkin) {
+                                        nextData.tabSkin = slideSnapshot.data.tabSkin;
+                                      }
                                       return {
                                         ...s,
                                         type: result.type,
-                                        data: result.data !== undefined ? result.data : s.data,
+                                        data: nextData,
                                         content: result.content != null ? result.content : s.content,
                                         voiceOverText: result.voiceOverText || s.voiceOverText,
                                         narration: result.voiceOverText || s.narration,

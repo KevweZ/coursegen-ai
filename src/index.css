@@ -514,6 +514,44 @@ img:not([loading]) {
   color: inherit;
 }
 
+/* Vertical tabs — Blocks skin: keep colored stacks + dark well; do not restyle as light cards. */
+.interaction-light-fix .tab-skin-blocks p,
+.interaction-light-fix .tab-skin-blocks span,
+.interaction-light-fix .tab-skin-blocks li,
+.interaction-light-fix .tab-skin-blocks ul,
+.interaction-light-fix .tab-skin-blocks h3,
+.interaction-light-fix .tab-skin-blocks h4,
+.interaction-light-fix .tab-skin-blocks div,
+.interaction-light-fix .tab-skin-blocks strong,
+.interaction-light-fix .tab-skin-blocks em {
+  color: inherit;
+}
+.interaction-dark-override .tab-skin-blocks button:not([draggable]),
+.interaction-dark-override .tab-skin-blocks button[aria-pressed="true"],
+.interaction-dark-override .tab-skin-blocks button[aria-selected="true"] {
+  background-color: unset;
+  border-color: transparent !important;
+  color: var(--tab-ink, inherit) !important;
+  box-shadow: none;
+}
+.interaction-dark-override .tab-skin-blocks button span,
+.interaction-dark-override .tab-skin-blocks button svg {
+  color: var(--tab-ink, inherit) !important;
+}
+.interaction-dark-override .tab-skin-blocks p,
+.interaction-dark-override .tab-skin-blocks span,
+.interaction-dark-override .tab-skin-blocks li,
+.interaction-dark-override .tab-skin-blocks ul,
+.interaction-dark-override .tab-skin-blocks h3,
+.interaction-dark-override .tab-skin-blocks strong,
+.interaction-dark-override .tab-skin-blocks em {
+  color: inherit !important;
+}
+.interaction-dark-override .tab-skin-blocks div:not([style]),
+.interaction-dark-override .tab-skin-blocks section:not([style]) {
+  background-color: transparent;
+}
+
 /* ── Volume slider track styling ───────────────────────────────────────── */
 .vol-slider {
   -webkit-appearance: none;
