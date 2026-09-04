@@ -639,6 +639,20 @@ function isLikelyThemeDecorativeArt(
     themeHits = 0;
   }
 
+  // Marble / TV-static / fill textures: full-bleed grain, almost no ink. May be large files.
+  const edgeDensity = (hEdge + vEdge) / 2;
+  if (
+    contentRatio > 0.65 &&
+    inkRatio < 0.07 &&
+    chromaRatio < 0.5 &&
+    edgeDensity > 0.26 &&
+    whiteRatio < 0.25
+  ) {
+    tmp.width = 0;
+    tmp.height = 0;
+    return { decorative: true, reason: 'fill-noise', contentScore: 4 };
+  }
+
   if (themeHits >= 4) {
     contentScore = Math.min(contentScore, 8);
     return { decorative: true, reason: reason || 'theme-geo', contentScore };
@@ -648,6 +662,38 @@ function isLikelyThemeDecorativeArt(
   tmp.width = 0;
   tmp.height = 0;
   return { decorative: false, reason: '', contentScore };
+}
+
+/** Downscaled decorative/noise check — cheap enough for Steam-cracker-class fast extract. */
+async function thumbDecorativeCheck(
+  dataUrl: string,
+  naturalW: number,
+  naturalH: number,
+  byteHint: number
+): Promise<{ decorative: boolean; reason: string; contentScore: number }> {
+  if (typeof Image === 'undefined' || typeof document === 'undefined') {
+    return { decorative: false, reason: '', contentScore: 50 };
+  }
+  const img = await new Promise<HTMLImageElement | null>((resolve) => {
+    const el = new Image();
+    el.onload = () => resolve(el);
+    el.onerror = () => resolve(null);
+    el.src = dataUrl;
+  });
+  if (!img || img.width < 40 || img.height < 40) {
+    return { decorative: false, reason: '', contentScore: 50 };
+  }
+  const canvas = document.createElement('canvas');
+  const scale = Math.min(1, 160 / Math.max(img.width, img.height));
+  canvas.width = Math.max(1, Math.round(img.width * scale));
+  canvas.height = Math.max(1, Math.round(img.height * scale));
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return { decorative: false, reason: '', contentScore: 50 };
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  const verdict = isLikelyThemeDecorativeArt(canvas, byteHint, naturalW, naturalH);
+  canvas.width = 0;
+  canvas.height = 0;
+  return verdict;
 }
 
 /**
@@ -1324,6 +1370,17 @@ async function doExtractImagesFromFile(
               src: dataUrl,
               contentScore: Math.min(100, Math.round(40 + Math.min(byteHint / 50000, 40))),
             };
+            const remainingForThumb = EXTRACT_DEADLINE_MS - (performance.now() - startedAt);
+            if (remainingForThumb > 2500) {
+              const noise = await thumbDecorativeCheck(dataUrl, width, height, byteHint);
+              if (noise.decorative) {
+                skippedDecorative++;
+                if (skippedDecorativeLog.length < 16) {
+                  skippedDecorativeLog.push(`${shortName} (${noise.reason || 'fill-noise'})`);
+                }
+                continue;
+              }
+            }
           } else {
             // Small decks / orphans: flatten + optional decorative + margin trim
             imgProps = await loadImageProps(

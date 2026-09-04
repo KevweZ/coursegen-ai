@@ -15,7 +15,8 @@ interface ClickRevealProps {
   items?: RevealItem[];
   title?: string;
   theme?: 'light' | 'dark' | 'unified';
-  onItemReveal?: (itemId: string) => void;
+  /** Authoring: remove a revealed item's image */
+  onRemoveItemImage?: (itemId: string) => void;
 }
 
 const CARD_COLORS = [
@@ -39,7 +40,7 @@ const CARD_COLORS_DARK = [
   { border: '#ec4899', bg: 'rgba(236,72,153,0.12)', glow: 'rgba(236,72,153,0.3)' },
 ];
 
-const ClickRevealInteraction: React.FC<ClickRevealProps> = ({ items = [], theme = 'light', onItemReveal }) => {
+const ClickRevealInteraction: React.FC<ClickRevealProps> = ({ items = [], theme = 'light', onItemReveal, onRemoveItemImage }) => {
   const normalized = React.useMemo(
     () => (items || []).map((it, i) => ({
       ...it,
@@ -181,6 +182,7 @@ const ClickRevealInteraction: React.FC<ClickRevealProps> = ({ items = [], theme 
                         src={item.imageUrl}
                         wrapperClassName="max-w-xl"
                         className="max-h-80 bg-transparent"
+                        onRemove={onRemoveItemImage ? () => onRemoveItemImage(item.id) : undefined}
                       />
                     </div>
                   )}

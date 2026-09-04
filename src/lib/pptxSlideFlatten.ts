@@ -363,8 +363,13 @@ function paintShape(ctx: CanvasRenderingContext2D, cmd: DrawShape, scale: number
 export function slideIsSpaghettiSketch(slideXml: string): boolean {
   const pics = (slideXml.match(/<p:pic[\s>]/g) || []).length;
   const connectors = (slideXml.match(/<p:cxnSp[\s>]/g) || []).length;
+  const shapes = (slideXml.match(/<p:sp[\s>]/g) || []).length;
+  const groups = (slideXml.match(/<p:grpSp[\s>]/g) || []).length;
   if (/<a:tbl[\s>]/.test(slideXml)) return true;
-  return connectors >= 8 && pics < 2;
+  // Elbow PFDs / labeled schematics we cannot paint (straight connectors + truncated text)
+  if (connectors >= 8 && pics < 2) return true;
+  if (pics <= 1 && (shapes >= 20 || groups >= 12)) return true;
+  return false;
 }
 
 export function slideLooksLikeIllustration(slideXml: string): boolean {
@@ -373,7 +378,8 @@ export function slideLooksLikeIllustration(slideXml: string): boolean {
   const shapes = (slideXml.match(/<p:sp[\s>]/g) || []).length;
   const connectors = (slideXml.match(/<p:cxnSp[\s>]/g) || []).length;
   const groups = (slideXml.match(/<p:grpSp[\s>]/g) || []).length;
-  return pics >= 3 || connectors >= 1 || (pics >= 1 && (shapes >= 8 || groups >= 2));
+  // Need several rasters — one photo under a pile of labels is not a faithful flatten
+  return pics >= 3 || (pics >= 2 && (connectors >= 1 || groups >= 2 || shapes >= 8));
 }
 
 export async function flattenOnePptxSlide(

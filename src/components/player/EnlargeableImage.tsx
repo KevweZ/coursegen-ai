@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Maximize2, X } from 'lucide-react';
+import { Maximize2, Trash2, X } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
 interface EnlargeableImageProps {
@@ -11,11 +11,13 @@ interface EnlargeableImageProps {
   /** Wrapper around the image (sizing / layout) */
   wrapperClassName?: string;
   onLoad?: () => void;
+  /** Authoring: remove this in-flow image (shown on hover). Do not pass in SCORM. */
+  onRemove?: () => void;
 }
 
 /**
- * Course content image with Storyline-like click-to-enlarge.
- * Corner expand hint; click image or control → lightbox; Esc / backdrop / X to close.
+ * Course content image. Enlarge is the corner control only — the photo itself
+ * is not a button, so authoring hover actions (remove) still work.
  */
 export const EnlargeableImage: React.FC<EnlargeableImageProps> = ({
   src,
@@ -23,6 +25,7 @@ export const EnlargeableImage: React.FC<EnlargeableImageProps> = ({
   className,
   wrapperClassName,
   onLoad,
+  onRemove,
 }) => {
   const [open, setOpen] = useState(false);
   const titleId = useId();
@@ -46,20 +49,32 @@ export const EnlargeableImage: React.FC<EnlargeableImageProps> = ({
   return (
     <>
       <div className={cn('relative group/enlarge w-full', wrapperClassName)}>
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="block w-full text-left cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50 rounded-sm"
-          aria-label="Enlarge image"
-        >
-          <img
-            src={src}
-            alt={alt}
-            className={cn('w-full h-auto object-contain', className)}
-            onLoad={onLoad}
-            draggable={false}
-          />
-        </button>
+        <img
+          src={src}
+          alt={alt}
+          className={cn('w-full h-auto object-contain', className)}
+          onLoad={onLoad}
+          draggable={false}
+        />
+        {onRemove && (
+          <button
+            type="button"
+            title="Remove image"
+            aria-label="Remove image"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove();
+            }}
+            className={cn(
+              'absolute top-2 right-2 z-[2] flex items-center justify-center',
+              'w-7 h-7 rounded-full bg-red-500 hover:bg-red-400 text-white shadow',
+              'opacity-0 group-hover/enlarge:opacity-100 transition-opacity',
+              'focus:outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-white/70'
+            )}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        )}
         <button
           type="button"
           title="Enlarge"

@@ -44,6 +44,8 @@ interface Props {
   onActiveTabChange?: (tabId: string | null) => void;
   /** While dragging a floating image over a tab zone, highlight it */
   highlightTabId?: string | null;
+  onRemoveIntroImage?: () => void;
+  onRemoveTabImage?: (tabId: string) => void;
 }
 
 const INTRO_COLOR = TAB_INTRO_DEFAULT_HEX;
@@ -70,6 +72,8 @@ export default function TabbedContentHorizontal({
   introImageUrl,
   onActiveTabChange,
   highlightTabId = null,
+  onRemoveIntroImage,
+  onRemoveTabImage,
 }: Props) {
   const normalized = useMemo(() => normalizeTabs(tabs), [tabs]);
   /** -1 = intro state (slide opening lines); no content tab selected yet */
@@ -181,6 +185,7 @@ export default function TabbedContentHorizontal({
                       wrapperClassName="max-w-2xl mx-auto"
                       className="max-h-[28rem] bg-transparent"
                       onLoad={resetScrollTop}
+                      onRemove={onRemoveIntroImage}
                     />
                   </div>
                 )}
@@ -221,6 +226,7 @@ export default function TabbedContentHorizontal({
                       wrapperClassName="max-w-2xl mx-auto"
                       className="max-h-[28rem] bg-transparent"
                       onLoad={resetScrollTop}
+                      onRemove={onRemoveTabImage && activeTab?.id ? () => onRemoveTabImage(activeTab.id) : undefined}
                     />
                   </div>
                 )}

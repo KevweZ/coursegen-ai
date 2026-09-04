@@ -42,6 +42,8 @@ interface Props {
   onActiveTabChange?: (tabId: string | null) => void;
   /** While dragging a floating image over a tab zone, highlight it */
   highlightTabId?: string | null;
+  onRemoveIntroImage?: () => void;
+  onRemoveTabImage?: (tabId: string) => void;
 }
 
 /** Match horizontal tabs: fill stage height; leave a little room so CC is not cramped. */
@@ -64,6 +66,8 @@ export default function TabbedContentVertical({
   introImageUrl,
   onActiveTabChange,
   highlightTabId = null,
+  onRemoveIntroImage,
+  onRemoveTabImage,
 }: Props) {
   const normalized = useMemo(
     () => (tabs || []).map((t, i) => ({ ...t, id: (t?.id != null && String(t.id).trim()) ? String(t.id) : `tab-${i}` })),
@@ -225,6 +229,7 @@ export default function TabbedContentVertical({
                         wrapperClassName="max-w-2xl mx-auto"
                         className="max-h-[28rem] bg-transparent"
                         onLoad={resetScrollTop}
+                        onRemove={onRemoveIntroImage}
                       />
                     </div>
                   )}
@@ -250,6 +255,7 @@ export default function TabbedContentVertical({
                         wrapperClassName="max-w-2xl mx-auto"
                         className="max-h-[28rem] bg-transparent"
                         onLoad={resetScrollTop}
+                        onRemove={onRemoveTabImage && activeTab?.id ? () => onRemoveTabImage(activeTab.id) : undefined}
                       />
                     </div>
                   )}

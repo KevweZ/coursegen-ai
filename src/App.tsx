@@ -6346,20 +6346,11 @@ export default function App() {
                                          <EnlargeableImage
                                            src={slideImg}
                                            className="max-h-[28rem] bg-transparent"
+                                           onRemove={!isScormPlayer ? () => {
+                                             pushUndo();
+                                             handleUpdateSlideMedia(currentSlide.id, { imageUrl: undefined });
+                                           } : undefined}
                                          />
-                                         {!isScormPlayer && (
-                                           <button
-                                             type="button"
-                                             title="Remove image"
-                                             onClick={() => {
-                                               pushUndo();
-                                               handleUpdateSlideMedia(currentSlide.id, { imageUrl: undefined });
-                                             }}
-                                             className="absolute top-2 right-2 z-[2] opacity-0 group-hover/slideimg:opacity-100 transition-opacity bg-red-500 hover:bg-red-400 text-white rounded-full p-1.5 shadow"
-                                           >
-                                             <Trash2 className="w-3.5 h-3.5" />
-                                           </button>
-                                         )}
                                        </div>
                                      </div>
                                    </div>
@@ -6791,6 +6782,25 @@ export default function App() {
                                        highlightTabId={dragOverTabId}
                                        onTabView={(id) => { if (id !== '__intro__') markInteractionExplored(currentSlide.id, id); }}
                                        onTabAudio={handleTabAudio}
+                                       onRemoveIntroImage={!isScormPlayer ? () => {
+                                         pushUndo();
+                                         handleUpdateSlideMedia(currentSlide.id, {
+                                           data: { ...currentSlide.data, introImageUrl: undefined },
+                                         });
+                                       } : undefined}
+                                       onRemoveTabImage={!isScormPlayer ? (tabId) => {
+                                         pushUndo();
+                                         const key = currentSlide.data?.tabs ? 'tabs' : 'items';
+                                         const list = [...(currentSlide.data?.[key] || [])];
+                                         handleUpdateSlideMedia(currentSlide.id, {
+                                           data: {
+                                             ...currentSlide.data,
+                                             [key]: list.map((t: any) =>
+                                               t.id === tabId ? { ...t, imageUrl: undefined } : t
+                                             ),
+                                           },
+                                         });
+                                       } : undefined}
                                      />
                                    </div>
                                  </div>
@@ -6811,6 +6821,25 @@ export default function App() {
                                        highlightTabId={dragOverTabId}
                                        onTabView={(id) => { if (id !== '__intro__') markInteractionExplored(currentSlide.id, id); }}
                                        onTabAudio={handleTabAudio}
+                                       onRemoveIntroImage={!isScormPlayer ? () => {
+                                         pushUndo();
+                                         handleUpdateSlideMedia(currentSlide.id, {
+                                           data: { ...currentSlide.data, introImageUrl: undefined },
+                                         });
+                                       } : undefined}
+                                       onRemoveTabImage={!isScormPlayer ? (tabId) => {
+                                         pushUndo();
+                                         const key = currentSlide.data?.tabs ? 'tabs' : 'items';
+                                         const list = [...(currentSlide.data?.[key] || [])];
+                                         handleUpdateSlideMedia(currentSlide.id, {
+                                           data: {
+                                             ...currentSlide.data,
+                                             [key]: list.map((t: any) =>
+                                               t.id === tabId ? { ...t, imageUrl: undefined } : t
+                                             ),
+                                           },
+                                         });
+                                       } : undefined}
                                      />
                                    </div>
                                  </div>
@@ -6848,6 +6877,15 @@ export default function App() {
                                        items={cr.items}
                                        theme={theme as any}
                                        onItemReveal={(id) => markInteractionExplored(currentSlide.id, id)}
+                                       onRemoveItemImage={!isScormPlayer ? (itemId) => {
+                                         pushUndo();
+                                         const items = (cr.items || []).map((it: any) =>
+                                           it.id === itemId ? { ...it, imageUrl: undefined } : it
+                                         );
+                                         handleUpdateSlideMedia(currentSlide.id, {
+                                           data: { ...currentSlide.data, items },
+                                         });
+                                       } : undefined}
                                      />
                                    </div>
                                  );
