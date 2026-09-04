@@ -228,9 +228,10 @@ function pickRelevantSourceImage(
   pool: AttachableSourceImage[],
   used: Set<number>,
   panelText: string,
-  opts?: { titleText?: string }
+  opts?: { titleText?: string; allowReuse?: boolean }
 ): AttachableSourceImage | null {
   if (!pool.length) return null;
+  const allowReuse = opts?.allowReuse !== false;
 
   const hasContext = pool.some((img) => !!img.sourceContextText?.trim());
 
@@ -241,6 +242,7 @@ function pickRelevantSourceImage(
         return pool[i];
       }
     }
+    if (!allowReuse) return null;
     // Soft reuse only when no slide context is available
     const idx = used.size % pool.length;
     return pool[idx] || null;
@@ -278,8 +280,8 @@ function pickRelevantSourceImage(
   };
 
   for (let i = 0; i < pool.length; i++) consider(i, true);
-  // Allow reuse of a still-relevant image (intro + matching tab) rather than leaving empty
-  if (bestIdx < 0) {
+  // Intro/content may reuse a still-relevant image; tabs/items must not.
+  if (bestIdx < 0 && allowReuse) {
     for (let i = 0; i < pool.length; i++) consider(i, false);
   }
 
@@ -410,8 +412,11 @@ export function attachSourceImagesToCourse(
     return (b.width * b.height) - (a.width * a.height);
   });
   const used = new Set<number>();
-  const take = (panelText: string, titleText?: string) =>
-    pickRelevantSourceImage(pool, used, panelText, titleText ? { titleText } : undefined);
+  const take = (panelText: string, titleText?: string, allowReuse = true) =>
+    pickRelevantSourceImage(pool, used, panelText, {
+      titleText,
+      allowReuse,
+    });
 
   const skipEntirely = new Set([
     'multiple-choice', 'multiple-answers', 'true-false', 'quiz', 'knowledge-check',
@@ -456,7 +461,8 @@ export function attachSourceImagesToCourse(
               if (tab?.imageUrl) return tab;
               const img = take(
                 buildTabPanelText(s, tab),
-                [tab?.title, tab?.label, tab?.name].filter(Boolean).join(' ')
+                [tab?.title, tab?.label, tab?.name].filter(Boolean).join(' '),
+                false
               );
               if (!img) {
                 skippedNoMatch++;
@@ -491,7 +497,8 @@ export function attachSourceImagesToCourse(
             if (item?.imageUrl) return item;
             const img = take(
               buildItemPanelText(s, item),
-              [item?.title, item?.label, item?.heading].filter(Boolean).join(' ')
+              [item?.title, item?.label, item?.heading].filter(Boolean).join(' '),
+              false
             );
             if (!img) {
               skippedNoMatch++;
@@ -542,9 +549,12 @@ export async function enrichHotspotAndCarouselImages(
     return (b.width * b.height) - (a.width * a.height);
   });
   const used = new Set<number>();
-  const nextSrc = (panelText: string) => {
+  const nextSrc = (
+    panelText: string,
+    opts2?: { titleText?: string; allowReuse?: boolean }
+  ) => {
     if (!opts.useSource || !ranked.length) return null;
-    const img = pickRelevantSourceImage(ranked, used, panelText);
+    const img = pickRelevantSourceImage(ranked, used, panelText, opts2);
     return img?.dataUrl || null;
   };
 
@@ -634,7 +644,10 @@ export async function enrichHotspotAndCarouselImages(
           if (list.length) {
             const next = list.map((tab: any) => {
               if (tab?.imageUrl) return tab;
-              const url = nextSrc(buildTabPanelText(slide, tab));
+              const url = nextSrc(buildTabPanelText(slide, tab), {
+                titleText: [tab?.title, tab?.label, tab?.name].filter(Boolean).join(' '),
+                allowReuse: false,
+              });
               if (!url) return tab;
               changed = true;
               return { ...tab, imageUrl: url };
@@ -658,7 +671,10 @@ export async function enrichHotspotAndCarouselImages(
             let changed = false;
             const next = list.map((item: any) => {
               if (item?.imageUrl) return item;
-              const url = nextSrc(buildItemPanelText(slide, item));
+              const url = nextSrc(buildItemPanelText(slide, item), {
+                titleText: [item?.title, item?.label, item?.heading].filter(Boolean).join(' '),
+                allowReuse: false,
+              });
               if (!url) return item;
               changed = true;
               return { ...item, imageUrl: url };

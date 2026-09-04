@@ -1,5 +1,6 @@
 import * as mammoth from 'mammoth';
 import JSZip from 'jszip';
+import { flattenPptxSlideIllustrations } from './pptxSlideFlatten';
 
 // Safari < 17.4 / older iOS WebKit: modern pdf.js calls Promise.withResolvers().
 if (typeof Promise.withResolvers !== 'function') {
@@ -1092,7 +1093,7 @@ async function mergeClusteredSlidePictures(
     `[extractImagesFromFile] slide composites: ${composites.length} illustration(s) from clustered pictures; ` +
     `hid ${usedInCluster.size} piece(s)`
   );
-  return merged.slice(0, MAX_KEPT_SOURCE_IMAGES);
+  return merged;
 }
 
 /** GIF logical screen size from header — avoids decoding large animated GIFs just for dims. */
@@ -1170,6 +1171,8 @@ const FAST_EXTRACT_MEDIA_THRESHOLD = 36;
 export const EXTRACT_DEADLINE_MS = 22_000;
 /** Cap pool size so attach/rank stays cheap. */
 const MAX_KEPT_SOURCE_IMAGES = 64;
+/** Extract extra media so illustration flatten can paint later-slide pics, then slice to MAX_KEPT. */
+const MAX_EXTRACT_FOR_FLATTEN = 120;
 
 /** Deduplicate concurrent + repeated extracts for the same File (upload effect + finalize). */
 const extractInFlight = new WeakMap<File, Promise<SourceImage[]>>();
@@ -1177,8 +1180,8 @@ const extractCompleted = new WeakMap<File, SourceImage[]>();
 
 /**
  * Extract embedded content images from PPTX/PDF.
- * PPTX: individual files under ppt/media/ (not full-slide screenshots).
- * PDF: embedded XObject images (not full-page screen captures).
+ * PPTX: ppt/media rasters plus in-browser flatten of illustration slides (shapes + connectors).
+ * PDF: illustration pages via pdf.js render; other pages keep embedded XObjects.
  */
 export async function extractImagesFromFile(
   file: File,
@@ -1248,7 +1251,7 @@ async function doExtractImagesFromFile(
           onProgress?.(processed, totalMedia);
           break;
         }
-        if (images.length >= MAX_KEPT_SOURCE_IMAGES) break;
+        if (images.length >= MAX_EXTRACT_FOR_FLATTEN) break;
 
         processed++;
         onProgress?.(processed, totalMedia);
@@ -1402,7 +1405,39 @@ async function doExtractImagesFromFile(
           `[extractImagesFromFile] Hit ${EXTRACT_DEADLINE_MS}ms deadline — returning ${images.length} partial image(s)`
         );
       }
-      if (images.length >= 2 && performance.now() - startedAt < EXTRACT_DEADLINE_MS - 1500) {
+      const remainingForCompose = EXTRACT_DEADLINE_MS - (performance.now() - startedAt);
+      if (images.length >= 1 && remainingForCompose > 1500) {
+        try {
+          const flats = await flattenPptxSlideIllustrations(
+            zip,
+            images,
+            themeOnlyMedia,
+            startedAt + EXTRACT_DEADLINE_MS
+          );
+          if (flats.length) {
+            const hidden = new Set(flats.flatMap((f) => f.memberMedia));
+            const leftovers = images.filter((img) => !img.mediaName || !hidden.has(img.mediaName));
+            const mapped = flats.map((f, i) => ({
+              pageIndex: i,
+              dataUrl: f.dataUrl,
+              width: f.width,
+              height: f.height,
+              contentScore: f.contentScore,
+              sourceSlideIndex: f.sourceSlideIndex,
+              sourceContextText: f.sourceContextText,
+              mediaName: f.mediaName,
+            }));
+            images.length = 0;
+            images.push(...mapped, ...leftovers);
+            console.log(
+              `[extractImagesFromFile] slide flatten: ${flats.length} illustration(s); hid ${hidden.size} piece(s)`
+            );
+          }
+        } catch (flatErr) {
+          console.warn('[extractImagesFromFile] slide flatten failed:', flatErr);
+        }
+      }
+      if (images.length >= 2 && performance.now() - startedAt < EXTRACT_DEADLINE_MS - 800) {
         try {
           const merged = await mergeClusteredSlidePictures(zip, images, themeOnlyMedia);
           images.length = 0;
@@ -1410,6 +1445,13 @@ async function doExtractImagesFromFile(
         } catch (compErr) {
           console.warn('[extractImagesFromFile] slide composite failed:', compErr);
         }
+      }
+      images.sort((a, b) => (b.contentScore ?? 40) - (a.contentScore ?? 40));
+      images.forEach((img, i) => {
+        img.pageIndex = i;
+      });
+      if (images.length > MAX_KEPT_SOURCE_IMAGES) {
+        images.length = MAX_KEPT_SOURCE_IMAGES;
       }
     } catch (err) {
       console.warn('[extractImagesFromFile] Failed to extract PPTX images:', err);
@@ -1419,14 +1461,24 @@ async function doExtractImagesFromFile(
 
   if (extension !== 'pdf') return [];
 
-  // PDF: pull embedded images only — never full-page raster screenshots
+  // PDF: flatten illustration pages (vectors + images) via pdf.js render; XObjects fill the rest.
   try {
+    const startedAt = performance.now();
     const data = new Uint8Array(await file.arrayBuffer());
     const pdf = await loadPdfDocument(data);
     let imgIndex = 0;
     let skippedDecorative = 0;
+    let flattenedPages = 0;
+    const MAX_PDF_FLATTEN_PAGES = 40;
 
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      if (performance.now() - startedAt > EXTRACT_DEADLINE_MS) {
+        console.warn(
+          `[extractImagesFromFile] PDF hit ${EXTRACT_DEADLINE_MS}ms deadline — returning ${images.length} image(s)`
+        );
+        break;
+      }
+      if (images.length >= MAX_KEPT_SOURCE_IMAGES) break;
       if (pageNum % 2 === 0) {
         onProgress?.(pageNum, pdf.numPages);
         await yieldToMain();
@@ -1434,12 +1486,77 @@ async function doExtractImagesFromFile(
       const page = await pdf.getPage(pageNum);
       const ops = await page.getOperatorList();
       const names = new Set<string>();
+      let imageOps = 0;
+      let vectorOps = 0;
+      const OPS = (pdfjs as any).OPS || {};
 
       for (let i = 0; i < ops.fnArray.length; i++) {
         const fn = ops.fnArray[i];
-        if (fn === (pdfjs as any).OPS.paintImageXObject || fn === (pdfjs as any).OPS.paintInlineImageXObject) {
+        if (fn === OPS.paintImageXObject || fn === OPS.paintInlineImageXObject || fn === OPS.paintImageMaskXObject) {
+          imageOps++;
           const n = ops.argsArray[i]?.[0];
           if (typeof n === 'string') names.add(n);
+        } else if (
+          fn === OPS.constructPath ||
+          fn === OPS.stroke ||
+          fn === OPS.fill ||
+          fn === OPS.eoFill ||
+          fn === OPS.fillStroke ||
+          fn === OPS.closeStroke
+        ) {
+          vectorOps++;
+        }
+      }
+
+      const looksIllustrated = imageOps >= 2 || vectorOps >= 50 || (imageOps >= 1 && vectorOps >= 15);
+      const canFlatten =
+        looksIllustrated &&
+        flattenedPages < MAX_PDF_FLATTEN_PAGES &&
+        typeof document !== 'undefined' &&
+        EXTRACT_DEADLINE_MS - (performance.now() - startedAt) > 900;
+
+      if (canFlatten) {
+        try {
+          const base = page.getViewport({ scale: 1 });
+          const scale = Math.min(1.35, MAX_PROCESS_EDGE / Math.max(base.width, base.height, 1));
+          const viewport = page.getViewport({ scale });
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(viewport.width));
+          canvas.height = Math.max(1, Math.round(viewport.height));
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            await page.render({ canvasContext: ctx, canvas, viewport }).promise;
+            let pageText = '';
+            try {
+              const content = await page.getTextContent();
+              pageText = (content.items as Array<{ str?: string }>)
+                .map((item) => item.str || '')
+                .join(' ')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .slice(0, 6000);
+            } catch {
+              /* ignore */
+            }
+            // Intentional page rasters — do not drop as "full slide captures"
+            images.push({
+              pageIndex: imgIndex++,
+              dataUrl: canvas.toDataURL('image/jpeg', 0.86),
+              width: canvas.width,
+              height: canvas.height,
+              contentScore: 94,
+              sourceSlideIndex: pageNum,
+              sourceContextText: pageText || undefined,
+            });
+            flattenedPages++;
+            canvas.width = 0;
+            canvas.height = 0;
+            continue;
+          }
+        } catch (flatErr) {
+          console.warn(`[extractImagesFromFile] PDF page ${pageNum} flatten failed:`, flatErr);
         }
       }
 
@@ -1530,6 +1647,7 @@ async function doExtractImagesFromFile(
             width: trimmed.width,
             height: trimmed.height,
             contentScore: verdict.contentScore,
+            sourceSlideIndex: pageNum,
           });
           if (trimmed !== work) {
             trimmed.width = 0;
@@ -1543,8 +1661,10 @@ async function doExtractImagesFromFile(
       }
     }
     console.log(
-      `[extractImagesFromFile] PDF "${file.name}": ${images.length} embedded image(s)` +
-      (skippedDecorative ? `, skipped decorative ${skippedDecorative}` : '')
+      `[extractImagesFromFile] PDF "${file.name}": ${images.length} image(s)` +
+      ` (${flattenedPages} page flatten(s)` +
+      (skippedDecorative ? `, skipped decorative ${skippedDecorative}` : '') +
+      ')'
     );
   } catch (err) {
     console.warn('[extractImagesFromFile] Failed to extract PDF images:', err);
