@@ -20,3 +20,24 @@ export function tabAccentHex(tab: { color?: string } | undefined, index: number)
   if (c) return c;
   return TAB_ACCENT_HEX[index % TAB_ACCENT_HEX.length];
 }
+
+export type VerticalTabSkinSetting = 'default' | 'blocks';
+
+export function resolveVerticalTabSkin(raw: unknown): VerticalTabSkinSetting {
+  return String(raw || '').trim().toLowerCase() === 'blocks' ? 'blocks' : 'default';
+}
+
+/** Stamp presentation skin onto every vertical-tab slide. Does not change interaction type. */
+export function stampVerticalTabSkin(course: any, skin: VerticalTabSkinSetting): any {
+  if (!course?.modules) return course;
+  return {
+    ...course,
+    modules: course.modules.map((m: any) => ({
+      ...m,
+      slides: (m.slides || []).map((s: any) => {
+        if (s?.type !== 'tabbed-vertical') return s;
+        return { ...s, data: { ...(s.data || {}), tabSkin: skin } };
+      }),
+    })),
+  };
+}

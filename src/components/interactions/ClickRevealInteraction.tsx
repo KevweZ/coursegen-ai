@@ -17,6 +17,9 @@ interface ClickRevealProps {
   theme?: 'light' | 'dark' | 'unified';
   /** Authoring: remove a revealed item's image */
   onRemoveItemImage?: (itemId: string) => void;
+  onCropItemImage?: (itemId: string, dataUrl: string) => void;
+  onPromoteItemImage?: (itemId: string, info: import('../player/EnlargeableImage').InFlowPromoteInfo) => void;
+  onItemReveal?: (id: string) => void;
 }
 
 const CARD_COLORS = [
@@ -40,7 +43,7 @@ const CARD_COLORS_DARK = [
   { border: '#ec4899', bg: 'rgba(236,72,153,0.12)', glow: 'rgba(236,72,153,0.3)' },
 ];
 
-const ClickRevealInteraction: React.FC<ClickRevealProps> = ({ items = [], theme = 'light', onItemReveal, onRemoveItemImage }) => {
+const ClickRevealInteraction: React.FC<ClickRevealProps> = ({ items = [], theme = 'light', onItemReveal, onRemoveItemImage, onCropItemImage, onPromoteItemImage }) => {
   const normalized = React.useMemo(
     () => (items || []).map((it, i) => ({
       ...it,
@@ -183,6 +186,8 @@ const ClickRevealInteraction: React.FC<ClickRevealProps> = ({ items = [], theme 
                         wrapperClassName="max-w-xl"
                         className="max-h-80 bg-transparent"
                         onRemove={onRemoveItemImage ? () => onRemoveItemImage(item.id) : undefined}
+                        onCrop={onCropItemImage ? (url) => onCropItemImage(item.id, url) : undefined}
+                        onPromoteToFloat={onPromoteItemImage ? (info) => onPromoteItemImage(item.id, info) : undefined}
                       />
                     </div>
                   )}

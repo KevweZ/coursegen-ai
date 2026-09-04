@@ -4,7 +4,7 @@ import { formatTabIntroOst, formatTabOstBody } from '../../lib/formatTabIntroOst
 import { tabAccentHex, TAB_INTRO_DEFAULT_HEX } from '../../lib/tabAccents';
 import { contrastTextOn } from '../../lib/colorContrast';
 import { Check, ChevronRight } from 'lucide-react';
-import { EnlargeableImage } from '../player/EnlargeableImage';
+import { EnlargeableImage, type InFlowPromoteInfo } from '../player/EnlargeableImage';
 
 export interface VerticalTab {
   id: string;
@@ -51,6 +51,10 @@ interface Props {
   highlightTabId?: string | null;
   onRemoveIntroImage?: () => void;
   onRemoveTabImage?: (tabId: string) => void;
+  onCropIntroImage?: (dataUrl: string) => void;
+  onCropTabImage?: (tabId: string, dataUrl: string) => void;
+  onPromoteIntroImage?: (info: InFlowPromoteInfo) => void;
+  onPromoteTabImage?: (tabId: string, info: InFlowPromoteInfo) => void;
 }
 
 /** Match horizontal tabs: fill stage height; leave a little room so CC is not cramped. */
@@ -83,6 +87,10 @@ export default function TabbedContentVertical({
   highlightTabId = null,
   onRemoveIntroImage,
   onRemoveTabImage,
+  onCropIntroImage,
+  onCropTabImage,
+  onPromoteIntroImage,
+  onPromoteTabImage,
 }: Props) {
   const normalized = useMemo(
     () => (tabs || []).map((t, i) => ({ ...t, id: (t?.id != null && String(t.id).trim()) ? String(t.id) : `tab-${i}` })),
@@ -102,7 +110,7 @@ export default function TabbedContentVertical({
   const introTitleColor = (introLabelColor && String(introLabelColor).trim()) || contrastTextOn(introHex);
   const inIntro = activeIndex < 0 || !normalized.length;
   const activeTab = inIntro ? null : normalized[Math.min(activeIndex, normalized.length - 1)];
-  const dropZoneId = activeTab?.id || '';
+  const dropZoneId = inIntro ? '__intro__' : (activeTab?.id || '');
   const panelHighlighted = !!(highlightTabId && dropZoneId && highlightTabId === dropZoneId);
   const panelKey = inIntro ? '__intro__' : (activeTab?.id ?? '__empty__');
   const visited = useMemo(() => {
@@ -173,6 +181,10 @@ export default function TabbedContentVertical({
         selectTab={selectTab}
         onRemoveIntroImage={onRemoveIntroImage}
         onRemoveTabImage={onRemoveTabImage}
+        onCropIntroImage={onCropIntroImage}
+        onCropTabImage={onCropTabImage}
+        onPromoteIntroImage={onPromoteIntroImage}
+        onPromoteTabImage={onPromoteTabImage}
       />
     );
   }
@@ -280,6 +292,8 @@ export default function TabbedContentVertical({
                         className="max-h-[28rem] bg-transparent"
                         onLoad={resetScrollTop}
                         onRemove={onRemoveIntroImage}
+                        onCrop={onCropIntroImage}
+                        onPromoteToFloat={onPromoteIntroImage}
                       />
                     </div>
                   )}
@@ -306,6 +320,8 @@ export default function TabbedContentVertical({
                         className="max-h-[28rem] bg-transparent"
                         onLoad={resetScrollTop}
                         onRemove={onRemoveTabImage && activeTab?.id ? () => onRemoveTabImage(activeTab.id) : undefined}
+                        onCrop={onCropTabImage && activeTab?.id ? (url) => onCropTabImage(activeTab.id, url) : undefined}
+                        onPromoteToFloat={onPromoteTabImage && activeTab?.id ? (info) => onPromoteTabImage(activeTab.id, info) : undefined}
                       />
                     </div>
                   )}
@@ -340,16 +356,25 @@ interface BlocksSkinProps {
   selectTab: (i: number) => void;
   onRemoveIntroImage?: () => void;
   onRemoveTabImage?: (tabId: string) => void;
+  onCropIntroImage?: (dataUrl: string) => void;
+  onCropTabImage?: (tabId: string, dataUrl: string) => void;
+  onPromoteIntroImage?: (info: InFlowPromoteInfo) => void;
+  onPromoteTabImage?: (tabId: string, info: InFlowPromoteInfo) => void;
 }
 
 function blockFillStyle(hex: string, isActive: boolean, ink: string): React.CSSProperties {
+  if (isActive) {
+    return {
+      background: BLOCKS_WELL,
+      color: '#ffffff',
+      ['--tab-ink' as string]: '#ffffff',
+      boxShadow: `inset 4px 0 0 0 ${hex}`,
+    };
+  }
   return {
     background: hex,
     color: ink,
     ['--tab-ink' as string]: ink,
-    opacity: isActive ? 1 : 0.92,
-    boxShadow: isActive ? 'inset 0 0 0 2px rgba(255,255,255,0.88)' : undefined,
-    filter: isActive ? 'brightness(1.06)' : undefined,
   };
 }
 
@@ -360,7 +385,7 @@ function VerticalTabsBlocksSkin({
   activeIndex,
   activeTab,
   introHex,
-  introTitleColor,
+  introTitleColor: _introTitleColor,
   introOst,
   introImageUrl,
   panelKey,
@@ -374,6 +399,10 @@ function VerticalTabsBlocksSkin({
   selectTab,
   onRemoveIntroImage,
   onRemoveTabImage,
+  onCropIntroImage,
+  onCropTabImage,
+  onPromoteIntroImage,
+  onPromoteTabImage,
 }: BlocksSkinProps) {
   const imageUrl = inIntro ? introImageUrl : activeTab?.imageUrl;
   const bodyHtml = inIntro
@@ -383,6 +412,12 @@ function VerticalTabsBlocksSkin({
   const onRemoveImage = inIntro
     ? onRemoveIntroImage
     : (onRemoveTabImage && activeTab?.id ? () => onRemoveTabImage(activeTab.id) : undefined);
+  const onCropImage = inIntro
+    ? onCropIntroImage
+    : (onCropTabImage && activeTab?.id ? (url: string) => onCropTabImage(activeTab.id, url) : undefined);
+  const onPromoteImage = inIntro
+    ? onPromoteIntroImage
+    : (onPromoteTabImage && activeTab?.id ? (info: InFlowPromoteInfo) => onPromoteTabImage(activeTab.id, info) : undefined);
 
   return (
     <div className="tab-skin-blocks w-full flex flex-col gap-2 select-none min-h-0 flex-1" style={{ color: BLOCKS_INK }}>
@@ -399,17 +434,18 @@ function VerticalTabsBlocksSkin({
             type="button"
             onClick={selectIntro}
             className="relative flex items-center justify-center w-full flex-1 min-h-[64px] px-3 py-2 text-center font-extrabold text-[11px] sm:text-xs leading-tight uppercase tracking-wide border-0"
-            style={blockFillStyle(introHex, inIntro, inIntro ? introTitleColor : contrastTextOn(introHex))}
+            style={blockFillStyle(introHex, inIntro, contrastTextOn(introHex))}
             title="Return to opening introduction"
           >
-            <span className="block w-full" style={{ color: inIntro ? introTitleColor : contrastTextOn(introHex) }}>
+            <span className="block w-full" style={{ color: inIntro ? '#ffffff' : contrastTextOn(introHex) }}>
               Introduction
             </span>
           </button>
           {normalized.map((tab, i) => {
             const isActive = i === activeIndex;
             const hex = tabAccentHex(tab, i);
-            const titleColor = (tab.labelColor && String(tab.labelColor).trim()) || contrastTextOn(hex);
+            const idleInk = (tab.labelColor && String(tab.labelColor).trim()) || contrastTextOn(hex);
+            const titleColor = isActive ? '#ffffff' : idleInk;
             const isDropTarget = highlightTabId === tab.id;
             const seen = visited.has(tab.id);
             return (
@@ -492,6 +528,8 @@ function VerticalTabsBlocksSkin({
                   className="w-full h-full object-cover"
                   onLoad={resetScrollTop}
                   onRemove={onRemoveImage}
+                  onCrop={onCropImage}
+                  onPromoteToFloat={onPromoteImage}
                 />
               </div>
             )}

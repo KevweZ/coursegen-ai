@@ -22,6 +22,8 @@ export interface SavedCourseSettings {
   imageMode: CourseImageMode;
   /** Hotspot backdrop AI when global AI/source images are off */
   hotspotGenerateBackdrop?: boolean;
+  /** Default presentation for vertical tabs. `'blocks'` is the full-bleed stack; `'default'` is classic. */
+  verticalTabSkin?: 'default' | 'blocks';
 }
 
 const STORAGE_KEY = 'nexcourse.courseSettings.v1';
@@ -58,6 +60,7 @@ export const DEFAULT_COURSE_SETTINGS: SavedCourseSettings = {
   imageMode: 'ai',
   /** When hotspot is on but Multimedia AI/source are off, still AI-generate hotspot backdrops */
   hotspotGenerateBackdrop: false,
+  verticalTabSkin: 'default',
 };
 
 function storageKey(userId?: string | null): string {
@@ -74,7 +77,11 @@ function cloneDefaults(): SavedCourseSettings {
 }
 
 function normalizeSaved(parsed: SavedCourseSettings): SavedCourseSettings {
-  return { ...parsed, imageMode: normalizeImageMode(parsed.imageMode) };
+  return {
+    ...parsed,
+    imageMode: normalizeImageMode(parsed.imageMode),
+    verticalTabSkin: parsed.verticalTabSkin === 'blocks' ? 'blocks' : 'default',
+  };
 }
 
 export function loadCourseSettings(userId?: string | null): SavedCourseSettings | null {

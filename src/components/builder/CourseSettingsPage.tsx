@@ -111,6 +111,9 @@ export interface CourseSettingsPageProps {
   /** When Hotspot is selected but Multimedia AI/source are off */
   hotspotGenerateBackdrop?: boolean;
   setHotspotGenerateBackdrop?: (v: boolean) => void;
+  /** When Tabs (Vertical) is selected — Blocks vs Classic layout */
+  verticalTabSkin?: 'default' | 'blocks';
+  setVerticalTabSkin?: (v: 'default' | 'blocks') => void;
   previewingVoice: string | null;
   onPreviewVoice: (id: string) => void;
 
@@ -932,6 +935,25 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                   </div>
                 );
               })()}
+
+              {props.interactionTypes.includes('tabbed-vertical') && (
+                <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-5 space-y-3">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={props.verticalTabSkin === 'blocks'}
+                      onChange={(e) => props.setVerticalTabSkin?.(e.target.checked ? 'blocks' : 'default')}
+                      className="mt-1 w-4 h-4 rounded border-slate-600 text-indigo-500 focus:ring-indigo-500/40 bg-slate-900"
+                    />
+                    <div>
+                      <p className="text-sm font-bold text-white">Blocks layout for vertical tabs</p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Full-bleed colored stack with a dark content well. You can still switch Classic or Blocks on a single slide in Edit.
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              )}
 
               {props.interactionTypes.length > 4 && (
                 <div className="flex items-start gap-3 p-4 rounded-xl border border-amber-500/30 bg-amber-500/10">

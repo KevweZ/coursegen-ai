@@ -1,7 +1,26 @@
-import React, { useEffect, useId, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Maximize2, Trash2, X } from 'lucide-react';
+import { Crop, Maximize2, Move, Trash2, X } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { ImageCropModal } from '../FloatingImageCanvas';
+
+export type InFlowPromoteInfo = { src: string; x: number; y: number; width: number; height: number };
+
+function measurePromoteRect(el: HTMLElement): Omit<InFlowPromoteInfo, 'src'> {
+  const stage = document.querySelector('[data-float-stage]') as HTMLElement | null;
+  const fallback = { x: 40, y: 40, width: Math.max(80, el.offsetWidth), height: Math.max(80, el.offsetHeight) };
+  if (!stage) return fallback;
+  const wr = el.getBoundingClientRect();
+  const sr = stage.getBoundingClientRect();
+  const scale = sr.width / Math.max(1, stage.offsetWidth);
+  if (scale < 0.05) return fallback;
+  return {
+    x: Math.round((wr.left - sr.left) / scale),
+    y: Math.round((wr.top - sr.top) / scale),
+    width: Math.max(80, Math.round(wr.width / scale)),
+    height: Math.max(80, Math.round(wr.height / scale)),
+  };
+}
 
 interface EnlargeableImageProps {
   src: string;
@@ -13,11 +32,15 @@ interface EnlargeableImageProps {
   onLoad?: () => void;
   /** Authoring: remove this in-flow image (shown on hover). Do not pass in SCORM. */
   onRemove?: () => void;
+  /** Authoring: replace src with a cropped data URL. */
+  onCrop?: (dataUrl: string) => void;
+  /** Authoring: lift into the floating canvas so it can be dragged and resized. */
+  onPromoteToFloat?: (info: InFlowPromoteInfo) => void;
 }
 
 /**
  * Course content image. Enlarge is the corner control only — the photo itself
- * is not a button, so authoring hover actions (remove) still work.
+ * is not a button, so authoring hover actions (crop / move / remove) still work.
  */
 export const EnlargeableImage: React.FC<EnlargeableImageProps> = ({
   src,
@@ -26,9 +49,14 @@ export const EnlargeableImage: React.FC<EnlargeableImageProps> = ({
   wrapperClassName,
   onLoad,
   onRemove,
+  onCrop,
+  onPromoteToFloat,
 }) => {
   const [open, setOpen] = useState(false);
+  const [cropOpen, setCropOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
+  const authoring = !!(onRemove || onCrop || onPromoteToFloat);
 
   useEffect(() => {
     if (!open) return;
@@ -48,7 +76,7 @@ export const EnlargeableImage: React.FC<EnlargeableImageProps> = ({
 
   return (
     <>
-      <div className={cn('relative group/enlarge w-full', wrapperClassName)}>
+      <div ref={wrapRef} className={cn('relative group/enlarge w-full', wrapperClassName)}>
         <img
           src={src}
           alt={alt}
@@ -56,29 +84,64 @@ export const EnlargeableImage: React.FC<EnlargeableImageProps> = ({
           onLoad={onLoad}
           draggable={false}
         />
-        {onRemove && (
-          <button
-            type="button"
-            title="Remove image"
-            aria-label="Remove image"
-            onClick={(e) => {
-              e.stopPropagation();
-              onRemove();
-            }}
+        {authoring && (
+          <div
             className={cn(
-              'absolute top-2 right-2 z-[2] flex items-center justify-center',
-              'w-7 h-7 rounded-full bg-red-500 hover:bg-red-400 text-white shadow',
+              'absolute top-2 right-2 z-[2] flex items-center gap-1',
               'opacity-0 group-hover/enlarge:opacity-100 transition-opacity',
-              'focus:outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-white/70'
+              'focus-within:opacity-100'
             )}
           >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
+            {onCrop && (
+              <button
+                type="button"
+                title="Crop image"
+                aria-label="Crop image"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCropOpen(true);
+                }}
+                className="flex items-center justify-center w-7 h-7 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+              >
+                <Crop className="w-3.5 h-3.5" />
+              </button>
+            )}
+            {onPromoteToFloat && (
+              <button
+                type="button"
+                title="Move and resize"
+                aria-label="Move and resize"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const el = wrapRef.current;
+                  if (!el) return;
+                  onPromoteToFloat({ src, ...measurePromoteRect(el) });
+                }}
+                className="flex items-center justify-center w-7 h-7 rounded-full bg-sky-600 hover:bg-sky-500 text-white shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+              >
+                <Move className="w-3.5 h-3.5" />
+              </button>
+            )}
+            {onRemove && (
+              <button
+                type="button"
+                title="Remove image"
+                aria-label="Remove image"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRemove();
+                }}
+                className="flex items-center justify-center w-7 h-7 rounded-full bg-red-500 hover:bg-red-400 text-white shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         )}
         <button
           type="button"
           title="Enlarge"
-          aria-label="Enlarge image"
+          aria-label="Enlarge"
           onClick={() => setOpen(true)}
           className={cn(
             'absolute bottom-2 right-2 z-[1] flex items-center justify-center',
@@ -90,6 +153,17 @@ export const EnlargeableImage: React.FC<EnlargeableImageProps> = ({
           <Maximize2 className="w-3.5 h-3.5" strokeWidth={2.25} />
         </button>
       </div>
+
+      {cropOpen && onCrop && (
+        <ImageCropModal
+          imageUrl={src}
+          onClose={() => setCropOpen(false)}
+          onSave={(dataUrl) => {
+            onCrop(dataUrl);
+            setCropOpen(false);
+          }}
+        />
+      )}
 
       {open &&
         createPortal(

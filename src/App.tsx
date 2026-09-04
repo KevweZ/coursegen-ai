@@ -70,7 +70,7 @@ import {
   GamePreview, ScenarioPreview
 } from './components/interactions/ExtraPreviews';
 import { stripSlideTypePrefix } from './lib/stripSlideTypePrefix';
-import { TAB_ACCENT_HEX, TAB_INTRO_DEFAULT_HEX, TAB_TITLE_HEX, tabAccentHex } from './lib/tabAccents';
+import { TAB_ACCENT_HEX, TAB_INTRO_DEFAULT_HEX, TAB_TITLE_HEX, tabAccentHex, resolveVerticalTabSkin, stampVerticalTabSkin } from './lib/tabAccents';
 import { CAROUSEL_CARD_HEX } from './lib/colorContrast';
 import { resolveClickRevealSlide } from './lib/parseHeadingSections';
 import {
@@ -1968,6 +1968,9 @@ export default function App() {
   const [hotspotGenerateBackdrop, setHotspotGenerateBackdrop] = useState(
     !!DEFAULT_COURSE_SETTINGS.hotspotGenerateBackdrop
   );
+  const [verticalTabSkin, setVerticalTabSkin] = useState<'default' | 'blocks'>(
+    resolveVerticalTabSkin(DEFAULT_COURSE_SETTINGS.verticalTabSkin)
+  );
   /** Per-tab narration override while on a tabbed slide (cleared on slide change) */
   const [activeTabAudioUrl, setActiveTabAudioUrl] = useState<string | null>(null);
   /** Per-tab CC script paired with activeTabAudioUrl (null = use slide-level voiceOverText) */
@@ -2604,6 +2607,7 @@ export default function App() {
     setSlideCount(saved.slideCount);
     setImageMode(normalizeImageMode(saved.imageMode));
     setHotspotGenerateBackdrop(!!saved.hotspotGenerateBackdrop);
+    setVerticalTabSkin(resolveVerticalTabSkin(saved.verticalTabSkin));
   };
 
   const collectCurrentSettings = (): SavedCourseSettings => ({
@@ -2622,10 +2626,14 @@ export default function App() {
     slideCount,
     imageMode,
     hotspotGenerateBackdrop,
+    verticalTabSkin,
   });
 
   const persistCourseSettings = () => {
     saveCourseSettings(collectCurrentSettings(), user?.id);
+    if (course) {
+      setCourse(prev => prev ? stampVerticalTabSkin(prev, verticalTabSkin) : prev);
+    }
     try {
       sessionStorage.setItem('nexcourse.courseSettings.savedAt', String(Date.now()));
     } catch { /* ignore */ }
@@ -3390,6 +3398,7 @@ export default function App() {
     const includeModuleOverviewsSnapshot = settingsOverride?.includeModuleOverviewSlides ?? includeModuleOverviewSlides;
     const modeSnapshot = normalizeImageMode(settingsOverride?.imageMode ?? imageMode);
     const hotspotBackdropSnapshot = settingsOverride?.hotspotGenerateBackdrop ?? hotspotGenerateBackdrop;
+    const verticalTabSkinSnap = resolveVerticalTabSkin(settingsOverride?.verticalTabSkin ?? verticalTabSkin);
     const interactionTypesSnap = settingsOverride?.interactionTypes ?? interactionTypes;
 
     const rawObjectives = finalCourse.learningObjectives?.length
@@ -3400,7 +3409,7 @@ export default function App() {
       objectiveFormatSnap
     );
     setLearningObjectives(formattedObjectives);
-    const stamped = {
+    const stamped = stampVerticalTabSkin({
       ...finalCourse,
       examConfig: examConfigSnap,
       navigationMode: navigationModeSnap,
@@ -3411,7 +3420,7 @@ export default function App() {
         theme: finalCourse.settings?.theme || 'light',
       },
       learningObjectives: formattedObjectives,
-    };
+    }, verticalTabSkinSnap);
     setCourse(stamped);
     setOriginalCourse(stamped);
     setSyntheticAudioMap({});
@@ -4252,6 +4261,39 @@ export default function App() {
     handleUpdateSlideMedia(slideId, { floatingMedia: imgs });
   };
 
+  const promoteInFlowToFloat = (
+    info: { src: string; x: number; y: number; width: number; height: number },
+    tabId: string | null,
+    clear: (slide: any) => any
+  ) => {
+    if (!currentSlide?.id) return;
+    const slideId = currentSlide.id;
+    const newImg: FloatingImage = {
+      id: `fi-${Date.now()}`,
+      url: info.src,
+      x: info.x,
+      y: info.y,
+      width: info.width,
+      height: info.height,
+      tabId,
+    };
+    pushUndo();
+    setFloatingImagesMap(prev => ({ ...prev, [slideId]: [...(prev[slideId] || []), newImg] }));
+    setCourse(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        modules: (prev.modules || []).map((mod: any) => ({
+          ...mod,
+          slides: (mod.slides || []).map((s: any) => {
+            if (s.id !== slideId) return s;
+            return clear({ ...s, floatingMedia: [...(s.floatingMedia || []), newImg] });
+          }),
+        })),
+      };
+    });
+  };
+
   const handleUpdateSlide = (updated: Slide) => {
     if (!course) return;
     const newCourse = { ...course };
@@ -4448,6 +4490,8 @@ export default function App() {
         setImageMode={setImageMode}
         hotspotGenerateBackdrop={hotspotGenerateBackdrop}
         setHotspotGenerateBackdrop={setHotspotGenerateBackdrop}
+        verticalTabSkin={verticalTabSkin}
+        setVerticalTabSkin={setVerticalTabSkin}
         previewingVoice={previewingVoice}
         onPreviewVoice={previewVoice}
         outlineDraft={outlineDraft}
@@ -6350,6 +6394,13 @@ export default function App() {
                                              pushUndo();
                                              handleUpdateSlideMedia(currentSlide.id, { imageUrl: undefined });
                                            } : undefined}
+                                           onCrop={!isScormPlayer ? (url) => {
+                                             pushUndo();
+                                             handleUpdateSlideMedia(currentSlide.id, { imageUrl: url });
+                                           } : undefined}
+                                           onPromoteToFloat={!isScormPlayer ? (info) => {
+                                             promoteInFlowToFloat(info, null, (s) => ({ ...s, imageUrl: undefined }));
+                                           } : undefined}
                                          />
                                        </div>
                                      </div>
@@ -6842,6 +6893,45 @@ export default function App() {
                                            },
                                          });
                                        } : undefined}
+                                       onCropIntroImage={!isScormPlayer ? (url) => {
+                                         pushUndo();
+                                         handleUpdateSlideMedia(currentSlide.id, {
+                                           data: { ...currentSlide.data, introImageUrl: url },
+                                         });
+                                       } : undefined}
+                                       onCropTabImage={!isScormPlayer ? (tabId, url) => {
+                                         pushUndo();
+                                         const key = currentSlide.data?.tabs ? 'tabs' : 'items';
+                                         const list = [...(currentSlide.data?.[key] || [])];
+                                         handleUpdateSlideMedia(currentSlide.id, {
+                                           data: {
+                                             ...currentSlide.data,
+                                             [key]: list.map((t: any) =>
+                                               t.id === tabId ? { ...t, imageUrl: url } : t
+                                             ),
+                                           },
+                                         });
+                                       } : undefined}
+                                       onPromoteIntroImage={!isScormPlayer ? (info) => {
+                                         promoteInFlowToFloat(info, '__intro__', (s) => ({
+                                           ...s,
+                                           data: { ...s.data, introImageUrl: undefined },
+                                         }));
+                                       } : undefined}
+                                       onPromoteTabImage={!isScormPlayer ? (tabId, info) => {
+                                         promoteInFlowToFloat(info, tabId, (s) => {
+                                           const key = s.data?.tabs ? 'tabs' : 'items';
+                                           return {
+                                             ...s,
+                                             data: {
+                                               ...s.data,
+                                               [key]: (s.data?.[key] || []).map((t: any) =>
+                                                 t.id === tabId ? { ...t, imageUrl: undefined } : t
+                                               ),
+                                             },
+                                           };
+                                         });
+                                       } : undefined}
                                      />
                                    </div>
                                  </div>
@@ -6887,6 +6977,26 @@ export default function App() {
                                          handleUpdateSlideMedia(currentSlide.id, {
                                            data: { ...currentSlide.data, items },
                                          });
+                                       } : undefined}
+                                       onCropItemImage={!isScormPlayer ? (itemId, url) => {
+                                         pushUndo();
+                                         const items = (cr.items || []).map((it: any) =>
+                                           it.id === itemId ? { ...it, imageUrl: url } : it
+                                         );
+                                         handleUpdateSlideMedia(currentSlide.id, {
+                                           data: { ...currentSlide.data, items },
+                                         });
+                                       } : undefined}
+                                       onPromoteItemImage={!isScormPlayer ? (itemId, info) => {
+                                         promoteInFlowToFloat(info, null, (s) => ({
+                                           ...s,
+                                           data: {
+                                             ...s.data,
+                                             items: (s.data?.items || []).map((it: any) =>
+                                               it.id === itemId ? { ...it, imageUrl: undefined } : it
+                                             ),
+                                           },
+                                         }));
                                        } : undefined}
                                      />
                                    </div>

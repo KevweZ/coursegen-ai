@@ -27,7 +27,7 @@ interface CropModalProps {
   onSave: (croppedUrl: string) => void;
 }
 
-function CropModal({ imageUrl, onClose, onSave }: CropModalProps) {
+export function ImageCropModal({ imageUrl, onClose, onSave }: CropModalProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [cropRect, setCropRect] = useState({ x: 0.05, y: 0.05, w: 0.9, h: 0.9 }); // normalized 0-1
   const [dragging, setDragging] = useState<{ handle: string; startX: number; startY: number; startCrop: typeof cropRect } | null>(null);
@@ -283,6 +283,7 @@ export function FloatingImageCanvas({
 
   const visibleImages = images.filter(img => {
     if (!img.tabId) return true;
+    if (img.tabId === '__intro__') return !activeTabId;
     if (!activeTabId) return false; // tab-scoped hidden on intro / no active tab
     return img.tabId === activeTabId;
   });
@@ -401,7 +402,7 @@ export function FloatingImageCanvas({
 
   return (
     <>
-      <div className="absolute inset-0 z-20 pointer-events-none" ref={containerRef}>
+      <div className="absolute inset-0 z-20 pointer-events-none" ref={containerRef} data-float-stage>
         {visibleImages.map(img => {
           const isSelected = isAuthoring && selectedId === img.id;
           return (
@@ -480,7 +481,7 @@ export function FloatingImageCanvas({
 
       {cropTarget && (
         <div data-floating-crop-modal>
-          <CropModal
+          <ImageCropModal
             imageUrl={cropTarget.url}
             onClose={() => setCropTarget(null)}
             onSave={croppedUrl => {
