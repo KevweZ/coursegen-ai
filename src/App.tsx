@@ -1898,18 +1898,44 @@ export default function App() {
   const [extractedFileText, setExtractedFileText] = useState<string>('');
   const [voiceOverEnabled, setVoiceOverEnabled] = useState(DEFAULT_COURSE_SETTINGS.voiceOverEnabled);
 
-  // Phones and desktop 16:9/4:3: scale the design frame into the stage.
-  // Measure an empty absolute layer (not the player) — never toggle flex-fill
-  // vs transform. Desktop “Mobile” bezel uses its own chrome.
+  // Phones: JS scale-to-fit the 16:9/4:3 frame (letterbox).
+  // Desktop: CSS container-query letterbox — in-flow, no transform, cannot
+  // collapse or bounce. Never toggle flex-fill vs JS scale on desktop.
   const measureScaleToFit =
     step === 'preview' &&
     playerConfig?.playerResolution !== 'full' &&
-    (isPhoneViewport || viewMode === 'desktop');
+    isPhoneViewport;
   const scaler = useScaleToFit(
     playerConfig?.playerResolution ?? '16:9',
     measureScaleToFit
   );
   const useScaleTransform = measureScaleToFit;
+  const useCssLetterbox =
+    step === 'preview' &&
+    !isPhoneViewport &&
+    viewMode === 'desktop' &&
+    playerConfig?.playerResolution !== 'full';
+  const cssLetterboxStyle: React.CSSProperties | undefined = useCssLetterbox
+    ? playerConfig?.playerResolution === '4:3'
+      ? {
+          width: 'min(100cqw, calc(100cqh * 4 / 3))',
+          height: 'min(100cqh, calc(100cqw * 3 / 4))',
+          maxWidth: '100%',
+          maxHeight: '100%',
+          minWidth: 320,
+          minHeight: 240,
+          transition: 'none',
+        }
+      : {
+          width: 'min(100cqw, calc(100cqh * 16 / 9))',
+          height: 'min(100cqh, calc(100cqw * 9 / 16))',
+          maxWidth: '100%',
+          maxHeight: '100%',
+          minWidth: 320,
+          minHeight: 180,
+          transition: 'none',
+        }
+    : undefined;
   /** Phones dock PlayerBar outside the CSS-scaled frame. Desktop keeps it inside. */
   const dockPlayerBarOutside = isPhoneViewport;
   const themeStageBg =
@@ -5968,7 +5994,7 @@ export default function App() {
 
 
               {/* ── Body: Sidebar + Main Player Area ── */}
-              <div className={cn("flex flex-row flex-1 overflow-hidden", playerConfig.playerResolution === 'full' ? 'overflow-x-hidden' : 'min-h-0')}>
+              <div className={cn("flex flex-row flex-1 overflow-hidden min-h-0 h-full", playerConfig.playerResolution === 'full' ? 'overflow-x-hidden' : undefined)}>
                 {/* Course Navigation — fixed left sidebar on desktop.
                     Phone / mobile preview uses letterbox gutters (rails or Menu). */}
                 {showDesktopSidebar && (
@@ -6013,22 +6039,24 @@ export default function App() {
 
                 {/* Main slide area — swipe left/right on mobile to navigate slides */}
                 <div
-                  className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden"
+                  className="flex flex-col flex-1 min-w-0 min-h-0 h-full overflow-hidden"
                   onTouchStart={handlePlayerTouchStart}
                   onTouchEnd={handlePlayerTouchEnd}
                 >
-                  {/* Background canvas — scaler measures the center stage (gutters excluded).
-                      Phone letterbox uses slate; desktop scale-up uses the theme stage color. */}
+                  {/* Background canvas. Desktop 16:9/4:3 uses CSS letterbox (in-flow).
+                      Phones use JS scale-to-fit. */}
                   <div
                     className={cn(
-                      "relative flex flex-1 overflow-hidden min-h-0",
+                      "relative flex flex-1 overflow-hidden min-h-0 h-full",
                       phoneTocPlacement
                         ? 'flex-row bg-slate-800'
                         : cn(
                             'flex-col',
                             useScaleTransform
                               ? cn('items-center justify-center', isPhoneViewport ? 'bg-slate-800' : themeStageBg)
-                              : 'bg-white',
+                              : useCssLetterbox
+                                ? cn(themeStageBg, '[container-type:size] items-center justify-center')
+                                : 'bg-white',
                             !useScaleTransform && !isPhoneViewport && viewMode === 'mobile' ? 'items-center justify-center bg-slate-950 gap-2' : undefined,
                             isPhoneViewport && playerConfig.playerResolution === 'full' ? 'bg-slate-900' : undefined
                           )
@@ -6085,15 +6113,16 @@ export default function App() {
                   )}
                   <div
                     className={cn(
-                      "relative flex flex-col flex-1 overflow-hidden min-h-0 min-w-0",
+                      "relative flex flex-col flex-1 overflow-hidden min-h-0 min-w-0 h-full w-full",
+                      useCssLetterbox ? '[container-type:size] items-center justify-center' : undefined,
                       !useScaleTransform && (phoneTocPlacement || (!isPhoneViewport && viewMode === 'mobile'))
                         ? 'items-center justify-center'
                         : undefined,
                       !useScaleTransform && !isPhoneViewport && viewMode === 'mobile' && !phoneTocPlacement ? 'bg-slate-950 gap-2' : undefined,
-                      !phoneTocPlacement && useScaleTransform
+                      !phoneTocPlacement && (useScaleTransform || useCssLetterbox)
                         ? (isPhoneViewport ? 'bg-slate-800' : themeStageBg)
                         : undefined,
-                      !phoneTocPlacement && !useScaleTransform ? 'bg-white' : undefined,
+                      !phoneTocPlacement && !useScaleTransform && !useCssLetterbox ? 'bg-white' : undefined,
                       isPhoneViewport && playerConfig.playerResolution === 'full' && !phoneTocPlacement ? 'bg-slate-900' : undefined
                     )}
                   >
@@ -6110,23 +6139,24 @@ export default function App() {
                     </p>
                   )}
 
-                  {/* Slide frame — 16:9 / 4:3 scale-to-fit. The player is out of flow so
-                      the stage size cannot follow the scaled box (that shrinks the canvas).
-                      No CSS size/transform transition. 'full' and desktop Mobile bezel skip this. */}
+                  {/* Slide frame. Desktop: CSS 16:9/4:3 box sized from the stage (in-flow).
+                      Phones: JS scale, out of flow inside a h-full stage. No size transitions. */}
                   <div className={useScaleTransform ? 'absolute inset-0 z-10 flex items-center justify-center overflow-hidden' : 'contents'}>
                   <div
-                    style={useScaleTransform ? scaler.outerStyle : undefined}
+                    style={useScaleTransform ? scaler.outerStyle : cssLetterboxStyle}
                     className={cn(
                       useScaleTransform
                         ? 'relative z-10'
                         : cn(
                             `theme-${theme}`,
                             "flex flex-col relative z-10",
-                            isPhoneViewport
-                              ? 'flex-1 overflow-hidden w-full min-h-0'
-                              : viewMode === 'desktop'
+                            useCssLetterbox
+                              ? 'overflow-hidden max-w-full max-h-full'
+                              : isPhoneViewport
                                 ? 'flex-1 overflow-hidden w-full min-h-0'
-                                : 'shadow-2xl overflow-hidden w-[min(96vw,calc((100vh-7rem)*16/9))] h-[min(calc(100vh-7rem),calc(96vw*9/16))] max-w-[1280px] max-h-[720px] my-2 rounded-[2rem] border-[10px] border-gray-800',
+                                : viewMode === 'desktop'
+                                  ? 'flex-1 overflow-hidden w-full min-h-0 h-full'
+                                  : 'shadow-2xl overflow-hidden w-[min(96vw,calc((100vh-7rem)*16/9))] h-[min(calc(100vh-7rem),calc(96vw*9/16))] max-w-[1280px] max-h-[720px] my-2 rounded-[2rem] border-[10px] border-gray-800',
                             theme === 'light' ? 'bg-white' : theme === 'unified' ? 'bg-indigo-950' : 'bg-slate-900'
                           )
                     )}
