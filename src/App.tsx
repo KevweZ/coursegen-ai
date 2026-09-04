@@ -1898,44 +1898,18 @@ export default function App() {
   const [extractedFileText, setExtractedFileText] = useState<string>('');
   const [voiceOverEnabled, setVoiceOverEnabled] = useState(DEFAULT_COURSE_SETTINGS.voiceOverEnabled);
 
-  // Phones: JS scale-to-fit the 16:9/4:3 frame (letterbox).
-  // Desktop: CSS container-query letterbox — in-flow, no transform, cannot
-  // collapse or bounce. Never toggle flex-fill vs JS scale on desktop.
+  // Phones and desktop 16:9/4:3: JS scale-to-fit (HDMI scale-up included).
+  // Measure an empty overlay; keep a full-size in-flow host so the stage cannot
+  // collapse. Never toggle flex-fill vs transform. Desktop Mobile bezel is separate.
   const measureScaleToFit =
     step === 'preview' &&
     playerConfig?.playerResolution !== 'full' &&
-    isPhoneViewport;
+    (isPhoneViewport || viewMode === 'desktop');
   const scaler = useScaleToFit(
     playerConfig?.playerResolution ?? '16:9',
     measureScaleToFit
   );
   const useScaleTransform = measureScaleToFit;
-  const useCssLetterbox =
-    step === 'preview' &&
-    !isPhoneViewport &&
-    viewMode === 'desktop' &&
-    playerConfig?.playerResolution !== 'full';
-  const cssLetterboxStyle: React.CSSProperties | undefined = useCssLetterbox
-    ? playerConfig?.playerResolution === '4:3'
-      ? {
-          width: 'min(100cqw, calc(100cqh * 4 / 3))',
-          height: 'min(100cqh, calc(100cqw * 3 / 4))',
-          maxWidth: '100%',
-          maxHeight: '100%',
-          minWidth: 320,
-          minHeight: 240,
-          transition: 'none',
-        }
-      : {
-          width: 'min(100cqw, calc(100cqh * 16 / 9))',
-          height: 'min(100cqh, calc(100cqw * 9 / 16))',
-          maxWidth: '100%',
-          maxHeight: '100%',
-          minWidth: 320,
-          minHeight: 180,
-          transition: 'none',
-        }
-    : undefined;
   /** Phones dock PlayerBar outside the CSS-scaled frame. Desktop keeps it inside. */
   const dockPlayerBarOutside = isPhoneViewport;
   const themeStageBg =
@@ -6043,8 +6017,8 @@ export default function App() {
                   onTouchStart={handlePlayerTouchStart}
                   onTouchEnd={handlePlayerTouchEnd}
                 >
-                  {/* Background canvas. Desktop 16:9/4:3 uses CSS letterbox (in-flow).
-                      Phones use JS scale-to-fit. */}
+                  {/* Background canvas — scale-to-fit measures an empty overlay.
+                      In-flow full-size host keeps the stage from collapsing. */}
                   <div
                     className={cn(
                       "relative flex flex-1 overflow-hidden min-h-0 h-full",
@@ -6053,10 +6027,8 @@ export default function App() {
                         : cn(
                             'flex-col',
                             useScaleTransform
-                              ? cn('items-center justify-center', isPhoneViewport ? 'bg-slate-800' : themeStageBg)
-                              : useCssLetterbox
-                                ? cn(themeStageBg, '[container-type:size] items-center justify-center')
-                                : 'bg-white',
+                              ? (isPhoneViewport ? 'bg-slate-800' : themeStageBg)
+                              : 'bg-white',
                             !useScaleTransform && !isPhoneViewport && viewMode === 'mobile' ? 'items-center justify-center bg-slate-950 gap-2' : undefined,
                             isPhoneViewport && playerConfig.playerResolution === 'full' ? 'bg-slate-900' : undefined
                           )
@@ -6114,15 +6086,14 @@ export default function App() {
                   <div
                     className={cn(
                       "relative flex flex-col flex-1 overflow-hidden min-h-0 min-w-0 h-full w-full",
-                      useCssLetterbox ? '[container-type:size] items-center justify-center' : undefined,
                       !useScaleTransform && (phoneTocPlacement || (!isPhoneViewport && viewMode === 'mobile'))
                         ? 'items-center justify-center'
                         : undefined,
                       !useScaleTransform && !isPhoneViewport && viewMode === 'mobile' && !phoneTocPlacement ? 'bg-slate-950 gap-2' : undefined,
-                      !phoneTocPlacement && (useScaleTransform || useCssLetterbox)
+                      !phoneTocPlacement && useScaleTransform
                         ? (isPhoneViewport ? 'bg-slate-800' : themeStageBg)
                         : undefined,
-                      !phoneTocPlacement && !useScaleTransform && !useCssLetterbox ? 'bg-white' : undefined,
+                      !phoneTocPlacement && !useScaleTransform ? 'bg-white' : undefined,
                       isPhoneViewport && playerConfig.playerResolution === 'full' && !phoneTocPlacement ? 'bg-slate-900' : undefined
                     )}
                   >
@@ -6139,24 +6110,22 @@ export default function App() {
                     </p>
                   )}
 
-                  {/* Slide frame. Desktop: CSS 16:9/4:3 box sized from the stage (in-flow).
-                      Phones: JS scale, out of flow inside a h-full stage. No size transitions. */}
-                  <div className={useScaleTransform ? 'absolute inset-0 z-10 flex items-center justify-center overflow-hidden' : 'contents'}>
+                  {/* Slide frame: 16:9/4:3 scaled into an in-flow full-size host (HDMI
+                      scale-up). Absolute centering collapsed the stage to a blank screen. */}
+                  <div className={useScaleTransform ? 'relative z-10 flex-1 min-h-0 w-full h-full flex items-center justify-center overflow-hidden' : 'contents'}>
                   <div
-                    style={useScaleTransform ? scaler.outerStyle : cssLetterboxStyle}
+                    style={useScaleTransform ? scaler.outerStyle : undefined}
                     className={cn(
                       useScaleTransform
                         ? 'relative z-10'
                         : cn(
                             `theme-${theme}`,
                             "flex flex-col relative z-10",
-                            useCssLetterbox
-                              ? 'overflow-hidden max-w-full max-h-full'
-                              : isPhoneViewport
-                                ? 'flex-1 overflow-hidden w-full min-h-0'
-                                : viewMode === 'desktop'
-                                  ? 'flex-1 overflow-hidden w-full min-h-0 h-full'
-                                  : 'shadow-2xl overflow-hidden w-[min(96vw,calc((100vh-7rem)*16/9))] h-[min(calc(100vh-7rem),calc(96vw*9/16))] max-w-[1280px] max-h-[720px] my-2 rounded-[2rem] border-[10px] border-gray-800',
+                            isPhoneViewport
+                              ? 'flex-1 overflow-hidden w-full min-h-0'
+                              : viewMode === 'desktop'
+                                ? 'flex-1 overflow-hidden w-full min-h-0 h-full'
+                                : 'shadow-2xl overflow-hidden w-[min(96vw,calc((100vh-7rem)*16/9))] h-[min(calc(100vh-7rem),calc(96vw*9/16))] max-w-[1280px] max-h-[720px] my-2 rounded-[2rem] border-[10px] border-gray-800',
                             theme === 'light' ? 'bg-white' : theme === 'unified' ? 'bg-indigo-950' : 'bg-slate-900'
                           )
                     )}

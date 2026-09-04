@@ -13,8 +13,9 @@ import { useRef, useState, useEffect, useLayoutEffect, useCallback, type CSSProp
  *
  * Layout:
  * - Measure host: empty, position absolute, inset 0 (out of flow).
- * - Outer wrapper: visual size (design × scale) so overflow clips to what
- *   the user sees. Also out of flow (centered in an absolute inset-0 host).
+ * - Centering host: in-flow, width/height 100% of the stage (so the stage
+ *   cannot collapse). Centers the scaled frame.
+ * - Outer wrapper: visual size (design × scale).
  * - Inner frame: design size + transform:scale from top-left. No CSS
  *   transition on width/height/transform.
  */
