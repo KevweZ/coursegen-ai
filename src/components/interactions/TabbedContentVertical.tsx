@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { markdownToHtml, markdownToInlineHtml } from '../../lib/markdownInline';
 import { formatTabIntroOst, formatTabOstBody } from '../../lib/formatTabIntroOst';
-import { tabAccentHex, TAB_INTRO_DEFAULT_HEX } from '../../lib/tabAccents';
+import { tabAccentHex, TAB_INTRO_DEFAULT_HEX, BLOCKS_WELL_DEFAULT, resolveHexColor } from '../../lib/tabAccents';
 import { contrastTextOn } from '../../lib/colorContrast';
 import { Check, ChevronRight } from 'lucide-react';
 import { EnlargeableImage, type InFlowPromoteInfo } from '../player/EnlargeableImage';
@@ -55,12 +55,12 @@ interface Props {
   onCropTabImage?: (tabId: string, dataUrl: string) => void;
   onPromoteIntroImage?: (info: InFlowPromoteInfo) => void;
   onPromoteTabImage?: (tabId: string, info: InFlowPromoteInfo) => void;
+  /** Blocks skin content-well fill. Defaults to navy. */
+  wellColor?: string;
 }
 
 /** Match horizontal tabs: fill stage height; leave a little room so CC is not cramped. */
 const PANEL_H = 520;
-const BLOCKS_WELL = '#0b1220';
-const BLOCKS_INK = '#f8fafc';
 
 function cn(...classes: (string | false | undefined | null)[]): string {
   return classes.filter(Boolean).join(' ');
@@ -91,6 +91,7 @@ export default function TabbedContentVertical({
   onCropTabImage,
   onPromoteIntroImage,
   onPromoteTabImage,
+  wellColor,
 }: Props) {
   const normalized = useMemo(
     () => (tabs || []).map((t, i) => ({ ...t, id: (t?.id != null && String(t.id).trim()) ? String(t.id) : `tab-${i}` })),
@@ -185,6 +186,7 @@ export default function TabbedContentVertical({
         onCropTabImage={onCropTabImage}
         onPromoteIntroImage={onPromoteIntroImage}
         onPromoteTabImage={onPromoteTabImage}
+        wellColor={wellColor}
       />
     );
   }
@@ -360,14 +362,15 @@ interface BlocksSkinProps {
   onCropTabImage?: (tabId: string, dataUrl: string) => void;
   onPromoteIntroImage?: (info: InFlowPromoteInfo) => void;
   onPromoteTabImage?: (tabId: string, info: InFlowPromoteInfo) => void;
+  wellColor?: string;
 }
 
-function blockFillStyle(hex: string, isActive: boolean, ink: string): React.CSSProperties {
+function blockFillStyle(hex: string, isActive: boolean, ink: string, well: string, wellInk: string): React.CSSProperties {
   if (isActive) {
     return {
-      background: BLOCKS_WELL,
-      color: '#ffffff',
-      ['--tab-ink' as string]: '#ffffff',
+      background: well,
+      color: wellInk,
+      ['--tab-ink' as string]: wellInk,
       boxShadow: `inset 4px 0 0 0 ${hex}`,
     };
   }
@@ -403,7 +406,10 @@ function VerticalTabsBlocksSkin({
   onCropTabImage,
   onPromoteIntroImage,
   onPromoteTabImage,
+  wellColor,
 }: BlocksSkinProps) {
+  const well = resolveHexColor(wellColor, BLOCKS_WELL_DEFAULT);
+  const wellInk = contrastTextOn(well);
   const imageUrl = inIntro ? introImageUrl : activeTab?.imageUrl;
   const bodyHtml = inIntro
     ? markdownToHtml(introOst)
@@ -420,7 +426,7 @@ function VerticalTabsBlocksSkin({
     : (onPromoteTabImage && activeTab?.id ? (info: InFlowPromoteInfo) => onPromoteTabImage(activeTab.id, info) : undefined);
 
   return (
-    <div className="tab-skin-blocks w-full flex flex-col gap-2 select-none min-h-0 flex-1" style={{ color: BLOCKS_INK }}>
+    <div className="tab-skin-blocks w-full flex flex-col gap-2 select-none min-h-0 flex-1" style={{ color: wellInk }}>
       {title && (
         <p className="text-sm font-bold text-center uppercase tracking-widest mb-1 shrink-0" style={{ color: '#64748b' }}>{title}</p>
       )}
@@ -434,10 +440,10 @@ function VerticalTabsBlocksSkin({
             type="button"
             onClick={selectIntro}
             className="relative flex items-center justify-center w-full flex-1 min-h-[64px] px-3 py-2 text-center font-extrabold text-[11px] sm:text-xs leading-tight uppercase tracking-wide border-0"
-            style={blockFillStyle(introHex, inIntro, contrastTextOn(introHex))}
+            style={blockFillStyle(introHex, inIntro, contrastTextOn(introHex), well, wellInk)}
             title="Return to opening introduction"
           >
-            <span className="block w-full" style={{ color: inIntro ? '#ffffff' : contrastTextOn(introHex) }}>
+            <span className="block w-full" style={{ color: inIntro ? wellInk : contrastTextOn(introHex) }}>
               Introduction
             </span>
           </button>
@@ -445,7 +451,7 @@ function VerticalTabsBlocksSkin({
             const isActive = i === activeIndex;
             const hex = tabAccentHex(tab, i);
             const idleInk = (tab.labelColor && String(tab.labelColor).trim()) || contrastTextOn(hex);
-            const titleColor = isActive ? '#ffffff' : idleInk;
+            const titleColor = isActive ? wellInk : idleInk;
             const isDropTarget = highlightTabId === tab.id;
             const seen = visited.has(tab.id);
             return (
@@ -459,7 +465,7 @@ function VerticalTabsBlocksSkin({
                   'relative flex items-center justify-center w-full flex-1 min-h-[64px] px-3 py-2 text-center font-extrabold text-[11px] sm:text-xs leading-tight uppercase tracking-wide border-0',
                   isDropTarget && 'ring-2 ring-indigo-400 ring-inset'
                 )}
-                style={blockFillStyle(hex, isActive, titleColor)}
+                style={blockFillStyle(hex, isActive, idleInk, well, wellInk)}
               >
                 {seen && (
                   <Check
@@ -483,34 +489,34 @@ function VerticalTabsBlocksSkin({
         <div
           data-tab-drop-zone={dropZoneId || undefined}
           className={cn('flex-1 min-w-0 relative overflow-hidden', panelHighlighted && 'ring-4 ring-indigo-400/80 ring-inset')}
-          style={{ height: PANEL_H, minHeight: PANEL_H, background: BLOCKS_WELL, color: BLOCKS_INK }}
+          style={{ height: PANEL_H, minHeight: PANEL_H, background: well, color: wellInk }}
         >
           {panelHighlighted && (
             <div className="absolute inset-x-0 top-0 z-10 px-3 py-1.5 text-center text-[11px] font-bold pointer-events-none" style={{ color: '#fff', background: 'rgba(79,70,229,0.92)' }}>
               Drop here to attach image to this tab
             </div>
           )}
-          <div key={panelKey} className="flex h-full min-h-0 w-full" style={{ color: BLOCKS_INK }}>
+          <div key={panelKey} className="flex h-full min-h-0 w-full items-start" style={{ color: wellInk }}>
             <div
               ref={scrollRef}
               className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden custom-scrollbar"
               style={{ overflowAnchor: 'none' }}
             >
-              <div className="box-border w-full p-6 sm:p-7 text-left" style={{ color: BLOCKS_INK }}>
+              <div className="box-border w-full p-6 sm:p-7 text-left" style={{ color: wellInk }}>
                 {inIntro ? (
-                  <h3 className="font-extrabold text-lg uppercase tracking-wide mb-4" style={{ color: '#ffffff' }}>
+                  <h3 className="font-extrabold text-lg uppercase tracking-wide mb-4" style={{ color: wellInk }}>
                     Introduction
                   </h3>
                 ) : (
                   <h3
                     className="font-extrabold text-lg uppercase tracking-wide mb-4"
-                    style={{ color: '#ffffff' }}
+                    style={{ color: wellInk }}
                     dangerouslySetInnerHTML={{ __html: headingHtml || '' }}
                   />
                 )}
                 <div
                   className="text-sm leading-relaxed tab-ost-body w-full"
-                  style={{ color: BLOCKS_INK }}
+                  style={{ color: wellInk }}
                   dangerouslySetInnerHTML={{ __html: bodyHtml }}
                 />
                 {inIntro && (
@@ -521,11 +527,11 @@ function VerticalTabsBlocksSkin({
               </div>
             </div>
             {imageUrl && (
-              <div className="relative w-[42%] max-w-[360px] shrink-0 h-full min-h-0" style={{ background: '#000' }}>
+              <div className="relative shrink-0 self-start w-[38%] max-w-[300px] pt-6 sm:pt-7 pr-6 pb-6">
                 <EnlargeableImage
                   src={imageUrl}
-                  wrapperClassName="absolute inset-0 h-full w-full"
-                  className="w-full h-full object-contain object-center"
+                  wrapperClassName="w-full"
+                  className="w-full h-auto max-h-[22rem] object-contain object-top bg-transparent"
                   onLoad={resetScrollTop}
                   onRemove={onRemoveImage}
                   onCrop={onCropImage}

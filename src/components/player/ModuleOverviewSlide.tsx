@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, CheckCircle2, BookOpen } from 'lucide-react';
 import type { TerminalObjectiveGroup } from '../../types/course';
+import { MODULE_ACCENT_HEX } from '../../lib/tabAccents';
 
 type Theme = 'light' | 'dark' | 'unified';
 
@@ -18,8 +19,7 @@ function normalize(obj: string | TerminalObjectiveGroup): TerminalObjectiveGroup
   return { terminalObjective: obj.terminalObjective, enablingObjectives: obj.enablingObjectives || [] };
 }
 
-// Distinct accent per module number (cycles)
-export const MODULE_COLORS = ['#4f46e5', '#0891b2', '#16a34a', '#d97706', '#9333ea', '#e11d48', '#0d9488', '#b45309'];
+export const MODULE_COLORS = MODULE_ACCENT_HEX;
 
 // A single, full-width white (or theme-appropriate) canvas — the module's
 // accent color now lives only in small, deliberate touches (icon chip,

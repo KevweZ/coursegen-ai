@@ -7,61 +7,45 @@ import { contrastTextOn, CAROUSEL_CARD_HEX } from '../../lib/colorContrast';
 // FIX: removed AnimatePresence mode="wait" (caused modal freeze on close)
 //      replaced layoutId with simple CSS transition
 // ─────────────────────────────────────────────
-const H_TABS = [
-  { id: 'h1', label: 'Topic 1', color: '#6366f1', content: 'Overview of the first topic. This content updates when you click a tab at the bottom.' },
-  { id: 'h2', label: 'Topic 2', color: '#ec4899', content: 'Overview of the second topic. Each tab reveals its own dedicated content in this panel.' },
-  { id: 'h3', label: 'Topic 3', color: '#f59e0b', content: 'Overview of the third topic. Click the tabs below to switch between sections.' },
+const H_STEPS = [
+  { id: 'h1', label: 'Identify the hazard', content: 'Name the condition before you act. This step sets the rest of the sequence.' },
+  { id: 'h2', label: 'Isolate the source', content: 'Shut off energy or access so the next actions stay safe and repeatable.' },
+  { id: 'h3', label: 'Confirm the outcome', content: 'Verify the result, then move to the next numbered step on the rail.' },
 ];
 
 export function TabbedHorizontalPreview() {
   const [activeIndex, setActiveIndex] = useState(0);
-  const tab = H_TABS[activeIndex];
+  const step = H_STEPS[activeIndex];
+  const rail = '#0d9488';
 
   return (
-    <div className="w-full max-w-lg mx-auto flex flex-col gap-0 select-none">
-      {/* Content panel — plain div, no AnimatePresence to avoid freeze */}
-      <div
-        className="relative overflow-hidden rounded-t-2xl bg-slate-800/60 border border-b-0 border-slate-700"
-        style={{ minHeight: 190 }}
-      >
-        {H_TABS.map((t, i) => (
-          <div
-            key={t.id}
-            className="absolute inset-0 p-5 transition-all duration-250"
-            style={{
-              opacity: i === activeIndex ? 1 : 0,
-              transform: i === activeIndex ? 'translateY(0)' : 'translateY(12px)',
-              pointerEvents: i === activeIndex ? 'auto' : 'none',
-            }}
-          >
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-1 h-7 rounded-full shrink-0 transition-colors duration-200" style={{ background: t.color }} />
-              <h3 className="font-extrabold text-base transition-colors duration-200" style={{ color: t.color }}>{t.label}</h3>
-            </div>
-            <p className="text-slate-200 text-sm leading-relaxed">{t.content}</p>
-          </div>
-        ))}
+    <div className="w-full max-w-lg mx-auto flex flex-col overflow-hidden select-none bg-white">
+      <div className="p-5 min-h-[150px]">
+        <p className="text-xs font-bold uppercase tracking-[0.18em] mb-1" style={{ color: rail }}>
+          STEP {String(activeIndex + 1).padStart(2, '0')}
+        </p>
+        <h3 className="font-extrabold text-base text-slate-900 mb-2">{step.label}</h3>
+        <p className="text-slate-600 text-sm leading-relaxed">{step.content}</p>
       </div>
-
-      {/* Tab bar */}
-      <div className="flex border border-t-0 border-slate-700 rounded-b-2xl overflow-hidden bg-slate-900/80">
-        {H_TABS.map((t, i) => {
+      <div className="relative flex items-center justify-center gap-3 py-3" style={{ background: rail }}>
+        <div className="absolute top-0 left-0 right-0 h-[3px] bg-orange-400" />
+        {H_STEPS.map((t, i) => {
           const isActive = i === activeIndex;
           return (
             <button
               key={t.id}
+              type="button"
               onClick={() => setActiveIndex(i)}
-              className={`flex-1 relative px-3 py-3 text-xs font-bold transition-all text-center border-r border-slate-700/60 last:border-r-0 ${
-                isActive ? 'text-white' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
-              }`}
-              style={isActive ? { background: `${t.color}22` } : {}}
+              className="relative z-[1] w-8 h-8 rounded-full text-[11px] font-black"
+              style={
+                isActive
+                  ? { background: '#fff', color: rail }
+                  : i < activeIndex
+                  ? { background: 'rgba(15,23,42,0.45)', color: '#fff' }
+                  : { background: 'rgba(255,255,255,0.28)', color: '#fff' }
+              }
             >
-              {/* Indicator: simple CSS transition, no layoutId */}
-              <div
-                className="absolute top-0 left-0 right-0 h-0.5 transition-opacity duration-200"
-                style={{ background: t.color, opacity: isActive ? 1 : 0 }}
-              />
-              <span className="relative z-10">{t.label}</span>
+              {i + 1}
             </button>
           );
         })}

@@ -13,6 +13,12 @@ import type { CourseOutlineDraft } from '../../services/aiService';
 import type { ExamConfig, NavigationMode, TerminalObjectiveGroup } from '../../types/course';
 import { imageModeFlags, imageModeFromFlags, type CourseImageMode } from '../../services/imageService';
 import { canUseAllVoices } from '../../lib/planEntitlements';
+import {
+  BLOCKS_WELL_DEFAULT,
+  BLOCKS_WELL_PRESETS,
+  TAB_ACCENT_HEX,
+  type VerticalTabColorMode,
+} from '../../lib/tabAccents';
 
 export type SettingsMode = 'defaults' | 'session';
 export type SettingsTab =
@@ -114,6 +120,12 @@ export interface CourseSettingsPageProps {
   /** When Tabs (Vertical) is selected — Blocks vs Classic layout */
   verticalTabSkin?: 'default' | 'blocks';
   setVerticalTabSkin?: (v: 'default' | 'blocks') => void;
+  verticalTabColorMode?: 'per-tab' | 'unify' | 'module';
+  setVerticalTabColorMode?: (v: 'per-tab' | 'unify' | 'module') => void;
+  verticalTabUnifyColor?: string;
+  setVerticalTabUnifyColor?: (v: string) => void;
+  verticalTabWellColor?: string;
+  setVerticalTabWellColor?: (v: string) => void;
   previewingVoice: string | null;
   onPreviewVoice: (id: string) => void;
 
@@ -877,7 +889,7 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                       { id: 'flashcards', label: 'Flashcards' },
                       { id: 'timeline', label: 'Timeline' },
                       { id: 'scenario', label: 'Scenario' },
-                      { id: 'tabbed-horizontal', label: 'Tabs (Horizontal)' },
+                      { id: 'tabbed-horizontal', label: 'Process' },
                       { id: 'tabbed-vertical', label: 'Tabs (Vertical)' },
                       { id: 'folder-explorer', label: 'Folder Explorer' },
                       { id: 'carousel-panel', label: 'Carousel Panel' },
@@ -937,7 +949,7 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
               })()}
 
               {props.interactionTypes.includes('tabbed-vertical') && (
-                <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-5 space-y-3">
+                <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-5 space-y-5">
                   <label className="flex items-start gap-3 cursor-pointer">
                     <input
                       type="checkbox"
@@ -952,6 +964,85 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                       </p>
                     </div>
                   </label>
+
+                  {props.verticalTabSkin === 'blocks' && (
+                    <div className="pl-7 space-y-2">
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Content well color</p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {BLOCKS_WELL_PRESETS.map(hex => (
+                          <button
+                            key={hex}
+                            type="button"
+                            title={hex}
+                            onClick={() => props.setVerticalTabWellColor?.(hex)}
+                            className={cn(
+                              'w-6 h-6 rounded-full border-2',
+                              String(props.verticalTabWellColor || BLOCKS_WELL_DEFAULT).toLowerCase() === hex
+                                ? 'border-white scale-110'
+                                : 'border-slate-600'
+                            )}
+                            style={{ background: hex }}
+                          />
+                        ))}
+                        <input
+                          type="color"
+                          value={props.verticalTabWellColor || BLOCKS_WELL_DEFAULT}
+                          onChange={(e) => props.setVerticalTabWellColor?.(e.target.value)}
+                          className="w-7 h-7 rounded cursor-pointer bg-transparent border-0 p-0"
+                          title="Custom well color"
+                        />
+                      </div>
+                      <p className="text-xs text-slate-500">Applies to every Blocks vertical-tab slide. Edit Slide can still override one slide.</p>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Tab colors across the course</p>
+                    {([
+                      { id: 'per-tab' as const, label: 'Different color per tab', hint: 'Rainbow tabs, same as today. Change one slide in Edit anytime.' },
+                      { id: 'unify' as const, label: 'One color for every vertical tab', hint: 'Introduction and topic tabs share a single fill on every vertical-tab slide.' },
+                      { id: 'module' as const, label: 'Match each module’s accent', hint: 'Tabs in a module use that module’s title underline and TOC stripe color.' },
+                    ] as { id: VerticalTabColorMode; label: string; hint: string }[]).map(opt => (
+                      <label key={opt.id} className="flex items-start gap-3 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="vertical-tab-color-mode"
+                          checked={(props.verticalTabColorMode || 'per-tab') === opt.id}
+                          onChange={() => props.setVerticalTabColorMode?.(opt.id)}
+                          className="mt-1 w-4 h-4 border-slate-600 text-indigo-500 focus:ring-indigo-500/40 bg-slate-900"
+                        />
+                        <div>
+                          <p className="text-sm font-bold text-white">{opt.label}</p>
+                          <p className="text-xs text-slate-500 mt-0.5">{opt.hint}</p>
+                        </div>
+                      </label>
+                    ))}
+                    {props.verticalTabColorMode === 'unify' && (
+                      <div className="flex items-center gap-2 flex-wrap pl-7 pt-1">
+                        {TAB_ACCENT_HEX.map(hex => (
+                          <button
+                            key={hex}
+                            type="button"
+                            onClick={() => props.setVerticalTabUnifyColor?.(hex)}
+                            className={cn(
+                              'w-6 h-6 rounded-full border-2',
+                              String(props.verticalTabUnifyColor || TAB_ACCENT_HEX[0]).toLowerCase() === hex
+                                ? 'border-white scale-110'
+                                : 'border-transparent'
+                            )}
+                            style={{ background: hex }}
+                          />
+                        ))}
+                        <input
+                          type="color"
+                          value={props.verticalTabUnifyColor || TAB_ACCENT_HEX[0]}
+                          onChange={(e) => props.setVerticalTabUnifyColor?.(e.target.value)}
+                          className="w-7 h-7 rounded cursor-pointer bg-transparent border-0 p-0"
+                          title="Custom tab color"
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 

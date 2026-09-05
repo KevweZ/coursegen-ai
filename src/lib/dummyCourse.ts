@@ -205,7 +205,7 @@ Use Previous and Next in the player bar, or click the seekbar to jump to any sli
         {
           id: 'slide-tabs-horizontal',
           type: 'tabbed-horizontal',
-          title: 'Tabs (Horizontal) — Player Layers',
+          title: 'Process — Player Layers',
           content: `- Slide canvas renders each interaction type
 - Player bar handles play, seek, and navigation
 - Themes switch Dark, Light, and Unified`,

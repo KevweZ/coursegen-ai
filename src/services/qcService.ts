@@ -284,7 +284,7 @@ export function normalizeRegenSlideType(slide: any, preferred?: string): string 
 
 const TABBED_TYPES = new Set(['tabbed-horizontal', 'tabbed-vertical']);
 
-/** Vertical ↔ horizontal tabs share the same payload — no AI rewrite needed. */
+/** Vertical tabs ↔ Process (tabbed-horizontal) share the same payload — no AI rewrite needed. */
 export function isTabOrientationSwap(slide: any, targetType?: string): boolean {
   const from = normalizeRegenSlideType(slide);
   const to = normalizeRegenSlideType(slide, targetType);

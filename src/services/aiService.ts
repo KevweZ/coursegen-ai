@@ -480,7 +480,8 @@ export async function generateCourseOutline(
      Map them like this:
      - flashcards, timeline, hotspot, scenario, tabbed-horizontal, tabbed-vertical, folder-explorer, carousel-panel, click-reveal -> use the exact string as the slide 'type'
      - Do NOT use type "accordion" — use "click-reveal" instead (same progressive-disclosure pattern)
-     - For PROCESS FLOWS, DECISION TREES, WORKFLOWS, or MULTI-STEP PROCEDURES: use type: "diagram" (generates a Mermaid.js flowchart)
+     - tabbed-horizontal is the Process interaction (numbered stepper). Use it for ordered procedures the learner walks through step by step.
+     - For BRANCHING process flows, decision trees, or Mermaid diagrams: use type: "diagram"
      - Plain teaching slides: type: "content"
      CRITICAL — QUIZ-ONLY TYPES: Never use sorting, matching, drop-targets, multiple-choice, or multiple-answers as regular content slides. Those belong ONLY under Knowledge Checks (see #4).
   4. ${kcDirective}
@@ -607,7 +608,7 @@ export async function hydrateCourseContent(
   - MODULE SUMMARY / KEY TAKEAWAYS SPECIFICALLY: never write one bullet per topic taught in the module. Instead select
     ONLY the 4-6 most important, highest-value takeaways across the WHOLE module. The narration should give a big-picture
     synthesis of why these matter together — ideally ending on a short, memorable line — NOT a recap of every slide.
-  - TABBED CONTENT (tabbed-horizontal / tabbed-vertical) — STRICT: each tab's on-screen content must be SHORT BULLETS
+  - PROCESS / VERTICAL TABS (tabbed-horizontal / tabbed-vertical) — STRICT: each step or tab's on-screen content must be SHORT BULLETS
     (3–5 bullets, 5–8 words each). Put explanations in voiceOverText and (when present) each tab's voiceOverText field.
     Never put a thick paragraph inside a tab panel.
 
@@ -712,14 +713,16 @@ export async function hydrateCourseContent(
   - FAIL CONDITION: empty categories or missing questions -> regenerate entire game block
   - templateType field MUST match the game type string exactly
 
-  TABBED-HORIZONTAL (type: "tabbed-horizontal"):
-  - data.tabs: array of 2-5 tab objects
-  - Each tab: { "id": "t1", "label": "Tab Label", "color": "#6366f1", "content": "- Short bullet\\n- Another point", "voiceOverText": "2-4 spoken sentences elaborating this tab", "expandedContent": "optional extra detail" }
-  - On-screen tab content MUST be SHORT BULLETS only (3–5 bullets, 5–8 words each). Put explanations in the tab's voiceOverText. NEVER empty or symbol-only bullets (e.g. "-" alone).
-  - Slide-level "content" is the INTRODUCTION on-screen text shown before any tab is selected (and again when the learner returns via the Intro tab). Format like content tabs: 3–5 SHORT BULLETS (5–10 words each) capturing the main points of the slide-level voiceOverText. Do NOT use only a click instruction (e.g. "Select a tab…") as the entire intro — include real topic bullets only. Do NOT add a "Select a tab…" bullet — the player UI already shows that CTA. NEVER emit an empty bullet or a bullet whose only content is punctuation/symbols (e.g. "-", "—", "•").
-  - Slide-level voiceOverText narrates that introduction (2–5 spoken sentences).
-  - Color must be a valid hex color. Use different colors per tab.
-  - FAIL CONDITION: fewer than 2 tabs, or missing content -> regenerate
+  PROCESS (type: "tabbed-horizontal"):
+  - This is a numbered process stepper, NOT a row of topic tabs. Learners click step circles in order.
+  - data.tabs: array of 3-6 sequential STEP objects (ordered left to right)
+  - Each step: { "id": "t1", "label": "Short step name (2-5 words)", "color": "#0d9488", "content": "- Short bullet\\n- Another point", "voiceOverText": "2-4 spoken sentences elaborating this step" }
+  - Labels are STEP NAMES (Identify the hazard, Isolate energy), never generic "Tab 1" / "Overview" / "Topic 2".
+  - On-screen step content MUST be SHORT BULLETS only (3–5 bullets, 5–8 words each). Put explanations in voiceOverText. NEVER empty or symbol-only bullets (e.g. "-" alone).
+  - Slide-level "content" is the OVERVIEW on-screen text shown before any step is selected. Format like steps: 3–5 SHORT BULLETS (5–10 words each) capturing the main points of the slide-level voiceOverText. Do NOT use only a click instruction as the entire intro. Do NOT add a "Select a step…" bullet — the player UI already shows that CTA. NEVER emit an empty bullet or a bullet whose only content is punctuation/symbols.
+  - Slide-level voiceOverText narrates that overview (2–5 spoken sentences).
+  - Color must be a valid hex color. Steps may share one color (teal/process accent) or vary slightly.
+  - FAIL CONDITION: fewer than 3 steps, or missing content -> regenerate
 
   TABBED-VERTICAL (type: "tabbed-vertical"):
   - data.tabs: array of 2-6 tab objects

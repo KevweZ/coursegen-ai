@@ -27,17 +27,114 @@ export function resolveVerticalTabSkin(raw: unknown): VerticalTabSkinSetting {
   return String(raw || '').trim().toLowerCase() === 'blocks' ? 'blocks' : 'default';
 }
 
+/** Per-module accent (TOC underline, title rule, vertical strip). */
+export const MODULE_ACCENT_HEX = [
+  '#4f46e5',
+  '#0891b2',
+  '#16a34a',
+  '#d97706',
+  '#9333ea',
+  '#e11d48',
+  '#0d9488',
+  '#b45309',
+] as const;
+
+export function moduleAccentHex(moduleNumber: number): string {
+  const n = Math.max(1, Math.floor(Number(moduleNumber) || 1));
+  return MODULE_ACCENT_HEX[(n - 1) % MODULE_ACCENT_HEX.length];
+}
+
+export type VerticalTabColorMode = 'per-tab' | 'unify' | 'module';
+
+export function resolveVerticalTabColorMode(raw: unknown): VerticalTabColorMode {
+  const v = String(raw || '').trim().toLowerCase();
+  if (v === 'unify' || v === 'module') return v;
+  return 'per-tab';
+}
+
+export const BLOCKS_WELL_DEFAULT = '#0b1220';
+export const BLOCKS_WELL_PRESETS = [
+  '#0b1220',
+  '#111827',
+  '#1e293b',
+  '#1e1b4b',
+  '#0f172a',
+  '#f8fafc',
+] as const;
+
+export function resolveHexColor(raw: unknown, fallback: string): string {
+  const c = String(raw || '').trim();
+  return /^#[0-9a-fA-F]{6}$/.test(c) ? c : fallback;
+}
+
+function mapVerticalTabSlides(course: any, fn: (slide: any, moduleIndex: number) => any): any {
+  if (!course?.modules) return course;
+  return {
+    ...course,
+    modules: course.modules.map((m: any, mi: number) => ({
+      ...m,
+      slides: (m.slides || []).map((s: any) => (s?.type === 'tabbed-vertical' ? fn(s, mi) : s)),
+    })),
+  };
+}
+
 /** Stamp presentation skin onto every vertical-tab slide. Does not change interaction type. */
 export function stampVerticalTabSkin(course: any, skin: VerticalTabSkinSetting): any {
+  return mapVerticalTabSlides(course, (s) => ({ ...s, data: { ...(s.data || {}), tabSkin: skin } }));
+}
+
+/** One color for every vertical-tab slide, or each module's accent. `per-tab` leaves slide colors alone. */
+export function stampVerticalTabColors(
+  course: any,
+  mode: VerticalTabColorMode,
+  unifyColor?: string
+): any {
+  if (mode === 'per-tab') return course;
+  const unifyHex = resolveHexColor(unifyColor, TAB_ACCENT_HEX[0]);
+  return mapVerticalTabSlides(course, (s, mi) => {
+    const hex = mode === 'module' ? moduleAccentHex(mi + 1) : unifyHex;
+    const key = s.data?.tabs ? 'tabs' : 'items';
+    const list = (s.data?.[key] || []).map((t: any) => ({ ...t, color: hex }));
+    return {
+      ...s,
+      data: { ...(s.data || {}), [key]: list, unifyTabColors: true, introColor: hex },
+    };
+  });
+}
+
+export function stampVerticalTabWellColor(course: any, wellColor: string): any {
+  const hex = resolveHexColor(wellColor, BLOCKS_WELL_DEFAULT);
+  return mapVerticalTabSlides(course, (s) => ({
+    ...s,
+    data: { ...(s.data || {}), blocksWellColor: hex },
+  }));
+}
+
+export function stampProcessSkin(course: any): any {
   if (!course?.modules) return course;
   return {
     ...course,
     modules: course.modules.map((m: any) => ({
       ...m,
       slides: (m.slides || []).map((s: any) => {
-        if (s?.type !== 'tabbed-vertical') return s;
-        return { ...s, data: { ...(s.data || {}), tabSkin: skin } };
+        if (s?.type !== 'tabbed-horizontal') return s;
+        return { ...s, data: { ...(s.data || {}), tabSkin: 'process' } };
       }),
     })),
   };
+}
+
+export function applyVerticalTabPresentation(
+  course: any,
+  opts: {
+    skin: VerticalTabSkinSetting;
+    colorMode: VerticalTabColorMode;
+    unifyColor?: string;
+    wellColor?: string;
+  }
+): any {
+  let next = stampVerticalTabSkin(course, opts.skin);
+  next = stampVerticalTabColors(next, opts.colorMode, opts.unifyColor);
+  if (opts.wellColor) next = stampVerticalTabWellColor(next, opts.wellColor);
+  return stampProcessSkin(next);
 }

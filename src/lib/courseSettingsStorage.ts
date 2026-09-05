@@ -1,6 +1,13 @@
 import { ExamConfig, NavigationMode } from '../types/course';
 import { normalizeImageMode, type CourseImageMode } from '../services/imageService';
 import { pushAccountPreferences } from './accountPreferences';
+import {
+  BLOCKS_WELL_DEFAULT,
+  resolveHexColor,
+  resolveVerticalTabColorMode,
+  resolveVerticalTabSkin,
+  TAB_ACCENT_HEX,
+} from './tabAccents';
 
 export interface SavedCourseSettings {
   preset: 'quick' | 'standard' | 'comprehensive';
@@ -24,6 +31,12 @@ export interface SavedCourseSettings {
   hotspotGenerateBackdrop?: boolean;
   /** Default presentation for vertical tabs. `'blocks'` is the full-bleed stack; `'default'` is classic. */
   verticalTabSkin?: 'default' | 'blocks';
+  /** Course-wide vertical tab colors: rainbow per tab, one color, or each module's accent. */
+  verticalTabColorMode?: 'per-tab' | 'unify' | 'module';
+  /** Used when verticalTabColorMode is `'unify'`. */
+  verticalTabUnifyColor?: string;
+  /** Content-well fill for the Blocks vertical-tab skin. */
+  verticalTabWellColor?: string;
 }
 
 const STORAGE_KEY = 'nexcourse.courseSettings.v1';
@@ -61,6 +74,9 @@ export const DEFAULT_COURSE_SETTINGS: SavedCourseSettings = {
   /** When hotspot is on but Multimedia AI/source are off, still AI-generate hotspot backdrops */
   hotspotGenerateBackdrop: false,
   verticalTabSkin: 'default',
+  verticalTabColorMode: 'per-tab',
+  verticalTabUnifyColor: TAB_ACCENT_HEX[0],
+  verticalTabWellColor: BLOCKS_WELL_DEFAULT,
 };
 
 function storageKey(userId?: string | null): string {
@@ -80,7 +96,10 @@ function normalizeSaved(parsed: SavedCourseSettings): SavedCourseSettings {
   return {
     ...parsed,
     imageMode: normalizeImageMode(parsed.imageMode),
-    verticalTabSkin: parsed.verticalTabSkin === 'blocks' ? 'blocks' : 'default',
+    verticalTabSkin: resolveVerticalTabSkin(parsed.verticalTabSkin),
+    verticalTabColorMode: resolveVerticalTabColorMode(parsed.verticalTabColorMode),
+    verticalTabUnifyColor: resolveHexColor(parsed.verticalTabUnifyColor, TAB_ACCENT_HEX[0]),
+    verticalTabWellColor: resolveHexColor(parsed.verticalTabWellColor, BLOCKS_WELL_DEFAULT),
   };
 }
 

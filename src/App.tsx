@@ -70,7 +70,7 @@ import {
   GamePreview, ScenarioPreview
 } from './components/interactions/ExtraPreviews';
 import { stripSlideTypePrefix } from './lib/stripSlideTypePrefix';
-import { TAB_ACCENT_HEX, TAB_INTRO_DEFAULT_HEX, TAB_TITLE_HEX, tabAccentHex, resolveVerticalTabSkin, stampVerticalTabSkin } from './lib/tabAccents';
+import { TAB_ACCENT_HEX, TAB_INTRO_DEFAULT_HEX, TAB_TITLE_HEX, tabAccentHex, resolveVerticalTabSkin, resolveVerticalTabColorMode, resolveHexColor, applyVerticalTabPresentation, BLOCKS_WELL_DEFAULT, BLOCKS_WELL_PRESETS } from './lib/tabAccents';
 import { CAROUSEL_CARD_HEX } from './lib/colorContrast';
 import { resolveClickRevealSlide } from './lib/parseHeadingSections';
 import {
@@ -1971,6 +1971,15 @@ export default function App() {
   const [verticalTabSkin, setVerticalTabSkin] = useState<'default' | 'blocks'>(
     resolveVerticalTabSkin(DEFAULT_COURSE_SETTINGS.verticalTabSkin)
   );
+  const [verticalTabColorMode, setVerticalTabColorMode] = useState(
+    resolveVerticalTabColorMode(DEFAULT_COURSE_SETTINGS.verticalTabColorMode)
+  );
+  const [verticalTabUnifyColor, setVerticalTabUnifyColor] = useState(
+    resolveHexColor(DEFAULT_COURSE_SETTINGS.verticalTabUnifyColor, TAB_ACCENT_HEX[0])
+  );
+  const [verticalTabWellColor, setVerticalTabWellColor] = useState(
+    resolveHexColor(DEFAULT_COURSE_SETTINGS.verticalTabWellColor, BLOCKS_WELL_DEFAULT)
+  );
   /** Per-tab narration override while on a tabbed slide (cleared on slide change) */
   const [activeTabAudioUrl, setActiveTabAudioUrl] = useState<string | null>(null);
   /** Per-tab CC script paired with activeTabAudioUrl (null = use slide-level voiceOverText) */
@@ -2608,6 +2617,9 @@ export default function App() {
     setImageMode(normalizeImageMode(saved.imageMode));
     setHotspotGenerateBackdrop(!!saved.hotspotGenerateBackdrop);
     setVerticalTabSkin(resolveVerticalTabSkin(saved.verticalTabSkin));
+    setVerticalTabColorMode(resolveVerticalTabColorMode(saved.verticalTabColorMode));
+    setVerticalTabUnifyColor(resolveHexColor(saved.verticalTabUnifyColor, TAB_ACCENT_HEX[0]));
+    setVerticalTabWellColor(resolveHexColor(saved.verticalTabWellColor, BLOCKS_WELL_DEFAULT));
   };
 
   const collectCurrentSettings = (): SavedCourseSettings => ({
@@ -2627,12 +2639,22 @@ export default function App() {
     imageMode,
     hotspotGenerateBackdrop,
     verticalTabSkin,
+    verticalTabColorMode,
+    verticalTabUnifyColor,
+    verticalTabWellColor,
   });
 
   const persistCourseSettings = () => {
     saveCourseSettings(collectCurrentSettings(), user?.id);
     if (course) {
-      setCourse(prev => prev ? stampVerticalTabSkin(prev, verticalTabSkin) : prev);
+      setCourse(prev => prev
+        ? applyVerticalTabPresentation(prev, {
+            skin: verticalTabSkin,
+            colorMode: verticalTabColorMode,
+            unifyColor: verticalTabUnifyColor,
+            wellColor: verticalTabWellColor,
+          })
+        : prev);
     }
     try {
       sessionStorage.setItem('nexcourse.courseSettings.savedAt', String(Date.now()));
@@ -3399,6 +3421,9 @@ export default function App() {
     const modeSnapshot = normalizeImageMode(settingsOverride?.imageMode ?? imageMode);
     const hotspotBackdropSnapshot = settingsOverride?.hotspotGenerateBackdrop ?? hotspotGenerateBackdrop;
     const verticalTabSkinSnap = resolveVerticalTabSkin(settingsOverride?.verticalTabSkin ?? verticalTabSkin);
+    const verticalTabColorModeSnap = resolveVerticalTabColorMode(settingsOverride?.verticalTabColorMode ?? verticalTabColorMode);
+    const verticalTabUnifyColorSnap = resolveHexColor(settingsOverride?.verticalTabUnifyColor ?? verticalTabUnifyColor, TAB_ACCENT_HEX[0]);
+    const verticalTabWellColorSnap = resolveHexColor(settingsOverride?.verticalTabWellColor ?? verticalTabWellColor, BLOCKS_WELL_DEFAULT);
     const interactionTypesSnap = settingsOverride?.interactionTypes ?? interactionTypes;
 
     const rawObjectives = finalCourse.learningObjectives?.length
@@ -3409,7 +3434,7 @@ export default function App() {
       objectiveFormatSnap
     );
     setLearningObjectives(formattedObjectives);
-    const stamped = stampVerticalTabSkin({
+    const stamped = applyVerticalTabPresentation({
       ...finalCourse,
       examConfig: examConfigSnap,
       navigationMode: navigationModeSnap,
@@ -3420,7 +3445,12 @@ export default function App() {
         theme: finalCourse.settings?.theme || 'light',
       },
       learningObjectives: formattedObjectives,
-    }, verticalTabSkinSnap);
+    }, {
+      skin: verticalTabSkinSnap,
+      colorMode: verticalTabColorModeSnap,
+      unifyColor: verticalTabUnifyColorSnap,
+      wellColor: verticalTabWellColorSnap,
+    });
     setCourse(stamped);
     setOriginalCourse(stamped);
     setSyntheticAudioMap({});
@@ -4532,6 +4562,12 @@ export default function App() {
         setHotspotGenerateBackdrop={setHotspotGenerateBackdrop}
         verticalTabSkin={verticalTabSkin}
         setVerticalTabSkin={setVerticalTabSkin}
+        verticalTabColorMode={verticalTabColorMode}
+        setVerticalTabColorMode={setVerticalTabColorMode}
+        verticalTabUnifyColor={verticalTabUnifyColor}
+        setVerticalTabUnifyColor={setVerticalTabUnifyColor}
+        verticalTabWellColor={verticalTabWellColor}
+        setVerticalTabWellColor={setVerticalTabWellColor}
         previewingVoice={previewingVoice}
         onPreviewVoice={previewVoice}
         outlineDraft={outlineDraft}
@@ -6892,6 +6928,45 @@ export default function App() {
                                            },
                                          });
                                        } : undefined}
+                                       onCropIntroImage={!isScormPlayer ? (url) => {
+                                         pushUndo();
+                                         handleUpdateSlideMedia(currentSlide.id, {
+                                           data: { ...currentSlide.data, introImageUrl: url },
+                                         });
+                                       } : undefined}
+                                       onCropTabImage={!isScormPlayer ? (tabId, url) => {
+                                         pushUndo();
+                                         const key = currentSlide.data?.tabs ? 'tabs' : 'items';
+                                         const list = [...(currentSlide.data?.[key] || [])];
+                                         handleUpdateSlideMedia(currentSlide.id, {
+                                           data: {
+                                             ...currentSlide.data,
+                                             [key]: list.map((t: any) =>
+                                               t.id === tabId ? { ...t, imageUrl: url } : t
+                                             ),
+                                           },
+                                         });
+                                       } : undefined}
+                                       onPromoteIntroImage={!isScormPlayer ? (info) => {
+                                         promoteInFlowToFloat(info, '__intro__', (s) => ({
+                                           ...s,
+                                           data: { ...s.data, introImageUrl: undefined },
+                                         }));
+                                       } : undefined}
+                                       onPromoteTabImage={!isScormPlayer ? (tabId, info) => {
+                                         promoteInFlowToFloat(info, tabId, (s) => {
+                                           const key = s.data?.tabs ? 'tabs' : 'items';
+                                           return {
+                                             ...s,
+                                             data: {
+                                               ...s.data,
+                                               [key]: (s.data?.[key] || []).map((t: any) =>
+                                                 t.id === tabId ? { ...t, imageUrl: undefined } : t
+                                               ),
+                                             },
+                                           };
+                                         });
+                                       } : undefined}
                                      />
                                    </div>
                                  </div>
@@ -6904,6 +6979,7 @@ export default function App() {
                                        tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []}
                                        theme={theme as any}
                                        skin={currentSlide.data?.tabSkin === 'blocks' ? 'blocks' : 'default'}
+                                       wellColor={currentSlide.data?.blocksWellColor}
                                        visitedTabIds={exploredBySlide[currentSlide.id] || []}
                                        introContent={currentSlide.content || ''}
                                        introColor={currentSlide.data?.introColor || (currentSlide.data?.unifyTabColors ? tabAccentHex((currentSlide.data?.tabs || currentSlide.data?.items || [])[0], 0) : undefined)}
@@ -7731,12 +7807,19 @@ export default function App() {
                       <div className="space-y-2">
                         <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest flex items-center justify-between">
                           <span>
-                            {(editingSlide.type === 'tabbed-horizontal' || editingSlide.type === 'tabbed-vertical')
+                            {(editingSlide.type === 'tabbed-horizontal')
+                              ? <>Overview <span className="normal-case font-normal text-slate-600">(before steps)</span></>
+                              : (editingSlide.type === 'tabbed-vertical')
                               ? <>Introduction <span className="normal-case font-normal text-slate-600">(Intro tab)</span></>
                               : <>On-Screen Text <span className="normal-case font-normal text-slate-600">(Rich Text)</span></>}
                           </span>
                         </label>
-                        {(editingSlide.type === 'tabbed-horizontal' || editingSlide.type === 'tabbed-vertical') && (
+                        {editingSlide.type === 'tabbed-horizontal' && (
+                          <p className="text-[11px] text-slate-500 leading-relaxed">
+                            This is the Overview panel. Each step’s heading and body are edited in the list below — that is the text you see after clicking a numbered step.
+                          </p>
+                        )}
+                        {editingSlide.type === 'tabbed-vertical' && (
                           <p className="text-[11px] text-slate-500 leading-relaxed">
                             This is the Intro panel only. Each tab’s heading and body are edited in the list below — that is the text you see after clicking a tab on the slide.
                           </p>
@@ -7828,7 +7911,9 @@ export default function App() {
                         const tabSkin = editingSlide.data?.tabSkin === 'blocks' ? 'blocks' : 'default';
                         return (
                           <div className="space-y-3 pt-1">
-                            <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">Tab headings &amp; bodies</label>
+                            <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">
+                              {editingSlide.type === 'tabbed-horizontal' ? 'Step headings & bodies' : 'Tab headings & bodies'}
+                            </label>
                             {editingSlide.type === 'tabbed-vertical' && (
                               <div className="rounded-xl border border-slate-700 bg-slate-950 p-3 space-y-2">
                                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Tab layout</p>
@@ -7861,6 +7946,35 @@ export default function App() {
                                 <p className="text-[11px] text-slate-500 leading-relaxed">
                                   Classic is the current rounded tabs. Blocks is a full-bleed stack with a dark content well. Same interaction — switch back anytime.
                                 </p>
+                                {tabSkin === 'blocks' && (
+                                  <div className="space-y-2 pt-1">
+                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Content well</p>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      {BLOCKS_WELL_PRESETS.map(hex => (
+                                        <button
+                                          key={hex}
+                                          type="button"
+                                          title={hex}
+                                          onClick={() => patchTabs(tabs, { blocksWellColor: hex })}
+                                          className={cn(
+                                            'w-6 h-6 rounded-full border-2',
+                                            String(editingSlide.data?.blocksWellColor || BLOCKS_WELL_DEFAULT).toLowerCase() === hex
+                                              ? 'border-white scale-110'
+                                              : 'border-slate-600'
+                                          )}
+                                          style={{ background: hex }}
+                                        />
+                                      ))}
+                                      <input
+                                        type="color"
+                                        value={editingSlide.data?.blocksWellColor || BLOCKS_WELL_DEFAULT}
+                                        onChange={(e) => patchTabs(tabs, { blocksWellColor: e.target.value })}
+                                        className="w-7 h-7 rounded cursor-pointer bg-transparent border-0 p-0"
+                                        title="Custom well color"
+                                      />
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             )}
                             <label className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-700 bg-slate-950 cursor-pointer">
@@ -8260,7 +8374,7 @@ export default function App() {
                     const contentOptions = [
                       { id: 'content', label: 'Plain content' },
                       { id: 'diagram', label: 'Diagram' },
-                      { id: 'tabbed-horizontal', label: 'Tabs (Horizontal)' },
+                      { id: 'tabbed-horizontal', label: 'Process' },
                       { id: 'tabbed-vertical', label: 'Tabs (Vertical)' },
                       { id: 'click-reveal', label: 'Click & Reveal' },
                       { id: 'flashcards', label: 'Flashcards' },
@@ -8733,7 +8847,7 @@ export default function App() {
                              />
                            </div>
                          )}
-                         {previewModalOption === 'Tabs (Horizontal)' && (
+                         {previewModalOption === 'Process' && (
                             <div className="w-full max-w-2xl">
                               <TabbedHorizontal theme="light" tabs={[
                                 { id: '1', label: 'Overview', content: 'Welcome to this interactive learning module. Use the tabs to navigate between sections. Each section builds on the previous one to support progressive mastery.' },

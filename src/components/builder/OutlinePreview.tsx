@@ -11,7 +11,7 @@ const SLIDE_TYPE_LABELS: Record<string, string> = {
   flashcards: 'Flashcards',
   timeline: 'Timeline',
   scenario: 'Scenario',
-  'tabbed-horizontal': 'Tabs (Horizontal)',
+  'tabbed-horizontal': 'Process',
   'tabbed-vertical': 'Tabs (Vertical)',
   'folder-explorer': 'Folder Explorer',
   'carousel-panel': 'Carousel Panel',

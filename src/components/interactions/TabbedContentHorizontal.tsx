@@ -1,23 +1,23 @@
+/**
+ * Process interaction — numbered stepper (replaces classic horizontal tabs).
+ * Same data model (intro + tabs) as tabbed-horizontal; presentation is the process rail.
+ */
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { markdownToHtml, markdownToInlineHtml } from '../../lib/markdownInline';
+import { markdownToHtml } from '../../lib/markdownInline';
 import { formatTabIntroOst, formatTabOstBody } from '../../lib/formatTabIntroOst';
 import { TAB_INTRO_DEFAULT_HEX, tabAccentHex } from '../../lib/tabAccents';
-import { contrastTextOn } from '../../lib/colorContrast';
-import { EnlargeableImage } from '../player/EnlargeableImage';
+import { EnlargeableImage, type InFlowPromoteInfo } from '../player/EnlargeableImage';
 
 export interface HorizontalTab {
   id: string;
   label: string;
   color?: string;
-  /** Selected tab title text (defaults to auto-contrast on the fill). */
+  /** Selected step title text (defaults to auto-contrast on the fill). */
   labelColor?: string;
   content: string;
   expandedContent?: string;
-  /** Optional AI/source image shown below tab text (does not cover copy) */
   imageUrl?: string;
-  /** Per-tab narration script */
   voiceOverText?: string;
-  /** Generated TTS URL for this tab */
   voiceOverUrl?: string;
 }
 
@@ -28,35 +28,35 @@ interface Props {
   title?: string;
   theme?: THTheme;
   onTabView?: (tabId: string) => void;
-  /** Fired only on user click (not mount) — use for per-tab audio cutover. Pass "__intro__" for intro. */
   onTabAudio?: (tabId: string) => void;
-  /** Intro panel copy while no tab is selected (opening narration OST) */
   introContent?: string;
-  /** Color of the Intro tab + intro heading (defaults to indigo) */
   introColor?: string;
-  /** Intro tab title text (defaults to auto-contrast on introColor). */
   introLabelColor?: string;
-  /** Slide-level narration — used to enrich thin intro OST into short bullets */
   introVoiceOver?: string;
-  /** Optional source/AI image under intro panel text (opening narration) */
   introImageUrl?: string;
-  /** Notify parent of active tab (null = intro) for tab-scoped floating images */
   onActiveTabChange?: (tabId: string | null) => void;
-  /** While dragging a floating image over a tab zone, highlight it */
   highlightTabId?: string | null;
   onRemoveIntroImage?: () => void;
   onRemoveTabImage?: (tabId: string) => void;
+  onCropIntroImage?: (dataUrl: string) => void;
+  onCropTabImage?: (tabId: string, dataUrl: string) => void;
+  onPromoteIntroImage?: (info: InFlowPromoteInfo) => void;
+  onPromoteTabImage?: (tabId: string, info: InFlowPromoteInfo) => void;
 }
 
 const INTRO_COLOR = TAB_INTRO_DEFAULT_HEX;
-/** Fixed panel height keeps the tab bar docked; content scrolls inside. */
 const PANEL_H = 520;
+const RAIL_TEAL = '#0d9488';
 
 function normalizeTabs(tabs: HorizontalTab[]): HorizontalTab[] {
   return (tabs || []).map((t, i) => ({
     ...t,
     id: (t?.id != null && String(t.id).trim()) ? String(t.id) : `tab-${i}`,
   }));
+}
+
+function stepLabel(n: number): string {
+  return `STEP ${String(n).padStart(2, '0')}`;
 }
 
 export default function TabbedContentHorizontal({
@@ -67,21 +67,23 @@ export default function TabbedContentHorizontal({
   onTabAudio,
   introContent,
   introColor,
-  introLabelColor,
+  introLabelColor: _introLabelColor,
   introVoiceOver,
   introImageUrl,
   onActiveTabChange,
   highlightTabId = null,
   onRemoveIntroImage,
   onRemoveTabImage,
+  onCropIntroImage,
+  onCropTabImage,
+  onPromoteIntroImage,
+  onPromoteTabImage,
 }: Props) {
   const normalized = useMemo(() => normalizeTabs(tabs), [tabs]);
-  /** -1 = intro state (slide opening lines); no content tab selected yet */
   const [activeIndex, setActiveIndex] = useState(-1);
   const isLight = theme === 'light';
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Do not auto-select first tab on mount — intro narration plays first
   useEffect(() => {
     setActiveIndex(-1);
   }, [normalized.map(t => t.id).join('|')]);
@@ -102,7 +104,6 @@ export default function TabbedContentHorizontal({
     if (el) el.scrollTop = 0;
   };
 
-  // Guaranteed top alignment before paint on every panel change
   useLayoutEffect(() => {
     resetScrollTop();
   }, [panelKey]);
@@ -132,162 +133,162 @@ export default function TabbedContentHorizontal({
   };
 
   const introHex = (introColor && String(introColor).trim()) || INTRO_COLOR;
-  const introTitleColor = (introLabelColor && String(introLabelColor).trim()) || contrastTextOn(introHex);
   const activeColor = inIntro
     ? introHex
     : tabAccentHex(activeTab || undefined, Math.max(0, activeIndex));
-  const dropZoneId = activeTab?.id || '';
+  const dropZoneId = inIntro ? '__intro__' : (activeTab?.id || '');
   const panelHighlighted = !!(highlightTabId && dropZoneId && highlightTabId === dropZoneId);
+  const imageUrl = inIntro ? introImageUrl : activeTab?.imageUrl;
+  const headingHtml = inIntro ? null : markdownToHtml(activeTab!.label);
+  const bodyHtml = inIntro
+    ? markdownToHtml(introOst)
+    : markdownToHtml(formatTabOstBody(activeTab!.content) || formatTabOstBody(activeTab!.voiceOverText || ''));
+  const onRemoveImage = inIntro
+    ? onRemoveIntroImage
+    : (onRemoveTabImage && activeTab?.id ? () => onRemoveTabImage(activeTab.id) : undefined);
+  const onCropImage = inIntro
+    ? onCropIntroImage
+    : (onCropTabImage && activeTab?.id ? (url: string) => onCropTabImage(activeTab.id, url) : undefined);
+  const onPromoteImage = inIntro
+    ? onPromoteIntroImage
+    : (onPromoteTabImage && activeTab?.id ? (info: InFlowPromoteInfo) => onPromoteTabImage(activeTab.id, info) : undefined);
+
+  const panelBg = isLight ? '#ffffff' : '#0f172a';
+  const ink = isLight ? '#0f172a' : '#f8fafc';
+  const muted = isLight ? '#475569' : '#cbd5e1';
+  const rail = RAIL_TEAL;
 
   return (
-    <div className="w-full flex flex-col gap-0 select-none min-h-0 flex-1">
+    <div className="w-full flex flex-col gap-2 select-none min-h-0 flex-1">
       {title && (
-        <p className={`text-sm font-bold text-center uppercase tracking-widest mb-3 shrink-0 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+        <p className={`text-sm font-bold text-center uppercase tracking-widest mb-1 shrink-0 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
           {title}
         </p>
       )}
 
       <div
         data-tab-drop-zone={dropZoneId || undefined}
-        className={`relative rounded-t-2xl border border-b-0 transition-colors overflow-hidden ${
-          isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-800/60 border-slate-700'
-        } ${panelHighlighted ? 'ring-4 ring-indigo-400/80 ring-inset bg-indigo-50/40' : ''}`}
-        style={{ height: PANEL_H, minHeight: PANEL_H }}
+        className={`relative overflow-hidden flex flex-col ${panelHighlighted ? 'ring-4 ring-indigo-400/80 ring-inset' : ''}`}
+        style={{ height: PANEL_H, minHeight: PANEL_H, background: panelBg }}
       >
         {panelHighlighted && (
           <div className="absolute inset-x-0 top-0 z-10 px-3 py-1.5 text-center text-[11px] font-bold text-white bg-indigo-600/90 pointer-events-none">
-            Drop here to attach image to this tab
+            Drop here to attach image to this step
           </div>
         )}
-        {/* Absolute scrollport: content is always document-top; no flex remount can park OST at bottom. */}
-        <div
-          ref={scrollRef}
-          className="absolute inset-0 overflow-y-auto overflow-x-hidden custom-scrollbar"
-          style={{ overflowAnchor: 'none' }}
-        >
-          <div key={panelKey} className="box-border w-full p-6 sm:p-8 text-left align-top">
-            {inIntro ? (
-              <>
-                <div className="flex items-center gap-2 mb-4 w-full">
-                  <div className="w-1 h-8 rounded-full shrink-0" style={{ background: introHex }} />
-                  <h3 className="font-extrabold text-lg" style={{ color: introHex }}>
-                    Introduction
-                  </h3>
-                </div>
-                <div
-                  className={`text-sm leading-relaxed w-full ${isLight ? 'text-slate-700' : 'text-slate-200'}`}
-                  dangerouslySetInnerHTML={{ __html: markdownToHtml(introOst) }}
+
+        <div key={panelKey} className="flex flex-1 min-h-0 w-full items-start overflow-hidden">
+          <div
+            ref={scrollRef}
+            className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden custom-scrollbar"
+            style={{ overflowAnchor: 'none' }}
+          >
+            <div className="box-border w-full p-6 sm:p-7 text-left">
+              <p
+                className="text-sm font-bold uppercase tracking-[0.18em] mb-2"
+                style={{ color: activeColor }}
+              >
+                {inIntro ? 'Overview' : stepLabel(activeIndex + 1)}
+              </p>
+              {inIntro ? (
+                <h3 className="font-extrabold text-lg mb-4" style={{ color: ink }}>
+                  Introduction
+                </h3>
+              ) : (
+                <h3
+                  className="font-extrabold text-lg mb-4"
+                  style={{ color: ink }}
+                  dangerouslySetInnerHTML={{ __html: headingHtml || '' }}
                 />
-                {introImageUrl && (
-                  <div className="mt-6 pt-4 border-t border-slate-200/80 w-full">
-                    <EnlargeableImage
-                      src={introImageUrl}
-                      wrapperClassName="max-w-2xl mx-auto"
-                      className="max-h-[28rem] bg-transparent"
-                      onLoad={resetScrollTop}
-                      onRemove={onRemoveIntroImage}
-                    />
-                  </div>
-                )}
-                <p className="mt-6 text-xs font-semibold" style={{ color: introHex }}>
-                  Select a topic tab below to continue →
+              )}
+              <div
+                className="text-sm leading-relaxed tab-ost-body w-full"
+                style={{ color: muted }}
+                dangerouslySetInnerHTML={{ __html: bodyHtml }}
+              />
+              {!inIntro && activeTab!.expandedContent && (
+                <div
+                  className="mt-4 pt-4 border-t text-sm leading-relaxed tab-ost-body w-full"
+                  style={{ borderColor: isLight ? '#e2e8f0' : '#334155', color: muted }}
+                  dangerouslySetInnerHTML={{ __html: markdownToHtml(formatTabOstBody(activeTab!.expandedContent)) }}
+                />
+              )}
+              {inIntro && (
+                <p className="mt-6 text-xs font-semibold" style={{ color: activeColor }}>
+                  Select a step below to continue →
                 </p>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center gap-2 mb-4 w-full">
-                  <div className="w-1 h-8 rounded-full shrink-0" style={{ background: activeColor }} />
-                  <h3
-                    className="font-extrabold text-lg"
-                    style={{ color: activeColor }}
-                    dangerouslySetInnerHTML={{ __html: markdownToHtml(activeTab!.label) }}
-                  />
-                </div>
-                <div
-                  className={`text-sm leading-relaxed tab-ost-body w-full ${isLight ? 'text-slate-700' : 'text-slate-200'}`}
-                  dangerouslySetInnerHTML={{
-                    __html: markdownToHtml(
-                      formatTabOstBody(activeTab!.content) || formatTabOstBody(activeTab!.voiceOverText || '')
-                    ),
-                  }}
+              )}
+            </div>
+          </div>
+          {imageUrl && (
+            <div
+              className="relative shrink-0 self-start w-[38%] max-w-[300px] pt-6 sm:pt-7 pr-6 pb-6"
+            >
+              <div style={{ border: `2px solid ${activeColor}` }}>
+                <EnlargeableImage
+                  src={imageUrl}
+                  wrapperClassName="w-full"
+                  className="w-full h-auto max-h-[22rem] object-contain object-top bg-transparent"
+                  onLoad={resetScrollTop}
+                  onRemove={onRemoveImage}
+                  onCrop={onCropImage}
+                  onPromoteToFloat={onPromoteImage}
                 />
-                {activeTab!.expandedContent && (
-                  <div
-                    className={`mt-4 pt-4 border-t text-sm leading-relaxed tab-ost-body w-full ${
-                      isLight ? 'border-slate-200 text-slate-600' : 'border-slate-700 text-slate-300'
-                    }`}
-                    dangerouslySetInnerHTML={{ __html: markdownToHtml(formatTabOstBody(activeTab!.expandedContent)) }}
-                  />
-                )}
-                {activeTab!.imageUrl && (
-                  <div className="mt-6 pt-4 border-t border-slate-200/80 w-full">
-                    <EnlargeableImage
-                      src={activeTab!.imageUrl}
-                      wrapperClassName="max-w-2xl mx-auto"
-                      className="max-h-[28rem] bg-transparent"
-                      onLoad={resetScrollTop}
-                      onRemove={onRemoveTabImage && activeTab?.id ? () => onRemoveTabImage(activeTab.id) : undefined}
-                    />
-                  </div>
-                )}
-              </>
-            )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div
+          className="relative shrink-0 flex items-center"
+          style={{ height: 72, background: rail }}
+        >
+          <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ background: activeColor }} />
+          <div className="relative z-[1] flex items-center justify-center gap-2 sm:gap-3 w-full px-4 overflow-x-auto custom-scrollbar">
+            <button
+              type="button"
+              onClick={selectIntro}
+              title="Overview"
+              aria-current={inIntro ? 'true' : undefined}
+              className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-black border-2 transition-transform"
+              style={
+                inIntro
+                  ? { background: '#ffffff', color: rail, borderColor: '#ffffff' }
+                  : { background: 'rgba(15,23,42,0.35)', color: '#ffffff', borderColor: 'transparent' }
+              }
+            >
+              i
+            </button>
+            {normalized.map((tab, i) => {
+              const isActive = i === activeIndex;
+              const isDone = !inIntro && i < activeIndex;
+              const isDropTarget = highlightTabId === tab.id;
+              return (
+                <button
+                  key={tab.id || `tab-${i}`}
+                  type="button"
+                  data-tab-drop-zone={tab.id}
+                  onClick={() => selectTab(i)}
+                  title={tab.label}
+                  aria-label={`Step ${i + 1}: ${tab.label.replace(/<[^>]+>/g, '')}`}
+                  aria-current={isActive ? 'true' : undefined}
+                  className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-black border-2 transition-transform ${
+                    isDropTarget ? 'ring-2 ring-white ring-offset-2 ring-offset-teal-700' : ''
+                  }`}
+                  style={
+                    isActive
+                      ? { background: '#ffffff', color: rail, borderColor: '#ffffff', transform: 'scale(1.08)' }
+                      : isDone
+                      ? { background: 'rgba(15,23,42,0.45)', color: '#ffffff', borderColor: 'transparent' }
+                      : { background: 'rgba(255,255,255,0.28)', color: '#ffffff', borderColor: 'transparent' }
+                  }
+                >
+                  {i + 1}
+                </button>
+              );
+            })}
           </div>
         </div>
-      </div>
-
-      <div
-        className={`flex border border-t-0 rounded-b-2xl overflow-x-auto custom-scrollbar shrink-0 ${
-          isLight ? 'border-slate-200 bg-slate-50' : 'border-slate-700 bg-slate-900/80'
-        }`}
-      >
-        <button
-          type="button"
-          onClick={selectIntro}
-          className={`shrink-0 px-3 py-3.5 text-xs font-bold transition-all text-center border-r ${
-            isLight ? 'border-slate-200' : 'border-slate-700/60'
-          }           ${
-            inIntro
-              ? ''
-              : isLight
-              ? 'text-slate-500 hover:text-slate-800 hover:bg-white'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
-          }`}
-          style={inIntro ? { background: introHex, color: introTitleColor } : {}}
-          title="Return to opening introduction"
-        >
-          Intro
-        </button>
-        {normalized.map((tab, i) => {
-          const isActive = i === activeIndex;
-          const color = tabAccentHex(tab, i);
-          const titleColor = (tab.labelColor && String(tab.labelColor).trim()) || contrastTextOn(color);
-          const isDropTarget = highlightTabId === tab.id;
-          return (
-            <button
-              key={tab.id || `tab-${i}`}
-              type="button"
-              data-tab-drop-zone={tab.id}
-              onClick={() => selectTab(i)}
-              className={`shrink-0 min-w-[5.5rem] flex-1 relative px-3 py-3.5 text-xs font-bold transition-all text-center border-r last:border-r-0 ${
-                isLight ? 'border-slate-200' : 'border-slate-700/60'
-              } ${
-                isActive
-                  ? ''
-                  : isLight
-                  ? 'text-slate-500 hover:text-slate-800 hover:bg-white'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
-              } ${isDropTarget ? 'ring-2 ring-indigo-400 ring-inset z-10' : ''}`}
-              style={isActive ? { background: color, color: titleColor } : isDropTarget ? { background: 'rgba(99,102,241,0.15)' } : {}}
-            >
-              <span
-                className="relative z-10"
-                style={isActive ? { color: titleColor } : undefined}
-                dangerouslySetInnerHTML={{ __html: markdownToInlineHtml(tab.label) }}
-              />
-            </button>
-          );
-        })}
       </div>
     </div>
   );
