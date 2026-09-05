@@ -136,12 +136,12 @@ export const HorizontalTimeline: React.FC<Props> = ({
         </span>
       </div>
 
-      {/* ── Track ── */}
-      <div className="relative overflow-x-auto pb-2">
+      {/* ── Track — extra top pad so the selected-node glow is not clipped ── */}
+      <div className="relative overflow-x-auto">
         <div
           ref={trackRef}
-          className="relative flex items-start pt-2"
-          style={{ minWidth: `${events.length * 120}px` }}
+          className="relative flex items-start"
+          style={{ minWidth: `${events.length * 120}px`, paddingTop: 22, paddingBottom: 8, paddingLeft: 4, paddingRight: 4 }}
         >
           {/* Connector segments — each spans ONLY the measured gap between two
               circle centers (minus the circle radius on each side), so it is
@@ -155,7 +155,7 @@ export const HorizontalTimeline: React.FC<Props> = ({
               <div
                 key={`connector-${ev.id}`}
                 className="absolute h-0.5 rounded-full overflow-hidden"
-                style={{ top: '30px', left: x1, width: x2 - x1, background: spineBg, zIndex: 0 }}
+                style={{ top: '44px', left: x1, width: x2 - x1, background: spineBg, zIndex: 0 }}
                 aria-hidden
               >
                 <motion.div

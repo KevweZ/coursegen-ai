@@ -4,6 +4,7 @@ import { pushAccountPreferences } from './accountPreferences';
 import {
   BLOCKS_WELL_DEFAULT,
   resolveHexColor,
+  resolveProcessSkin,
   resolveVerticalTabColorMode,
   resolveVerticalTabSkin,
   TAB_ACCENT_HEX,
@@ -35,8 +36,10 @@ export interface SavedCourseSettings {
   verticalTabColorMode?: 'per-tab' | 'unify' | 'module';
   /** Used when verticalTabColorMode is `'unify'`. */
   verticalTabUnifyColor?: string;
-  /** Content-well fill for the Blocks vertical-tab skin. */
+  /** Content-well fill for the Blocks vertical-tab and Process skins. */
   verticalTabWellColor?: string;
+  /** `'blocks'` gives Process slides the dark/colored reading area. */
+  processSkin?: 'default' | 'blocks';
 }
 
 const STORAGE_KEY = 'nexcourse.courseSettings.v1';
@@ -77,6 +80,7 @@ export const DEFAULT_COURSE_SETTINGS: SavedCourseSettings = {
   verticalTabColorMode: 'per-tab',
   verticalTabUnifyColor: TAB_ACCENT_HEX[0],
   verticalTabWellColor: BLOCKS_WELL_DEFAULT,
+  processSkin: 'default',
 };
 
 function storageKey(userId?: string | null): string {
@@ -100,6 +104,7 @@ function normalizeSaved(parsed: SavedCourseSettings): SavedCourseSettings {
     verticalTabColorMode: resolveVerticalTabColorMode(parsed.verticalTabColorMode),
     verticalTabUnifyColor: resolveHexColor(parsed.verticalTabUnifyColor, TAB_ACCENT_HEX[0]),
     verticalTabWellColor: resolveHexColor(parsed.verticalTabWellColor, BLOCKS_WELL_DEFAULT),
+    processSkin: resolveProcessSkin(parsed.processSkin),
   };
 }
 

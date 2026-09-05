@@ -126,6 +126,8 @@ export interface CourseSettingsPageProps {
   setVerticalTabUnifyColor?: (v: string) => void;
   verticalTabWellColor?: string;
   setVerticalTabWellColor?: (v: string) => void;
+  processSkin?: 'default' | 'blocks';
+  setProcessSkin?: (v: 'default' | 'blocks') => void;
   previewingVoice: string | null;
   onPreviewVoice: (id: string) => void;
 
@@ -960,14 +962,14 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                     <div>
                       <p className="text-sm font-bold text-white">Blocks layout for vertical tabs</p>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        Full-bleed colored stack with a dark content well. You can still switch Classic or Blocks on a single slide in Edit.
+                        Colored tabs along the side, with a dark (or colored) reading area. You can still pick Classic or Blocks on one slide in Edit.
                       </p>
                     </div>
                   </label>
 
                   {props.verticalTabSkin === 'blocks' && (
                     <div className="pl-7 space-y-2">
-                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Content well color</p>
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Reading area color</p>
                       <div className="flex items-center gap-2 flex-wrap">
                         {BLOCKS_WELL_PRESETS.map(hex => (
                           <button
@@ -992,16 +994,16 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                           title="Custom well color"
                         />
                       </div>
-                      <p className="text-xs text-slate-500">Applies to every Blocks vertical-tab slide. Edit Slide can still override one slide.</p>
+                      <p className="text-xs text-slate-500">Background color for the reading area on Blocks slides. You can still change one slide in Edit.</p>
                     </div>
                   )}
 
                   <div className="space-y-2">
                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Tab colors across the course</p>
                     {([
-                      { id: 'per-tab' as const, label: 'Different color per tab', hint: 'Rainbow tabs, same as today. Change one slide in Edit anytime.' },
-                      { id: 'unify' as const, label: 'One color for every vertical tab', hint: 'Introduction and topic tabs share a single fill on every vertical-tab slide.' },
-                      { id: 'module' as const, label: 'Match each module’s accent', hint: 'Tabs in a module use that module’s title underline and TOC stripe color.' },
+                      { id: 'per-tab' as const, label: 'Different color per tab', hint: 'Each tab gets its own color. You can still change a slide in Edit.' },
+                      { id: 'unify' as const, label: 'One color for every vertical tab', hint: 'Introduction and every topic tab use the same color on every vertical-tab slide.' },
+                      { id: 'module' as const, label: 'Match each module’s accent', hint: 'Tabs in a module use the same color as that module’s title line and table-of-contents stripe.' },
                     ] as { id: VerticalTabColorMode; label: string; hint: string }[]).map(opt => (
                       <label key={opt.id} className="flex items-start gap-3 cursor-pointer">
                         <input
@@ -1043,6 +1045,60 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                       </div>
                     )}
                   </div>
+                </div>
+              )}
+
+              {props.interactionTypes.includes('tabbed-horizontal') && (
+                <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-5 space-y-5">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={props.processSkin === 'blocks'}
+                      onChange={(e) => props.setProcessSkin?.(e.target.checked ? 'blocks' : 'default')}
+                      className="mt-1 w-4 h-4 rounded border-slate-600 text-indigo-500 focus:ring-indigo-500/40 bg-slate-900"
+                    />
+                    <div>
+                      <p className="text-sm font-bold text-white">Blocks look for Process</p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Dark (or colored) background behind the steps — the same idea as Blocks on vertical tabs. You can still pick Classic or Blocks on one slide in Edit.
+                      </p>
+                    </div>
+                  </label>
+
+                  {props.processSkin === 'blocks' && (
+                    <div className="pl-7 space-y-2">
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Reading area color</p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {BLOCKS_WELL_PRESETS.map(hex => (
+                          <button
+                            key={`process-well-${hex}`}
+                            type="button"
+                            title={hex}
+                            onClick={() => props.setVerticalTabWellColor?.(hex)}
+                            className={cn(
+                              'w-6 h-6 rounded-full border-2',
+                              String(props.verticalTabWellColor || BLOCKS_WELL_DEFAULT).toLowerCase() === hex
+                                ? 'border-white scale-110'
+                                : 'border-slate-600'
+                            )}
+                            style={{ background: hex }}
+                          />
+                        ))}
+                        <input
+                          type="color"
+                          value={props.verticalTabWellColor || BLOCKS_WELL_DEFAULT}
+                          onChange={(e) => props.setVerticalTabWellColor?.(e.target.value)}
+                          className="w-7 h-7 rounded cursor-pointer bg-transparent border-0 p-0"
+                          title="Custom background color"
+                        />
+                      </div>
+                      <p className="text-xs text-slate-500">
+                        {props.verticalTabSkin === 'blocks'
+                          ? 'Same background as Blocks vertical tabs. You can still change one slide in Edit.'
+                          : 'Background color for the reading area on Process Blocks slides. You can still change one slide in Edit.'}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 

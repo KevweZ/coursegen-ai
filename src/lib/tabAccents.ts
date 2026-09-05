@@ -22,8 +22,13 @@ export function tabAccentHex(tab: { color?: string } | undefined, index: number)
 }
 
 export type VerticalTabSkinSetting = 'default' | 'blocks';
+export type ProcessSkinSetting = 'default' | 'blocks';
 
 export function resolveVerticalTabSkin(raw: unknown): VerticalTabSkinSetting {
+  return String(raw || '').trim().toLowerCase() === 'blocks' ? 'blocks' : 'default';
+}
+
+export function resolveProcessSkin(raw: unknown): ProcessSkinSetting {
   return String(raw || '').trim().toLowerCase() === 'blocks' ? 'blocks' : 'default';
 }
 
@@ -110,15 +115,24 @@ export function stampVerticalTabWellColor(course: any, wellColor: string): any {
   }));
 }
 
-export function stampProcessSkin(course: any): any {
+export function stampProcessSkin(course: any, skin: ProcessSkinSetting = 'default', wellColor?: string): any {
   if (!course?.modules) return course;
+  const blocks = skin === 'blocks';
+  const well = wellColor ? resolveHexColor(wellColor, BLOCKS_WELL_DEFAULT) : undefined;
   return {
     ...course,
     modules: course.modules.map((m: any) => ({
       ...m,
       slides: (m.slides || []).map((s: any) => {
         if (s?.type !== 'tabbed-horizontal') return s;
-        return { ...s, data: { ...(s.data || {}), tabSkin: 'process' } };
+        return {
+          ...s,
+          data: {
+            ...(s.data || {}),
+            tabSkin: blocks ? 'blocks' : 'process',
+            ...(blocks && well ? { blocksWellColor: well } : {}),
+          },
+        };
       }),
     })),
   };
@@ -131,10 +145,11 @@ export function applyVerticalTabPresentation(
     colorMode: VerticalTabColorMode;
     unifyColor?: string;
     wellColor?: string;
+    processSkin?: ProcessSkinSetting;
   }
 ): any {
   let next = stampVerticalTabSkin(course, opts.skin);
   next = stampVerticalTabColors(next, opts.colorMode, opts.unifyColor);
   if (opts.wellColor) next = stampVerticalTabWellColor(next, opts.wellColor);
-  return stampProcessSkin(next);
+  return stampProcessSkin(next, opts.processSkin ?? 'default', opts.wellColor);
 }

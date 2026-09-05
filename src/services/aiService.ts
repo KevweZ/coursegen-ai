@@ -503,7 +503,7 @@ export async function generateCourseOutline(
     "modules": [
       {
         "id": "uuid",
-        "title": "Module Title",
+        "title": "Short 3-4 word module title",
         "slides": [
           { "id": "uuid", "type": "${schemaTypeEnum}", "title": "Slide Title" }
         ]
@@ -526,11 +526,13 @@ export async function generateCourseOutline(
     IMPORTANT AI DIRECTIVE: You must ONLY select a visualTheme if the course topic has a STRONG, LITERAL semantic match to that specific theme (e.g. use "Rigs" only for oil/gas/industrial topics, use "Forest" only for nature topics). If there is NO strong semantic match, you MUST default to "Neutral". Do not guess or select unrelated themes!
 
     MODULE TITLE QUALITY RULES:
-    - Module titles must be ACTIVE NOUN PHRASES that describe what the learner gains, NOT passive topic labels.
-    - WRONG: "Introduction to Compliance" | RIGHT: "Identifying Core Compliance Requirements"
-    - WRONG: "Data Security Overview" | RIGHT: "Protecting Sensitive Data in Your Workplace"
-    - WRONG: "Module 3" or "Chapter 3" | RIGHT: A meaningful phrase with an implied Bloom's verb
-    - Derive module titles from the Learning Objectives provided above — each module should clearly advance one enabling or terminal objective.${conversionNote}`;
+    - Module titles must be SHORT topic labels: 3 to 4 words, Title Case. They are TOC headings, not learning-objective sentences.
+    - Do NOT start with Bloom/gerund verbs (Identifying, Tracing, Distinguishing, Recognizing, Mapping, Understanding, Positioning, Selecting, Protecting).
+    - Do NOT write a full statement or explanation. Narration already says what the module covers.
+    - WRONG: "Tracing the Sequential Stages of the Steam Cracking Process" | RIGHT: "Steam Cracking Process Stages" or "The Steam Cracking Process"
+    - WRONG: "Identifying Core Compliance Requirements" | RIGHT: "Compliance Requirements"
+    - WRONG: "Module 3" or "Chapter 3" | RIGHT: a short unique topic name
+    - Each module still maps to one learning objective, but the title is a concise label — not a restatement of the objective.${conversionNote}`;
 
   const rawText = await executeAnthropicAI('complex', systemInstruction, userPrompt, 8192);
   const cleanedText = extractJsonFromText(rawText);
@@ -591,6 +593,7 @@ export async function hydrateCourseContent(
 
   const systemInstruction = `You are an Expert eLearning Content Architect and Certified Instructional Designer.
   Your ONLY job: hydrate the provided module JSON skeleton with rich, ISD-compliant content. Do NOT change the slide structure.
+  Keep module.title exactly as provided — do not lengthen it into a sentence or objective-style phrase.
 
   ========================================
   GLOBAL PRINCIPLE — ON-SCREEN TEXT vs NARRATION (APPLIES TO EVERY SLIDE)

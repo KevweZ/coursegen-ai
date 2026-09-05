@@ -27,7 +27,7 @@ export function TabbedHorizontalPreview() {
         <h3 className="font-extrabold text-base text-slate-900 mb-2">{step.label}</h3>
         <p className="text-slate-600 text-sm leading-relaxed">{step.content}</p>
       </div>
-      <div className="relative flex items-center justify-center gap-3 py-3" style={{ background: rail }}>
+      <div className="relative flex items-center justify-center gap-3 py-5" style={{ background: rail, minHeight: 72 }}>
         <div className="absolute top-0 left-0 right-0 h-[3px] bg-orange-400" />
         {H_STEPS.map((t, i) => {
           const isActive = i === activeIndex;

@@ -70,7 +70,7 @@ import {
   GamePreview, ScenarioPreview
 } from './components/interactions/ExtraPreviews';
 import { stripSlideTypePrefix } from './lib/stripSlideTypePrefix';
-import { TAB_ACCENT_HEX, TAB_INTRO_DEFAULT_HEX, TAB_TITLE_HEX, tabAccentHex, resolveVerticalTabSkin, resolveVerticalTabColorMode, resolveHexColor, applyVerticalTabPresentation, BLOCKS_WELL_DEFAULT, BLOCKS_WELL_PRESETS } from './lib/tabAccents';
+import { TAB_ACCENT_HEX, TAB_INTRO_DEFAULT_HEX, TAB_TITLE_HEX, tabAccentHex, resolveVerticalTabSkin, resolveVerticalTabColorMode, resolveProcessSkin, resolveHexColor, applyVerticalTabPresentation, BLOCKS_WELL_DEFAULT, BLOCKS_WELL_PRESETS } from './lib/tabAccents';
 import { CAROUSEL_CARD_HEX } from './lib/colorContrast';
 import { resolveClickRevealSlide } from './lib/parseHeadingSections';
 import {
@@ -1980,6 +1980,9 @@ export default function App() {
   const [verticalTabWellColor, setVerticalTabWellColor] = useState(
     resolveHexColor(DEFAULT_COURSE_SETTINGS.verticalTabWellColor, BLOCKS_WELL_DEFAULT)
   );
+  const [processSkin, setProcessSkin] = useState<'default' | 'blocks'>(
+    resolveProcessSkin(DEFAULT_COURSE_SETTINGS.processSkin)
+  );
   /** Per-tab narration override while on a tabbed slide (cleared on slide change) */
   const [activeTabAudioUrl, setActiveTabAudioUrl] = useState<string | null>(null);
   /** Per-tab CC script paired with activeTabAudioUrl (null = use slide-level voiceOverText) */
@@ -2620,6 +2623,7 @@ export default function App() {
     setVerticalTabColorMode(resolveVerticalTabColorMode(saved.verticalTabColorMode));
     setVerticalTabUnifyColor(resolveHexColor(saved.verticalTabUnifyColor, TAB_ACCENT_HEX[0]));
     setVerticalTabWellColor(resolveHexColor(saved.verticalTabWellColor, BLOCKS_WELL_DEFAULT));
+    setProcessSkin(resolveProcessSkin(saved.processSkin));
   };
 
   const collectCurrentSettings = (): SavedCourseSettings => ({
@@ -2642,6 +2646,7 @@ export default function App() {
     verticalTabColorMode,
     verticalTabUnifyColor,
     verticalTabWellColor,
+    processSkin,
   });
 
   const persistCourseSettings = () => {
@@ -2653,6 +2658,7 @@ export default function App() {
             colorMode: verticalTabColorMode,
             unifyColor: verticalTabUnifyColor,
             wellColor: verticalTabWellColor,
+            processSkin,
           })
         : prev);
     }
@@ -3424,6 +3430,7 @@ export default function App() {
     const verticalTabColorModeSnap = resolveVerticalTabColorMode(settingsOverride?.verticalTabColorMode ?? verticalTabColorMode);
     const verticalTabUnifyColorSnap = resolveHexColor(settingsOverride?.verticalTabUnifyColor ?? verticalTabUnifyColor, TAB_ACCENT_HEX[0]);
     const verticalTabWellColorSnap = resolveHexColor(settingsOverride?.verticalTabWellColor ?? verticalTabWellColor, BLOCKS_WELL_DEFAULT);
+    const processSkinSnap = resolveProcessSkin(settingsOverride?.processSkin ?? processSkin);
     const interactionTypesSnap = settingsOverride?.interactionTypes ?? interactionTypes;
 
     const rawObjectives = finalCourse.learningObjectives?.length
@@ -3450,6 +3457,7 @@ export default function App() {
       colorMode: verticalTabColorModeSnap,
       unifyColor: verticalTabUnifyColorSnap,
       wellColor: verticalTabWellColorSnap,
+      processSkin: processSkinSnap,
     });
     setCourse(stamped);
     setOriginalCourse(stamped);
@@ -4568,6 +4576,8 @@ export default function App() {
         setVerticalTabUnifyColor={setVerticalTabUnifyColor}
         verticalTabWellColor={verticalTabWellColor}
         setVerticalTabWellColor={setVerticalTabWellColor}
+        processSkin={processSkin}
+        setProcessSkin={setProcessSkin}
         previewingVoice={previewingVoice}
         onPreviewVoice={previewVoice}
         outlineDraft={outlineDraft}
@@ -6419,6 +6429,7 @@ export default function App() {
                                           objectives={objectives}
                                           theme={theme}
                                           moduleNumber={slideModuleNumber}
+                                          accentColor={slideAccentColor}
                                         />
                                       )}
                                     </div>
@@ -6900,6 +6911,8 @@ export default function App() {
                                      <TabbedHorizontal
                                        tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []}
                                        theme={theme as any}
+                                       skin={currentSlide.data?.tabSkin === 'blocks' ? 'blocks' : 'process'}
+                                       wellColor={currentSlide.data?.blocksWellColor}
                                        introContent={currentSlide.content || ''}
                                        introColor={currentSlide.data?.introColor || (currentSlide.data?.unifyTabColors ? tabAccentHex((currentSlide.data?.tabs || currentSlide.data?.items || [])[0], 0) : undefined)}
                                        introLabelColor={currentSlide.data?.introLabelColor}
@@ -7914,13 +7927,15 @@ export default function App() {
                             <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">
                               {editingSlide.type === 'tabbed-horizontal' ? 'Step headings & bodies' : 'Tab headings & bodies'}
                             </label>
-                            {editingSlide.type === 'tabbed-vertical' && (
+                            {(editingSlide.type === 'tabbed-vertical' || editingSlide.type === 'tabbed-horizontal') && (
                               <div className="rounded-xl border border-slate-700 bg-slate-950 p-3 space-y-2">
-                                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Tab layout</p>
+                                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                                  {editingSlide.type === 'tabbed-horizontal' ? 'Process layout' : 'Tab layout'}
+                                </p>
                                 <div className="grid grid-cols-2 gap-2">
                                   <button
                                     type="button"
-                                    onClick={() => patchTabs(tabs, { tabSkin: 'default' })}
+                                    onClick={() => patchTabs(tabs, { tabSkin: editingSlide.type === 'tabbed-horizontal' ? 'process' : 'default' })}
                                     className={cn(
                                       'px-3 py-2 rounded-lg border text-xs font-bold transition-all',
                                       tabSkin === 'default'
@@ -7944,7 +7959,9 @@ export default function App() {
                                   </button>
                                 </div>
                                 <p className="text-[11px] text-slate-500 leading-relaxed">
-                                  Classic is the current rounded tabs. Blocks is a full-bleed stack with a dark content well. Same interaction — switch back anytime.
+                                  {editingSlide.type === 'tabbed-horizontal'
+                                    ? 'Classic is the teal step bar on a light page. Blocks uses a dark (or colored) reading area behind the steps. Same interaction — switch back anytime.'
+                                    : 'Classic is the current rounded tabs. Blocks uses a dark (or colored) reading area beside the tabs. Same interaction — switch back anytime.'}
                                 </p>
                                 {tabSkin === 'blocks' && (
                                   <div className="space-y-2 pt-1">

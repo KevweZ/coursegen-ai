@@ -5,7 +5,8 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { markdownToHtml } from '../../lib/markdownInline';
 import { formatTabIntroOst, formatTabOstBody } from '../../lib/formatTabIntroOst';
-import { TAB_INTRO_DEFAULT_HEX, tabAccentHex } from '../../lib/tabAccents';
+import { TAB_INTRO_DEFAULT_HEX, tabAccentHex, BLOCKS_WELL_DEFAULT, resolveHexColor } from '../../lib/tabAccents';
+import { contrastTextOn } from '../../lib/colorContrast';
 import { EnlargeableImage, type InFlowPromoteInfo } from '../player/EnlargeableImage';
 
 export interface HorizontalTab {
@@ -42,11 +43,21 @@ interface Props {
   onCropTabImage?: (tabId: string, dataUrl: string) => void;
   onPromoteIntroImage?: (info: InFlowPromoteInfo) => void;
   onPromoteTabImage?: (tabId: string, info: InFlowPromoteInfo) => void;
+  /** `'blocks'` uses the dark/colored reading area (same idea as vertical-tab Blocks). */
+  skin?: string;
+  /** Blocks skin content-well fill. */
+  wellColor?: string;
 }
 
 const INTRO_COLOR = TAB_INTRO_DEFAULT_HEX;
 const PANEL_H = 520;
 const RAIL_TEAL = '#0d9488';
+/** Tall enough for 36px circles + active scale + border without a scrollbar. */
+const RAIL_H = 96;
+
+function isBlocksSkin(skin?: string | null): boolean {
+  return String(skin || '').trim().toLowerCase() === 'blocks';
+}
 
 function normalizeTabs(tabs: HorizontalTab[]): HorizontalTab[] {
   return (tabs || []).map((t, i) => ({
@@ -78,6 +89,8 @@ export default function TabbedContentHorizontal({
   onCropTabImage,
   onPromoteIntroImage,
   onPromoteTabImage,
+  skin,
+  wellColor,
 }: Props) {
   const normalized = useMemo(() => normalizeTabs(tabs), [tabs]);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -153,13 +166,17 @@ export default function TabbedContentHorizontal({
     ? onPromoteIntroImage
     : (onPromoteTabImage && activeTab?.id ? (info: InFlowPromoteInfo) => onPromoteTabImage(activeTab.id, info) : undefined);
 
-  const panelBg = isLight ? '#ffffff' : '#0f172a';
-  const ink = isLight ? '#0f172a' : '#f8fafc';
-  const muted = isLight ? '#475569' : '#cbd5e1';
+  const blocks = isBlocksSkin(skin);
+  const well = resolveHexColor(wellColor, BLOCKS_WELL_DEFAULT);
+  const panelBg = blocks ? well : (isLight ? '#ffffff' : '#0f172a');
+  const ink = blocks ? contrastTextOn(well) : (isLight ? '#0f172a' : '#f8fafc');
+  const muted = blocks
+    ? (ink === '#ffffff' ? 'rgba(248,250,252,0.82)' : 'rgba(15,23,42,0.72)')
+    : (isLight ? '#475569' : '#cbd5e1');
   const rail = RAIL_TEAL;
 
   return (
-    <div className="w-full flex flex-col gap-2 select-none min-h-0 flex-1">
+    <div className={`w-full flex flex-col gap-2 select-none min-h-0 flex-1 ${blocks ? 'tab-skin-blocks' : ''}`}>
       {title && (
         <p className={`text-sm font-bold text-center uppercase tracking-widest mb-1 shrink-0 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
           {title}
@@ -209,7 +226,7 @@ export default function TabbedContentHorizontal({
               {!inIntro && activeTab!.expandedContent && (
                 <div
                   className="mt-4 pt-4 border-t text-sm leading-relaxed tab-ost-body w-full"
-                  style={{ borderColor: isLight ? '#e2e8f0' : '#334155', color: muted }}
+                  style={{ borderColor: blocks ? (ink === '#ffffff' ? 'rgba(248,250,252,0.18)' : 'rgba(15,23,42,0.16)') : (isLight ? '#e2e8f0' : '#334155'), color: muted }}
                   dangerouslySetInnerHTML={{ __html: markdownToHtml(formatTabOstBody(activeTab!.expandedContent)) }}
                 />
               )}
@@ -241,16 +258,16 @@ export default function TabbedContentHorizontal({
 
         <div
           className="relative shrink-0 flex items-center"
-          style={{ height: 72, background: rail }}
+          style={{ minHeight: RAIL_H, height: RAIL_H, background: rail }}
         >
           <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ background: activeColor }} />
-          <div className="relative z-[1] flex items-center justify-center gap-2 sm:gap-3 w-full px-4 overflow-x-auto custom-scrollbar">
+          <div className="relative z-[1] flex items-center justify-center gap-3 sm:gap-4 w-full px-5 py-4">
             <button
               type="button"
               onClick={selectIntro}
               title="Overview"
               aria-current={inIntro ? 'true' : undefined}
-              className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-black border-2 transition-transform"
+              className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-[12px] font-black border-2"
               style={
                 inIntro
                   ? { background: '#ffffff', color: rail, borderColor: '#ffffff' }
@@ -272,12 +289,12 @@ export default function TabbedContentHorizontal({
                   title={tab.label}
                   aria-label={`Step ${i + 1}: ${tab.label.replace(/<[^>]+>/g, '')}`}
                   aria-current={isActive ? 'true' : undefined}
-                  className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-black border-2 transition-transform ${
+                  className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-[12px] font-black border-2 ${
                     isDropTarget ? 'ring-2 ring-white ring-offset-2 ring-offset-teal-700' : ''
                   }`}
                   style={
                     isActive
-                      ? { background: '#ffffff', color: rail, borderColor: '#ffffff', transform: 'scale(1.08)' }
+                      ? { background: '#ffffff', color: rail, borderColor: '#ffffff' }
                       : isDone
                       ? { background: 'rgba(15,23,42,0.45)', color: '#ffffff', borderColor: 'transparent' }
                       : { background: 'rgba(255,255,255,0.28)', color: '#ffffff', borderColor: 'transparent' }
