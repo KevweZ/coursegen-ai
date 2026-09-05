@@ -504,36 +504,30 @@ export async function createScormPackage(
     if (!html?.trim()) {
       throw new Error('SCORM Player build is empty. Re-run npm run build:player.');
     }
+    if (html.length < 20000 && /<script[^>]+src=["']\/assets\//i.test(html)) {
+      throw new Error(
+        'SCORM player fetch returned the website shell instead of the player bundle.',
+      );
+    }
     report(40);
 
-    // Fetch all JS/CSS assets referenced in the HTML
-    const assetRegex = /(?:src|href)="([^"]+\.(?:js|css))"/g;
-    const assetPaths: string[] = [];
-    let m: RegExpExecArray | null;
-    while ((m = assetRegex.exec(html)) !== null) {
-      const p = m[1];
-      if (p.startsWith('./'))      assetPaths.push(p.slice(2));
-      else if (p.startsWith('/')) assetPaths.push(p.slice(1));
-      else                         assetPaths.push(p);
-    }
-
-    let fetched = 0;
-    for (const assetPath of assetPaths) {
-      const res = await fetch('/scorm-player/' + assetPath);
-      if (res.ok) zip.file(assetPath, await res.blob());
-      else console.warn('[SCORM] Could not fetch asset:', assetPath);
-      fetched++;
-      report(40 + Math.round((fetched / Math.max(assetPaths.length, 1)) * 40));
-    }
-    report(80);
-
+    // The player is a single-file HTML build. Do not scrape src/href out of the
+    // inlined JS — those strings match course_data.js / scorm_bridge.js, and on
+    // nexcourse.ai the SPA fallback returns index.html (200) which would
+    // overwrite the real course payload.
     const { shellHtml, playerJs } = splitScormPlayerBundle(html, course.title || 'Course');
-    if (!playerJs) {
+    if (!playerJs || playerJs.length < 50000) {
       throw new Error('SCORM player JS was empty. Re-run npm run build:player.');
     }
     zip.file('player.js', playerJs);
     zip.file('index.html', shellHtml);
     zip.file('story.html', shellHtml);
+    // Re-write payload files last so nothing can clobber them.
+    zip.file('scorm_bridge.js', buildScormBridgeJS(totalSlides, masteryScore));
+    zip.file('course_data.js', courseDataJs);
+    if (!courseDataJs.includes('window.__COURSE_DATA__') || courseDataJs.startsWith('<')) {
+      throw new Error('SCORM course data was not packaged. Retry Publish.');
+    }
     report(90);
   } catch (err: any) {
     throw new Error('Failed to package SCORM player: ' + err.message);

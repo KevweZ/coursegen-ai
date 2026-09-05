@@ -62,7 +62,12 @@ export default {
     const assetResponse = await env.ASSETS.fetch(request);
 
     // ── SPA fallback: if asset not found, serve index.html ───────────────────
+    // Never rewrite /scorm-player/* — Publish fetches those URLs, and a 200 HTML
+    // fallback would overwrite course_data.js / scorm_bridge.js in the zip.
     if (assetResponse.status === 404) {
+      if (url.pathname.startsWith('/scorm-player/')) {
+        return assetResponse;
+      }
       const indexUrl = new URL('/', url);
       return env.ASSETS.fetch(new Request(indexUrl.toString(), request));
     }
