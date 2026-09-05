@@ -134,8 +134,8 @@ app.use((req, res, next) => {
   const origin = req.headers.origin ?? '';
   if (ALLOWED_ORIGINS.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-File-Name, X-File-Size');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-File-Name, X-File-Size, X-Review-Encoding');
     res.setHeader('Vary', 'Origin');
   }
   if (req.method === 'OPTIONS') return res.sendStatus(204);
@@ -233,6 +233,14 @@ const imageRateLimit = rateLimit({
   standardHeaders:  true,
   legacyHeaders:    false,
   message: { error: 'Too many image generation requests. Please wait 15 minutes.' },
+});
+
+const reviewGetRateLimit = rateLimit({
+  windowMs:         15 * 60 * 1000,
+  max:              60,
+  standardHeaders:  true,
+  legacyHeaders:    false,
+  message: { error: 'Too many review-link requests. Please wait a few minutes.' },
 });
 
 // ─── Document Parser Helpers ─────────────────────────────────────────────────
@@ -1461,6 +1469,242 @@ app.delete('/api/drafts/:id', async (req, res) => {
     return res.json({ success: true });
   } catch (err) {
     console.error('[Drafts delete]', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── 6f. SME review links (temporary unlisted player snapshots) ──────────────
+const REVIEW_BUCKET = 'draft-assets';
+const REVIEW_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+const REVIEW_MAX_BYTES = 50 * 1024 * 1024;
+
+function reviewMetaPath(token) {
+  return `review/${token}.meta.json`;
+}
+function reviewSnapPath(token) {
+  return `review/${token}.bin`;
+}
+function reviewIndexPath(userId) {
+  return `${userId}/review-index.json`;
+}
+
+async function storageDownloadJson(supabase, path) {
+  const { data, error } = await supabase.storage.from(REVIEW_BUCKET).download(path);
+  if (error || !data) return null;
+  try {
+    return JSON.parse(await data.text());
+  } catch {
+    return null;
+  }
+}
+
+async function storageUploadJson(supabase, path, obj) {
+  const body = JSON.stringify(obj);
+  const { error } = await supabase.storage.from(REVIEW_BUCKET).upload(
+    path,
+    Buffer.from(body),
+    { upsert: true, contentType: 'application/json' }
+  );
+  if (error) throw error;
+}
+
+async function loadReviewIndex(supabase, userId) {
+  const idx = await storageDownloadJson(supabase, reviewIndexPath(userId));
+  return Array.isArray(idx?.links) ? idx.links : [];
+}
+
+async function saveReviewIndex(supabase, userId, links) {
+  await storageUploadJson(supabase, reviewIndexPath(userId), { links });
+}
+
+app.get('/api/review-links', async (req, res) => {
+  const auth = await requireAuthedUser(req);
+  if (!auth?.userId) return res.status(401).json({ error: 'Sign in required.' });
+  try {
+    const supabase = await getAdminSupabase();
+    const now = Date.now();
+    const links = (await loadReviewIndex(supabase, auth.userId))
+      .filter(l => l && !l.revokedAt && l.ready !== false && l.expiresAt && new Date(l.expiresAt).getTime() > now)
+      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+    return res.json({ success: true, links });
+  } catch (err) {
+    console.error('[Review links list]', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/review-links', async (req, res) => {
+  const auth = await requireAuthedUser(req);
+  if (!auth?.userId) return res.status(401).json({ error: 'Sign in required.' });
+  const courseTitle = String(req.body?.courseTitle || 'Untitled Course').slice(0, 200);
+  const encoding = req.body?.encoding === 'gzip' ? 'gzip' : 'json';
+  try {
+    const supabase = await getAdminSupabase();
+    const token = crypto.randomBytes(18).toString('base64url');
+    const createdAt = new Date().toISOString();
+    const expiresAt = new Date(Date.now() + REVIEW_TTL_MS).toISOString();
+    const meta = {
+      token,
+      userId: auth.userId,
+      courseTitle,
+      createdAt,
+      expiresAt,
+      revokedAt: null,
+      ready: false,
+      encoding,
+    };
+    await storageUploadJson(supabase, reviewMetaPath(token), meta);
+    const links = await loadReviewIndex(supabase, auth.userId);
+    links.push({ token, courseTitle, createdAt, expiresAt, revokedAt: null, ready: false });
+    await saveReviewIndex(supabase, auth.userId, links.slice(-12));
+
+    const snapPath = reviewSnapPath(token);
+    let upload = null;
+    try {
+      const { data: signed, error: signErr } = await supabase.storage
+        .from(REVIEW_BUCKET)
+        .createSignedUploadUrl(snapPath, { upsert: true });
+      if (signErr) {
+        console.warn('[Review links] signed upload URL failed:', signErr.message);
+      } else if (signed?.signedUrl) {
+        upload = { path: snapPath, signedUrl: signed.signedUrl, token: signed.token };
+      }
+    } catch (signEx) {
+      console.warn('[Review links] signed upload URL threw:', signEx.message);
+    }
+
+    return res.json({
+      success: true,
+      token,
+      expiresAt,
+      encoding,
+      upload,
+    });
+  } catch (err) {
+    console.error('[Review links create]', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.put(
+  '/api/review-links/:token/upload',
+  express.raw({ type: 'application/octet-stream', limit: '50mb' }),
+  async (req, res) => {
+    const auth = await requireAuthedUser(req);
+    if (!auth?.userId) return res.status(401).json({ error: 'Sign in required.' });
+    const token = String(req.params.token || '');
+    if (!/^[A-Za-z0-9_-]{16,48}$/.test(token)) {
+      return res.status(400).json({ error: 'Invalid review token.' });
+    }
+    const body = req.body;
+    if (!body || !body.length) return res.status(400).json({ error: 'Empty snapshot.' });
+    if (body.length > REVIEW_MAX_BYTES) {
+      return res.status(413).json({ error: 'Review snapshot is larger than 50MB.' });
+    }
+    try {
+      const supabase = await getAdminSupabase();
+      const meta = await storageDownloadJson(supabase, reviewMetaPath(token));
+      if (!meta || meta.userId !== auth.userId) return res.status(404).json({ error: 'Review link not found.' });
+      if (meta.revokedAt) return res.status(410).json({ error: 'This review link was revoked.' });
+      const encoding = req.headers['x-review-encoding'] === 'gzip' ? 'gzip' : (meta.encoding || 'json');
+      const { error } = await supabase.storage.from(REVIEW_BUCKET).upload(
+        reviewSnapPath(token),
+        body,
+        {
+          upsert: true,
+          contentType: encoding === 'gzip' ? 'application/gzip' : 'application/json',
+        }
+      );
+      if (error) return res.status(400).json({ error: error.message });
+      return res.json({ success: true });
+    } catch (err) {
+      console.error('[Review links upload]', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  }
+);
+
+app.post('/api/review-links/:token/ready', async (req, res) => {
+  const auth = await requireAuthedUser(req);
+  if (!auth?.userId) return res.status(401).json({ error: 'Sign in required.' });
+  const token = String(req.params.token || '');
+  try {
+    const supabase = await getAdminSupabase();
+    const meta = await storageDownloadJson(supabase, reviewMetaPath(token));
+    if (!meta || meta.userId !== auth.userId) return res.status(404).json({ error: 'Review link not found.' });
+    const encoding = req.body?.encoding === 'gzip' ? 'gzip' : (meta.encoding || 'json');
+    const next = { ...meta, ready: true, encoding };
+    await storageUploadJson(supabase, reviewMetaPath(token), next);
+    const links = await loadReviewIndex(supabase, auth.userId);
+    await saveReviewIndex(
+      supabase,
+      auth.userId,
+      links.map(l => (l.token === token ? { ...l, ready: true, encoding } : l))
+    );
+    return res.json({ success: true, token, expiresAt: meta.expiresAt });
+  } catch (err) {
+    console.error('[Review links ready]', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/review-links/:token', async (req, res) => {
+  const auth = await requireAuthedUser(req);
+  if (!auth?.userId) return res.status(401).json({ error: 'Sign in required.' });
+  const token = String(req.params.token || '');
+  try {
+    const supabase = await getAdminSupabase();
+    const meta = await storageDownloadJson(supabase, reviewMetaPath(token));
+    if (!meta || meta.userId !== auth.userId) return res.status(404).json({ error: 'Review link not found.' });
+    const revokedAt = new Date().toISOString();
+    await storageUploadJson(supabase, reviewMetaPath(token), { ...meta, revokedAt, ready: false });
+    await supabase.storage.from(REVIEW_BUCKET).remove([reviewSnapPath(token)]);
+    const links = await loadReviewIndex(supabase, auth.userId);
+    await saveReviewIndex(
+      supabase,
+      auth.userId,
+      links.map(l => (l.token === token ? { ...l, revokedAt, ready: false } : l))
+    );
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[Review links revoke]', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/review/:token', reviewGetRateLimit, async (req, res) => {
+  const token = String(req.params.token || '');
+  if (!/^[A-Za-z0-9_-]{16,48}$/.test(token)) {
+    return res.status(404).json({ error: 'This review link is invalid.' });
+  }
+  try {
+    const supabase = await getAdminSupabase();
+    const meta = await storageDownloadJson(supabase, reviewMetaPath(token));
+    if (!meta || meta.revokedAt || meta.ready === false) {
+      return res.status(410).json({ error: 'This review link has expired or was revoked.' });
+    }
+    if (!meta.expiresAt || new Date(meta.expiresAt).getTime() <= Date.now()) {
+      return res.status(410).json({ error: 'This review link has expired.' });
+    }
+    const { data, error } = await supabase.storage.from(REVIEW_BUCKET).download(reviewSnapPath(token));
+    if (error || !data) {
+      return res.status(404).json({ error: 'This review snapshot is no longer available.' });
+    }
+    const buf = Buffer.from(await data.arrayBuffer());
+    const encoding = meta.encoding === 'gzip' ? 'gzip' : 'json';
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Review-Encoding', encoding);
+    res.setHeader('X-Review-Expires', meta.expiresAt);
+    res.setHeader('X-Review-Title', encodeURIComponent(meta.courseTitle || 'Course review'));
+    res.setHeader('Access-Control-Expose-Headers', 'X-Review-Encoding, X-Review-Expires, X-Review-Title');
+    if (encoding === 'gzip') {
+      res.setHeader('Content-Type', 'application/gzip');
+      return res.send(buf);
+    }
+    res.setHeader('Content-Type', 'application/json');
+    return res.send(buf);
+  } catch (err) {
+    console.error('[Review get]', err.message);
     return res.status(500).json({ error: err.message });
   }
 });

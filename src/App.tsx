@@ -56,6 +56,7 @@ import {
   FolderOpen,
   RefreshCw,
   Library,
+  Link2,
 } from 'lucide-react';
 import { 
   Accordion, 
@@ -94,6 +95,7 @@ import { OutlinePreview } from './components/builder/OutlinePreview';
 import { CourseSettingsPage } from './components/builder/CourseSettingsPage';
 import { CourseReviewPage } from './components/builder/CourseReviewPage';
 import { ConfirmDialog } from './components/builder/ConfirmDialog';
+import { ReviewLinkModal } from './components/builder/ReviewLinkModal';
 import { EditSlideItemFields, sanitizeInteractionOstOnSave } from './components/builder/EditSlideItemFields';
 import { UploadPathModal, UploadPathChoice } from './components/builder/UploadPathModal';
 import { PlayerPropertiesModal, PlayerConfig, defaultPlayerConfig } from './components/builder/PlayerPropertiesModal';
@@ -172,6 +174,7 @@ import { TrialInvitePanel } from './components/TrialInvitePanel';
 
 import { FloatingImage } from './types/course';
 import { stripCourseAutoPromotedFloating, floatingMapFromCourse } from './lib/promoteSlideImages';
+import { buildReviewSnapshot, createReviewLink, fetchReviewSnapshot } from './lib/reviewLinkService';
 import TabbedHorizontal from './components/interactions/TabbedContentHorizontal';
 import TabbedVertical from './components/interactions/TabbedContentVertical';
 import FolderExplorer from './components/interactions/FolderExplorer';
@@ -728,6 +731,17 @@ const mapToGridIds = (ids: string[]): string[] =>
 
 export default function App() {
   const isScormPlayer = typeof window !== 'undefined' && !!(window as any).__COURSE_DATA__;
+  const scormRt = (typeof window !== 'undefined' && isScormPlayer)
+    ? ((window as any).__SCORM_RUNTIME__ || {})
+    : {};
+  const [isReviewPlayer] = useState(() =>
+    typeof window !== 'undefined' && parseAppPath(window.location.pathname).kind === 'review'
+  );
+  const isLearnerPlayer = isScormPlayer || isReviewPlayer;
+  const [reviewStatus, setReviewStatus] = useState<'loading' | 'ready' | 'error'>(
+    isReviewPlayer ? 'loading' : 'ready'
+  );
+  const [reviewError, setReviewError] = useState<string | null>(null);
   const { user, session, loading: authLoading, signOut, isAdmin, isTrial, isTrialExpired, passwordRecovery, clearPasswordRecovery } = useAuth();
 
   // ── Plan entitlements (Stripe) — prefer over signup metadata for drafts/voices ─
@@ -1393,8 +1407,14 @@ export default function App() {
   const [viewMode, setViewMode] = useState<'desktop' | 'mobile'>('desktop');
   // 'light' is the default course theme: white background, black body text,
   // clean minimal slide layouts (per global visual redesign direction).
-  const [theme, setTheme] = useState<'light' | 'dark' | 'unified'>('light');
-  const [courseBg, setCourseBg] = useState<string | null>(null);
+  const [theme, setTheme] = useState<'light' | 'dark' | 'unified'>(
+    () => (scormRt.theme === 'dark' || scormRt.theme === 'unified' || scormRt.theme === 'light')
+      ? scormRt.theme
+      : 'light'
+  );
+  const [courseBg, setCourseBg] = useState<string | null>(
+    () => (isScormPlayer && (window as any).__COURSE_DATA__?.coverImage) || null
+  );
   const [scormVersion, setScormVersion] = useState<ScormVersion>('1.2');
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
@@ -1434,7 +1454,16 @@ export default function App() {
   
   // Player Properties
   const [showPlayerProperties, setShowPlayerProperties] = useState(false);
-  const [playerConfig, setPlayerConfig] = useState<PlayerConfig>(defaultPlayerConfig);
+  const [showReviewLinkModal, setShowReviewLinkModal] = useState(false);
+  const [reviewLinkBusy, setReviewLinkBusy] = useState(false);
+  const [reviewLinkError, setReviewLinkError] = useState<string | null>(null);
+  const [reviewLinkUrl, setReviewLinkUrl] = useState<string | null>(null);
+  const [reviewLinkExpiresAt, setReviewLinkExpiresAt] = useState<string | null>(null);
+  const [playerConfig, setPlayerConfig] = useState<PlayerConfig>(() => (
+    scormRt.playerConfig
+      ? { ...defaultPlayerConfig, ...scormRt.playerConfig }
+      : defaultPlayerConfig
+  ));
   const phoneTocPlacement: 'hidden' | 'rail-left' | 'rail-right' | 'dropdown-gutter' | null = !isPhoneLikeToc
     ? null
     : playerConfig.tocPosition === 'hidden'
@@ -1471,6 +1500,7 @@ export default function App() {
     hasCourse: false,
     isSandboxMode: false,
     isScormPlayer: false,
+    isReviewPlayer: false,
     activeDraftId: null as string | null,
   });
   previewGuardRef.current = {
@@ -1478,11 +1508,12 @@ export default function App() {
     hasCourse: !!course,
     isSandboxMode,
     isScormPlayer,
+    isReviewPlayer,
     activeDraftId,
   };
   const requestLeavePreview = (onConfirm: () => void) => {
     const g = previewGuardRef.current;
-    if (g.isScormPlayer || g.isSandboxMode || !g.hasCourse || g.step !== 'preview') {
+    if (g.isScormPlayer || g.isReviewPlayer || g.isSandboxMode || !g.hasCourse || g.step !== 'preview') {
       onConfirm();
       return;
     }
@@ -1678,6 +1709,9 @@ export default function App() {
       })();
       return;
     }
+    if (parsed.kind === 'review') {
+      return;
+    }
     if (parsed.kind === 'preview') {
       void (async () => {
         // Never block the UI with the draft overlay on deep-link restore
@@ -1726,7 +1760,7 @@ export default function App() {
 
   // ── Deep-link restore (auth + protected paths) ─────────────────────────────
   useEffect(() => {
-    if (isScormPlayer || authLoading || passwordRecovery) return;
+    if (isScormPlayer || isReviewPlayer || authLoading || passwordRecovery) return;
     const path = window.location.pathname;
 
     if (!user) {
@@ -1758,13 +1792,13 @@ export default function App() {
     if (returnTo) navigateTo(returnTo, true);
     applyAuthenticatedPath(target);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, authLoading, isScormPlayer, isAdmin, passwordRecovery]);
+  }, [user, authLoading, isScormPlayer, isReviewPlayer, isAdmin, passwordRecovery]);
 
   // Keep URL in sync with major authenticated steps
   useEffect(() => {
-    if (!user || isScormPlayer) return;
+    if (!user || isScormPlayer || isReviewPlayer) return;
     const path = window.location.pathname;
-    if (path.startsWith('/sandbox/')) return;
+    if (path.startsWith('/sandbox/') || path.startsWith('/review/')) return;
 
     if (step === 'marketing') {
       if (publicView === 'homepage' && path !== ROUTES.home) navigateTo(ROUTES.home, true);
@@ -1793,7 +1827,7 @@ export default function App() {
         navigateTo(ROUTES.courseDevelopment, true);
       }
     }
-  }, [step, user, isScormPlayer, isSandboxMode, activeDraftId, publicView, settingsMode]);
+  }, [step, user, isScormPlayer, isReviewPlayer, isSandboxMode, activeDraftId, publicView, settingsMode]);
 
   // ── Browser back / forward ────────────────────────────────────────────────
   useEffect(() => {
@@ -1814,9 +1848,9 @@ export default function App() {
         return;
       }
       const g = previewGuardRef.current;
-      if (g.step === 'preview' && g.hasCourse && !g.isScormPlayer && !g.isSandboxMode) {
+      if (g.step === 'preview' && g.hasCourse && !g.isScormPlayer && !g.isReviewPlayer && !g.isSandboxMode) {
         const parsed = parseAppPath(path);
-        const stillPreview = parsed.kind === 'preview' || parsed.kind === 'courseDevelopment';
+        const stillPreview = parsed.kind === 'preview' || parsed.kind === 'courseDevelopment' || parsed.kind === 'review';
         if (!stillPreview) {
           const restore = g.activeDraftId ? ROUTES.preview(g.activeDraftId) : ROUTES.courseDevelopment;
           navigateTo(restore, true);
@@ -1843,13 +1877,27 @@ export default function App() {
   // Theme dropdown in preview top bar
   const [themeDropdownOpen, setThemeDropdownOpen] = useState(false);
   // Original course snapshot for Reset Layout
-  const [originalCourse, setOriginalCourse] = useState<any>(null);
+  const [originalCourse, setOriginalCourse] = useState<any>(
+    () => (isScormPlayer ? (window as any).__COURSE_DATA__ : null)
+  );
   // Per-slide floating images map: slideId -> FloatingImage[]
-  const [floatingImagesMap, setFloatingImagesMap] = useState<Record<string, FloatingImage[]>>({});
+  const [floatingImagesMap, setFloatingImagesMap] = useState<Record<string, FloatingImage[]>>(() => (
+    isScormPlayer && (window as any).__COURSE_DATA__
+      ? floatingMapFromCourse((window as any).__COURSE_DATA__)
+      : {}
+  ));
   // Edits to synthetic slides (module-overview, etc.) that don't live in course.modules
-  const [syntheticSlideOverrides, setSyntheticSlideOverrides] = useState<Record<string, {content?: string; voiceOverText?: string}>>({});
+  const [syntheticSlideOverrides, setSyntheticSlideOverrides] = useState<Record<string, {content?: string; voiceOverText?: string}>>(
+    () => (scormRt.syntheticSlideOverrides && typeof scormRt.syntheticSlideOverrides === 'object')
+      ? scormRt.syntheticSlideOverrides
+      : {}
+  );
   // Audio URLs for synthetic slides (cover, player-tour, module-overviews) keyed by slide id
-  const [syntheticAudioMap, setSyntheticAudioMap] = useState<Record<string, string>>({});
+  const [syntheticAudioMap, setSyntheticAudioMap] = useState<Record<string, string>>(
+    () => (scormRt.syntheticAudioMap && typeof scormRt.syntheticAudioMap === 'object')
+      ? scormRt.syntheticAudioMap
+      : {}
+  );
   // Closed captions toggle
   const [showCC, setShowCC] = useState(false);
 
@@ -1887,7 +1935,11 @@ export default function App() {
   const [preset, setPreset] = useState<'quick' | 'standard' | 'comprehensive'>('standard');
   const [courseType, setCourseType] = useState<CourseType>('standard');
   const [courseDescription, setCourseDescription] = useState('');
-  const [learningObjectives, setLearningObjectives] = useState<(string | TerminalObjectiveGroup)[]>([{ terminalObjective: '', enablingObjectives: [''] }]);
+  const [learningObjectives, setLearningObjectives] = useState<(string | TerminalObjectiveGroup)[]>(
+    () => (Array.isArray(scormRt.learningObjectives) && scormRt.learningObjectives.length)
+      ? scormRt.learningObjectives
+      : [{ terminalObjective: '', enablingObjectives: [''] }]
+  );
   const [objectiveFormat, setObjectiveFormat] = useState<string>(DEFAULT_COURSE_SETTINGS.objectiveFormat);
   const [slideCount, setSlideCount] = useState(DEFAULT_COURSE_SETTINGS.slideCount);
   const [interactionTypes, setInteractionTypes] = useState<string[]>([...DEFAULT_COURSE_SETTINGS.interactionTypes]);
@@ -1896,7 +1948,11 @@ export default function App() {
   const [buildMode, setBuildMode] = useState<'course' | 'game' | 'workflow'>('course');
   const [selectedGameType, setSelectedGameType] = useState<GameTemplateType>('jeopardy');
   const [extractedFileText, setExtractedFileText] = useState<string>('');
-  const [voiceOverEnabled, setVoiceOverEnabled] = useState(DEFAULT_COURSE_SETTINGS.voiceOverEnabled);
+  const [voiceOverEnabled, setVoiceOverEnabled] = useState(
+    () => typeof scormRt.voiceOverEnabled === 'boolean'
+      ? scormRt.voiceOverEnabled
+      : DEFAULT_COURSE_SETTINGS.voiceOverEnabled
+  );
 
   // Phones and desktop 16:9/4:3: JS scale-to-fit (HDMI scale-up included).
   // Measure an empty overlay; keep a full-size in-flow host so the stage cannot
@@ -1998,8 +2054,19 @@ export default function App() {
   const [qcFocusSlideId, setQcFocusSlideId] = useState<string | null>(null);
 
   // Mastery Quiz state
-  const [examConfig, setExamConfig] = useState<ExamConfig>({ ...DEFAULT_COURSE_SETTINGS.examConfig });
-  const [examQuestions, setExamQuestions] = useState<ExamQuestion[]>([]);
+  const [examConfig, setExamConfig] = useState<ExamConfig>(() => {
+    const extra = scormRt.examConfig || (typeof window !== 'undefined' ? (window as any).__EXAM_CONFIG__ : null);
+    return extra && typeof extra === 'object'
+      ? { ...DEFAULT_COURSE_SETTINGS.examConfig, ...extra }
+      : { ...DEFAULT_COURSE_SETTINGS.examConfig };
+  });
+  const [examQuestions, setExamQuestions] = useState<ExamQuestion[]>(() => {
+    const fromRt = Array.isArray(scormRt.examQuestions) ? scormRt.examQuestions : [];
+    const fromCourse = Array.isArray((typeof window !== 'undefined' ? (window as any).__COURSE_DATA__?.examQuestions : null))
+      ? (window as any).__COURSE_DATA__.examQuestions
+      : [];
+    return fromRt.length ? fromRt : fromCourse;
+  });
   const [examPhase, setExamPhase] = useState<'idle' | 'active' | 'complete'>('idle');
   const [examError, setExamError] = useState<string | null>(null);
   const [examSession, setExamSession] = useState<ExamSessionState>({
@@ -2015,11 +2082,75 @@ export default function App() {
   const examGenPromiseRef = useRef<Promise<ExamQuestion[]> | null>(null);
 
   // Navigation restriction state
-  const [navigationMode, setNavigationMode] = useState<NavigationMode>(DEFAULT_COURSE_SETTINGS.navigationMode);
-  const [requireInteractionsComplete, setRequireInteractionsComplete] = useState(DEFAULT_COURSE_SETTINGS.requireInteractionsComplete);
+  const [navigationMode, setNavigationMode] = useState<NavigationMode>(
+    () => (scormRt.navigationMode || scormRt.playerConfig?.navigationMode || DEFAULT_COURSE_SETTINGS.navigationMode) as NavigationMode
+  );
+  const [requireInteractionsComplete, setRequireInteractionsComplete] = useState(
+    () => typeof scormRt.requireInteractionsComplete === 'boolean'
+      ? scormRt.requireInteractionsComplete
+      : DEFAULT_COURSE_SETTINGS.requireInteractionsComplete
+  );
   const [highestVisitedIndex, setHighestVisitedIndex] = useState(0);
   /** Per-slide set of explored interaction item ids (for requireInteractionsComplete) */
   const [exploredBySlide, setExploredBySlide] = useState<Record<string, string[]>>({});
+
+  useEffect(() => {
+    if (!isReviewPlayer) return;
+    const parsed = parseAppPath(window.location.pathname);
+    if (parsed.kind !== 'review') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { snapshot } = await fetchReviewSnapshot(parsed.token);
+        if (cancelled) return;
+        const cfg = snapshot.playerConfig || defaultPlayerConfig;
+        setPlayerConfig(cfg);
+        setTheme((snapshot.theme as any) || 'light');
+        setNavigationMode((snapshot.navigationMode || cfg.navigationMode || 'free') as NavigationMode);
+        setRequireInteractionsComplete(!!snapshot.requireInteractionsComplete);
+        if (Array.isArray(snapshot.learningObjectives) && snapshot.learningObjectives.length) {
+          setLearningObjectives(snapshot.learningObjectives);
+        }
+        if (snapshot.syntheticSlideOverrides && typeof snapshot.syntheticSlideOverrides === 'object') {
+          setSyntheticSlideOverrides(snapshot.syntheticSlideOverrides);
+        }
+        setSyntheticAudioMap(snapshot.syntheticAudioMap || {});
+        setVoiceOverEnabled(!!snapshot.voiceOverEnabled);
+        const shell = snapshot.course;
+        setCourse(shell);
+        setOriginalCourse(shell);
+        setFloatingImagesMap(floatingMapFromCourse(shell));
+        if (shell?.coverImage) setCourseBg(shell.coverImage);
+        const qs = (Array.isArray(snapshot.examQuestions) && snapshot.examQuestions)
+          || (Array.isArray(shell?.examQuestions) && shell.examQuestions)
+          || [];
+        setExamQuestions(qs);
+        if (snapshot.examConfig && typeof snapshot.examConfig === 'object') {
+          setExamConfig(prev => ({ ...prev, ...snapshot.examConfig }));
+        }
+        setExamError(null);
+        setExamPhase('idle');
+        setIsGeneratingExam(false);
+        examGenPromiseRef.current = null;
+        setCurrentSlideIndex(0);
+        setHighestVisitedIndex(0);
+        setQuizState({});
+        setExploredBySlide({});
+        setKcCheckedSlideIds(new Set());
+        setIsSandboxMode(false);
+        setMobileDesignDemo(false);
+        setActiveDraftId(null);
+        setShowPlayerProperties(false);
+        setStep('preview');
+        setReviewStatus('ready');
+      } catch (e: any) {
+        if (cancelled) return;
+        setReviewError(e?.message || 'This review link has expired or was revoked.');
+        setReviewStatus('error');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isReviewPlayer]);
 
   // Player defaults are loaded with Course Settings via account preferences (see effect below).
   useEffect(() => {
@@ -2419,7 +2550,7 @@ export default function App() {
 
   // Warn before refresh/close while a course is open — drafts are not autosaved
   useEffect(() => {
-    if (isScormPlayer || !course) return;
+    if (isScormPlayer || isReviewPlayer || !course) return;
     if (step !== 'preview') return;
     const warn = (e: BeforeUnloadEvent) => {
       e.preventDefault();
@@ -2427,7 +2558,7 @@ export default function App() {
     };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
-  }, [course, step, isScormPlayer]);
+  }, [course, step, isScormPlayer, isReviewPlayer]);
 
   useEffect(() => { scormSetLocation(currentSlideIndex); }, [currentSlideIndex]);
 
@@ -2449,6 +2580,7 @@ export default function App() {
       if (courseBg !== cover) setCourseBg(cover);
       return;
     }
+    if (isScormPlayer || isReviewPlayer) return;
     if (course && !courseBg && course.visualTheme !== 'light') {
       setCourseBg(getRandomBackgroundForTheme(course.visualTheme));
     }
@@ -2497,7 +2629,7 @@ export default function App() {
 
   // Idle upload stays on /upload; analyze / quick-build progress uses /Building
   useEffect(() => {
-    if (!user || isScormPlayer || step !== 'home') return;
+    if (!user || isScormPlayer || isReviewPlayer || step !== 'home') return;
     const path = window.location.pathname.replace(/\/+$/, '') || '/';
     if (path.startsWith('/sandbox/')) return;
     const busy =
@@ -2512,6 +2644,7 @@ export default function App() {
   }, [
     user,
     isScormPlayer,
+    isReviewPlayer,
     step,
     isAnalyzing,
     isGenerating,
@@ -2524,14 +2657,14 @@ export default function App() {
   // On phones, wait until landscape so the tour never covers the rotate prompt.
   useEffect(() => {
     migrateDevTourStorage();
-    if (!user || step !== 'preview' || isSandboxMode) return;
+    if (!user || step !== 'preview' || isSandboxMode || isReviewPlayer) return;
     if (needsLandscapeForPreview) return;
     if (shouldShowDevTour()) setShowDevTour(true);
   }, [user?.id, step, isSandboxMode, course?.title, needsLandscapeForPreview]);
 
   // One-time heal: strip auto-promoted floating images that overlapped tab titles
   useEffect(() => {
-    if (step !== 'preview' || !course?.modules) return;
+    if (step !== 'preview' || !course?.modules || isLearnerPlayer) return;
     const cleaned = stripCourseAutoPromotedFloating(course);
     const hadPromoInCourse = cleaned !== course;
 
@@ -4263,14 +4396,57 @@ export default function App() {
     }
   };
 
+  const handleCreateReviewLink = async () => {
+    if (!course || reviewLinkBusy) return;
+    setReviewLinkBusy(true);
+    setReviewLinkError(null);
+    try {
+      const snapshot = await buildReviewSnapshot({
+        course,
+        playerConfig,
+        theme,
+        navigationMode,
+        requireInteractionsComplete,
+        voiceOverEnabled,
+        learningObjectives,
+        syntheticSlideOverrides,
+        syntheticAudioMap,
+        examQuestions,
+        examConfig,
+      });
+      const created = await createReviewLink(snapshot, course.title || 'Untitled Course');
+      setReviewLinkUrl(created.url);
+      setReviewLinkExpiresAt(created.expiresAt);
+    } catch (e: any) {
+      setReviewLinkError(e?.message || 'Could not create a review link.');
+    } finally {
+      setReviewLinkBusy(false);
+    }
+  };
+
   const exportScorm = async () => {
     if (!course || isExporting) return;
     setIsExporting(true);
     setExportProgress(0);
     try {
-      const blob = await createScormPackage(course, {
+      const { persistCourseAudioUrls, persistSyntheticAudioMap } = await import('./services/ttsService');
+      const packagedCourse = await persistCourseAudioUrls(course);
+      const packagedSynth = await persistSyntheticAudioMap(syntheticAudioMap || {});
+      const blob = await createScormPackage(packagedCourse, {
         version: scormVersion,
         onProgress: (pct) => setExportProgress(pct),
+        runtime: {
+          playerConfig,
+          theme,
+          navigationMode,
+          requireInteractionsComplete,
+          voiceOverEnabled,
+          learningObjectives,
+          syntheticSlideOverrides,
+          syntheticAudioMap: packagedSynth,
+          examQuestions,
+          examConfig,
+        },
       });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -4648,8 +4824,9 @@ export default function App() {
   );
 
   // ── Auth Gate ────────────────────────────────────────────────────────────
-  // Loading spinner while Supabase session is restoring
-  if (authLoading) {
+  // Loading spinner while Supabase session is restoring.
+  // Published SCORM / SME review must not wait on auth (LMS popups often block it).
+  if (authLoading && !isLearnerPlayer) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
         <div className="text-center space-y-4">
@@ -4665,7 +4842,7 @@ export default function App() {
   const onResetPasswordPath =
     typeof window !== 'undefined'
     && (window.location.pathname.replace(/\/+$/, '') || '/') === '/reset-password';
-  if (!isScormPlayer && (passwordRecovery || onResetPasswordPath)) {
+  if (!isLearnerPlayer && (passwordRecovery || onResetPasswordPath)) {
     if (!user) {
       const hash = typeof window !== 'undefined' ? window.location.hash : '';
       const search = typeof window !== 'undefined' ? window.location.search : '';
@@ -4719,8 +4896,31 @@ export default function App() {
     );
   }
 
+  if (isReviewPlayer && reviewStatus === 'error') {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4">
+        <div className="max-w-md w-full rounded-2xl border border-slate-700/70 bg-slate-900/80 p-6 text-center space-y-3">
+          <p className="text-lg font-extrabold text-white">Review link unavailable</p>
+          <p className="text-sm text-slate-400 leading-relaxed">
+            {reviewError || 'This review link has expired or was revoked.'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+  if (isReviewPlayer && (reviewStatus !== 'ready' || !course)) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-12 h-12 border-t-2 border-sky-500 rounded-full animate-spin mx-auto" />
+          <p className="text-slate-400 text-sm font-medium">Opening course for review…</p>
+        </div>
+      </div>
+    );
+  }
+
   // Marketing / auth pages — also shown to signed-in users on the landing URL (/)
-  if (!isScormPlayer && (!user || step === 'marketing')) {
+  if (!isLearnerPlayer && (!user || step === 'marketing')) {
     const enterApp = () => {
       setStep('home');
       navigateTo(ROUTES.upload);
@@ -5779,8 +5979,8 @@ export default function App() {
                   </button>
                 </div>
               )}
-              {/* ── Preview Top Bar — hidden in SCORM/published view ── */}
-              {!isScormPlayer && <div className={cn('px-3 bg-slate-900 border-b border-slate-800 shrink-0', isPhoneViewport && 'px-2')}>
+              {/* ── Preview Top Bar — hidden in SCORM / SME review ── */}
+              {!isLearnerPlayer && <div className={cn('px-3 bg-slate-900 border-b border-slate-800 shrink-0', isPhoneViewport && 'px-2')}>
                 <div className={cn('h-11 flex items-center justify-between gap-2', isPhoneViewport && 'h-9 gap-1')}>
                   {/* Left: back + title */}
                   <div className="flex items-center gap-2 min-w-0">
@@ -6103,6 +6303,17 @@ export default function App() {
                           )}
                         </button>
                       </div>
+                    <button
+                      title="Create a temporary SME review link (no authoring UI)"
+                      onClick={() => {
+                        setReviewLinkError(null);
+                        setShowReviewLinkModal(true);
+                      }}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-sky-700/50 hover:bg-sky-800/20 text-sky-300 text-[11px] font-semibold"
+                    >
+                      <Link2 className="w-3 h-3" />
+                      <span className="hidden lg:inline">Review link</span>
+                    </button>
                   </div>
                 </div>
               </div>}
@@ -6489,15 +6700,15 @@ export default function App() {
                                          <EnlargeableImage
                                            src={slideImg}
                                            className="max-h-[28rem] bg-transparent"
-                                           onRemove={!isScormPlayer ? () => {
+                                           onRemove={!isLearnerPlayer ? () => {
                                              pushUndo();
                                              handleUpdateSlideMedia(currentSlide.id, { imageUrl: undefined });
                                            } : undefined}
-                                           onCrop={!isScormPlayer ? (url) => {
+                                           onCrop={!isLearnerPlayer ? (url) => {
                                              pushUndo();
                                              handleUpdateSlideMedia(currentSlide.id, { imageUrl: url });
                                            } : undefined}
-                                           onPromoteToFloat={!isScormPlayer ? (info) => {
+                                           onPromoteToFloat={!isLearnerPlayer ? (info) => {
                                              promoteInFlowToFloat(info, null, (s) => ({ ...s, imageUrl: undefined }));
                                            } : undefined}
                                          />
@@ -6880,7 +7091,7 @@ export default function App() {
                                           code={mermaidCode}
                                           theme={theme as any}
                                           align={diagramAlign}
-                                          isAuthoring={!isScormPlayer}
+                                          isAuthoring={!isLearnerPlayer}
                                           onAlignChange={(align) => {
                                             if (!currentSlide?.id) return;
                                             pushUndo();
@@ -6935,13 +7146,13 @@ export default function App() {
                                        highlightTabId={dragOverTabId}
                                        onTabView={(id) => { if (id !== '__intro__') markInteractionExplored(currentSlide.id, id); }}
                                        onTabAudio={handleTabAudio}
-                                       onRemoveIntroImage={!isScormPlayer ? () => {
+                                       onRemoveIntroImage={!isLearnerPlayer ? () => {
                                          pushUndo();
                                          handleUpdateSlideMedia(currentSlide.id, {
                                            data: { ...currentSlide.data, introImageUrl: undefined },
                                          });
                                        } : undefined}
-                                       onRemoveTabImage={!isScormPlayer ? (tabId) => {
+                                       onRemoveTabImage={!isLearnerPlayer ? (tabId) => {
                                          pushUndo();
                                          const key = currentSlide.data?.tabs ? 'tabs' : 'items';
                                          const list = [...(currentSlide.data?.[key] || [])];
@@ -6954,13 +7165,13 @@ export default function App() {
                                            },
                                          });
                                        } : undefined}
-                                       onCropIntroImage={!isScormPlayer ? (url) => {
+                                       onCropIntroImage={!isLearnerPlayer ? (url) => {
                                          pushUndo();
                                          handleUpdateSlideMedia(currentSlide.id, {
                                            data: { ...currentSlide.data, introImageUrl: url },
                                          });
                                        } : undefined}
-                                       onCropTabImage={!isScormPlayer ? (tabId, url) => {
+                                       onCropTabImage={!isLearnerPlayer ? (tabId, url) => {
                                          pushUndo();
                                          const key = currentSlide.data?.tabs ? 'tabs' : 'items';
                                          const list = [...(currentSlide.data?.[key] || [])];
@@ -6973,13 +7184,13 @@ export default function App() {
                                            },
                                          });
                                        } : undefined}
-                                       onPromoteIntroImage={!isScormPlayer ? (info) => {
+                                       onPromoteIntroImage={!isLearnerPlayer ? (info) => {
                                          promoteInFlowToFloat(info, '__intro__', (s) => ({
                                            ...s,
                                            data: { ...s.data, introImageUrl: undefined },
                                          }));
                                        } : undefined}
-                                       onPromoteTabImage={!isScormPlayer ? (tabId, info) => {
+                                       onPromoteTabImage={!isLearnerPlayer ? (tabId, info) => {
                                          promoteInFlowToFloat(info, tabId, (s) => {
                                            const key = s.data?.tabs ? 'tabs' : 'items';
                                            return {
@@ -7016,13 +7227,13 @@ export default function App() {
                                        highlightTabId={dragOverTabId}
                                        onTabView={(id) => { if (id !== '__intro__') markInteractionExplored(currentSlide.id, id); }}
                                        onTabAudio={handleTabAudio}
-                                       onRemoveIntroImage={!isScormPlayer ? () => {
+                                       onRemoveIntroImage={!isLearnerPlayer ? () => {
                                          pushUndo();
                                          handleUpdateSlideMedia(currentSlide.id, {
                                            data: { ...currentSlide.data, introImageUrl: undefined },
                                          });
                                        } : undefined}
-                                       onRemoveTabImage={!isScormPlayer ? (tabId) => {
+                                       onRemoveTabImage={!isLearnerPlayer ? (tabId) => {
                                          pushUndo();
                                          const key = currentSlide.data?.tabs ? 'tabs' : 'items';
                                          const list = [...(currentSlide.data?.[key] || [])];
@@ -7035,13 +7246,13 @@ export default function App() {
                                            },
                                          });
                                        } : undefined}
-                                       onCropIntroImage={!isScormPlayer ? (url) => {
+                                       onCropIntroImage={!isLearnerPlayer ? (url) => {
                                          pushUndo();
                                          handleUpdateSlideMedia(currentSlide.id, {
                                            data: { ...currentSlide.data, introImageUrl: url },
                                          });
                                        } : undefined}
-                                       onCropTabImage={!isScormPlayer ? (tabId, url) => {
+                                       onCropTabImage={!isLearnerPlayer ? (tabId, url) => {
                                          pushUndo();
                                          const key = currentSlide.data?.tabs ? 'tabs' : 'items';
                                          const list = [...(currentSlide.data?.[key] || [])];
@@ -7054,13 +7265,13 @@ export default function App() {
                                            },
                                          });
                                        } : undefined}
-                                       onPromoteIntroImage={!isScormPlayer ? (info) => {
+                                       onPromoteIntroImage={!isLearnerPlayer ? (info) => {
                                          promoteInFlowToFloat(info, '__intro__', (s) => ({
                                            ...s,
                                            data: { ...s.data, introImageUrl: undefined },
                                          }));
                                        } : undefined}
-                                       onPromoteTabImage={!isScormPlayer ? (tabId, info) => {
+                                       onPromoteTabImage={!isLearnerPlayer ? (tabId, info) => {
                                          promoteInFlowToFloat(info, tabId, (s) => {
                                            const key = s.data?.tabs ? 'tabs' : 'items';
                                            return {
@@ -7111,7 +7322,7 @@ export default function App() {
                                        items={cr.items}
                                        theme={theme as any}
                                        onItemReveal={(id) => markInteractionExplored(currentSlide.id, id)}
-                                       onRemoveItemImage={!isScormPlayer ? (itemId) => {
+                                       onRemoveItemImage={!isLearnerPlayer ? (itemId) => {
                                          pushUndo();
                                          const items = (cr.items || []).map((it: any) =>
                                            it.id === itemId ? { ...it, imageUrl: undefined } : it
@@ -7120,7 +7331,7 @@ export default function App() {
                                            data: { ...currentSlide.data, items },
                                          });
                                        } : undefined}
-                                       onCropItemImage={!isScormPlayer ? (itemId, url) => {
+                                       onCropItemImage={!isLearnerPlayer ? (itemId, url) => {
                                          pushUndo();
                                          const items = (cr.items || []).map((it: any) =>
                                            it.id === itemId ? { ...it, imageUrl: url } : it
@@ -7129,7 +7340,7 @@ export default function App() {
                                            data: { ...currentSlide.data, items },
                                          });
                                        } : undefined}
-                                       onPromoteItemImage={!isScormPlayer ? (itemId, info) => {
+                                       onPromoteItemImage={!isLearnerPlayer ? (itemId, info) => {
                                          promoteInFlowToFloat(info, null, (s) => ({
                                            ...s,
                                            data: {
@@ -7178,6 +7389,10 @@ export default function App() {
                                        }
                                      }
                                      if (!questions || questions.length === 0) {
+                                       if (isLearnerPlayer) {
+                                         setExamError('Quiz questions were not included in this review copy.');
+                                         return;
+                                       }
                                        // Last-resort retry only when pre-build truly failed
                                        setIsGeneratingExam(true);
                                        try {
@@ -7390,7 +7605,7 @@ export default function App() {
                              </div>
 
                              {/* Authoring uses floatingImagesMap canvas below — avoid a second copy from course.floatingMedia (caused inseparable duplicates). */}
-                             {isScormPlayer && currentSlide?.floatingMedia && currentSlide.floatingMedia.length > 0 && viewMode === 'desktop' && (
+                             {isLearnerPlayer && currentSlide?.floatingMedia && currentSlide.floatingMedia.length > 0 && viewMode === 'desktop' && (
                                <div className="hidden md:block w-[40%] max-w-[500px] shrink-0 pointer-events-none z-[60]">
                                  <FloatingImageCanvas
                                    isAuthoring={false}
@@ -7405,6 +7620,7 @@ export default function App() {
                            </div>
 
                            {/* Slide media tools — Edit/Reset/Upload/Source Image live in the top bar. */}
+                           {!isLearnerPlayer && (
                            <div className="absolute top-2 right-2 z-[100] flex flex-wrap max-w-sm justify-end gap-2 shrink-0">
                              {currentSlide?.mediaUrl && (
                                <button 
@@ -7414,8 +7630,9 @@ export default function App() {
                                ><Trash2 className="w-4 h-4"/><span className="text-xs font-bold">Clear</span></button>
                              )}
                            </div>
+                           )}
 
-                            {!isScormPlayer && (currentSlide?.imagePlaceholder || currentSlide?.mediaUrl) && (
+                            {!isLearnerPlayer && (currentSlide?.imagePlaceholder || currentSlide?.mediaUrl) && (
                               <div className="mt-6 flex justify-center">
                               {currentSlide?.mediaUrl ? (
                                 <div className="max-w-lg rounded-xl overflow-hidden shadow-xl border border-black/10">
@@ -7467,6 +7684,7 @@ export default function App() {
                             )}
 
                        {/* Floating images — inside scroll so they scroll with content */}
+                       {!isLearnerPlayer && (
                        <FloatingImageCanvas
                          images={floatingImagesMap[currentSlide?.id] || []}
                          isAuthoring={true}
@@ -7484,6 +7702,7 @@ export default function App() {
                          }}
                          onPinBack={pinFloatBackToFlow}
                        />
+                       )}
                         </motion.div>
                        </AnimatePresence>
 
@@ -9067,6 +9286,16 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ReviewLinkModal
+        open={showReviewLinkModal}
+        busy={reviewLinkBusy}
+        error={reviewLinkError}
+        createdUrl={reviewLinkUrl}
+        createdExpiresAt={reviewLinkExpiresAt}
+        onClose={() => setShowReviewLinkModal(false)}
+        onCreate={handleCreateReviewLink}
+      />
 
       <ConfirmDialog
         open={leavePreviewOpen}

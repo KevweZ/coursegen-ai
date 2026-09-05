@@ -11,7 +11,8 @@ export default defineConfig(({ mode }) => {
     plugins: [react(), tailwindcss(), viteSingleFile({ removeViteModuleLoader: true })],
     build: {
       outDir: 'public/scorm-player',
-      emptyOutDir: true,
+      emptyOutDir: false,
+      copyPublicDir: false,
       cssCodeSplit: false,
       modulePreload: false,
     },

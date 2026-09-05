@@ -26,6 +26,8 @@ export const ROUTES = {
   myAccount: '/MyAccount',
   design: (draftId: string) => `/design/${encodeURIComponent(draftId)}`,
   preview: (draftId: string) => `/preview/${encodeURIComponent(draftId)}`,
+  /** Public SME review player (unguessable token; no login) */
+  review: (token: string) => `/review/${encodeURIComponent(token)}`,
   sandboxSettings: '/sandbox/CourseSettings',
   sandboxDevelopment: '/sandbox/CourseDevelopment',
   sandboxMobile: '/sandbox/Mobile',
@@ -47,6 +49,7 @@ export type ParsedAppPath =
   | { kind: 'pricingAuthed' }
   | { kind: 'design'; draftId: string }
   | { kind: 'preview'; draftId: string }
+  | { kind: 'review'; token: string }
   | { kind: 'sandbox'; demo: SandboxDemo }
   | { kind: 'payment'; outcome: 'success' | 'cancel' }
   | { kind: 'unknown' };
@@ -97,6 +100,9 @@ export function parseAppPath(pathname: string): ParsedAppPath {
 
   const preview = p.match(/^\/preview\/([^/]+)$/);
   if (preview) return { kind: 'preview', draftId: decodeURIComponent(preview[1]) };
+
+  const review = p.match(/^\/review\/([^/]+)$/);
+  if (review) return { kind: 'review', token: decodeURIComponent(review[1]) };
 
   return { kind: 'unknown' };
 }

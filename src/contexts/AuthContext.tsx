@@ -161,7 +161,9 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser]       = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() =>
+    typeof window === 'undefined' ? true : !(window as any).__COURSE_DATA__
+  );
   const [passwordRecovery, setPasswordRecovery] = useState(() => shouldEnterPasswordRecovery());
 
   // Derived: admin by email match OR user_metadata.role === 'admin'
@@ -178,6 +180,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     : false;
 
   useEffect(() => {
+    if (typeof window !== 'undefined' && (window as any).__COURSE_DATA__) {
+      setLoading(false);
+      return;
+    }
+
     if (shouldEnterPasswordRecovery()) {
       markPasswordRecoveryPending();
       setPasswordRecovery(true);

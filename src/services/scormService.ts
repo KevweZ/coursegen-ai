@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import { CourseOutline } from '../types/course';
+import { urlToDataUrl } from './ttsService';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -7,39 +8,74 @@ import { CourseOutline } from '../types/course';
 
 export type ScormVersion = '1.2' | '2004';
 
+/** Player chrome that preview uses but used to be omitted from the zip. */
+export interface ScormRuntimeSnapshot {
+  playerConfig?: any;
+  theme?: string;
+  navigationMode?: string;
+  requireInteractionsComplete?: boolean;
+  voiceOverEnabled?: boolean;
+  learningObjectives?: any;
+  syntheticSlideOverrides?: Record<string, any>;
+  syntheticAudioMap?: Record<string, string>;
+  examQuestions?: any[];
+  examConfig?: any;
+}
+
 export interface ScormExportOptions {
   version?: ScormVersion;
   /** 0–100; defaults to course.examConfig?.passingScore ?? 80 */
   masteryScore?: number;
   language?: string;
   onProgress?: (pct: number) => void;
+  runtime?: ScormRuntimeSnapshot;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Sanitisation: strip large binary data before embedding in the package
+// Keep preview media. blob: cannot survive a zip; convert or drop.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function isLargeBlob(v: unknown): boolean {
-  if (typeof v !== 'string') return false;
-  return v.startsWith('data:') || v.startsWith('blob:');
+function isEphemeralBlob(v: unknown): boolean {
+  return typeof v === 'string' && v.startsWith('blob:');
+}
+
+async function persistBlobsForExport(value: any): Promise<any> {
+  if (typeof value === 'string' && value.startsWith('blob:')) {
+    try {
+      return await urlToDataUrl(value);
+    } catch {
+      return undefined;
+    }
+  }
+  if (Array.isArray(value)) {
+    return Promise.all(value.map(persistBlobsForExport));
+  }
+  if (value && typeof value === 'object') {
+    const out: any = {};
+    for (const [k, v] of Object.entries(value)) {
+      const next = await persistBlobsForExport(v);
+      if (next !== undefined) out[k] = next;
+    }
+    return out;
+  }
+  return value;
 }
 
 function sanitizeCourseForExport(course: CourseOutline): CourseOutline {
-  return {
-    ...course,
-    modules: course.modules.map(mod => ({
-      ...mod,
-      slides: mod.slides.map((slide: any) => {
-        const cleaned: any = {};
-        for (const [k, v] of Object.entries(slide)) {
-          // Drop any key whose value is a large data-URI or blob-URL
-          if (isLargeBlob(v)) continue;
-          cleaned[k] = v;
-        }
-        return cleaned;
-      }),
-    })),
+  const walk = (value: any): any => {
+    if (isEphemeralBlob(value)) return undefined;
+    if (Array.isArray(value)) return value.map(walk);
+    if (value && typeof value === 'object') {
+      const out: any = {};
+      for (const [k, v] of Object.entries(value)) {
+        if (isEphemeralBlob(v)) continue;
+        out[k] = walk(v);
+      }
+      return out;
+    }
+    return value;
   };
+  return walk(course);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -67,6 +103,40 @@ function countSlides(course: CourseOutline): number {
   return course.modules.reduce((sum, mod) => sum + mod.slides.length, 0);
 }
 
+function splitScormPlayerBundle(html: string, title: string): { shellHtml: string; playerJs: string } {
+  const open = html.match(/<script[^>]*type=["']module["'][^>]*>/i);
+  const start = open && open.index != null ? open.index + open[0].length : 0;
+  const after = html.slice(start);
+  const closeMatch = after.match(/<\/script>\s*(?=<style[\s>]|<\/head>|<body)/i);
+  const cut = closeMatch && closeMatch.index != null
+    ? closeMatch.index
+    : after.length;
+  let playerJs = after.slice(0, cut).trim();
+  const rest = closeMatch && closeMatch.index != null
+    ? after.slice(closeMatch.index + closeMatch[0].length)
+    : '';
+  const styleMatch = rest.match(/<style[\s\S]*?<\/style>/i);
+  const css = styleMatch ? styleMatch[0] : '';
+  const safeTitle = escapeXml(title || 'Course');
+  const shellHtml = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${safeTitle}</title>
+    <script src="scorm_bridge.js"></script>
+    <script src="course_data.js"></script>
+    <script type="module" src="player.js"></script>
+    ${css}
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
+`;
+  return { shellHtml, playerJs };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // imsmanifest.xml — SCORM 1.2
 // ─────────────────────────────────────────────────────────────────────────────
@@ -75,25 +145,11 @@ function buildScorm12Manifest(course: CourseOutline, masteryScore: number, lang:
   const id = `CourseGen_${Date.now()}`;
   const title = escapeXml(course.title);
   const desc  = escapeXml(course.description || course.title);
-  const totalSlides = countSlides(course);
-  const duration = estimateDurationISO(totalSlides);
+  const duration = estimateDurationISO(countSlides(course));
 
-  let slideGlobalIdx = 0;
-  const moduleItems = course.modules.map((mod, mIdx) => {
-    const modTitle = escapeXml(mod.title);
-    const slideItems = mod.slides.map((slide) => {
-      const idx = slideGlobalIdx++;
-      const sTitle = escapeXml(slide.title);
-      return `      <item identifier="item_m${mIdx}_s${idx}" identifierref="res_sco" parameters="?slide=${idx}">
-        <title>${sTitle}</title>
-      </item>`;
-    }).join('\n');
-    return `    <item identifier="item_mod_${mIdx}">
-      <title>${modTitle}</title>
-${slideItems}
-    </item>`;
-  }).join('\n');
-
+  // One SCO for the whole player. Listing each slide as its own <item> makes
+  // SCORM Cloud (and most LMS players) open their multi-SCO chrome instead of
+  // launching the course in a single window like a Storyline / Rise package.
   return `<?xml version="1.0" encoding="UTF-8"?>
 <manifest identifier="${id}" version="1"
           xmlns="http://www.imsproject.org/xsd/imscp_rootv1p1p2"
@@ -122,13 +178,17 @@ ${slideItems}
   <organizations default="org_main">
     <organization identifier="org_main">
       <title>${title}</title>
-${moduleItems}
+      <item identifier="item_sco" identifierref="res_sco">
+        <title>${title}</title>
+        <adlcp:masteryscore>${masteryScore}</adlcp:masteryscore>
+      </item>
     </organization>
   </organizations>
   <resources>
-    <resource identifier="res_sco" type="webcontent" adlcp:scormtype="sco" href="story.html">
-      <file href="story.html"/>
+    <resource identifier="res_sco" type="webcontent" adlcp:scormtype="sco" href="index.html">
       <file href="index.html"/>
+      <file href="story.html"/>
+      <file href="player.js"/>
       <file href="scorm_bridge.js"/>
       <file href="course_data.js"/>
     </resource>
@@ -144,24 +204,7 @@ function buildScorm2004Manifest(course: CourseOutline, masteryScore: number, lan
   const id = `CourseGen_${Date.now()}`;
   const title = escapeXml(course.title);
   const desc  = escapeXml(course.description || course.title);
-  const totalSlides = countSlides(course);
-  const duration = estimateDurationISO(totalSlides);
-
-  let slideGlobalIdx = 0;
-  const moduleItems = course.modules.map((mod, mIdx) => {
-    const modTitle = escapeXml(mod.title);
-    const slideItems = mod.slides.map((slide) => {
-      const idx = slideGlobalIdx++;
-      const sTitle = escapeXml(slide.title);
-      return `      <item identifier="item_m${mIdx}_s${idx}" identifierref="res_sco" parameters="?slide=${idx}">
-        <title>${sTitle}</title>
-      </item>`;
-    }).join('\n');
-    return `    <item identifier="item_mod_${mIdx}">
-      <title>${modTitle}</title>
-${slideItems}
-    </item>`;
-  }).join('\n');
+  const duration = estimateDurationISO(countSlides(course));
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <manifest identifier="${id}" version="1"
@@ -194,7 +237,12 @@ ${slideItems}
   <organizations default="org_main">
     <organization identifier="org_main" adlseq:objectivesGlobalToSystem="false">
       <title>${title}</title>
-${moduleItems}
+      <item identifier="item_sco" identifierref="res_sco">
+        <title>${title}</title>
+        <imsss:sequencing>
+          <imsss:deliveryControls completionSetByContent="true" objectiveSetByContent="true"/>
+        </imsss:sequencing>
+      </item>
       <imsss:sequencing>
         <imsss:objectives>
           <imsss:primaryObjective objectiveID="obj_main" satisfiedByMeasure="true">
@@ -206,9 +254,10 @@ ${moduleItems}
     </organization>
   </organizations>
   <resources>
-    <resource identifier="res_sco" type="webcontent" adlcp:scormType="sco" href="story.html">
-      <file href="story.html"/>
+    <resource identifier="res_sco" type="webcontent" adlcp:scormType="sco" href="index.html">
       <file href="index.html"/>
+      <file href="story.html"/>
+      <file href="player.js"/>
       <file href="scorm_bridge.js"/>
       <file href="course_data.js"/>
     </resource>
@@ -222,7 +271,7 @@ ${moduleItems}
 // ─────────────────────────────────────────────────────────────────────────────
 
 function buildScormBridgeJS(totalSlides: number, masteryScore: number): string {
-  return `/* CourseGen AI — SCORM Completion Bridge v2.0
+  return `/* NexCourse AI — SCORM Completion Bridge v2.0
  * Auto-detects SCORM 2004 (API_1484_11) or 1.2 (API) and reports completion.
  * Marks complete when learner reaches the final slide OR receives a postMessage.
  */
@@ -380,6 +429,7 @@ export async function createScormPackage(
     version      = '1.2',
     language     = 'en',
     onProgress,
+    runtime,
   } = options;
 
   const masteryScore = options.masteryScore
@@ -413,15 +463,27 @@ export async function createScormPackage(
   zip.file('scorm_bridge.js', buildScormBridgeJS(totalSlides, masteryScore));
   report(20);
 
-  // ── 4. Course data as external JS (prevents huge inline <script>) ─────────
-  const sanitised = sanitizeCourseForExport(course);
-  const examConfigJson = (course as any).examConfig
-    ? JSON.stringify((course as any).examConfig)
-    : 'null';
+  // ── 4. Course + preview runtime (theme, TOC, Alloy audio map, exam) ───────
+  const withDurableMedia = await persistBlobsForExport(course);
+  const sanitised = sanitizeCourseForExport(withDurableMedia);
+  const examConfig = runtime?.examConfig ?? (course as any).examConfig ?? null;
+  const runtimeJson = JSON.stringify({
+    playerConfig: runtime?.playerConfig ?? null,
+    theme: runtime?.theme ?? null,
+    navigationMode: runtime?.navigationMode ?? null,
+    requireInteractionsComplete: !!runtime?.requireInteractionsComplete,
+    voiceOverEnabled: runtime?.voiceOverEnabled ?? true,
+    learningObjectives: runtime?.learningObjectives ?? null,
+    syntheticSlideOverrides: runtime?.syntheticSlideOverrides ?? {},
+    syntheticAudioMap: runtime?.syntheticAudioMap ?? {},
+    examQuestions: runtime?.examQuestions ?? (course as any).examQuestions ?? [],
+    examConfig,
+  });
   const courseDataJs = [
-    `/* CourseGen AI — Course Data */`,
+    `/* NexCourse AI — Course Data */`,
     `window.__COURSE_DATA__ = ${JSON.stringify(sanitised)};`,
-    `window.__EXAM_CONFIG__ = ${examConfigJson};`,
+    `window.__EXAM_CONFIG__ = ${JSON.stringify(examConfig)};`,
+    `window.__SCORM_RUNTIME__ = ${runtimeJson};`,
     `window.__SCORM_VERSION__ = '${version}';`,
     `window.__MASTERY_SCORE__ = ${masteryScore};`,
   ].join('\n');
@@ -465,26 +527,14 @@ export async function createScormPackage(
     }
     report(80);
 
-    // ── 6. Inject scorm_bridge.js + course_data.js into HTML ─────────────────
-    //    Inject bridge in <head> so it runs before the React app boots
-    const headClose = html.lastIndexOf('</head>');
-    if (headClose !== -1) {
-      html =
-        html.slice(0, headClose) +
-        '\n<script src="scorm_bridge.js"></script>\n' +
-        '\n<script src="course_data.js"></script>\n' +
-        html.slice(headClose);
+    const { shellHtml, playerJs } = splitScormPlayerBundle(html, course.title || 'Course');
+    if (!playerJs) {
+      throw new Error('SCORM player JS was empty. Re-run npm run build:player.');
     }
-
-    // Remove any leftover __COURSE_DATA__ inline injection from older builds
-    html = html.replace(
-      /<script>\s*window\.__COURSE_DATA__[\s\S]*?<\/script>/g,
-      '',
-    );
+    zip.file('player.js', playerJs);
+    zip.file('index.html', shellHtml);
+    zip.file('story.html', shellHtml);
     report(90);
-
-    zip.file('index.html', html);
-    zip.file('story.html', html);  // story.html is the primary SCO launch file
   } catch (err: any) {
     throw new Error('Failed to package SCORM player: ' + err.message);
   }
