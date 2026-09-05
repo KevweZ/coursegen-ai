@@ -1,5 +1,5 @@
 ---
-description: Post-pilot backlog held until after closed-beta invitees finish reviewing (2.1, 2.2, video).
+description: Post-pilot backlog held until after closed-beta invitees finish reviewing (Hub nav, video).
 alwaysApply: true
 ---
 
@@ -17,8 +17,16 @@ Agreed with product to **hold** these until after the current closed-beta wave. 
 - **Status (main):** done — content slides on Course structure use a clickable type dropdown (Course Settings whitelist + Content) before generate.
 - Make each slide’s interaction type on the Design/structure list a **clickable dropdown** (not a static label) so authors can pick another interaction before generate.
 
+## 3 — Hub navigation (Main Menu)
+- **Status:** queued 2026-09-05 — opt-in **third nav mode** (restricted / free roam / hub). Not a slide skin.
+- Injected Main Menu slide listing modules; click a module to enter it; last slide of a module returns to the menu (completed modules get a checkmark).
+- Mastery quiz stays locked until every module is finished (quiz control on the menu and/or Next from the hub).
+- Still honor Course Settings / Player Properties: hub restrictions only apply when the builder did not choose free roam.
+- Inspiration: IMG_1771-style 50/50 menu (list + generic visual), not a cartoon character lock-in.
+- Do not start during active pilot, and do not mix with video or Capacitor.
+
 ## 1 — Multimedia upload (video + durable GIF story)
 - Expanding “Upload image” to real **video** needs player `<video>`, media kind on floats, durable storage (not blob-only), and SCORM binary packaging — not an `accept=` tweak.
 - GIF already works via `image/*` with caveats (crop freezes animation). Document; defer full “Upload multimedia” productization with video.
 
-When the user asks to resume post-pilot work, start with **2.1 + 2.2** before video.
+When the user asks to resume post-pilot work, start with **Hub (3)** before video. 2.1 and 2.2 are already on main.
