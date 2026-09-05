@@ -32,6 +32,11 @@ export function resolveProcessSkin(raw: unknown): ProcessSkinSetting {
   return String(raw || '').trim().toLowerCase() === 'blocks' ? 'blocks' : 'default';
 }
 
+/** Process STEP 01 / STEP 02 labels. Missing or anything other than false → shown. */
+export function resolveProcessStepLabels(raw: unknown): boolean {
+  return raw !== false && raw !== 'false' && raw !== 0;
+}
+
 /** Per-module accent (TOC underline, title rule, vertical strip). */
 export const MODULE_ACCENT_HEX = [
   '#4f46e5',
@@ -115,10 +120,16 @@ export function stampVerticalTabWellColor(course: any, wellColor: string): any {
   }));
 }
 
-export function stampProcessSkin(course: any, skin: ProcessSkinSetting = 'default', wellColor?: string): any {
+export function stampProcessSkin(
+  course: any,
+  skin: ProcessSkinSetting = 'default',
+  wellColor?: string,
+  showStepLabels: boolean = true
+): any {
   if (!course?.modules) return course;
   const blocks = skin === 'blocks';
   const well = wellColor ? resolveHexColor(wellColor, BLOCKS_WELL_DEFAULT) : undefined;
+  const labels = resolveProcessStepLabels(showStepLabels);
   return {
     ...course,
     modules: course.modules.map((m: any) => ({
@@ -130,6 +141,7 @@ export function stampProcessSkin(course: any, skin: ProcessSkinSetting = 'defaul
           data: {
             ...(s.data || {}),
             tabSkin: blocks ? 'blocks' : 'process',
+            showProcessStepLabels: labels,
             ...(blocks && well ? { blocksWellColor: well } : {}),
           },
         };
@@ -146,10 +158,16 @@ export function applyVerticalTabPresentation(
     unifyColor?: string;
     wellColor?: string;
     processSkin?: ProcessSkinSetting;
+    processShowStepLabels?: boolean;
   }
 ): any {
   let next = stampVerticalTabSkin(course, opts.skin);
   next = stampVerticalTabColors(next, opts.colorMode, opts.unifyColor);
   if (opts.wellColor) next = stampVerticalTabWellColor(next, opts.wellColor);
-  return stampProcessSkin(next, opts.processSkin ?? 'default', opts.wellColor);
+  return stampProcessSkin(
+    next,
+    opts.processSkin ?? 'default',
+    opts.wellColor,
+    opts.processShowStepLabels !== false
+  );
 }

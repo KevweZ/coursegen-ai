@@ -47,6 +47,8 @@ interface Props {
   skin?: string;
   /** Blocks skin content-well fill. */
   wellColor?: string;
+  /** When false, hide STEP 01 / STEP 02 labels (circles stay numbered). Default true. */
+  showStepLabels?: boolean;
 }
 
 const INTRO_COLOR = TAB_INTRO_DEFAULT_HEX;
@@ -91,6 +93,7 @@ export default function TabbedContentHorizontal({
   onPromoteTabImage,
   skin,
   wellColor,
+  showStepLabels = true,
 }: Props) {
   const normalized = useMemo(() => normalizeTabs(tabs), [tabs]);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -201,12 +204,14 @@ export default function TabbedContentHorizontal({
             style={{ overflowAnchor: 'none' }}
           >
             <div className="box-border w-full p-6 sm:p-7 text-left">
-              <p
-                className="text-sm font-bold uppercase tracking-[0.18em] mb-2"
-                style={{ color: activeColor }}
-              >
-                {inIntro ? 'Overview' : stepLabel(activeIndex + 1)}
-              </p>
+              {(inIntro || showStepLabels) && (
+                <p
+                  className="text-sm font-bold uppercase tracking-[0.18em] mb-2"
+                  style={{ color: activeColor }}
+                >
+                  {inIntro ? 'Overview' : stepLabel(activeIndex + 1)}
+                </p>
+              )}
               {inIntro ? (
                 <h3 className="font-extrabold text-lg mb-4" style={{ color: ink }}>
                   Introduction
@@ -232,7 +237,7 @@ export default function TabbedContentHorizontal({
               )}
               {inIntro && (
                 <p className="mt-6 text-xs font-semibold" style={{ color: activeColor }}>
-                  Select a step below to continue →
+                  {showStepLabels ? 'Select a step below to continue →' : 'Select below to continue →'}
                 </p>
               )}
             </div>

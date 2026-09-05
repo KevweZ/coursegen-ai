@@ -128,6 +128,8 @@ export interface CourseSettingsPageProps {
   setVerticalTabWellColor?: (v: string) => void;
   processSkin?: 'default' | 'blocks';
   setProcessSkin?: (v: 'default' | 'blocks') => void;
+  processShowStepLabels?: boolean;
+  setProcessShowStepLabels?: (v: boolean) => void;
   previewingVoice: string | null;
   onPreviewVoice: (id: string) => void;
 
@@ -1099,6 +1101,20 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                       </p>
                     </div>
                   )}
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={props.processShowStepLabels !== false}
+                      onChange={(e) => props.setProcessShowStepLabels?.(e.target.checked)}
+                      className="mt-1 w-4 h-4 rounded border-slate-600 text-indigo-500 focus:ring-indigo-500/40 bg-slate-900"
+                    />
+                    <div>
+                      <p className="text-sm font-bold text-white">Show STEP 01, STEP 02 labels</p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Turn this off when Process is used for topics or places, not a sequence. Numbered circles stay. You can still change one slide in Edit.
+                      </p>
+                    </div>
+                  </label>
                 </div>
               )}
 

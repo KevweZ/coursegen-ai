@@ -5,6 +5,7 @@ import {
   BLOCKS_WELL_DEFAULT,
   resolveHexColor,
   resolveProcessSkin,
+  resolveProcessStepLabels,
   resolveVerticalTabColorMode,
   resolveVerticalTabSkin,
   TAB_ACCENT_HEX,
@@ -40,6 +41,8 @@ export interface SavedCourseSettings {
   verticalTabWellColor?: string;
   /** `'blocks'` gives Process slides the dark/colored reading area. */
   processSkin?: 'default' | 'blocks';
+  /** Default for Process STEP 01 / STEP 02 labels. */
+  processShowStepLabels?: boolean;
 }
 
 const STORAGE_KEY = 'nexcourse.courseSettings.v1';
@@ -81,6 +84,7 @@ export const DEFAULT_COURSE_SETTINGS: SavedCourseSettings = {
   verticalTabUnifyColor: TAB_ACCENT_HEX[0],
   verticalTabWellColor: BLOCKS_WELL_DEFAULT,
   processSkin: 'default',
+  processShowStepLabels: true,
 };
 
 function storageKey(userId?: string | null): string {
@@ -105,6 +109,7 @@ function normalizeSaved(parsed: SavedCourseSettings): SavedCourseSettings {
     verticalTabUnifyColor: resolveHexColor(parsed.verticalTabUnifyColor, TAB_ACCENT_HEX[0]),
     verticalTabWellColor: resolveHexColor(parsed.verticalTabWellColor, BLOCKS_WELL_DEFAULT),
     processSkin: resolveProcessSkin(parsed.processSkin),
+    processShowStepLabels: resolveProcessStepLabels(parsed.processShowStepLabels),
   };
 }
 

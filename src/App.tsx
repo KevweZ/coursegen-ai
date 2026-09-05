@@ -70,7 +70,7 @@ import {
   GamePreview, ScenarioPreview
 } from './components/interactions/ExtraPreviews';
 import { stripSlideTypePrefix } from './lib/stripSlideTypePrefix';
-import { TAB_ACCENT_HEX, TAB_INTRO_DEFAULT_HEX, TAB_TITLE_HEX, tabAccentHex, resolveVerticalTabSkin, resolveVerticalTabColorMode, resolveProcessSkin, resolveHexColor, applyVerticalTabPresentation, BLOCKS_WELL_DEFAULT, BLOCKS_WELL_PRESETS } from './lib/tabAccents';
+import { TAB_ACCENT_HEX, TAB_INTRO_DEFAULT_HEX, TAB_TITLE_HEX, tabAccentHex, resolveVerticalTabSkin, resolveVerticalTabColorMode, resolveProcessSkin, resolveProcessStepLabels, resolveHexColor, applyVerticalTabPresentation, BLOCKS_WELL_DEFAULT, BLOCKS_WELL_PRESETS } from './lib/tabAccents';
 import { CAROUSEL_CARD_HEX } from './lib/colorContrast';
 import { resolveClickRevealSlide } from './lib/parseHeadingSections';
 import {
@@ -1983,6 +1983,9 @@ export default function App() {
   const [processSkin, setProcessSkin] = useState<'default' | 'blocks'>(
     resolveProcessSkin(DEFAULT_COURSE_SETTINGS.processSkin)
   );
+  const [processShowStepLabels, setProcessShowStepLabels] = useState(
+    resolveProcessStepLabels(DEFAULT_COURSE_SETTINGS.processShowStepLabels)
+  );
   /** Per-tab narration override while on a tabbed slide (cleared on slide change) */
   const [activeTabAudioUrl, setActiveTabAudioUrl] = useState<string | null>(null);
   /** Per-tab CC script paired with activeTabAudioUrl (null = use slide-level voiceOverText) */
@@ -2624,6 +2627,7 @@ export default function App() {
     setVerticalTabUnifyColor(resolveHexColor(saved.verticalTabUnifyColor, TAB_ACCENT_HEX[0]));
     setVerticalTabWellColor(resolveHexColor(saved.verticalTabWellColor, BLOCKS_WELL_DEFAULT));
     setProcessSkin(resolveProcessSkin(saved.processSkin));
+    setProcessShowStepLabels(resolveProcessStepLabels(saved.processShowStepLabels));
   };
 
   const collectCurrentSettings = (): SavedCourseSettings => ({
@@ -2647,6 +2651,7 @@ export default function App() {
     verticalTabUnifyColor,
     verticalTabWellColor,
     processSkin,
+    processShowStepLabels,
   });
 
   const persistCourseSettings = () => {
@@ -2659,6 +2664,7 @@ export default function App() {
             unifyColor: verticalTabUnifyColor,
             wellColor: verticalTabWellColor,
             processSkin,
+            processShowStepLabels,
           })
         : prev);
     }
@@ -3431,6 +3437,9 @@ export default function App() {
     const verticalTabUnifyColorSnap = resolveHexColor(settingsOverride?.verticalTabUnifyColor ?? verticalTabUnifyColor, TAB_ACCENT_HEX[0]);
     const verticalTabWellColorSnap = resolveHexColor(settingsOverride?.verticalTabWellColor ?? verticalTabWellColor, BLOCKS_WELL_DEFAULT);
     const processSkinSnap = resolveProcessSkin(settingsOverride?.processSkin ?? processSkin);
+    const processShowStepLabelsSnap = resolveProcessStepLabels(
+      settingsOverride?.processShowStepLabels ?? processShowStepLabels
+    );
     const interactionTypesSnap = settingsOverride?.interactionTypes ?? interactionTypes;
 
     const rawObjectives = finalCourse.learningObjectives?.length
@@ -3458,6 +3467,7 @@ export default function App() {
       unifyColor: verticalTabUnifyColorSnap,
       wellColor: verticalTabWellColorSnap,
       processSkin: processSkinSnap,
+      processShowStepLabels: processShowStepLabelsSnap,
     });
     setCourse(stamped);
     setOriginalCourse(stamped);
@@ -4578,6 +4588,8 @@ export default function App() {
         setVerticalTabWellColor={setVerticalTabWellColor}
         processSkin={processSkin}
         setProcessSkin={setProcessSkin}
+        processShowStepLabels={processShowStepLabels}
+        setProcessShowStepLabels={setProcessShowStepLabels}
         previewingVoice={previewingVoice}
         onPreviewVoice={previewVoice}
         outlineDraft={outlineDraft}
@@ -6913,6 +6925,7 @@ export default function App() {
                                        theme={theme as any}
                                        skin={currentSlide.data?.tabSkin === 'blocks' ? 'blocks' : 'process'}
                                        wellColor={currentSlide.data?.blocksWellColor}
+                                       showStepLabels={currentSlide.data?.showProcessStepLabels !== false}
                                        introContent={currentSlide.content || ''}
                                        introColor={currentSlide.data?.introColor || (currentSlide.data?.unifyTabColors ? tabAccentHex((currentSlide.data?.tabs || currentSlide.data?.items || [])[0], 0) : undefined)}
                                        introLabelColor={currentSlide.data?.introLabelColor}
@@ -7963,6 +7976,19 @@ export default function App() {
                                     ? 'Classic is the teal step bar on a light page. Blocks uses a dark (or colored) reading area behind the steps. Same interaction — switch back anytime.'
                                     : 'Classic is the current rounded tabs. Blocks uses a dark (or colored) reading area beside the tabs. Same interaction — switch back anytime.'}
                                 </p>
+                                {editingSlide.type === 'tabbed-horizontal' && (
+                                  <label className="flex items-start gap-2.5 pt-1 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={editingSlide.data?.showProcessStepLabels !== false}
+                                      onChange={(e) => patchTabs(tabs, { showProcessStepLabels: e.target.checked })}
+                                      className="mt-0.5 w-4 h-4 rounded border-slate-600 text-indigo-500"
+                                    />
+                                    <span className="text-[11px] text-slate-300 leading-relaxed">
+                                      Show STEP 01, STEP 02 labels. Turn off when the circles are topics or places, not a sequence.
+                                    </span>
+                                  </label>
+                                )}
                                 {tabSkin === 'blocks' && (
                                   <div className="space-y-2 pt-1">
                                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Content well</p>
@@ -8597,6 +8623,11 @@ export default function App() {
                                       const nextData = result.data !== undefined ? { ...result.data } : { ...(s.data || {}) };
                                       if (result.type === 'tabbed-vertical' && slideSnapshot.data?.tabSkin) {
                                         nextData.tabSkin = slideSnapshot.data.tabSkin;
+                                      }
+                                      if (result.type === 'tabbed-horizontal') {
+                                        if (slideSnapshot.data?.tabSkin) nextData.tabSkin = slideSnapshot.data.tabSkin;
+                                        if (slideSnapshot.data?.blocksWellColor) nextData.blocksWellColor = slideSnapshot.data.blocksWellColor;
+                                        if (slideSnapshot.data?.showProcessStepLabels === false) nextData.showProcessStepLabels = false;
                                       }
                                       return {
                                         ...s,
