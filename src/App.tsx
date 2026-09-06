@@ -1881,11 +1881,14 @@ export default function App() {
     () => (isScormPlayer ? (window as any).__COURSE_DATA__ : null)
   );
   // Per-slide floating images map: slideId -> FloatingImage[]
-  const [floatingImagesMap, setFloatingImagesMap] = useState<Record<string, FloatingImage[]>>(() => (
-    isScormPlayer && (window as any).__COURSE_DATA__
+  const [floatingImagesMap, setFloatingImagesMap] = useState<Record<string, FloatingImage[]>>(() => {
+    if (scormRt.floatingImagesMap && typeof scormRt.floatingImagesMap === 'object') {
+      return scormRt.floatingImagesMap;
+    }
+    return isScormPlayer && (window as any).__COURSE_DATA__
       ? floatingMapFromCourse((window as any).__COURSE_DATA__)
-      : {}
-  ));
+      : {};
+  });
   // Edits to synthetic slides (module-overview, etc.) that don't live in course.modules
   const [syntheticSlideOverrides, setSyntheticSlideOverrides] = useState<Record<string, {content?: string; voiceOverText?: string}>>(
     () => (scormRt.syntheticSlideOverrides && typeof scormRt.syntheticSlideOverrides === 'object')
@@ -2016,31 +2019,47 @@ export default function App() {
   const [soundEffectsEnabled, setSoundEffectsEnabled] = useState(true);
   // Module Overview (1.1, 2.1, …): synthetic objectives accordion after Module Title.
   // On by default — Course Settings → Objectives → Structure Components.
-  const [includeModuleOverviewSlides, setIncludeModuleOverviewSlides] = useState(DEFAULT_COURSE_SETTINGS.includeModuleOverviewSlides);
-  const [includeSummarySlides, setIncludeSummarySlides] = useState(DEFAULT_COURSE_SETTINGS.includeSummarySlides);
-  const [includeModuleTitleSlides, setIncludeModuleTitleSlides] = useState(DEFAULT_COURSE_SETTINGS.includeModuleTitleSlides);
-  const [imageMode, setImageMode] = useState<CourseImageMode>(DEFAULT_COURSE_SETTINGS.imageMode);
+  const [includeModuleOverviewSlides, setIncludeModuleOverviewSlides] = useState(
+    () => typeof scormRt.includeModuleOverviewSlides === 'boolean'
+      ? scormRt.includeModuleOverviewSlides
+      : DEFAULT_COURSE_SETTINGS.includeModuleOverviewSlides
+  );
+  const [includeSummarySlides, setIncludeSummarySlides] = useState(
+    () => typeof scormRt.includeSummarySlides === 'boolean'
+      ? scormRt.includeSummarySlides
+      : DEFAULT_COURSE_SETTINGS.includeSummarySlides
+  );
+  const [includeModuleTitleSlides, setIncludeModuleTitleSlides] = useState(
+    () => typeof scormRt.includeModuleTitleSlides === 'boolean'
+      ? scormRt.includeModuleTitleSlides
+      : DEFAULT_COURSE_SETTINGS.includeModuleTitleSlides
+  );
+  const [imageMode, setImageMode] = useState<CourseImageMode>(
+    () => normalizeImageMode(scormRt.imageMode ?? DEFAULT_COURSE_SETTINGS.imageMode)
+  );
   /** When Hotspot is on but Multimedia AI/source are off, still AI-generate hotspot backdrops */
   const [hotspotGenerateBackdrop, setHotspotGenerateBackdrop] = useState(
     !!DEFAULT_COURSE_SETTINGS.hotspotGenerateBackdrop
   );
   const [verticalTabSkin, setVerticalTabSkin] = useState<'default' | 'blocks'>(
-    resolveVerticalTabSkin(DEFAULT_COURSE_SETTINGS.verticalTabSkin)
+    () => resolveVerticalTabSkin(scormRt.verticalTabSkin ?? DEFAULT_COURSE_SETTINGS.verticalTabSkin)
   );
   const [verticalTabColorMode, setVerticalTabColorMode] = useState(
-    resolveVerticalTabColorMode(DEFAULT_COURSE_SETTINGS.verticalTabColorMode)
+    () => resolveVerticalTabColorMode(scormRt.verticalTabColorMode ?? DEFAULT_COURSE_SETTINGS.verticalTabColorMode)
   );
   const [verticalTabUnifyColor, setVerticalTabUnifyColor] = useState(
-    resolveHexColor(DEFAULT_COURSE_SETTINGS.verticalTabUnifyColor, TAB_ACCENT_HEX[0])
+    () => resolveHexColor(scormRt.verticalTabUnifyColor ?? DEFAULT_COURSE_SETTINGS.verticalTabUnifyColor, TAB_ACCENT_HEX[0])
   );
   const [verticalTabWellColor, setVerticalTabWellColor] = useState(
-    resolveHexColor(DEFAULT_COURSE_SETTINGS.verticalTabWellColor, BLOCKS_WELL_DEFAULT)
+    () => resolveHexColor(scormRt.verticalTabWellColor ?? DEFAULT_COURSE_SETTINGS.verticalTabWellColor, BLOCKS_WELL_DEFAULT)
   );
   const [processSkin, setProcessSkin] = useState<'default' | 'blocks'>(
-    resolveProcessSkin(DEFAULT_COURSE_SETTINGS.processSkin)
+    () => resolveProcessSkin(scormRt.processSkin ?? DEFAULT_COURSE_SETTINGS.processSkin)
   );
   const [processShowStepLabels, setProcessShowStepLabels] = useState(
-    resolveProcessStepLabels(DEFAULT_COURSE_SETTINGS.processShowStepLabels)
+    () => typeof scormRt.processShowStepLabels === 'boolean'
+      ? scormRt.processShowStepLabels
+      : resolveProcessStepLabels(DEFAULT_COURSE_SETTINGS.processShowStepLabels)
   );
   /** Per-tab narration override while on a tabbed slide (cleared on slide change) */
   const [activeTabAudioUrl, setActiveTabAudioUrl] = useState<string | null>(null);
@@ -2116,10 +2135,32 @@ export default function App() {
         }
         setSyntheticAudioMap(snapshot.syntheticAudioMap || {});
         setVoiceOverEnabled(!!snapshot.voiceOverEnabled);
+        if (typeof snapshot.includeModuleOverviewSlides === 'boolean') {
+          setIncludeModuleOverviewSlides(snapshot.includeModuleOverviewSlides);
+        }
+        if (typeof snapshot.includeModuleTitleSlides === 'boolean') {
+          setIncludeModuleTitleSlides(snapshot.includeModuleTitleSlides);
+        }
+        if (typeof snapshot.includeSummarySlides === 'boolean') {
+          setIncludeSummarySlides(snapshot.includeSummarySlides);
+        }
+        if (snapshot.imageMode) setImageMode(normalizeImageMode(snapshot.imageMode));
+        if (snapshot.processSkin) setProcessSkin(resolveProcessSkin(snapshot.processSkin));
+        if (typeof snapshot.processShowStepLabels === 'boolean') {
+          setProcessShowStepLabels(snapshot.processShowStepLabels);
+        }
+        if (snapshot.verticalTabSkin) setVerticalTabSkin(resolveVerticalTabSkin(snapshot.verticalTabSkin));
+        if (snapshot.verticalTabColorMode) setVerticalTabColorMode(resolveVerticalTabColorMode(snapshot.verticalTabColorMode));
+        if (typeof snapshot.verticalTabUnifyColor === 'string') setVerticalTabUnifyColor(snapshot.verticalTabUnifyColor);
+        if (typeof snapshot.verticalTabWellColor === 'string') setVerticalTabWellColor(snapshot.verticalTabWellColor);
         const shell = snapshot.course;
         setCourse(shell);
         setOriginalCourse(shell);
-        setFloatingImagesMap(floatingMapFromCourse(shell));
+        setFloatingImagesMap(
+          snapshot.floatingImagesMap && typeof snapshot.floatingImagesMap === 'object'
+            ? snapshot.floatingImagesMap
+            : floatingMapFromCourse(shell)
+        );
         if (shell?.coverImage) setCourseBg(shell.coverImage);
         const qs = (Array.isArray(snapshot.examQuestions) && snapshot.examQuestions)
           || (Array.isArray(shell?.examQuestions) && shell.examQuestions)
@@ -4413,6 +4454,17 @@ export default function App() {
         syntheticAudioMap,
         examQuestions,
         examConfig,
+        includeModuleOverviewSlides,
+        includeModuleTitleSlides,
+        includeSummarySlides,
+        imageMode,
+        processSkin,
+        processShowStepLabels,
+        verticalTabSkin,
+        verticalTabColorMode,
+        verticalTabUnifyColor,
+        verticalTabWellColor,
+        floatingImagesMap,
       });
       const created = await createReviewLink(snapshot, course.title || 'Untitled Course');
       setReviewLinkUrl(created.url);
@@ -4446,6 +4498,17 @@ export default function App() {
           syntheticAudioMap: packagedSynth,
           examQuestions,
           examConfig,
+          includeModuleOverviewSlides,
+          includeModuleTitleSlides,
+          includeSummarySlides,
+          imageMode,
+          processSkin,
+          processShowStepLabels,
+          verticalTabSkin,
+          verticalTabColorMode,
+          verticalTabUnifyColor,
+          verticalTabWellColor,
+          floatingImagesMap,
         },
       });
       const url = URL.createObjectURL(blob);
@@ -6609,18 +6672,19 @@ export default function App() {
                                      description={currentSlide.content || undefined}
                                      coverImage={(currentSlide as any).coverImage || (course as any)?.coverImage || undefined}
                                      theme={theme}
-                                     isPreviewMode={true}
+                                     isPreviewMode={!isLearnerPlayer}
                                      hideImagePanel={normalizeImageMode(imageMode) === 'none'}
                                      isGeneratingCover={
+                                       !isLearnerPlayer &&
                                        normalizeImageMode(imageMode) !== 'none' &&
                                        isGeneratingImages &&
                                        !(currentSlide as any).coverImage &&
                                        !(course as any)?.coverImage
                                      }
-                                     onImageUpload={(url) => {
+                                     onImageUpload={!isLearnerPlayer ? (url) => {
                                        setCourse((prev: any) => prev ? { ...prev, coverImage: url } : prev);
                                        setCourseBg(url);
-                                     }}
+                                     } : undefined}
                                    />
                                  </div>
                                )}
@@ -7510,6 +7574,7 @@ export default function App() {
                                           imageUrl={hd.imageUrl || hd.image || hd.backgroundImage || (currentSlide as any).imageUrl || (currentSlide as any).coverImage}
                                           points={hd.points || hd.hotspots || []}
                                           theme={theme}
+                                          editable={!isLearnerPlayer}
                                           onPinOpen={(pinId) => markInteractionExplored(currentSlide.id, pinId)}
                                         />
                                       </div>
@@ -7604,19 +7669,6 @@ export default function App() {
                                </SlideErrorBoundary>
                              </div>
 
-                             {/* Authoring uses floatingImagesMap canvas below — avoid a second copy from course.floatingMedia (caused inseparable duplicates). */}
-                             {isLearnerPlayer && currentSlide?.floatingMedia && currentSlide.floatingMedia.length > 0 && viewMode === 'desktop' && (
-                               <div className="hidden md:block w-[40%] max-w-[500px] shrink-0 pointer-events-none z-[60]">
-                                 <FloatingImageCanvas
-                                   isAuthoring={false}
-                                   onChange={() => {}}
-                                   onRemove={() => {}}
-                                   images={currentSlide.floatingMedia}
-                                   activeTabId={activeTabForImages}
-                                 />
-                               </div>
-                             )}
-
                            </div>
 
                            {/* Slide media tools — Edit/Reset/Upload/Source Image live in the top bar. */}
@@ -7683,26 +7735,24 @@ export default function App() {
                               </div>
                             )}
 
-                       {/* Floating images — inside scroll so they scroll with content */}
-                       {!isLearnerPlayer && (
+                       {/* Same overlay in preview and SCORM so resized/moved images keep x/y. */}
                        <FloatingImageCanvas
-                         images={floatingImagesMap[currentSlide?.id] || []}
-                         isAuthoring={true}
+                         images={floatingImagesMap[currentSlide?.id] || currentSlide?.floatingMedia || []}
+                         isAuthoring={!isLearnerPlayer}
                          activeTabId={activeTabForImages}
-                         onDragOverTab={setDragOverTabId}
+                         onDragOverTab={isLearnerPlayer ? undefined : setDragOverTabId}
                          onChange={(imgs) => {
-                           if (!currentSlide?.id) return;
+                           if (isLearnerPlayer || !currentSlide?.id) return;
                            syncFloatingImages(currentSlide.id, imgs);
                          }}
                          onRemove={(id) => {
-                           if (!currentSlide?.id) return;
+                           if (isLearnerPlayer || !currentSlide?.id) return;
                            pushUndo();
                            const next = (floatingImagesMap[currentSlide.id] || []).filter(i => i.id !== id);
                            syncFloatingImages(currentSlide.id, next);
                          }}
-                         onPinBack={pinFloatBackToFlow}
+                         onPinBack={isLearnerPlayer ? undefined : pinFloatBackToFlow}
                        />
-                       )}
                         </motion.div>
                        </AnimatePresence>
 

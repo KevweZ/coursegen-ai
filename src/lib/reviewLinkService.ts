@@ -32,6 +32,17 @@ export interface ReviewSnapshot {
   syntheticAudioMap?: Record<string, string>;
   examQuestions?: any[];
   examConfig?: any;
+  includeModuleOverviewSlides?: boolean;
+  includeModuleTitleSlides?: boolean;
+  includeSummarySlides?: boolean;
+  imageMode?: string;
+  processSkin?: string;
+  processShowStepLabels?: boolean;
+  verticalTabSkin?: string;
+  verticalTabColorMode?: string;
+  verticalTabUnifyColor?: string;
+  verticalTabWellColor?: string;
+  floatingImagesMap?: Record<string, any>;
 }
 
 function apiBase(): string {
@@ -95,6 +106,17 @@ export async function buildReviewSnapshot(input: {
   syntheticAudioMap?: Record<string, string>;
   examQuestions?: any[];
   examConfig?: any;
+  includeModuleOverviewSlides?: boolean;
+  includeModuleTitleSlides?: boolean;
+  includeSummarySlides?: boolean;
+  imageMode?: string;
+  processSkin?: string;
+  processShowStepLabels?: boolean;
+  verticalTabSkin?: string;
+  verticalTabColorMode?: string;
+  verticalTabUnifyColor?: string;
+  verticalTabWellColor?: string;
+  floatingImagesMap?: Record<string, any>;
 }): Promise<ReviewSnapshot> {
   let course: any;
   try {
@@ -125,6 +147,17 @@ export async function buildReviewSnapshot(input: {
       syntheticAudioMap: synth,
       examQuestions: input.examQuestions,
       examConfig: input.examConfig,
+      includeModuleOverviewSlides: input.includeModuleOverviewSlides,
+      includeModuleTitleSlides: input.includeModuleTitleSlides,
+      includeSummarySlides: input.includeSummarySlides,
+      imageMode: input.imageMode,
+      processSkin: input.processSkin,
+      processShowStepLabels: input.processShowStepLabels,
+      verticalTabSkin: input.verticalTabSkin,
+      verticalTabColorMode: input.verticalTabColorMode,
+      verticalTabUnifyColor: input.verticalTabUnifyColor,
+      verticalTabWellColor: input.verticalTabWellColor,
+      floatingImagesMap: input.floatingImagesMap,
     };
   } catch (e) {
     console.warn('[ReviewLink] Audio persist failed; continuing without blob audio', e);
@@ -141,6 +174,17 @@ export async function buildReviewSnapshot(input: {
       syntheticAudioMap: input.syntheticAudioMap,
       examQuestions: input.examQuestions,
       examConfig: input.examConfig,
+      includeModuleOverviewSlides: input.includeModuleOverviewSlides,
+      includeModuleTitleSlides: input.includeModuleTitleSlides,
+      includeSummarySlides: input.includeSummarySlides,
+      imageMode: input.imageMode,
+      processSkin: input.processSkin,
+      processShowStepLabels: input.processShowStepLabels,
+      verticalTabSkin: input.verticalTabSkin,
+      verticalTabColorMode: input.verticalTabColorMode,
+      verticalTabUnifyColor: input.verticalTabUnifyColor,
+      verticalTabWellColor: input.verticalTabWellColor,
+      floatingImagesMap: input.floatingImagesMap,
     };
   }
 }

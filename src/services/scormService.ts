@@ -20,6 +20,17 @@ export interface ScormRuntimeSnapshot {
   syntheticAudioMap?: Record<string, string>;
   examQuestions?: any[];
   examConfig?: any;
+  includeModuleOverviewSlides?: boolean;
+  includeModuleTitleSlides?: boolean;
+  includeSummarySlides?: boolean;
+  imageMode?: string;
+  processSkin?: string;
+  processShowStepLabels?: boolean;
+  verticalTabSkin?: string;
+  verticalTabColorMode?: string;
+  verticalTabUnifyColor?: string;
+  verticalTabWellColor?: string;
+  floatingImagesMap?: Record<string, any>;
 }
 
 export interface ScormExportOptions {
@@ -531,14 +542,7 @@ export async function createScormPackage(
   const withDurableMedia = await persistBlobsForExport(course);
   const durableRuntime = runtime
     ? await persistBlobsForExport({
-        playerConfig: runtime.playerConfig ?? null,
-        theme: runtime.theme ?? null,
-        navigationMode: runtime.navigationMode ?? null,
-        requireInteractionsComplete: !!runtime.requireInteractionsComplete,
-        voiceOverEnabled: runtime.voiceOverEnabled ?? true,
-        learningObjectives: runtime.learningObjectives ?? null,
-        syntheticSlideOverrides: runtime.syntheticSlideOverrides ?? {},
-        syntheticAudioMap: runtime.syntheticAudioMap ?? {},
+        ...runtime,
         examQuestions: runtime.examQuestions ?? (course as any).examQuestions ?? [],
         examConfig: runtime.examConfig ?? (course as any).examConfig ?? null,
       })
@@ -556,15 +560,7 @@ export async function createScormPackage(
 
   const examConfig = runtimeOut?.examConfig ?? (course as any).examConfig ?? null;
   const runtimeJson = JSON.stringify({
-    playerConfig: runtimeOut?.playerConfig ?? null,
-    theme: runtimeOut?.theme ?? null,
-    navigationMode: runtimeOut?.navigationMode ?? null,
-    requireInteractionsComplete: !!runtimeOut?.requireInteractionsComplete,
-    voiceOverEnabled: runtimeOut?.voiceOverEnabled ?? true,
-    learningObjectives: runtimeOut?.learningObjectives ?? null,
-    syntheticSlideOverrides: runtimeOut?.syntheticSlideOverrides ?? {},
-    syntheticAudioMap: runtimeOut?.syntheticAudioMap ?? {},
-    examQuestions: runtimeOut?.examQuestions ?? [],
+    ...runtimeOut,
     examConfig,
   });
   const courseDataJs = [

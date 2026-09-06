@@ -527,7 +527,7 @@ function VerticalTabsBlocksSkin({
               </div>
             </div>
             {imageUrl && (
-              <div className="relative shrink-0 self-start w-[38%] max-w-[300px] pt-6 sm:pt-7 pr-6 pb-6">
+              <div className="relative shrink-0 self-start w-[38%] max-w-[300px] pt-6 sm:pt-7 pr-6 pb-6 overflow-hidden">
                 <EnlargeableImage
                   src={imageUrl}
                   wrapperClassName="w-full"

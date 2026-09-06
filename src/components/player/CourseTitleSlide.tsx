@@ -70,8 +70,8 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
   const [hovering, setHovering] = useState(false);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
 
+  const canReplace = typeof onImageUpload === 'function';
   const displayImage = uploadedImage || coverImage || null;
-  // If user uploaded while "no images" mode, still show the panel
   const showImagePanel = !hideImagePanel || !!displayImage;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -172,7 +172,7 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
 
       <div
         className="flex-1 relative overflow-hidden"
-        onMouseEnter={() => setHovering(true)}
+        onMouseEnter={() => { if (canReplace) setHovering(true); }}
         onMouseLeave={() => setHovering(false)}
         style={{
           background: displayImage
@@ -203,14 +203,17 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
               <>
                 <ImageOff className="w-8 h-8 text-white/50" />
                 <p className="text-white/70 text-sm font-semibold">No cover image yet</p>
+                {canReplace && (
                 <p className="text-white/45 text-xs max-w-[14rem]">
                   Hover to upload, or use Edit → Generate AI images
                 </p>
+                )}
               </>
             )}
           </div>
         )}
 
+        {canReplace && (
         <label
           className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer transition-all duration-200"
           style={{
@@ -239,6 +242,7 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
             onChange={handleFileChange}
           />
         </label>
+        )}
       </div>
 
       <div

@@ -625,7 +625,7 @@ export async function enrichHotspotAndCarouselImages(
                 cardIndex,
                 prompt:
                   `Simple educational illustration for carousel card "${c.label || c.title || 'topic'}" ` +
-                  `in course "${course.title || ''}". Soft colors, no text, no logos.`,
+                  `in course "${course.title || ''}". Soft colors. Do not draw any text, letters, numbers, captions, labels, or logos.`,
               });
             }
             return c;
@@ -808,7 +808,7 @@ function buildSlideVisualPrompt(courseTitle: string, slideTitle: string, subject
     `Context: course "${courseTitle}", slide "${slideTitle}". ` +
     `Show the real-world subject so a learner recognizes it instantly. ` +
     `Wide landscape composition, clean professional look, soft background. ` +
-    `No text, no logos, no watermarks, no UI, no people faces.`
+    `Do not draw any text, letters, numbers, captions, labels, signs, logos, or watermarks in the image. Visuals only.`
   );
 }
 

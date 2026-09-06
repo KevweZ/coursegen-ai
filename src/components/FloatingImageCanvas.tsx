@@ -527,7 +527,7 @@ export function FloatingImageCanvas({
                 if (isAuthoring) setSelectedId(img.id);
               }}
               className={`floating-image absolute overflow-visible rounded-lg ${
-                isAuthoring ? 'pointer-events-auto cursor-move' : 'pointer-events-auto'
+                isAuthoring ? 'pointer-events-auto cursor-move' : 'pointer-events-none'
               } ${isSelected ? 'ring-2 ring-indigo-500 z-30' : ''}`}
               style={{
                 width: `${Math.max(64, img.width || 320)}px`,
@@ -537,9 +537,11 @@ export function FloatingImageCanvas({
                 background: 'transparent',
               }}
               title={
-                img.tabId
-                  ? `Tab image — drag to move, corners to resize`
-                  : 'Click to select · Drag to move · Crop / delete when selected'
+                isAuthoring
+                  ? (img.tabId
+                    ? `Tab image — drag to move, corners to resize`
+                    : 'Click to select · Drag to move · Crop / delete when selected')
+                  : undefined
               }
             >
               <img
