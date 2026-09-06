@@ -78,6 +78,91 @@ function sanitizeCourseForExport(course: CourseOutline): CourseOutline {
   return walk(course);
 }
 
+/** Map a data: MIME type to a zip-safe extension. */
+function extForMime(mime: string): string {
+  const m = (mime || '').toLowerCase().split(';')[0].trim();
+  const map: Record<string, string> = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/gif': 'gif',
+    'image/webp': 'webp',
+    'image/svg+xml': 'svg',
+    'audio/mpeg': 'mp3',
+    'audio/mp3': 'mp3',
+    'audio/mp4': 'm4a',
+    'audio/aac': 'm4a',
+    'audio/wav': 'wav',
+    'audio/x-wav': 'wav',
+    'audio/webm': 'webm',
+    'audio/ogg': 'ogg',
+  };
+  return map[m] || 'bin';
+}
+
+function decodeDataUrl(dataUrl: string): { mime: string; bytes: Uint8Array } | null {
+  if (!dataUrl.startsWith('data:')) return null;
+  const comma = dataUrl.indexOf(',');
+  if (comma < 0) return null;
+  const header = dataUrl.slice(5, comma);
+  const payload = dataUrl.slice(comma + 1);
+  const mime = header.split(';')[0] || 'application/octet-stream';
+  try {
+    if (/;base64/i.test(header)) {
+      const bin = atob(payload);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return { mime, bytes };
+    }
+    return { mime, bytes: new TextEncoder().encode(decodeURIComponent(payload)) };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Pull data: image/audio URLs out of the course JSON into media/* files
+ * so EFT/DLP scanners see .mp3/.png instead of an 80MB JavaScript payload.
+ */
+class ScormMediaExtractor {
+  files: { path: string; bytes: Uint8Array }[] = [];
+  private seen = new Map<string, string>();
+  private n = 0;
+
+  store(dataUrl: string): string {
+    const key = `${dataUrl.length}:${dataUrl.slice(5, 48)}:${dataUrl.slice(-24)}`;
+    const hit = this.seen.get(key);
+    if (hit) return hit;
+    const decoded = decodeDataUrl(dataUrl);
+    if (!decoded || decoded.bytes.length === 0) return dataUrl;
+    this.n += 1;
+    const ext = extForMime(decoded.mime);
+    const path = `media/${String(this.n).padStart(3, '0')}.${ext}`;
+    this.files.push({ path, bytes: decoded.bytes });
+    this.seen.set(key, path);
+    return path;
+  }
+
+  walk(value: any): any {
+    if (typeof value === 'string') {
+      if (value.startsWith('data:') && value.includes(',')) return this.store(value);
+      return value;
+    }
+    if (Array.isArray(value)) return value.map(v => this.walk(v));
+    if (value && typeof value === 'object') {
+      const out: any = {};
+      for (const [k, v] of Object.entries(value)) out[k] = this.walk(v);
+      return out;
+    }
+    return value;
+  }
+}
+
+function resourceFileLines(extraPaths: string[]): string {
+  if (!extraPaths.length) return '';
+  return '\n' + extraPaths.map(p => `      <file href="${escapeXml(p)}"/>`).join('\n');
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -141,7 +226,7 @@ function splitScormPlayerBundle(html: string, title: string): { shellHtml: strin
 // imsmanifest.xml — SCORM 1.2
 // ─────────────────────────────────────────────────────────────────────────────
 
-function buildScorm12Manifest(course: CourseOutline, masteryScore: number, lang: string): string {
+function buildScorm12Manifest(course: CourseOutline, masteryScore: number, lang: string, extraFiles: string[] = []): string {
   const id = `CourseGen_${Date.now()}`;
   const title = escapeXml(course.title);
   const desc  = escapeXml(course.description || course.title);
@@ -190,7 +275,7 @@ function buildScorm12Manifest(course: CourseOutline, masteryScore: number, lang:
       <file href="story.html"/>
       <file href="player.js"/>
       <file href="scorm_bridge.js"/>
-      <file href="course_data.js"/>
+      <file href="course_data.js"/>${resourceFileLines(extraFiles)}
     </resource>
   </resources>
 </manifest>`;
@@ -200,7 +285,7 @@ function buildScorm12Manifest(course: CourseOutline, masteryScore: number, lang:
 // imsmanifest.xml — SCORM 2004 3rd Edition
 // ─────────────────────────────────────────────────────────────────────────────
 
-function buildScorm2004Manifest(course: CourseOutline, masteryScore: number, lang: string): string {
+function buildScorm2004Manifest(course: CourseOutline, masteryScore: number, lang: string, extraFiles: string[] = []): string {
   const id = `CourseGen_${Date.now()}`;
   const title = escapeXml(course.title);
   const desc  = escapeXml(course.description || course.title);
@@ -259,7 +344,7 @@ function buildScorm2004Manifest(course: CourseOutline, masteryScore: number, lan
       <file href="story.html"/>
       <file href="player.js"/>
       <file href="scorm_bridge.js"/>
-      <file href="course_data.js"/>
+      <file href="course_data.js"/>${resourceFileLines(extraFiles)}
     </resource>
   </resources>
 </manifest>`;
@@ -442,41 +527,44 @@ export async function createScormPackage(
   const zip = new JSZip();
   const totalSlides = countSlides(course);
 
-  // ── 1. imsmanifest.xml ────────────────────────────────────────────────────
-  const manifest = version === '2004'
-    ? buildScorm2004Manifest(course, masteryScore, language)
-    : buildScorm12Manifest(course, masteryScore, language);
-
-  zip.file('imsmanifest.xml', manifest);
-  report(10);
-
-  // ── 2. SCORM schema stubs (1.2 only; 2004 validators are more lenient) ───
-  if (version === '1.2') {
-    zip.file('adlcp_rootv1p2.xsd',    XSD_ADLCP);
-    zip.file('ims_xml.xsd',           XSD_IMS_XML);
-    zip.file('imscp_rootv1p1p2.xsd',  XSD_IMS_CP);
-    zip.file('imsmd_rootv1p2p1.xsd',  XSD_IMS_MD);
-  }
-  report(15);
-
-  // ── 3. SCORM completion bridge ────────────────────────────────────────────
-  zip.file('scorm_bridge.js', buildScormBridgeJS(totalSlides, masteryScore));
-  report(20);
-
-  // ── 4. Course + preview runtime (theme, TOC, Alloy audio map, exam) ───────
+  // ── 1. Durable media as media/*.mp3|png (not data: URLs inside JS) ────────
   const withDurableMedia = await persistBlobsForExport(course);
-  const sanitised = sanitizeCourseForExport(withDurableMedia);
-  const examConfig = runtime?.examConfig ?? (course as any).examConfig ?? null;
+  const durableRuntime = runtime
+    ? await persistBlobsForExport({
+        playerConfig: runtime.playerConfig ?? null,
+        theme: runtime.theme ?? null,
+        navigationMode: runtime.navigationMode ?? null,
+        requireInteractionsComplete: !!runtime.requireInteractionsComplete,
+        voiceOverEnabled: runtime.voiceOverEnabled ?? true,
+        learningObjectives: runtime.learningObjectives ?? null,
+        syntheticSlideOverrides: runtime.syntheticSlideOverrides ?? {},
+        syntheticAudioMap: runtime.syntheticAudioMap ?? {},
+        examQuestions: runtime.examQuestions ?? (course as any).examQuestions ?? [],
+        examConfig: runtime.examConfig ?? (course as any).examConfig ?? null,
+      })
+    : {};
+  const extractor = new ScormMediaExtractor();
+  const sanitised = sanitizeCourseForExport(extractor.walk(withDurableMedia));
+  const runtimeOut = extractor.walk(durableRuntime);
+  report(12);
+
+  for (const file of extractor.files) {
+    zip.file(file.path, file.bytes);
+  }
+  const mediaPaths = extractor.files.map(f => f.path);
+  report(18);
+
+  const examConfig = runtimeOut?.examConfig ?? (course as any).examConfig ?? null;
   const runtimeJson = JSON.stringify({
-    playerConfig: runtime?.playerConfig ?? null,
-    theme: runtime?.theme ?? null,
-    navigationMode: runtime?.navigationMode ?? null,
-    requireInteractionsComplete: !!runtime?.requireInteractionsComplete,
-    voiceOverEnabled: runtime?.voiceOverEnabled ?? true,
-    learningObjectives: runtime?.learningObjectives ?? null,
-    syntheticSlideOverrides: runtime?.syntheticSlideOverrides ?? {},
-    syntheticAudioMap: runtime?.syntheticAudioMap ?? {},
-    examQuestions: runtime?.examQuestions ?? (course as any).examQuestions ?? [],
+    playerConfig: runtimeOut?.playerConfig ?? null,
+    theme: runtimeOut?.theme ?? null,
+    navigationMode: runtimeOut?.navigationMode ?? null,
+    requireInteractionsComplete: !!runtimeOut?.requireInteractionsComplete,
+    voiceOverEnabled: runtimeOut?.voiceOverEnabled ?? true,
+    learningObjectives: runtimeOut?.learningObjectives ?? null,
+    syntheticSlideOverrides: runtimeOut?.syntheticSlideOverrides ?? {},
+    syntheticAudioMap: runtimeOut?.syntheticAudioMap ?? {},
+    examQuestions: runtimeOut?.examQuestions ?? [],
     examConfig,
   });
   const courseDataJs = [
@@ -487,6 +575,26 @@ export async function createScormPackage(
     `window.__SCORM_VERSION__ = '${version}';`,
     `window.__MASTERY_SCORE__ = ${masteryScore};`,
   ].join('\n');
+
+  // ── 2. imsmanifest.xml ────────────────────────────────────────────────────
+  const manifest = version === '2004'
+    ? buildScorm2004Manifest(course, masteryScore, language, mediaPaths)
+    : buildScorm12Manifest(course, masteryScore, language, mediaPaths);
+
+  zip.file('imsmanifest.xml', manifest);
+  report(20);
+
+  // ── 3. SCORM schema stubs (1.2 only; 2004 validators are more lenient) ───
+  if (version === '1.2') {
+    zip.file('adlcp_rootv1p2.xsd',    XSD_ADLCP);
+    zip.file('ims_xml.xsd',           XSD_IMS_XML);
+    zip.file('imscp_rootv1p1p2.xsd',  XSD_IMS_CP);
+    zip.file('imsmd_rootv1p2p1.xsd',  XSD_IMS_MD);
+  }
+  report(22);
+
+  // ── 4. SCORM completion bridge + course JSON (paths, not binaries) ────────
+  zip.file('scorm_bridge.js', buildScormBridgeJS(totalSlides, masteryScore));
   zip.file('course_data.js', courseDataJs);
   report(25);
 
