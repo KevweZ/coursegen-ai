@@ -88,6 +88,8 @@ export interface Slide {
   id: string;
   title: string;
   type: SlideType;
+  /** 0-based enabling objective this teaching slide covers within its module */
+  enablingIndex?: number;
   content: string;
   narration?: string;
   mediaPrompt?: string;

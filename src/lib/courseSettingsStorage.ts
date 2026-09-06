@@ -75,6 +75,7 @@ export const DEFAULT_COURSE_SETTINGS: SavedCourseSettings = {
   includeModuleTitleSlides: true,
   includeModuleOverviewSlides: true,
   includeSummarySlides: true,
+  /** Legacy field. Outline length is derived from enabling objectives, not this number. */
   slideCount: 14,
   imageMode: 'ai',
   /** When hotspot is on but Multimedia AI/source are off, still AI-generate hotspot backdrops */

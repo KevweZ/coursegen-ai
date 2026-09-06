@@ -1,0 +1,28 @@
+---
+description: Slide count vs source coverage — objective-driven budget is on main; do not revert to leftover ~N.
+alwaysApply: true
+---
+
+# Content coverage vs slide budget
+
+**Status:** shipped 2026-09-06. Do not restore `Total Target Slide Count: ~N` or a global 14/17/35 generation cap.
+
+## Product stance (live)
+
+- **Content drives length.** Duration still matters (~15–20 min best practice, not over ~30 min); beyond ~30–40 min, split into two/three courses rather than dropping objectives. Duration warning/split is **not** in this cut.
+- **One module per terminal** (hard).
+- **1–2 teaching slides per enabling** (hard). One slide minimum; second slide only to chunk. Do not put two enablings on one slide. If a listed enabling is not taught, QC `coverage` error.
+- Chrome (titles, overviews, summaries, KCs, exam) still comes from Course Settings toggles.
+- Leftover `slideCount` in saved Course Settings is storage-only and is **not** passed into the outline prompt.
+
+## Implementation
+
+- Outline + post-process: [`src/lib/enablingCoverage.ts`](src/lib/enablingCoverage.ts), [`src/services/aiService.ts`](src/services/aiService.ts) `generateCourseOutline`.
+- Hydrate keeps `enablingIndex`.
+- QC: [`src/services/structuralValidator.ts`](src/services/structuralValidator.ts) `coverage` issues.
+- Course structure shows “Enabling N” on teaching slides.
+
+## Not in this cut
+
+- Fuller source extract (12k / 4k windows).
+- Narration word-count duration meter + split prompt.

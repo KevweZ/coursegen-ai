@@ -323,6 +323,11 @@ export function OutlinePreview({
                       <p className={cn("text-sm font-bold truncate pr-4", isGame ? "text-emerald-300" : "text-gray-200")}>
                         {slide.title}
                       </p>
+                      {typeof slide.enablingIndex === 'number' && !LOCKED_SLIDE_TYPES.has(slide.type) && (
+                        <p className="text-[10px] text-slate-500 font-medium mt-0.5">
+                          Enabling {slide.enablingIndex + 1}
+                        </p>
+                      )}
                     </div>
 
                     <div className="px-4 py-4 shrink-0 flex items-center gap-2">

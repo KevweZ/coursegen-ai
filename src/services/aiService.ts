@@ -1,5 +1,6 @@
 import { CourseOutline, TerminalObjectiveGroup, ExamConfig, ExamQuestion } from "../types/course";
 import { coerceCarouselColor } from "../lib/colorContrast";
+import { ensureEnablingSlideCoverage, preserveEnablingIndex, normalizeTerminalGroups } from "../lib/enablingCoverage";
 
 // ── Secure AI Proxy Client ───────────────────────────────────────────────────
 // API keys live ONLY in server.js — never in the browser bundle.
@@ -19,6 +20,8 @@ export interface CourseOutlineDraft {
       type: string;
       title: string;
       gameType?: string;
+      /** 0-based enabling objective this teaching slide covers within the module */
+      enablingIndex?: number;
     }[];
   }[];
 }
@@ -414,7 +417,8 @@ export async function generateCourseOutline(
   configParams: {
     courseType: 'quick' | 'standard' | 'comprehensive';
     interactionTypes: string[];
-    slideCount: number;
+    /** @deprecated Unused. Slide count is derived from enabling objectives. */
+    slideCount?: number;
     /** @deprecated use gameTemplateIds */ gameTemplateId?: string | null;
     /** Array of game template IDs selected by the user */
     gameTemplateIds?: string[];
@@ -468,7 +472,7 @@ export async function generateCourseOutline(
   Your ONLY job right now is to draft the TABLE OF CONTENTS (Outline) for a course. Do NOT write the actual content yet.
   
   COURSE STRUCTURE REQUIREMENTS:
-  You must create EXACTLY ONE module per provided Learning Objective/Target.
+  You must create EXACTLY ONE module per provided Terminal Objective (Learning Objective group).
   Every module MUST follow this exact sequence of slides:
   1. NO title / overview / objectives slides — The course player auto-injects structural slides based on Course Settings:
      ${configParams.includeModuleTitleSlides !== false ? '- Module Title slide (full-bleed "Module N: Title") before each module\'s content' : '- Module Title slides are OFF — do NOT create module title/cover slides'}
@@ -476,6 +480,11 @@ export async function generateCourseOutline(
      Do NOT generate title, intro, overview, or objectives slides for any module. Each module must start directly with its first content or interaction slide.
   2. NO objectives slide — FORBIDDEN. Do NOT create any slide titled "Learning Objectives", "Module Objectives", "Objectives", or similar. Do NOT use click-reveal (or any other type) to restate objectives.${configParams.includeModuleOverviewSlides !== false ? ' The auto-injected Module Overview already shows this module\'s objective and sub-objectives from the canonical Learning Objectives list.' : ''}
   3. Content & Interaction Slides — ONLY use these content interaction types as slide 'type': ${contentInteractions.join(', ') || 'content'}.
+     HARD RULE — ENABLING COVERAGE (this drives length; there is NO global target slide count):
+     - Each enabling objective in that module's terminal MUST have its own teaching slide(s). Do not skip an enabling. Do not put two enablings on one slide.
+     - At least 1 and at most 2 teaching/interaction slides per enabling. Use a second slide only when the enabling needs to be chunked.
+     - Tag every teaching slide with enablingIndex (0-based index into that terminal's enablingObjectives array).
+     - Knowledge checks and module summaries do NOT count as teaching slides and must NOT use enablingIndex.
      HARD RULE: Do NOT use hotspot, carousel-panel, flashcards, timeline, scenario, or folder-explorer unless that exact type is listed above.
      Map them like this:
      - flashcards, timeline, hotspot, scenario, tabbed-horizontal, tabbed-vertical, folder-explorer, carousel-panel, click-reveal -> use the exact string as the slide 'type'
@@ -505,7 +514,7 @@ export async function generateCourseOutline(
         "id": "uuid",
         "title": "Short 3-4 word module title",
         "slides": [
-          { "id": "uuid", "type": "${schemaTypeEnum}", "title": "Slide Title" }
+          { "id": "uuid", "type": "${schemaTypeEnum}", "title": "Slide Title", "enablingIndex": 0 }
         ]
       }
     ]
@@ -521,8 +530,7 @@ export async function generateCourseOutline(
     const userPrompt = `Draft the outline for a Corporate Training Course. Topic: "${prompt}".
     Learning Objectives: ${JSON.stringify(objectives)}
     Objective format for this course: ${configParams.objectiveFormat || 'AB'} (respect this structure when aligning modules to objectives).
-    Total Target Slide Count: ~${configParams.slideCount || 10}
-    AVAILABLE VISUAL THEMES: ${availableThemes.length > 0 ? availableThemes.join(", ") : "Neutral"}
+    SLIDE COUNT: Do NOT aim for a global target number of slides. Length comes from the objectives: one module per terminal, 1–2 teaching slides per enabling (plus knowledge checks / summaries when required below). AVAILABLE VISUAL THEMES: ${availableThemes.length > 0 ? availableThemes.join(", ") : "Neutral"}
     IMPORTANT AI DIRECTIVE: You must ONLY select a visualTheme if the course topic has a STRONG, LITERAL semantic match to that specific theme (e.g. use "Rigs" only for oil/gas/industrial topics, use "Forest" only for nature topics). If there is NO strong semantic match, you MUST default to "Neutral". Do not guess or select unrelated themes!
 
     MODULE TITLE QUALITY RULES:
@@ -566,7 +574,8 @@ export async function generateCourseOutline(
     parsedOutline.modules = coerceInteractionTypes(parsedOutline.modules, contentInteractions) as any;
   }
 
-  return parsedOutline;
+  parsedOutline.learningObjectives = objectives;
+  return ensureEnablingSlideCoverage(parsedOutline, objectives);
 }
 
 export async function hydrateCourseContent(
@@ -594,6 +603,7 @@ export async function hydrateCourseContent(
   const systemInstruction = `You are an Expert eLearning Content Architect and Certified Instructional Designer.
   Your ONLY job: hydrate the provided module JSON skeleton with rich, ISD-compliant content. Do NOT change the slide structure.
   Keep module.title exactly as provided — do not lengthen it into a sentence or objective-style phrase.
+  Keep each slide's enablingIndex exactly as provided. A teaching slide with enablingIndex N must teach that module's enabling objective N (0-based). Do not drop, merge, or skip enablings. Knowledge checks and summaries have no enablingIndex.
 
   ========================================
   GLOBAL PRINCIPLE — ON-SCREEN TEXT vs NARRATION (APPLIES TO EVERY SLIDE)
@@ -858,9 +868,12 @@ export async function hydrateCourseContent(
 
   // --- Helper: hydrate a single slide ---
   async function hydrateSingleSlide(slide: any, moduleTitle: string): Promise<any> {
-    const singlePrompt = `Hydrate exactly ONE slide for the module titled "${moduleTitle}". Course topic: ${originalPrompt}.
+    const enablingHint = Number.isInteger(slide?.enablingIndex)
+      ? ` This slide teaches enabling objective ${slide.enablingIndex} (0-based) for this module. Keep enablingIndex ${slide.enablingIndex}.`
+      : '';
+    const singlePrompt = `Hydrate exactly ONE slide for the module titled "${moduleTitle}". Course topic: ${originalPrompt}.${enablingHint}
 Slide JSON: ${JSON.stringify(slide, null, 2)}
-Return ONLY a JSON object for this single slide with all fields: id, type, title, content, voiceOverText, mediaPrompt, and data/interactions if applicable.`;
+Return ONLY a JSON object for this single slide with all fields: id, type, title, content, voiceOverText, mediaPrompt, enablingIndex (if present on the input), and data/interactions if applicable.`;
     const raw = await executeAnthropicAI('bulk', systemInstruction, singlePrompt, 8192);
     let parsed = parseJsonSafely(raw);
     // If the AI returned a module wrapper, unwrap it
@@ -876,7 +889,7 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     if ((!parsed.content?.trim() && !revealOk) || !parsed.voiceOverText?.trim()) {
       throw new Error(`Single slide response for "${slide.title}" has empty content or voiceOverText.`);
     }
-    return parsed;
+    return preserveEnablingIndex(parsed, [slide], 0);
   }
 
   /**
@@ -1091,7 +1104,12 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     const chunkModule = { ...emptyModule, slides: chunk };
     const label = `Module "${emptyModule.title}" Chunk ${chunkIndex + 1}`;
 
-    const fullPrompt = `Hydrate Module Chunk ${chunkIndex + 1} of ${chunkCount}.\nCourse Topic: ${originalPrompt}${sourceNote}\n\nModule Draft JSON:\n${JSON.stringify(chunkModule, null, 2)}\n\nReturn ONLY a single JSON object: { "id": "...", "title": "...", "slides": [ ... ] }`;
+    const groups = normalizeTerminalGroups(outlineDraft.learningObjectives);
+    const enablingList = groups[moduleIndex]?.enablingObjectives || [];
+    const enablingNote = enablingList.length
+      ? `\nThis module's enabling objectives (keep enablingIndex on each teaching slide; teach that enabling):\n${enablingList.map((e, i) => `${i}: ${e}`).join('\n')}\n`
+      : '';
+    const fullPrompt = `Hydrate Module Chunk ${chunkIndex + 1} of ${chunkCount}.\nCourse Topic: ${originalPrompt}${sourceNote}${enablingNote}\n\nModule Draft JSON:\n${JSON.stringify(chunkModule, null, 2)}\n\nReturn ONLY a single JSON object: { "id": "...", "title": "...", "slides": [ ... ] }`;
     const simplePrompt = `Hydrate this module chunk. Be concise -- max 2 sentences per content field, max 4 items per array.\nModule: ${JSON.stringify(chunkModule)}\nReturn ONLY: { "id": "...", "title": "...", "slides": [ ... ] }`;
 
     let parsedChunk: any = null;
@@ -1130,7 +1148,7 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
         return {
           moduleIndex,
           chunkIndex,
-          slides: individualResults.flatMap(s => processSlide(s)),
+          slides: individualResults.flatMap((s, i) => processSlide(preserveEnablingIndex(s, chunk, i))),
         };
       }
     }
@@ -1139,7 +1157,7 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     return {
       moduleIndex,
       chunkIndex,
-      slides: (parsedChunk.slides as any[]).flatMap(s => processSlide(s)),
+      slides: (parsedChunk.slides as any[]).flatMap((s, i) => processSlide(preserveEnablingIndex(s, chunk, i))),
     };
   }
 

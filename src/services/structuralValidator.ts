@@ -4,6 +4,8 @@
  * narration gaps, interaction completeness, and theme consistency problems.
  */
 
+import { findUncoveredEnablings } from '../lib/enablingCoverage';
+
 export type IssueSeverity = 'error' | 'warning' | 'info';
 export type IssueType =
   | 'empty_field'
@@ -17,7 +19,8 @@ export type IssueType =
   | 'spelling'
   | 'grammar'
   | 'clarity'
-  | 'consistency';
+  | 'consistency'
+  | 'coverage';
 
 export type FixAction = 'simplify' | 'regenerate' | 'fix_color';
 
@@ -757,6 +760,26 @@ export function validateCourse(course: any, narrationEnabled = false): QCReport 
       issues.push(...checkStubContent(slide, modIdx, slideIdx, modTitle));  // A3: hotspot stubs
       issues.push(...checkColorContrast(slide, modIdx, slideIdx, modTitle));
       issues.push(...checkThemeConsistency(slide, modIdx, slideIdx, modTitle));
+    });
+  });
+
+  findUncoveredEnablings(course).forEach(gap => {
+    const clip = gap.enablingText.length > 160 ? `${gap.enablingText.slice(0, 157)}…` : gap.enablingText;
+    issues.push({
+      id: makeId(),
+      slideId: gap.slideId,
+      slideTitle: gap.slideTitle,
+      moduleTitle: gap.moduleTitle,
+      moduleIndex: gap.moduleIndex,
+      slideIndex: gap.slideIndex,
+      slideRef: `${gap.moduleIndex + 1}.${gap.slideIndex + 1}`,
+      field: 'enablingObjectives',
+      type: 'coverage',
+      severity: 'error',
+      message: `Enabling objective ${gap.enablingIndex + 1} is listed for this module but has no teaching slide: “${clip}”`,
+      originalText: gap.enablingText,
+      suggestion: '',
+      autoFixable: false,
     });
   });
 

@@ -1,0 +1,28 @@
+---
+description: Aramco EFT blocks SCORM/HTML5 zips (JS/HTML in zip). Policy/path issue — do not packager-workaround unless asked.
+alwaysApply: true
+---
+
+# EFT / SCORM transfer (parked — IT)
+
+Anthony and a colleague sent this to department IT (2026-09-06). **Do not** change the SCORM packager, strip `.xsd`, thin `player.js`, or drop `.mp3` to “beat” EFT unless he explicitly restarts this after IT’s answer.
+
+## What is blocked
+
+Aramco External File Transfer (`eft.aramco.com`) rejects zips with: *“Zip file contains one or more file types restricted by security policy.”*
+
+Fails (same error): CourseGen Steam Cracker SCORM; full Playfair SCORM; ExtraLean two-slide Playfair SCORM; **blank one-slide Storyline SCORM**; that blank zip **with the four `.xsd` files removed**.
+
+Passes: Word publish of ExtraLean (zip of one `.doc`); Storyline **source** `.story` files (`BlankCourse.story`, Playfair `.story`).
+
+## What that means
+
+A `.story` / `.doc` is Office-style (XML, images, or a Word file). **Zero `.js` / `.html` / `.xsd`.** A SCORM HTML5 zip is a website in an archive. Playable LMS packages need JavaScript + HTML. We cannot emit a SuccessFactors-playable SCORM that looks like a `.story` file.
+
+Ruled out as the *cause*: Steam Cracker content, slide count, `player.js` size, `.mp3`, Data URIs (already extracted), and `.xsd` (diagnostic zip had none and still failed). Shared types in every failing zip: **`.js`, `.html`, `.xml`**.
+
+## When we return
+
+- If IT allowlists SCORM / `.js`-in-zip: use the existing Publish zip; no packager change required for EFT.
+- If they do not: transfer path is publish/download **on the corporate network**, or an exception — not a CourseGen format change.
+- Storyline workaround they already have: EFT the `.story`, publish SCORM on the work laptop. CourseGen has no equivalent source format.

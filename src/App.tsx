@@ -2950,7 +2950,6 @@ export default function App() {
       {
         courseType,
         interactionTypes: contentInteractions,
-        slideCount,
         includeModuleTitleSlides,
         includeModuleOverviewSlides,
         includeSummarySlides,
@@ -3028,7 +3027,6 @@ export default function App() {
       let outlineInteractions = (settingsOverride?.interactionTypes ?? interactionTypes).filter(
         t => !['sorting', 'matching', 'drop-targets', 'multiple-choice', 'multiple-answers', 'quiz'].includes(t)
       );
-      let outlineSlideCount = settingsOverride?.slideCount ?? slideCount;
       let outlineIncludeModuleTitles = settingsOverride?.includeModuleTitleSlides ?? includeModuleTitleSlides;
       let outlineIncludeModuleOverviews = settingsOverride?.includeModuleOverviewSlides ?? includeModuleOverviewSlides;
       const outlineIncludeSummarySlides = settingsOverride?.includeSummarySlides ?? includeSummarySlides;
@@ -3043,8 +3041,7 @@ export default function App() {
       );
 
       // Both Build now and Review before build honor saved Course Settings.
-      // Do NOT let AI recommendedPreset overwrite interactions, slide count, or KC types —
-      // that was wiping carousel / sorting / multimedia choices made in Course Settings.
+      // Do NOT let AI recommendedPreset overwrite interactions or KC types.
 
       await new Promise(r => setTimeout(r, 300));
 
@@ -3060,7 +3057,6 @@ export default function App() {
             {
               courseType: outlineCourseType,
               interactionTypes: outlineInteractions,
-              slideCount: outlineSlideCount,
               includeModuleTitleSlides: outlineIncludeModuleTitles,
               includeModuleOverviewSlides: outlineIncludeModuleOverviews,
               includeSummarySlides: outlineIncludeSummarySlides,
@@ -3129,7 +3125,6 @@ export default function App() {
           {
             courseType: outlineCourseType,
             interactionTypes: outlineInteractions,
-            slideCount: outlineSlideCount,
             includeModuleTitleSlides: outlineIncludeModuleTitles,
             includeModuleOverviewSlides: outlineIncludeModuleOverviews,
             includeSummarySlides: outlineIncludeSummarySlides,
@@ -3582,7 +3577,6 @@ export default function App() {
         { 
           courseType, 
           interactionTypes: contentInteractions, 
-          slideCount,
           includeModuleTitleSlides,
           includeModuleOverviewSlides,
           includeSummarySlides,

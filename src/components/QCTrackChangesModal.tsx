@@ -54,6 +54,7 @@ function humanizeField(field?: string): string {
   if (lower === 'voiceovertext' || lower === 'narration') return 'Narration script';
   if (lower === 'content') return 'Slide text';
   if (lower === 'title') return 'Slide title';
+  if (lower === 'enablingobjectives') return 'Enabling objective';
   if (lower === 'data.items' || lower === 'items' || key === 'data.items') return 'Interaction items';
   if (lower === 'data.tabs' || lower === 'tabs' || key === 'data.tabs') return 'Tabs';
   // Prettify camelCase / snake_case / dotted paths into words
