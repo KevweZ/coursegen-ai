@@ -3,6 +3,7 @@
  * IndexedDB remains a per-device cache; the server is the cross-device source of truth.
  */
 import { supabase } from './supabaseClient';
+import { blobToDataUrl, dataUrlToBlob } from './draftMedia';
 
 export interface CloudDraftMeta {
   id: string;
@@ -17,7 +18,6 @@ export interface CloudDraftMeta {
 export type CloudDraftSnapshot = Record<string, any>;
 
 const BUCKET = 'draft-assets';
-const CHUNK_CHARS = 3_500_000;
 
 let cloudReady: boolean | null = null;
 
@@ -106,71 +106,100 @@ export async function listCloudDrafts(
   }
 }
 
+function extForMime(type: string): string {
+  const t = String(type || '').toLowerCase();
+  if (t.includes('mpeg') || t.includes('mp3')) return 'mp3';
+  if (t.includes('wav')) return 'wav';
+  if (t.includes('png')) return 'png';
+  if (t.includes('jpeg') || t.includes('jpg')) return 'jpg';
+  if (t.includes('gif')) return 'gif';
+  if (t.includes('webp')) return 'webp';
+  if (t.includes('json')) return 'json';
+  return 'bin';
+}
+
+/**
+ * Upload each image/audio file individually. Never delete existing objects until the
+ * new manifest is in place — a failed giant JSON upload used to wipe all cloud media.
+ */
 async function uploadAssets(
   userId: string,
   draftId: string,
   assets?: Record<string, string>
 ): Promise<void> {
-  const prefix = assetPrefix(userId, draftId);
-  try {
-    const { data: existing } = await supabase.storage.from(BUCKET).list(prefix);
-    if (existing?.length) {
-      await supabase.storage.from(BUCKET).remove(existing.map(f => `${prefix}/${f.name}`));
-    }
-  } catch { /* ok */ }
-
   if (!assets || !Object.keys(assets).length) return;
 
-  const json = JSON.stringify(assets);
-  if (json.length <= CHUNK_CHARS) {
-    const { error } = await supabase.storage
-      .from(BUCKET)
-      .upload(`${prefix}/media.json`, new Blob([json], { type: 'application/json' }), {
-        upsert: true,
-        contentType: 'application/json',
-      });
+  const prefix = assetPrefix(userId, draftId);
+  const uploaded: { path: string; name: string; type: string }[] = [];
+  let i = 0;
+  for (const [path, url] of Object.entries(assets)) {
+    if (typeof url !== 'string' || url.length < 8) continue;
+    const blob = dataUrlToBlob(url);
+    const type = blob.type || 'application/octet-stream';
+    const name = `${String(i).padStart(4, '0')}.${extForMime(type)}`;
+    i += 1;
+    const { error } = await supabase.storage.from(BUCKET).upload(`${prefix}/b/${name}`, blob, {
+      upsert: true,
+      contentType: type,
+    });
     if (error) throw error;
-    return;
+    uploaded.push({ path, name, type });
   }
 
-  const keys = Object.keys(assets);
-  let chunk: Record<string, string> = {};
-  let chunkIdx = 0;
-  let size = 2;
+  const manBody = JSON.stringify({ v: 2, files: uploaded });
+  const { error: manErr } = await supabase.storage
+    .from(BUCKET)
+    .upload(`${prefix}/manifest.json`, new Blob([manBody], { type: 'application/json' }), {
+      upsert: true,
+      contentType: 'application/json',
+    });
+  if (manErr) throw manErr;
 
-  const flush = async () => {
-    if (!Object.keys(chunk).length) return;
-    const body = JSON.stringify(chunk);
-    const { error } = await supabase.storage
-      .from(BUCKET)
-      .upload(`${prefix}/media-${chunkIdx}.json`, new Blob([body], { type: 'application/json' }), {
-        upsert: true,
-        contentType: 'application/json',
-      });
-    if (error) throw error;
-    chunkIdx += 1;
-    chunk = {};
-    size = 2;
-  };
-
-  for (const k of keys) {
-    const v = assets[k];
-    const add = k.length + v.length + 8;
-    if (size + add > CHUNK_CHARS && Object.keys(chunk).length) {
-      await flush();
+  try {
+    const { data: existing } = await supabase.storage.from(BUCKET).list(prefix, { limit: 1000 });
+    const stale = (existing || [])
+      .map(f => f.name)
+      .filter(n => n === 'media.json' || /^media-\d+\.json$/.test(n));
+    if (stale.length) {
+      await supabase.storage.from(BUCKET).remove(stale.map(n => `${prefix}/${n}`));
     }
-    chunk[k] = v;
-    size += add;
-  }
-  await flush();
+    const { data: bins } = await supabase.storage.from(BUCKET).list(`${prefix}/b`, { limit: 1000 });
+    const keep = new Set(uploaded.map(f => f.name));
+    const extra = (bins || [])
+      .map(f => f.name)
+      .filter(n => n && !keep.has(n))
+      .map(n => `${prefix}/b/${n}`);
+    if (extra.length) await supabase.storage.from(BUCKET).remove(extra);
+  } catch { /* keep new manifest even if leftover cleanup fails */ }
 }
 
 export async function downloadCloudAssets(userId: string, draftId: string): Promise<Record<string, string>> {
   const prefix = assetPrefix(userId, draftId);
   const out: Record<string, string> = {};
 
-  const { data: files, error } = await supabase.storage.from(BUCKET).list(prefix);
+  const { data: files, error } = await supabase.storage.from(BUCKET).list(prefix, { limit: 1000 });
   if (error || !files?.length) return out;
+
+  if (files.some(f => f.name === 'manifest.json')) {
+    const { data: manBlob, error: manErr } = await supabase.storage.from(BUCKET).download(`${prefix}/manifest.json`);
+    if (!manErr && manBlob) {
+      try {
+        const man = JSON.parse(await manBlob.text());
+        const list = Array.isArray(man?.files) ? man.files : [];
+        for (const entry of list) {
+          const name = String(entry?.name || '');
+          const path = String(entry?.path || '');
+          if (!name || !path) continue;
+          const { data: fileBlob, error: fErr } = await supabase.storage.from(BUCKET).download(`${prefix}/b/${name}`);
+          if (fErr || !fileBlob) continue;
+          out[path] = await blobToDataUrl(fileBlob);
+        }
+        if (Object.keys(out).length) return out;
+      } catch (e) {
+        console.warn('[DraftCloud] Binary manifest read failed, trying legacy JSON', e);
+      }
+    }
+  }
 
   const mediaFiles = files
     .map(f => f.name)

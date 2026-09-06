@@ -87,6 +87,51 @@ export function mediaRecordToMap(rec?: Record<string, string> | null): MediaMap 
   return map;
 }
 
+/** Convert a data: (or blob:) URL to a Blob for IndexedDB / storage. */
+export function dataUrlToBlob(dataUrl: string): Blob {
+  const raw = String(dataUrl || '');
+  const comma = raw.indexOf(',');
+  if (!raw.startsWith('data:') || comma < 0) {
+    return new Blob([raw], { type: 'application/octet-stream' });
+  }
+  const header = raw.slice(5, comma);
+  const mime = header.split(';')[0] || 'application/octet-stream';
+  const body = raw.slice(comma + 1);
+  if (/;base64/i.test(header)) {
+    try {
+      const binary = atob(body);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return new Blob([bytes], { type: mime });
+    } catch {
+      return new Blob([body], { type: mime });
+    }
+  }
+  try {
+    return new Blob([decodeURIComponent(body)], { type: mime });
+  } catch {
+    return new Blob([body], { type: mime });
+  }
+}
+
+export function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('Failed to read media blob'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+export function countAudioAssetKeys(assets: Record<string, string> | null | undefined): number {
+  if (!assets) return 0;
+  let n = 0;
+  for (const k of Object.keys(assets)) {
+    if (/voiceOverUrl$/i.test(k) || k.startsWith('__synthetic__.')) n += 1;
+  }
+  return n;
+}
+
 /** Count durable narration clips currently on the course (slide + tab voiceOverUrl). */
 export function countCourseAudioClips(course: any): number {
   let n = 0;

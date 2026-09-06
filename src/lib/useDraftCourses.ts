@@ -4,7 +4,7 @@
  * Storage:
  *   - Cloud (Supabase) = source of truth for signed-in users
  *   - IndexedDB = local cache + offline fallback
- *     - `draft_index` / `draft_payload` / `draft_assets`
+ *     - `draft_index` / `draft_payload` / `draft_assets` (manifest) / `draft_asset_blobs`
  *
  * Older v1 localStorage / single-blob IDB formats are migrated on read,
  * then uploaded to cloud when available.
@@ -24,6 +24,9 @@ import {
   cloneLeanCourse,
   stashLegacyMedia,
   countCourseAudioClips,
+  countAudioAssetKeys,
+  dataUrlToBlob,
+  blobToDataUrl,
 } from './draftMedia';
 import {
   listCloudDrafts,
@@ -40,11 +43,13 @@ export const MAX_TEAM_DRAFTS = 10;
 export const MAX_ADMIN_DRAFTS = 100;
 const STORAGE_PREFIX = 'nexcourse_drafts_v1_';
 const IDB_NAME = 'nexcourse_drafts_db';
-const IDB_VERSION = 4;
+const IDB_VERSION = 5;
 const STORE_INDEX = 'draft_index';
 const STORE_PAYLOAD = 'draft_payload';
-/** Heavy data-URL images keyed per draft — kept out of the course shell */
+/** Manifest of per-file blobs (legacy: one fat Record of data-URLs) */
 const STORE_ASSETS = 'draft_assets';
+/** One Blob per image/audio path — avoids a single oversized IDB value */
+const STORE_ASSET_BLOBS = 'draft_asset_blobs';
 /** Confirmed deletes — prevents cloud/legacy refresh from resurrecting a draft */
 const STORE_TOMBSTONES = 'draft_tombstones';
 /** @deprecated v1 single-blob store — still read for migration */
@@ -157,6 +162,9 @@ function openDraftsDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE_ASSETS)) {
         db.createObjectStore(STORE_ASSETS);
       }
+      if (!db.objectStoreNames.contains(STORE_ASSET_BLOBS)) {
+        db.createObjectStore(STORE_ASSET_BLOBS);
+      }
       if (!db.objectStoreNames.contains(STORE_TOMBSTONES)) {
         db.createObjectStore(STORE_TOMBSTONES);
       }
@@ -207,21 +215,103 @@ function idbDelete(store: string, key: string): Promise<void> {
   );
 }
 
-async function mergeDraftAssets(
+function assetBlobKey(payloadKeyStr: string, path: string) {
+  return `${payloadKeyStr}\n${path}`;
+}
+
+function isAssetManifest(value: unknown): value is { __nexcourseAssetManifest: 1; paths: string[] } {
+  return !!value
+    && typeof value === 'object'
+    && (value as any).__nexcourseAssetManifest === 1
+    && Array.isArray((value as any).paths);
+}
+
+async function readDraftAssets(userId: string, draftId: string): Promise<Record<string, string>> {
+  const key = payloadKey(userId, draftId);
+  const existing = await idbGet<any>(STORE_ASSETS, key);
+  if (isAssetManifest(existing)) {
+    const out: Record<string, string> = {};
+    const collected: Record<string, unknown> = {};
+    const db = await openDraftsDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_ASSET_BLOBS, 'readonly');
+      const store = tx.objectStore(STORE_ASSET_BLOBS);
+      for (const path of existing.paths) {
+        const req = store.get(assetBlobKey(key, path));
+        req.onsuccess = () => {
+          collected[path] = req.result;
+        };
+      }
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    for (const [path, val] of Object.entries(collected)) {
+      if (val instanceof Blob) out[path] = await blobToDataUrl(val);
+      else if (typeof val === 'string' && val.length > 8) out[path] = val;
+    }
+    return out;
+  }
+  if (existing && typeof existing === 'object') {
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(existing as Record<string, unknown>)) {
+      if (k === '__nexcourseAssetManifest' || k === 'paths') continue;
+      if (typeof v === 'string' && v.length > 8) out[k] = v;
+    }
+    return out;
+  }
+  return {};
+}
+
+async function writeDraftAssets(
   userId: string,
   draftId: string,
   incoming?: Record<string, string> | null,
 ): Promise<Record<string, string>> {
   const key = payloadKey(userId, draftId);
-  let prev: Record<string, string> = {};
+  const incomingRec = incoming && typeof incoming === 'object' ? incoming : {};
+  let prevPaths: string[] = [];
+  let fat: Record<string, string> = {};
   try {
-    const existing = await idbGet<Record<string, string>>(STORE_ASSETS, key);
-    if (existing && typeof existing === 'object') prev = existing;
+    const existing = await idbGet<any>(STORE_ASSETS, key);
+    if (isAssetManifest(existing)) {
+      prevPaths = existing.paths.filter(p => typeof p === 'string');
+    } else if (existing && typeof existing === 'object') {
+      fat = await readDraftAssets(userId, draftId);
+      prevPaths = Object.keys(fat);
+    }
   } catch { /* ok */ }
-  const next = { ...prev, ...(incoming || {}) };
-  if (Object.keys(next).length) {
-    await idbPut(STORE_ASSETS, key, next);
-  }
+
+  const next: Record<string, string> = { ...fat, ...incomingRec };
+  const paths = [...new Set([...prevPaths, ...Object.keys(next)])];
+  const db = await openDraftsDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction([STORE_ASSET_BLOBS, STORE_ASSETS], 'readwrite');
+    const blobs = tx.objectStore(STORE_ASSET_BLOBS);
+    const mans = tx.objectStore(STORE_ASSETS);
+    for (const [path, url] of Object.entries(incomingRec)) {
+      if (typeof url !== 'string' || url.length < 8) continue;
+      try {
+        blobs.put(dataUrlToBlob(url), assetBlobKey(key, path));
+      } catch (e) {
+        reject(e);
+        return;
+      }
+    }
+    for (const [path, url] of Object.entries(fat)) {
+      if (path in incomingRec) continue;
+      if (typeof url !== 'string' || url.length < 8) continue;
+      try {
+        blobs.put(dataUrlToBlob(url), assetBlobKey(key, path));
+      } catch (e) {
+        reject(e);
+        return;
+      }
+    }
+    mans.put({ __nexcourseAssetManifest: 1, paths }, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error || new Error('IDB asset write failed'));
+    tx.onabort = () => reject(tx.error || new Error('IDB asset write aborted'));
+  });
   return next;
 }
 
@@ -611,14 +701,13 @@ export function useDraftCourses(
               report.errors.push(`“${meta.courseTitle}” — missing local content to upload`);
               continue;
             }
-            let assets =
-              (await idbGet<Record<string, string>>(STORE_ASSETS, payloadKey(userId, meta.id))) || {};
+            let assets = await readDraftAssets(userId, meta.id);
             if (snapshot.phase === 'preview' && snapshot.course) {
               const detached = detachHeavyMedia(snapshot.course);
               if (detached.size) {
                 assets = { ...assets, ...mediaMapToRecord(detached) };
                 await idbPut(STORE_PAYLOAD, payloadKey(userId, meta.id), snapshot);
-                await idbPut(STORE_ASSETS, payloadKey(userId, meta.id), assets);
+                await writeDraftAssets(userId, meta.id, assets);
               }
             }
             const up = await upsertCloudDraft(userId, meta, snapshot, assets, workspaceId);
@@ -749,17 +838,23 @@ export function useDraftCourses(
   const persistNew = async (
     meta: CourseDraft,
     snapshot: DraftSnapshot,
-    assets?: Record<string, string>
+    assets?: Record<string, string>,
+    expectedAudio = 0,
   ): Promise<{ ok: boolean; error?: string }> => {
     if (!userId) return { ok: false, error: 'Sign in to save drafts.' };
     try {
       const t0 = performance.now();
-      await idbPut(STORE_PAYLOAD, payloadKey(userId, meta.id), snapshot);
-      if (assets && Object.keys(assets).length) {
-        await idbPut(STORE_ASSETS, payloadKey(userId, meta.id), assets);
-      } else {
-        try { await idbDelete(STORE_ASSETS, payloadKey(userId, meta.id)); } catch { /* ok */ }
+      const packedAudio = countAudioAssetKeys(assets);
+      if (expectedAudio > 0 && packedAudio === 0) {
+        return {
+          ok: false,
+          error: 'Narration was generated but could not be packed for storage. Try saving again.',
+        };
       }
+      if (assets && Object.keys(assets).length) {
+        await writeDraftAssets(userId, meta.id, assets);
+      }
+      await idbPut(STORE_PAYLOAD, payloadKey(userId, meta.id), snapshot);
       const next = [...draftsRef.current, metaFromDraft(meta)];
       await writeIndex(userId, next);
       setDrafts(next);
@@ -776,7 +871,9 @@ export function useDraftCourses(
       console.error('[DraftCourses] Save failed:', e);
       return {
         ok: false,
-        error: e?.message || 'Failed to save draft.',
+        error: /quota|full/i.test(String(e?.message || e?.name || ''))
+          ? 'Browser storage is full — delete unused drafts, then save again so narration can be kept.'
+          : (e?.message || 'Failed to save draft.'),
       };
     }
   };
@@ -785,28 +882,51 @@ export function useDraftCourses(
     id: string,
     metaPatch: Partial<CourseDraft>,
     snapshot: DraftSnapshot,
-    assets?: Record<string, string>
+    assets?: Record<string, string>,
+    expectedAudio = 0,
   ): Promise<{ ok: boolean; error?: string }> => {
     if (!userId) return { ok: false, error: 'Sign in to save drafts.' };
     try {
-      await idbPut(STORE_PAYLOAD, payloadKey(userId, id), snapshot);
-      // Never wipe previously stored images/audio if this save produced an empty map
-      // (stale lean course, persist failure). Merge so new narration clips are kept.
-      if (assets && Object.keys(assets).length) {
-        await mergeDraftAssets(userId, id, assets);
+      const packedAudio = countAudioAssetKeys(assets);
+      if (expectedAudio > 0 && packedAudio === 0) {
+        return {
+          ok: false,
+          error: 'Narration was generated but could not be packed for storage. Try Update Draft again.',
+        };
       }
+      // Write audio/images FIRST. A lean payload with no matching assets is how
+      // previous saves "succeeded" and then reopened silent.
+      if (assets && Object.keys(assets).length) {
+        const written = await writeDraftAssets(userId, id, assets);
+        if (expectedAudio > 0 && countAudioAssetKeys(written) === 0) {
+          return {
+            ok: false,
+            error: 'Could not store narration audio in this browser (storage may be full). Delete unused drafts, then Update Draft again.',
+          };
+        }
+      } else if (expectedAudio > 0) {
+        return {
+          ok: false,
+          error: 'Narration was generated but no audio files were packed. Try Update Draft again.',
+        };
+      }
+      await idbPut(STORE_PAYLOAD, payloadKey(userId, id), snapshot);
       const nextMeta = metaFromDraft({ ...draftsRef.current.find(d => d.id === id), ...metaPatch, id } as CourseDraft);
       const next = draftsRef.current.map(d => (d.id === id ? nextMeta : d));
       await writeIndex(userId, next);
       setDrafts(next);
       payloadCacheRef.current.set(id, snapshot);
 
-      const storedAssets = (await idbGet<Record<string, string>>(STORE_ASSETS, payloadKey(userId, id))) || assets || {};
-      const cloud = await upsertCloudDraft(userId, nextMeta, snapshot, storedAssets, workspaceId);
+      const cloud = await upsertCloudDraft(userId, nextMeta, snapshot, assets, workspaceId);
       if (cloud.ok) setCloudEnabled(true);
       return { ok: true, error: cloud.error };
     } catch (e: any) {
-      return { ok: false, error: e?.message || 'Failed to update draft.' };
+      return {
+        ok: false,
+        error: /quota|full/i.test(String(e?.message || e?.name || ''))
+          ? 'Browser storage is full — delete unused drafts, then Update Draft again so narration can be kept.'
+          : (e?.message || 'Failed to update draft.'),
+      };
     }
   };
 
@@ -847,7 +967,7 @@ export function useDraftCourses(
       theme,
       phase: 'preview',
     };
-    const result = await persistNew(meta, snapshot, assets);
+    const result = await persistNew(meta, snapshot, assets, audioClips);
     const audioNote = audioClips > 0 ? ` ${audioClips} narration clip${audioClips === 1 ? '' : 's'} stored.` : '';
     if (!result.ok) return { success: false, message: result.error || 'Failed to save draft.' };
     if (result.error?.includes('local only')) {
@@ -968,7 +1088,7 @@ export function useDraftCourses(
           // Merge leftovers into existing assets — never replace the whole
           // store (that raced Update Draft and wiped freshly saved narration).
           try {
-            await mergeDraftAssets(userId, id, rec);
+            await writeDraftAssets(userId, id, rec);
           } catch { /* attach path still has stashLegacyMedia */ }
           console.log(`[DraftCourses] Detached ${stripped.size} inline asset(s)`);
         } else if (Object.keys(cloudAssets).length) {
@@ -1005,14 +1125,13 @@ export function useDraftCourses(
   const loadDraftAssets = useCallback(async (id: string): Promise<Record<string, string>> => {
     if (!userId) return {};
     try {
-      // Local cache first (fast); cloud if empty
-      const local = await idbGet<Record<string, string>>(STORE_ASSETS, payloadKey(userId, id));
-      if (local && typeof local === 'object' && Object.keys(local).length) return local;
+      const local = await readDraftAssets(userId, id);
+      if (Object.keys(local).length) return local;
 
       const cloudAssets = await downloadCloudAssets(userId, id);
       if (Object.keys(cloudAssets).length) {
         try {
-          await idbPut(STORE_ASSETS, payloadKey(userId, id), cloudAssets);
+          await writeDraftAssets(userId, id, cloudAssets);
         } catch { /* ok */ }
         return cloudAssets;
       }
@@ -1089,7 +1208,7 @@ export function useDraftCourses(
       moduleCount: (snapshot.course.modules || []).length,
       theme,
       phase: 'preview',
-    }, snapshot, assets);
+    }, snapshot, assets, audioClips);
     if (!result.ok) return { success: false, message: result.error || 'Failed to update draft.' };
     const audioNote = audioClips > 0
       ? ` ${audioClips} narration clip${audioClips === 1 ? '' : 's'} stored.`
