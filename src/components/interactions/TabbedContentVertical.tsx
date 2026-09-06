@@ -527,11 +527,11 @@ function VerticalTabsBlocksSkin({
               </div>
             </div>
             {imageUrl && (
-              <div className="relative shrink-0 self-start w-[38%] max-w-[300px] pt-6 sm:pt-7 pr-6 pb-6 overflow-hidden">
+              <div className="relative shrink-0 self-center w-[46%] max-w-[480px] pt-6 sm:pt-7 pr-6 pb-6 overflow-hidden">
                 <EnlargeableImage
                   src={imageUrl}
                   wrapperClassName="w-full"
-                  className="w-full h-auto max-h-[22rem] object-contain object-top bg-transparent"
+                  className="w-full h-auto max-h-[28rem] object-contain object-top bg-transparent"
                   onLoad={resetScrollTop}
                   onRemove={onRemoveImage}
                   onCrop={onCropImage}
