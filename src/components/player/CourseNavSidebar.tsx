@@ -35,6 +35,8 @@ interface Props {
   qcPendingSlideIds?: Set<string>;
   /** Slide ids that had QC issues which were confirmed/declined */
   qcResolvedSlideIds?: Set<string>;
+  /** When false, never prepend synthetic Module Overview rows */
+  includeModuleOverviewSlides?: boolean;
 }
 
 const SLIDE_TYPE_ICON: Record<string, string> = {
@@ -60,6 +62,7 @@ export function CourseNavSidebar({
   railSide = 'left',
   qcPendingSlideIds,
   qcResolvedSlideIds,
+  includeModuleOverviewSlides,
 }: Props) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -204,7 +207,9 @@ export function CourseNavSidebar({
           </button>
 
           {expandedModules.has(mod.id) && (() => {
-            const overviewSlide = allSlides.find(s => s.id === `__module-overview-${mi + 1}__`);
+            const overviewSlide = includeModuleOverviewSlides === false
+              ? undefined
+              : allSlides.find(s => s.id === `__module-overview-${mi + 1}__`);
             const slidesToShow: Slide[] = overviewSlide ? [overviewSlide, ...mod.slides] : mod.slides;
             return slidesToShow.map((slide, si) => {
               const globalIdx = getSlideGlobalIndex(slide);

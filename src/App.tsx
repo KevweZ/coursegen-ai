@@ -734,6 +734,10 @@ export default function App() {
   const scormRt = (typeof window !== 'undefined' && isScormPlayer)
     ? ((window as any).__SCORM_RUNTIME__ || {})
     : {};
+  /** SCORM zip flags — read live so a later defaults load cannot re-inject Module Overviews. */
+  const packedRt = (typeof window !== 'undefined' && isScormPlayer)
+    ? ((window as any).__SCORM_RUNTIME__ || scormRt)
+    : scormRt;
   const [isReviewPlayer] = useState(() =>
     typeof window !== 'undefined' && parseAppPath(window.location.pathname).kind === 'review'
   );
@@ -2023,7 +2027,7 @@ export default function App() {
   const [includeModuleOverviewSlides, setIncludeModuleOverviewSlides] = useState(
     () => typeof scormRt.includeModuleOverviewSlides === 'boolean'
       ? scormRt.includeModuleOverviewSlides
-      : DEFAULT_COURSE_SETTINGS.includeModuleOverviewSlides
+      : isScormPlayer ? false : DEFAULT_COURSE_SETTINGS.includeModuleOverviewSlides
   );
   const [includeSummarySlides, setIncludeSummarySlides] = useState(
     () => typeof scormRt.includeSummarySlides === 'boolean'
@@ -2259,6 +2263,13 @@ export default function App() {
 
   // Virtual exam slides appended after all content slides.
   // Module Title (module-cover) and Module Overview are injected per Course Settings.
+  // In SCORM, packed zip flags win over React state (account/factory defaults).
+  const showModuleTitleSlides = isScormPlayer && typeof packedRt.includeModuleTitleSlides === 'boolean'
+    ? packedRt.includeModuleTitleSlides
+    : includeModuleTitleSlides;
+  const showModuleOverviewSlides = isScormPlayer && typeof packedRt.includeModuleOverviewSlides === 'boolean'
+    ? packedRt.includeModuleOverviewSlides
+    : includeModuleOverviewSlides;
   const contentSlides: Slide[] = course
     ? course.modules.flatMap((m: any, moduleIdx: number) => {
         const moduleObj = (learningObjectives as any)?.[moduleIdx] ?? null;
@@ -2266,7 +2277,7 @@ export default function App() {
         const cleanTitle = (m.title || `Module ${modNum}`).replace(/^Module\s+\d+\s*[—\-]\s*/i, '').trim();
         const synthetics: Slide[] = [];
 
-        if (includeModuleTitleSlides) {
+        if (showModuleTitleSlides) {
           // Full-bleed Module Title — announces module number + name.
           const coverId = `__module-cover-${modNum}__`;
           const coverVo = `Module ${modNum}: ${cleanTitle}.${m.description ? ' ' + m.description : ''}`.trim();
@@ -2283,11 +2294,11 @@ export default function App() {
           } as Slide);
         }
 
-        if (includeModuleOverviewSlides) {
+        if (showModuleOverviewSlides) {
           // Module Overview (e.g. 1.1, 2.1): objectives accordion after the title slide.
           // If the title slide is present, narration continues without re-announcing the name.
           const overviewId = `__module-overview-${modNum}__`;
-          const overviewVo = includeModuleTitleSlides
+          const overviewVo = showModuleTitleSlides
             ? `Let's revisit the objectives for this module.${m.description ? ' ' + m.description : ''}`.trim()
             : `Module ${modNum}: ${cleanTitle}. Let's revisit the objectives for this module.${m.description ? ' ' + m.description : ''}`.trim();
           synthetics.push({
@@ -2303,7 +2314,13 @@ export default function App() {
           } as Slide);
         }
 
-        return [...synthetics, ...(m.slides || []).filter((s: any) => s?.type !== 'game-template')];
+        return [...synthetics, ...(m.slides || []).filter((s: any) => {
+          if (s?.type === 'game-template') return false;
+          if (!showModuleOverviewSlides && (s?.type === 'module-overview' || String(s?.id || '').startsWith('__module-overview-'))) {
+            return false;
+          }
+          return true;
+        })];
       })
     : [];
   // Item 12: Title slides — OST is title only; description is narration/CC, not on-screen
@@ -2438,7 +2455,7 @@ export default function App() {
     if (!course?.modules) return map;
     course.modules.forEach((mod: any, mi: number) => {
       let n = 1;
-      if (includeModuleOverviewSlides) {
+      if (showModuleOverviewSlides) {
         map.set(`__module-overview-${mi + 1}__`, `${mi + 1}.${n++}`);
       }
       (mod.slides || []).forEach((s: any) => {
@@ -2446,7 +2463,7 @@ export default function App() {
       });
     });
     return map;
-  }, [course, includeModuleOverviewSlides]);
+  }, [course, showModuleOverviewSlides]);
 
   const qcReportWithTocRefs = React.useMemo(() => {
     if (!qcReport) return null;
@@ -2901,6 +2918,25 @@ export default function App() {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user?.id]);
+
+  // Re-apply packed SCORM structure/nav after auth so factory defaults cannot stick.
+  useEffect(() => {
+    if (!isScormPlayer) return;
+    const rt = (window as any).__SCORM_RUNTIME__ || {};
+    if (typeof rt.includeModuleOverviewSlides === 'boolean') {
+      setIncludeModuleOverviewSlides(rt.includeModuleOverviewSlides);
+    }
+    if (typeof rt.includeModuleTitleSlides === 'boolean') {
+      setIncludeModuleTitleSlides(rt.includeModuleTitleSlides);
+    }
+    if (typeof rt.includeSummarySlides === 'boolean') {
+      setIncludeSummarySlides(rt.includeSummarySlides);
+    }
+    if (rt.navigationMode) setNavigationMode(rt.navigationMode as NavigationMode);
+    if (typeof rt.requireInteractionsComplete === 'boolean') {
+      setRequireInteractionsComplete(rt.requireInteractionsComplete);
+    }
+  }, [isScormPlayer, authLoading]);
 
   const buildOutlineFromCurrentSettings = async (): Promise<CourseOutlineDraft> => {
     // Quiz activity types must NOT be merged into content interactionTypes —
@@ -6397,6 +6433,7 @@ export default function App() {
                   modules={course.modules}
                   currentSlideIndex={currentSlideIndex}
                   allSlides={allSlides}
+                  includeModuleOverviewSlides={showModuleOverviewSlides}
                   onNavigate={(idx) => {
                     if (canNavigateTo(idx)) {
                               setHighestVisitedIndex(prev => Math.max(prev, idx));
@@ -6466,6 +6503,7 @@ export default function App() {
                         modules={course.modules}
                         currentSlideIndex={currentSlideIndex}
                         allSlides={allSlides}
+                        includeModuleOverviewSlides={showModuleOverviewSlides}
                         onNavigate={(idx) => {
                           if (canNavigateTo(idx)) {
                             setHighestVisitedIndex(prev => Math.max(prev, idx));
@@ -7823,6 +7861,7 @@ export default function App() {
                         modules={course.modules}
                         currentSlideIndex={currentSlideIndex}
                         allSlides={allSlides}
+                        includeModuleOverviewSlides={showModuleOverviewSlides}
                         onNavigate={(idx) => {
                           if (canNavigateTo(idx)) {
                             setHighestVisitedIndex(prev => Math.max(prev, idx));

@@ -550,6 +550,12 @@ export async function createScormPackage(
   const extractor = new ScormMediaExtractor();
   const sanitised = sanitizeCourseForExport(extractor.walk(withDurableMedia));
   const runtimeOut = extractor.walk(durableRuntime);
+  if (sanitised && typeof sanitised === 'object') {
+    (sanitised as any).includeModuleOverviewSlides = runtimeOut?.includeModuleOverviewSlides;
+    (sanitised as any).includeModuleTitleSlides = runtimeOut?.includeModuleTitleSlides;
+    (sanitised as any).includeSummarySlides = runtimeOut?.includeSummarySlides;
+    (sanitised as any).navigationMode = runtimeOut?.navigationMode;
+  }
   report(12);
 
   for (const file of extractor.files) {
