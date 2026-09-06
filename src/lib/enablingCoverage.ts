@@ -2,7 +2,13 @@ import type { TerminalObjectiveGroup } from '../types/course';
 
 const QUIZ_TYPES = new Set([
   'quiz', 'sorting', 'matching', 'drop-targets',
-  'multiple-choice', 'multiple-answers', 'knowledge-check',
+  'multiple-choice', 'multiple-answers', 'multiple-answer',
+  'true-false', 'knowledge-check',
+  'drag-drop', 'drag-drop-activity',
+]);
+
+const EXAM_NARRATION_SKIP_TYPES = new Set([
+  'mastery-exam', 'exam-intro', 'exam-results',
 ]);
 
 const SUMMARY_TYPES = new Set(['key-takeaways', 'summary']);
@@ -31,6 +37,38 @@ export function isKnowledgeCheckSlide(slide: { type?: string; title?: string } |
   const type = String(slide.type || '');
   if (QUIZ_TYPES.has(type)) return true;
   return /^knowledge\s*check/i.test(String(slide.title || '').trim());
+}
+
+/** In-module knowledge checks and mastery-quiz slides have no spoken narration. */
+export function slideSkipsNarration(
+  slide: { type?: string; title?: string; id?: string } | null | undefined,
+): boolean {
+  if (!slide) return false;
+  const type = String(slide.type || '');
+  if (EXAM_NARRATION_SKIP_TYPES.has(type)) return true;
+  const id = String(slide.id || '');
+  if (id === '__mastery-exam__' || id === '__exam-intro__' || id === '__exam-results__') return true;
+  return isKnowledgeCheckSlide(slide);
+}
+
+/** Clear spoken scripts / audio URLs on assessment slides (hydrate + regen). */
+export function stripSlideNarration<T extends Record<string, any>>(slide: T): T {
+  if (!slide || !slideSkipsNarration(slide)) return slide;
+  const next: any = { ...slide, voiceOverText: '', narration: '' };
+  delete next.voiceOverUrl;
+  delete next.audioUrl;
+  if (next.data && typeof next.data === 'object') {
+    const data = { ...next.data };
+    const stripList = (arr: any[]) => arr.map((item: any) => {
+      if (!item || typeof item !== 'object') return item;
+      const { voiceOverUrl: _ignored, ...rest } = item;
+      return { ...rest, voiceOverText: '' };
+    });
+    if (Array.isArray(data.tabs)) data.tabs = stripList(data.tabs);
+    if (Array.isArray(data.items)) data.items = stripList(data.items);
+    next.data = data;
+  }
+  return next;
 }
 
 export function isSummarySlide(slide: { type?: string; title?: string } | null | undefined): boolean {

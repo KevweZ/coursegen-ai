@@ -6,6 +6,7 @@
  */
 
 import { useState, useCallback, useRef } from 'react';
+import { slideSkipsNarration } from '../lib/enablingCoverage';
 import {
   createTtsJob,
   pollTtsJob,
@@ -136,6 +137,7 @@ export function buildCourseNarrationItems(
 
   for (const mod of course.modules) {
     for (const slide of (mod.slides ?? [])) {
+      if (slideSkipsNarration(slide)) continue;
       const text = String(slide.voiceOverText || slide.narration || '').trim().slice(0, 4096);
       const hasMain = !!text;
       const skipMain = !!(opts?.onlyMissing && slide.voiceOverUrl);

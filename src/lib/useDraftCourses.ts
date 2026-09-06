@@ -23,6 +23,7 @@ import {
   approxCourseBytes,
   cloneLeanCourse,
   stashLegacyMedia,
+  countCourseAudioClips,
 } from './draftMedia';
 import {
   listCloudDrafts,
@@ -204,6 +205,24 @@ function idbDelete(store: string, key: string): Promise<void> {
         tx.onerror = () => reject(tx.error);
       })
   );
+}
+
+async function mergeDraftAssets(
+  userId: string,
+  draftId: string,
+  incoming?: Record<string, string> | null,
+): Promise<Record<string, string>> {
+  const key = payloadKey(userId, draftId);
+  let prev: Record<string, string> = {};
+  try {
+    const existing = await idbGet<Record<string, string>>(STORE_ASSETS, key);
+    if (existing && typeof existing === 'object') prev = existing;
+  } catch { /* ok */ }
+  const next = { ...prev, ...(incoming || {}) };
+  if (Object.keys(next).length) {
+    await idbPut(STORE_ASSETS, key, next);
+  }
+  return next;
 }
 
 function parseSnapshotRaw(raw: unknown): DraftSnapshot | null {
@@ -689,6 +708,7 @@ export function useDraftCourses(
     }
 
     working = stripEphemeralMedia(working);
+    const audioClipsOnCourse = countCourseAudioClips(working);
     const before = approxCourseBytes(working);
     const media = detachHeavyMedia(working);
 
@@ -705,9 +725,11 @@ export function useDraftCourses(
     }
 
     const after = approxCourseBytes(working);
+    const audioClips = audioClipsOnCourse + syntheticAudioIds.length;
     console.log(
       `[DraftCourses] Media split for save: ${media.size} asset(s), ` +
       `${Math.round(before / 1024)}KB → ${Math.round(after / 1024)}KB shell` +
+      `, ${audioClips} narration clip(s)` +
       (syntheticAudioIds.length ? `, ${syntheticAudioIds.length} synthetic audio` : '')
     );
     const snapshot: PreviewDraftSnapshot = {
@@ -721,7 +743,7 @@ export function useDraftCourses(
       examQuestions: Array.isArray(extras?.examQuestions) ? extras!.examQuestions : working.examQuestions,
     };
     const assets = mediaMapToRecord(media);
-    return { snapshot, assets, draftId };
+    return { snapshot, assets, draftId, audioClips };
   };
 
   const persistNew = async (
@@ -768,10 +790,10 @@ export function useDraftCourses(
     if (!userId) return { ok: false, error: 'Sign in to save drafts.' };
     try {
       await idbPut(STORE_PAYLOAD, payloadKey(userId, id), snapshot);
+      // Never wipe previously stored images/audio if this save produced an empty map
+      // (stale lean course, persist failure). Merge so new narration clips are kept.
       if (assets && Object.keys(assets).length) {
-        await idbPut(STORE_ASSETS, payloadKey(userId, id), assets);
-      } else {
-        try { await idbDelete(STORE_ASSETS, payloadKey(userId, id)); } catch { /* ok */ }
+        await mergeDraftAssets(userId, id, assets);
       }
       const nextMeta = metaFromDraft({ ...draftsRef.current.find(d => d.id === id), ...metaPatch, id } as CourseDraft);
       const next = draftsRef.current.map(d => (d.id === id ? nextMeta : d));
@@ -779,9 +801,10 @@ export function useDraftCourses(
       setDrafts(next);
       payloadCacheRef.current.set(id, snapshot);
 
-      const cloud = await upsertCloudDraft(userId, nextMeta, snapshot, assets, workspaceId);
+      const storedAssets = (await idbGet<Record<string, string>>(STORE_ASSETS, payloadKey(userId, id))) || assets || {};
+      const cloud = await upsertCloudDraft(userId, nextMeta, snapshot, storedAssets, workspaceId);
       if (cloud.ok) setCloudEnabled(true);
-      return { ok: true, error: cloud.ok ? undefined : cloud.error };
+      return { ok: true, error: cloud.error };
     } catch (e: any) {
       return { ok: false, error: e?.message || 'Failed to update draft.' };
     }
@@ -811,7 +834,7 @@ export function useDraftCourses(
     }
 
     const id = makeDraftId();
-    const { snapshot, assets } = await preparePreviewSnapshot(course, playerConfig, theme, id, extras);
+    const { snapshot, assets, audioClips } = await preparePreviewSnapshot(course, playerConfig, theme, id, extras);
     // titleOverride names the library slot only — keep the in-course title unchanged
     const courseTitle = (extras?.titleOverride || snapshot.course?.title || 'Untitled Course').trim()
       || 'Untitled Course';
@@ -825,20 +848,21 @@ export function useDraftCourses(
       phase: 'preview',
     };
     const result = await persistNew(meta, snapshot, assets);
+    const audioNote = audioClips > 0 ? ` ${audioClips} narration clip${audioClips === 1 ? '' : 's'} stored.` : '';
     if (!result.ok) return { success: false, message: result.error || 'Failed to save draft.' };
     if (result.error?.includes('local only')) {
       return {
         success: true,
-        message: `Draft "${meta.courseTitle}" saved on this device only — cloud sync failed:${result.error.replace(/^ \(local only —/, '')} Open View Drafts on another device after sync succeeds.`,
+        message: `Draft "${meta.courseTitle}" saved on this device only — cloud sync failed:${result.error.replace(/^ \(local only —/, '')} Open View Drafts on another device after sync succeeds.${audioNote}`,
         id,
       };
     }
     if (result.error) {
-      return { success: true, message: `Draft "${meta.courseTitle}" saved to your account. ${result.error}`, id };
+      return { success: true, message: `Draft "${meta.courseTitle}" saved to your account. ${result.error}${audioNote}`, id };
     }
     return {
       success: true,
-      message: `Draft "${meta.courseTitle}" saved to your account (available on other devices).`,
+      message: `Draft "${meta.courseTitle}" saved to your account (available on other devices).${audioNote}`,
       id,
     };
   }, [userId, slotsTotal]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -941,11 +965,11 @@ export function useDraftCourses(
         if (stripped.size) {
           const rec = mediaMapToRecord(stripped);
           stashLegacyMedia(id, rec);
-          // Persist out of the hot path so reopen is lean
-          void idbPut(STORE_ASSETS, payloadKey(userId, id), {
-            ...(cloudAssets || {}),
-            ...rec,
-          }).catch(() => {});
+          // Merge leftovers into existing assets — never replace the whole
+          // store (that raced Update Draft and wiped freshly saved narration).
+          try {
+            await mergeDraftAssets(userId, id, rec);
+          } catch { /* attach path still has stashLegacyMedia */ }
           console.log(`[DraftCourses] Detached ${stripped.size} inline asset(s)`);
         } else if (Object.keys(cloudAssets).length) {
           // Assets already separate in cloud/IDB — nothing to stash from shell
@@ -1057,7 +1081,7 @@ export function useDraftCourses(
     }
   ) => {
     if (!userId) return { success: false, message: 'Sign in to save drafts.' };
-    const { snapshot, assets } = await preparePreviewSnapshot(course, playerConfig, theme, id, extras);
+    const { snapshot, assets, audioClips } = await preparePreviewSnapshot(course, playerConfig, theme, id, extras);
     const result = await persistReplace(id, {
       savedAt: new Date().toISOString(),
       courseTitle: snapshot.course.title || 'Untitled Course',
@@ -1067,7 +1091,11 @@ export function useDraftCourses(
       phase: 'preview',
     }, snapshot, assets);
     if (!result.ok) return { success: false, message: result.error || 'Failed to update draft.' };
-    return { success: true, message: 'Draft updated ✓ Reopen anytime from Save.' };
+    const audioNote = audioClips > 0
+      ? ` ${audioClips} narration clip${audioClips === 1 ? '' : 's'} stored.`
+      : ' No narration clips were on the course at save time.';
+    const cloudNote = result.error ? ` ${result.error}` : '';
+    return { success: true, message: `Draft updated ✓${audioNote}${cloudNote} Reopen anytime from Save.` };
   }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const replaceDesignDraft = useCallback(async (id: string, design: Omit<DesignDraftSnapshot, 'phase'>) => {

@@ -78,6 +78,7 @@ import {
   splitKnowledgeCheckOst,
   SORTING_REORDER_HINT,
 } from './lib/knowledgeCheckOst';
+import { slideSkipsNarration } from './lib/enablingCoverage';
 import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft, generateMasteryExam } from './services/aiService';
 import { createScormPackage, ScormVersion } from './services/scormService';
 import { FlashcardGrid } from './components/FlashcardGrid';
@@ -896,8 +897,9 @@ export default function App() {
     setIsSavingDraft(true);
     showDraftMessage('Updating current draft…');
     try {
-      const existing = await draftManager.loadDraftAsync(activeDraftId);
-      if (existing?.phase === 'preview') {
+      const meta = draftManager.drafts.find(d => d.id === activeDraftId);
+      // Do not loadDraftAsync here — that used to race and overwrite freshly saved audio.
+      if (!meta || meta.phase === 'preview') {
         const updated = await draftManager.replacePreviewDraft(activeDraftId, course, playerConfig, theme, draftSaveExtras());
         showDraftMessage(
           updated.success
@@ -1128,7 +1130,7 @@ export default function App() {
         if (!media.size) {
           const missingAudio = (shell.modules || []).some((m: any) =>
             (m.slides || []).some((s: any) =>
-              (s.voiceOverText || s.narration) && !s.voiceOverUrl
+              !slideSkipsNarration(s) && (s.voiceOverText || s.narration) && !s.voiceOverUrl
             )
           );
           if (missingAudio && voiceOverEnabled) {
@@ -1180,7 +1182,7 @@ export default function App() {
 
         const missingAudio = (working.modules || []).some((m: any) =>
           (m.slides || []).some((s: any) =>
-            (s.voiceOverText || s.narration) && !s.voiceOverUrl
+            !slideSkipsNarration(s) && (s.voiceOverText || s.narration) && !s.voiceOverUrl
           )
         );
         if (missingAudio && voiceOverEnabled && !Object.keys(synthRestored).length) {
@@ -2558,7 +2560,7 @@ export default function App() {
 
   /** Switch tab audio + CC together so captions never lag on intro script. */
   const handleTabAudio = (tabId: string) => {
-    if (!voiceOverEnabled || !currentSlide) return;
+    if (!voiceOverEnabled || !currentSlide || slideSkipsNarration(currentSlide)) return;
     if (tabId === '__intro__') {
       setActiveTabAudioUrl(null);
       setActiveTabNarrationText(null);
@@ -2583,7 +2585,8 @@ export default function App() {
     player.loadSlide(
       currentSlide.id,
       // AI audio only — never fall back to browser TTS
-      voiceOverEnabled
+      // Knowledge checks / mastery quiz: silent, same as Quiz Questions
+      voiceOverEnabled && !slideSkipsNarration(currentSlide)
         ? (activeTabAudioUrl || currentSlide.voiceOverUrl || (currentSlide as any).audioUrl || currentSyntheticUrl || null)
         : null,
       null  // ttsText always null: slides are silent while AI audio loads, then auto-play
@@ -4311,7 +4314,7 @@ export default function App() {
     let existingClips = 0;
     for (const m of course.modules || []) {
       for (const s of m.slides || []) {
-        if (s?.voiceOverUrl) existingClips += 1;
+        if (s?.voiceOverUrl && !slideSkipsNarration(s)) existingClips += 1;
         for (const key of ['tabs', 'items'] as const) {
           for (const t of s?.data?.[key] || []) {
             if (t?.voiceOverUrl) existingClips += 1;
@@ -5627,7 +5630,7 @@ export default function App() {
               setQcFocusSlideId(null);
               if (targetSlide) {
                 const f = String(field || '').toLowerCase();
-                const openAudio = /voiceover|narration|audio/.test(f);
+                const openAudio = /voiceover|narration|audio/.test(f) && !slideSkipsNarration(targetSlide);
                 editingSlideRef.current = {
                   ...targetSlide,
                   _objectives: targetSlide.id === '__course-objectives__'
@@ -8044,7 +8047,7 @@ export default function App() {
                 <div className="flex border-b border-slate-800 flex-shrink-0">
                   {[
                     { id: 'text', icon: '✏', label: 'Edit Text', activeColor: 'border-indigo-500 text-indigo-300 bg-indigo-500/10' },
-                    { id: 'audio', icon: '🎤', label: 'Audio', activeColor: 'border-emerald-500 text-emerald-300 bg-emerald-500/10' },
+                    ...(!slideSkipsNarration(editingSlide) ? [{ id: 'audio', icon: '🎤', label: 'Audio', activeColor: 'border-emerald-500 text-emerald-300 bg-emerald-500/10' }] : []),
                     { id: 'regenerate', icon: '↻', label: 'Regenerate', activeColor: 'border-amber-500 text-amber-300 bg-amber-500/10' },
                   ].map(tab => (
                     <button
@@ -8070,7 +8073,7 @@ export default function App() {
                   <div className="p-3 rounded-xl border border-slate-700 bg-slate-950 text-[11px] text-slate-300 leading-relaxed">
                     <strong className="text-white">Edit</strong> changes what’s on this slide.&nbsp;
                     <strong className="text-white">Regenerate</strong> asks AI to rebuild the slide (or interaction) from scratch.
-                    {editDrawerTab === 'regenerate' ? ' Confirm the type below, then regenerate.' : ' Switch tabs above to edit text, audio, or regenerate.'}
+                    {editDrawerTab === 'regenerate' ? ' Confirm the type below, then regenerate.' : slideSkipsNarration(editingSlide) ? ' Switch tabs above to edit text or regenerate. Knowledge checks have no narration.' : ' Switch tabs above to edit text, audio, or regenerate.'}
                   </div>
                   {editDrawerTab === 'text' && (
                     <>
@@ -8501,7 +8504,12 @@ export default function App() {
                   )}
 
 
-                  {editDrawerTab === 'audio' && (
+                  {editDrawerTab === 'audio' && slideSkipsNarration(editingSlide) && (
+                    <div className="p-3 bg-slate-800/60 border border-slate-700 rounded-xl text-xs text-slate-300">
+                      Knowledge checks have no spoken narration — same as Mastery Quiz questions. Learners read the task on screen.
+                    </div>
+                  )}
+                  {editDrawerTab === 'audio' && !slideSkipsNarration(editingSlide) && (
                     <>
                       <div className="p-3 bg-emerald-900/20 border border-emerald-700/30 rounded-xl text-xs text-emerald-300 space-y-1.5">
                         <p><strong>ISD Best Practice:</strong> Narration should <em>expand</em> on what's on screen — never read line-by-line. Aim for conversational, explanatory language.</p>
@@ -8611,6 +8619,10 @@ export default function App() {
                               disabled={regenSlideId === editingSlide?.id}
                               onClick={async () => {
                                 if (!editingSlide) return;
+                                if (slideSkipsNarration(editingSlide)) {
+                                  showDraftMessage('Knowledge checks have no narration — same as Mastery Quiz questions.');
+                                  return;
+                                }
                                 const mainText = (editingSlide.voiceOverText || editingSlide.narration || editingSlide.content || '').trim();
                                 const listKey = Array.isArray(editingSlide.data?.tabs)
                                   ? 'tabs'

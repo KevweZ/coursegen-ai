@@ -85,7 +85,21 @@ export function mediaRecordToMap(rec?: Record<string, string> | null): MediaMap 
   return map;
 }
 
-/** Approx payload size helper for logging */
+/** Count durable narration clips currently on the course (slide + tab voiceOverUrl). */
+export function countCourseAudioClips(course: any): number {
+  let n = 0;
+  for (const m of course?.modules || []) {
+    for (const s of m?.slides || []) {
+      if (typeof s?.voiceOverUrl === 'string' && s.voiceOverUrl.length > 40) n += 1;
+      for (const key of ['tabs', 'items'] as const) {
+        for (const item of s?.data?.[key] || []) {
+          if (typeof item?.voiceOverUrl === 'string' && item.voiceOverUrl.length > 40) n += 1;
+        }
+      }
+    }
+  }
+  return n;
+}
 export function approxCourseBytes(course: any): number {
   try {
     return JSON.stringify(course).length;

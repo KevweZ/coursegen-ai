@@ -1,6 +1,6 @@
 import { CourseOutline, TerminalObjectiveGroup, ExamConfig, ExamQuestion } from "../types/course";
 import { coerceCarouselColor } from "../lib/colorContrast";
-import { ensureEnablingSlideCoverage, preserveEnablingIndex, normalizeTerminalGroups } from "../lib/enablingCoverage";
+import { ensureEnablingSlideCoverage, preserveEnablingIndex, normalizeTerminalGroups, slideSkipsNarration, stripSlideNarration } from "../lib/enablingCoverage";
 
 // ── Secure AI Proxy Client ───────────────────────────────────────────────────
 // API keys live ONLY in server.js — never in the browser bundle.
@@ -679,7 +679,7 @@ export async function hydrateCourseContent(
   - Must have EXACTLY 4 options: 1 correct (isCorrect: true) + 3 plausible distractors
   - options[].text must be meaningful (10+ chars). NEVER: "A", "B", "True", "False" unless it's genuinely a T/F slide
   - feedback: string explaining why the correct answer is right (this is where teaching detail goes AFTER submit)
-  - Slide-level content and voiceOverText must NOT give away the answer. content: 1 framing bullet about what is being tested. voiceOverText: 2–3 sentences on why this check matters and how to answer — never list the correct option or walk through each choice.
+  - Slide-level content: 1 framing bullet about what is being tested. voiceOverText MUST be "" (empty). Knowledge checks have no spoken narration — same as Mastery Quiz questions. Do not give away the answer on screen.
   - FAIL CONDITION: missing questionText or fewer than 2 options -> regenerate
 
   ACCORDION (DEPRECATED — use click-reveal instead):
@@ -690,7 +690,7 @@ export async function hydrateCourseContent(
   - Use when the learner must arrange items in a correct operational or chronological order
   - Schema: { items: [{ id, content }], correctOrder: [id, ...] } — correctOrder lists item ids from first to last
   - NEVER use drop-targets for "arrange in order / sequence / phases" questions
-  - Slide-level content/voiceOverText: frame the sorting task only; do not list the correct order.
+  - Slide-level content: frame the sorting task only; do not list the correct order. voiceOverText MUST be "".
 
   DROP-TARGETS (categorization bins):
   - Use ONLY when the learner must choose which bin each item belongs to
@@ -699,12 +699,12 @@ export async function hydrateCourseContent(
   - category = exact category label for correct items; use "" (empty) for distractors that do NOT belong in any bin
   - FORBIDDEN: one category with every item assigned to it and no distractors (that is sorting — use sorting instead)
   - Min 3, max 8 items
-  - Slide-level content/voiceOverText: same knowledge-check rule as matching — frame the task, do not list which item belongs in which bin.
+  - Slide-level content: same knowledge-check rule as matching — frame the task, do not list which item belongs in which bin. voiceOverText MUST be "".
 
   MATCHING:
   - Items and targets must be parallel in structure. Max 5 pairs.
   - Slide-level content: 1–2 framing bullets about the TASK ("Match each sign to its function"). NEVER a cheat sheet of correct matches, color meanings, or definitions the learner is supposed to recall.
-  - voiceOverText: 2–3 sentences on why this check matters and how to complete it. Do NOT narrate each pair or define the answers. Teaching detail belongs after the learner submits.
+  - voiceOverText MUST be "" (empty). Knowledge checks have no spoken narration. Teaching detail belongs after the learner submits.
 
   FLASHCARDS:
   - front = a direct question or key term (not a sentence fragment)
@@ -847,6 +847,7 @@ export async function hydrateCourseContent(
   ========================================
   Schema: { "id": "...", "title": "...", "slides": [ { ...all original fields + content + voiceOverText + mediaPrompt + data + interactions } ] }
   EVERY slide must have: id, type, title, content (string), voiceOverText (string), mediaPrompt (string).
+  Knowledge checks (quiz, multiple-choice, multiple-answers, true-false, sorting, matching, drop-targets, knowledge-check) MUST use voiceOverText "". Learners read the on-screen task; do not generate spoken narration for them.
   Interactive slides must ALSO have: data (object) or interactions (array) as specified above.`;
 
   const sourceNote = configParams.sourceContent
@@ -886,10 +887,11 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     // learner sees a blank slide (Bug #7). Throwing here routes back through the
     // caller's catch block so the next fallback tier gets a chance.
     const revealOk = parsed.type === 'click-reveal' && Array.isArray(parsed.data?.items) && parsed.data.items.length > 0;
-    if ((!parsed.content?.trim() && !revealOk) || !parsed.voiceOverText?.trim()) {
+    const voOk = slideSkipsNarration(parsed) || !!parsed.voiceOverText?.trim();
+    if ((!parsed.content?.trim() && !revealOk) || !voOk) {
       throw new Error(`Single slide response for "${slide.title}" has empty content or voiceOverText.`);
     }
-    return preserveEnablingIndex(parsed, [slide], 0);
+    return preserveEnablingIndex(slideSkipsNarration(parsed) ? stripSlideNarration(parsed) : parsed, [slide], 0);
   }
 
   /**
@@ -902,7 +904,8 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
       && !(slide.data?.objectives?.length || slide.interactions?.length)
       && !String(slide.content || '').replace(/^#{1,6}.*/gm, '').replace(/[-*•]/g, '').trim();
     const revealOk = slide.type === 'click-reveal' && Array.isArray(slide.data?.items) && slide.data.items.length > 0;
-    if ((slide.content?.trim() || revealOk) && slide.voiceOverText?.trim() && !takeawayEmpty) return slide;
+    const voOk = slideSkipsNarration(slide) || !!slide.voiceOverText?.trim();
+    if ((slide.content?.trim() || revealOk) && voOk && !takeawayEmpty) return slideSkipsNarration(slide) ? stripSlideNarration(slide) : slide;
     for (let i = 0; i < attempts; i++) {
       try {
         const retried = await hydrateSingleSlide(slide, moduleTitle);
@@ -912,6 +915,13 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
       }
     }
     console.error(`[Bug#7 safety net] All retries exhausted for slide "${slide.title}" -- using derived fallback text.`);
+    if (slideSkipsNarration(slide)) {
+      return stripSlideNarration({
+        ...slide,
+        content: slide.content?.trim() || `**${slide.title}**\n\nComplete this knowledge check for: ${moduleTitle}.`,
+        mediaPrompt: slide.mediaPrompt || `Professional illustration related to ${slide.title}`,
+      });
+    }
     return {
       ...slide,
       content: slide.content?.trim() || `**${slide.title}**\n\nThis slide covers key content for module: ${moduleTitle}. Please review and edit as needed.`,
@@ -1139,7 +1149,7 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
             individualResults.push({
               ...slide,
               content: `**${slide.title}**\n\nThis slide covers key content for module: ${emptyModule.title}. Please review and edit as needed.`,
-              voiceOverText: `In this slide we cover ${slide.title}, which is an important aspect of ${emptyModule.title}.`,
+              voiceOverText: slideSkipsNarration(slide) ? '' : `In this slide we cover ${slide.title}, which is an important aspect of ${emptyModule.title}.`,
               mediaPrompt: `Professional illustration related to ${slide.title}`,
             });
           }
@@ -1182,7 +1192,8 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
       .map((s, i) => ({ s, i }))
       .filter(({ s }) => {
         const revealOk = s.type === 'click-reveal' && Array.isArray(s.data?.items) && s.data.items.length > 0;
-        return (!s.content?.trim() && !revealOk) || !s.voiceOverText?.trim();
+        const voMissing = !slideSkipsNarration(s) && !s.voiceOverText?.trim();
+        return (!s.content?.trim() && !revealOk) || voMissing;
       });
     if (needsContent.length) {
       const fixed = await mapWithConcurrency(
@@ -1210,6 +1221,13 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
             // Leave slide.data undefined — the existing empty-state UI handles this gracefully
           }
         }
+      }
+    }
+
+    // Knowledge checks have no spoken narration (same as Mastery Quiz questions).
+    for (let i = 0; i < hydratedSlides.length; i++) {
+      if (slideSkipsNarration(hydratedSlides[i])) {
+        hydratedSlides[i] = stripSlideNarration(hydratedSlides[i]);
       }
     }
 

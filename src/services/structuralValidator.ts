@@ -4,7 +4,7 @@
  * narration gaps, interaction completeness, and theme consistency problems.
  */
 
-import { findUncoveredEnablings } from '../lib/enablingCoverage';
+import { findUncoveredEnablings, slideSkipsNarration } from '../lib/enablingCoverage';
 
 export type IssueSeverity = 'error' | 'warning' | 'info';
 export type IssueType =
@@ -218,6 +218,7 @@ function checkContentLength(slide: any, modIdx: number, slideIdx: number, modTit
 
 function checkNarration(slide: any, modIdx: number, slideIdx: number, modTitle: string, narrationEnabled: boolean, expectAudioUrls = false): QCIssue[] {
   if (!narrationEnabled) return [];
+  if (slideSkipsNarration(slide)) return [];
   const issues: QCIssue[] = [];
   if (!slide.voiceOverText || slide.voiceOverText.trim() === '') {
     const fallback = slide.narration?.trim() ?? '';

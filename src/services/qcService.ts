@@ -8,6 +8,7 @@ import { QCIssue, QCReport, IssueSeverity, IssueType, FixAction, validateCourse,
 import { coerceOstText } from '../lib/formatTabIntroOst';
 import { parseHeadingBulletSections, resolveClickRevealSlide } from '../lib/parseHeadingSections';
 import { coerceCarouselColor } from '../lib/colorContrast';
+import { slideSkipsNarration, stripSlideNarration } from '../lib/enablingCoverage';
 
 const BATCH_SIZE = 5;
 /** Always use same-origin /api/* (Cloudflare Worker → Render). Never localhost in production. */
@@ -375,7 +376,7 @@ Rules:
 ${isTabbed ? '- For tabbed slides: include "introContent" with 2–4 short educational sentences about the topic. Do NOT make introContent only a click instruction. You may end with "Select a tab to continue →". Each tab "content" MUST be a markdown string of short bullets (never an object or array).' : ''}
 ${type === 'click-reveal' ? '- For click-reveal: each item "definition" MUST be 3–5 SHORT BULLETS (5–8 words), not sentences. Put spoken explanation in voiceOverText. Slide-level content must be empty or 1 framing line — do NOT repeat the reveal bullets on the slide.' : ''}
 ${type === 'carousel-panel' ? '- For carousel: pick card colors ONLY from this dark set so white text stays readable: #4f46e5, #0f766e, #9f1239, #1d4ed8, #b45309, #6d28d9, #166534, #0f172a. Never white, yellow, pink, or pastels.' : ''}
-${isKc ? '- For knowledge checks: introContent/content is 1–2 framing bullets about WHAT is being tested (e.g. "Match each traffic sign to its function"). Do NOT list answers, meanings, or categories that give away the match. voiceOverText: 2–3 sentences on why this check matters and how to complete it — do not narrate the correct matches. Teaching detail belongs in feedback after submit.' : ''}
+${isKc ? '- For knowledge checks: introContent/content is 1–2 framing bullets about WHAT is being tested (e.g. "Match each traffic sign to its function"). Do NOT list answers, meanings, or categories that give away the match. voiceOverText MUST be "" — knowledge checks have no spoken narration. Teaching detail belongs in feedback after submit.' : ''}
 - Do NOT include markdown, backticks, or any explanation — pure JSON only`;
 
   let lastErr: any = null;
@@ -440,7 +441,7 @@ ${isKc ? '- For knowledge checks: introContent/content is 1–2 framing bullets 
     const correctAnswers = Object.fromEntries(
       items.map((it: any, i: number) => [it.id, targets[i].id])
     );
-    return { type, data: { items, targets, correctAnswers }, voiceOverText: parsed.voiceOverText };
+    return { type, data: { items, targets, correctAnswers }, voiceOverText: '' };
   }
 
   if (type === 'diagram') {
@@ -497,11 +498,12 @@ ${isKc ? '- For knowledge checks: introContent/content is 1–2 framing bullets 
       type,
       data: parsed,
       content: coerceOstText(parsed.introContent),
-      voiceOverText: parsed.voiceOverText,
+      voiceOverText: '',
     };
   }
 
-  return { type, data: parsed, content: parsed.content, voiceOverText: parsed.voiceOverText };
+  const out = { type, data: parsed, content: parsed.content, voiceOverText: parsed.voiceOverText };
+  return slideSkipsNarration(out) ? stripSlideNarration(out) : out;
 }
 
 /**
