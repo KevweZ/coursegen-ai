@@ -4307,9 +4307,9 @@ export default function App() {
       }))
       .filter(j => j.text.length > 0);
 
-  /** Rebuild TTS for narratable slides + synthetic cover/objectives/module audio.
-   *  If some clips already exist (e.g. after a Failed-to-fetch mid-run), only fill gaps
-   *  so finished audio is not wiped or re-billed. */
+  /** Rebuild TTS for every narratable slide + synthetic cover/objectives/module audio.
+   *  This control is a full rebuild (the menu says “every slide”). Auto-resume after a
+   *  dropped connection still fills gaps only, so finished clips in that run are kept. */
   const regenerateAllNarration = async () => {
     if (!course?.modules) return;
     if (ttsProgress.isRunning) {
@@ -4317,29 +4317,14 @@ export default function App() {
       return;
     }
     setShowEditMenu(false);
-    let existingClips = 0;
-    for (const m of course.modules || []) {
-      for (const s of m.slides || []) {
-        if (hasPlayableNarrationUrl(s?.voiceOverUrl) && !slideSkipsNarration(s)) existingClips += 1;
-        for (const key of ['tabs', 'items'] as const) {
-          for (const t of s?.data?.[key] || []) {
-            if (hasPlayableNarrationUrl(t?.voiceOverUrl)) existingClips += 1;
-          }
-        }
-      }
-    }
-    existingClips += Object.values(syntheticAudioMap || {}).filter(hasPlayableNarrationUrl).length;
-    const onlyMissing = existingClips > 0;
-    showDraftMessage(onlyMissing ? 'Resuming missing narration…' : 'Regenerating all narration…');
+    showDraftMessage('Regenerating all narration…');
     try {
-      const syntheticJobs = collectSyntheticNarrationJobs(allSlides)
-        .filter(j => !(onlyMissing && hasPlayableNarrationUrl(syntheticAudioMap[j.id])))
-        .map(j => ({
-          ...j,
-          title: j.id,
-        }));
+      const syntheticJobs = collectSyntheticNarrationJobs(allSlides).map(j => ({
+        ...j,
+        title: j.id,
+      }));
       const outcome = await generateTTS(course, setCourse, ttsVoice, undefined, {
-        onlyMissing,
+        onlyMissing: false,
         synthetic: syntheticJobs,
         setSyntheticAudioMap,
       });
@@ -4350,19 +4335,17 @@ export default function App() {
         showDraftMessage(
           `No new audio. ${skipped} teaching slide${skipped === 1 ? '' : 's'} have no narration script — they stayed silent. Check Edit → Audio, or regenerate those slides.`
         );
-      } else if (queued === 0 && onlyMissing) {
-        showDraftMessage('All playable narration is already in place. Save the draft to keep audio for next time.');
+      } else if (queued === 0) {
+        showDraftMessage('No narratable slides were found to generate.');
       } else if (skipped > 0) {
         showDraftMessage(
           `${queued} clip${queued === 1 ? '' : 's'} generated. ${skipped} teaching slide${skipped === 1 ? '' : 's'} still have no narration script. Save the draft to keep audio.`
         );
       } else {
         showDraftMessage(
-          onlyMissing
-            ? 'Missing narration filled in. Save the draft to keep audio for next time.'
-            : syntheticJobs.length > 0
-              ? 'All narration regenerated (content + system slides). Save the draft to keep audio for next time.'
-              : 'Content narration regenerated. No system-slide narration text was found — check Edit → Audio on module title/overview slides.'
+          syntheticJobs.length > 0
+            ? 'All narration regenerated (content + system slides). Save the draft to keep audio for next time.'
+            : 'Content narration regenerated. No system-slide narration text was found — check Edit → Audio on module title/overview slides.'
         );
       }
     } catch (err: any) {

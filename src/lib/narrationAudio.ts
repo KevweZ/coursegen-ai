@@ -4,10 +4,12 @@ import { coerceOstText } from './formatTabIntroOst';
 export function hasPlayableNarrationUrl(url: unknown): boolean {
   if (typeof url !== 'string') return false;
   const u = url.trim();
-  if (u.length < 40) return false;
   if (u.startsWith('blob:')) return false;
-  if (u.startsWith('data:audio') || u.startsWith('data:application/octet-stream')) return true;
-  if (/^https?:\/\//i.test(u)) return true;
+  // Real MP3 data URLs are tens of KB. Short leftovers in the draft shell are not playable.
+  if (u.startsWith('data:audio') || u.startsWith('data:application/octet-stream')) {
+    return u.length >= 2000;
+  }
+  if (/^https?:\/\//i.test(u) && u.length >= 40) return true;
   return false;
 }
 
@@ -25,23 +27,49 @@ function stripMarkup(raw: string): string {
     .trim();
 }
 
-/** On-screen / script text that is long enough to send to TTS. */
-export function usableNarrationText(raw: unknown): string {
-  const plain = stripMarkup(coerceOstText(raw)).slice(0, 4096);
-  if (plain.length < 24) return '';
-  const words = plain.split(' ').filter(w => /[a-z0-9]/i.test(w));
-  return words.length >= 5 ? plain : '';
+function plainFrom(raw: unknown): string {
+  return stripMarkup(coerceOstText(raw)).slice(0, 4096);
 }
 
-/** Prefer the spoken script; if it was wiped, fall back to on-screen text. */
+/** On-screen / script text that is long enough to send to TTS. */
+export function usableNarrationText(raw: unknown): string {
+  const plain = plainFrom(raw);
+  if (plain.length < 12) return '';
+  const words = plain.split(' ').filter(w => /[a-z0-9]/i.test(w));
+  return words.length >= 3 ? plain : '';
+}
+
+function nestedSlideText(slide: any): string {
+  const data = slide?.data || {};
+  const lists = [data.tabs, data.items, data.cards, data.events, data.points];
+  const parts: string[] = [];
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue;
+    for (const it of list) {
+      const t = usableNarrationText(
+        it?.voiceOverText || it?.narration || it?.content || it?.definition || it?.description || it?.term || it?.label,
+      );
+      if (t) parts.push(t);
+    }
+  }
+  return parts.join(' ').slice(0, 4096);
+}
+
+/** Prefer the spoken script; fall back to on-screen text, nested items, then the title. */
 export function slideNarrationScript(slide: any): string {
   const script = usableNarrationText(slide?.voiceOverText || slide?.narration);
   if (script) return script;
-  return usableNarrationText(slide?.content || slide?.data?.introContent);
+  const ost = usableNarrationText(slide?.content || slide?.data?.introContent);
+  if (ost) return ost;
+  const nested = nestedSlideText(slide);
+  if (nested) return nested;
+  const title = String(slide?.title || '').trim();
+  if (title.length >= 2) return `Let's review the key points for ${title}.`;
+  return '';
 }
 
 export function tabNarrationScript(tab: any): string {
   const script = usableNarrationText(tab?.voiceOverText || tab?.narration);
   if (script) return script;
-  return usableNarrationText(tab?.content || tab?.definition);
+  return usableNarrationText(tab?.content || tab?.definition || tab?.description);
 }
