@@ -1342,6 +1342,7 @@ export default function App() {
   };
 
   const applyPlayerConfig = (cfg: PlayerConfig) => {
+    if (isLearnerPlayer) return;
     setPlayerConfig(cfg);
     setNavigationMode(cfg.navigationMode);
     setExamConfig(c => ({ ...c, presentationMode: cfg.examPresentationMode }));
@@ -2771,6 +2772,9 @@ export default function App() {
   };
 
   const applySavedSettings = (saved: SavedCourseSettings) => {
+    // SCORM / review already have the course's packed settings. Do not replace
+    // them with account or factory defaults (overviews on, restricted nav).
+    if (isLearnerPlayer) return;
     setPreset(saved.preset);
     setCourseType(saved.preset);
     setObjectiveFormat(saved.objectiveFormat);
@@ -2851,6 +2855,7 @@ export default function App() {
 
   // Load saved course defaults once auth is ready (cloud account prefs → local cache → factory defaults)
   useEffect(() => {
+    if (isScormPlayer || isReviewPlayer) return;
     if (authLoading) return;
     let cancelled = false;
     (async () => {
