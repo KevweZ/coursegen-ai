@@ -7462,6 +7462,8 @@ export default function App() {
                                  <ExamIntroSlide
                                    examConfig={examConfig}
                                    courseTitle={course?.title}
+                                   moduleCount={course?.modules?.length ?? 0}
+                                   actualQuestionCount={examQuestions.length}
                                    isGenerating={isGeneratingExam && examQuestions.length === 0}
                                    questionsReady={examQuestions.length > 0}
                                    errorMessage={examError}

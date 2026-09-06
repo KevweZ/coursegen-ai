@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { GraduationCap, AlertTriangle, CheckSquare, ToggleLeft, List, Loader2 } from 'lucide-react';
 import type { ExamConfig } from '../../types/course';
+import { estimateMasteryQuizMinutes, resolveMasteryQuizQuestionCount } from '../../lib/examQuestionCount';
 
 interface Props {
   examConfig: ExamConfig;
@@ -13,6 +14,10 @@ interface Props {
   questionsReady?: boolean;
   /** Shown when generation/navigation fails so the learner isn't left wondering */
   errorMessage?: string | null;
+  /** Content modules used when Course Settings count is per-module */
+  moduleCount?: number;
+  /** Generated quiz length — preferred over the settings formula when present */
+  actualQuestionCount?: number;
 }
 
 const typeLabelMap: Record<string, string> = {
@@ -28,13 +33,16 @@ export const ExamIntroSlide: React.FC<Props> = ({
   isGenerating = false,
   questionsReady = false,
   errorMessage = null,
+  moduleCount = 0,
+  actualQuestionCount = 0,
 }) => {
-  const totalQuestions =
-    examConfig.questionMode === 'total'
-      ? examConfig.questionCount
-      : examConfig.questionCount;
+  const totalQuestions = resolveMasteryQuizQuestionCount(
+    examConfig,
+    moduleCount,
+    actualQuestionCount,
+  );
 
-  const estimatedMinutes = Math.ceil(totalQuestions * 1.5);
+  const estimatedMinutes = estimateMasteryQuizMinutes(totalQuestions);
 
   return (
     <motion.div

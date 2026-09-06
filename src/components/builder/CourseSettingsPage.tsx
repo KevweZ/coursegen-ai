@@ -662,6 +662,11 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                         <span className="text-white font-extrabold text-xl w-8 text-center">{props.examConfig.questionCount}</span>
                         <button type="button" onClick={() => props.setExamConfig(c => ({ ...c, questionCount: c.questionCount + 1 }))} className="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 font-extrabold text-xl">+</button>
                       </div>
+                      {props.examConfig.questionMode === 'per-module' && (
+                        <p className="text-xs text-slate-500 mt-2">
+                          The quiz intro shows this count × the number of modules (for example 3 per module × 4 modules = 12 questions).
+                        </p>
+                      )}
                     </div>
                     <div>
                       <p className="text-sm font-bold text-slate-300 mb-1">Question Types</p>

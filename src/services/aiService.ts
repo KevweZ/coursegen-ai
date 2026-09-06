@@ -1339,7 +1339,7 @@ Generate ${totalNeeded} questions.`;
     // Cap wait time so "Begin Mastery Quiz" never appears frozen if the AI
     // proxy hangs — fall through to content-derived fallback questions.
     const text = await Promise.race([
-      executeAnthropicAI('complex', systemInstruction, userPrompt, 4096),
+      executeAnthropicAI('complex', systemInstruction, userPrompt, 8192),
       new Promise<string>((_, reject) =>
         setTimeout(() => reject(new Error('Quiz generation timed out after 45s')), 45000)
       ),
