@@ -79,6 +79,7 @@ import {
   SORTING_REORDER_HINT,
 } from './lib/knowledgeCheckOst';
 import { slideSkipsNarration } from './lib/enablingCoverage';
+import { hasPlayableNarrationUrl } from './lib/narrationAudio';
 import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft, generateMasteryExam } from './services/aiService';
 import { createScormPackage, ScormVersion } from './services/scormService';
 import { FlashcardGrid } from './components/FlashcardGrid';
@@ -1130,7 +1131,7 @@ export default function App() {
         if (!media.size) {
           const missingAudio = (shell.modules || []).some((m: any) =>
             (m.slides || []).some((s: any) =>
-              !slideSkipsNarration(s) && (s.voiceOverText || s.narration) && !s.voiceOverUrl
+              !slideSkipsNarration(s) && (s.voiceOverText || s.narration) && !hasPlayableNarrationUrl(s.voiceOverUrl)
             )
           );
           if (missingAudio && voiceOverEnabled) {
@@ -1182,7 +1183,7 @@ export default function App() {
 
         const missingAudio = (working.modules || []).some((m: any) =>
           (m.slides || []).some((s: any) =>
-            !slideSkipsNarration(s) && (s.voiceOverText || s.narration) && !s.voiceOverUrl
+            !slideSkipsNarration(s) && (s.voiceOverText || s.narration) && !hasPlayableNarrationUrl(s.voiceOverUrl)
           )
         );
         if (missingAudio && voiceOverEnabled && !Object.keys(synthRestored).length) {
@@ -2568,7 +2569,7 @@ export default function App() {
     }
     const tabs = currentSlide.data?.tabs || currentSlide.data?.items || [];
     const tab = (tabs || []).find((t: any) => t.id === tabId);
-    if (tab?.voiceOverUrl) {
+    if (hasPlayableNarrationUrl(tab?.voiceOverUrl)) {
       setActiveTabAudioUrl(tab.voiceOverUrl);
       const script = String(tab.voiceOverText || tab.narration || '').trim();
       setActiveTabNarrationText(script || null);
@@ -2587,7 +2588,12 @@ export default function App() {
       // AI audio only — never fall back to browser TTS
       // Knowledge checks / mastery quiz: silent, same as Quiz Questions
       voiceOverEnabled && !slideSkipsNarration(currentSlide)
-        ? (activeTabAudioUrl || currentSlide.voiceOverUrl || (currentSlide as any).audioUrl || currentSyntheticUrl || null)
+        ? (
+            (hasPlayableNarrationUrl(activeTabAudioUrl) ? activeTabAudioUrl : null)
+            || (hasPlayableNarrationUrl(currentSlide.voiceOverUrl) ? currentSlide.voiceOverUrl : null)
+            || (hasPlayableNarrationUrl((currentSlide as any).audioUrl) ? (currentSlide as any).audioUrl : null)
+            || (hasPlayableNarrationUrl(currentSyntheticUrl) ? currentSyntheticUrl : null)
+          )
         : null,
       null  // ttsText always null: slides are silent while AI audio loads, then auto-play
     );
@@ -4314,37 +4320,51 @@ export default function App() {
     let existingClips = 0;
     for (const m of course.modules || []) {
       for (const s of m.slides || []) {
-        if (s?.voiceOverUrl && !slideSkipsNarration(s)) existingClips += 1;
+        if (hasPlayableNarrationUrl(s?.voiceOverUrl) && !slideSkipsNarration(s)) existingClips += 1;
         for (const key of ['tabs', 'items'] as const) {
           for (const t of s?.data?.[key] || []) {
-            if (t?.voiceOverUrl) existingClips += 1;
+            if (hasPlayableNarrationUrl(t?.voiceOverUrl)) existingClips += 1;
           }
         }
       }
     }
-    existingClips += Object.keys(syntheticAudioMap || {}).length;
+    existingClips += Object.values(syntheticAudioMap || {}).filter(hasPlayableNarrationUrl).length;
     const onlyMissing = existingClips > 0;
     showDraftMessage(onlyMissing ? 'Resuming missing narration…' : 'Regenerating all narration…');
     try {
       const syntheticJobs = collectSyntheticNarrationJobs(allSlides)
-        .filter(j => !(onlyMissing && syntheticAudioMap[j.id]))
+        .filter(j => !(onlyMissing && hasPlayableNarrationUrl(syntheticAudioMap[j.id])))
         .map(j => ({
           ...j,
           title: j.id,
         }));
-      await generateTTS(course, setCourse, ttsVoice, undefined, {
+      const outcome = await generateTTS(course, setCourse, ttsVoice, undefined, {
         onlyMissing,
         synthetic: syntheticJobs,
         setSyntheticAudioMap,
       });
       setVoiceOverEnabled(true);
-      showDraftMessage(
-        onlyMissing
-          ? 'Missing narration filled in. Save the draft to keep audio for next time.'
-          : syntheticJobs.length > 0
-            ? 'All narration regenerated (content + system slides). Save the draft to keep audio for next time.'
-            : 'Content narration regenerated. No system-slide narration text was found — check Edit → Audio on module title/overview slides.'
-      );
+      const queued = outcome?.queued ?? 0;
+      const skipped = outcome?.skippedNoText ?? 0;
+      if (queued === 0 && skipped > 0) {
+        showDraftMessage(
+          `No new audio. ${skipped} teaching slide${skipped === 1 ? '' : 's'} have no narration script — they stayed silent. Check Edit → Audio, or regenerate those slides.`
+        );
+      } else if (queued === 0 && onlyMissing) {
+        showDraftMessage('All playable narration is already in place. Save the draft to keep audio for next time.');
+      } else if (skipped > 0) {
+        showDraftMessage(
+          `${queued} clip${queued === 1 ? '' : 's'} generated. ${skipped} teaching slide${skipped === 1 ? '' : 's'} still have no narration script. Save the draft to keep audio.`
+        );
+      } else {
+        showDraftMessage(
+          onlyMissing
+            ? 'Missing narration filled in. Save the draft to keep audio for next time.'
+            : syntheticJobs.length > 0
+              ? 'All narration regenerated (content + system slides). Save the draft to keep audio for next time.'
+              : 'Content narration regenerated. No system-slide narration text was found — check Edit → Audio on module title/overview slides.'
+        );
+      }
     } catch (err: any) {
       console.error('[TTS] Regenerate all failed:', err);
       const { formatTtsErrorForUser } = await import('./services/ttsService');

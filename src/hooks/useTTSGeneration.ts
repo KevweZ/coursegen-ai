@@ -7,6 +7,7 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { slideSkipsNarration } from '../lib/enablingCoverage';
+import { hasPlayableNarrationUrl, slideNarrationScript, tabNarrationScript } from '../lib/narrationAudio';
 import {
   createTtsJob,
   pollTtsJob,
@@ -28,6 +29,12 @@ export interface TTSProgress {
   error: string | null;
   skipped: number;
 }
+
+export type TTSGenerateResult = {
+  queued: number;
+  applied: number;
+  skippedNoText: number;
+};
 
 const DEFAULT_PROGRESS: TTSProgress = {
   isRunning: false,
@@ -138,9 +145,9 @@ export function buildCourseNarrationItems(
   for (const mod of course.modules) {
     for (const slide of (mod.slides ?? [])) {
       if (slideSkipsNarration(slide)) continue;
-      const text = String(slide.voiceOverText || slide.narration || '').trim().slice(0, 4096);
+      const text = slideNarrationScript(slide);
       const hasMain = !!text;
-      const skipMain = !!(opts?.onlyMissing && slide.voiceOverUrl);
+      const skipMain = !!(opts?.onlyMissing && hasPlayableNarrationUrl(slide.voiceOverUrl));
 
       if (hasMain && !skipMain) {
         items.push({
@@ -159,9 +166,9 @@ export function buildCourseNarrationItems(
       const tabs: any[] = listKey ? (slide.data?.[listKey] || []) : [];
       if (isTabbed && tabs.length) {
         for (const tab of tabs) {
-          const tabText = String(tab?.voiceOverText || '').trim().slice(0, 4096);
+          const tabText = tabNarrationScript(tab);
           if (!tabText) continue;
-          if (opts?.onlyMissing && tab.voiceOverUrl) continue;
+          if (opts?.onlyMissing && hasPlayableNarrationUrl(tab.voiceOverUrl)) continue;
           items.push({
             id: `${slide.id}::tab::${tab.id}`,
             text: tabText,
@@ -212,7 +219,7 @@ export function useTTSGeneration() {
        */
       _resumeCount?: number;
     },
-  ) => {
+  ): Promise<TTSGenerateResult> => {
     // Preserve run id across auto-resumes so cancel still works and we don't reset progress UI.
     const resumeCount = opts?._resumeCount ?? 0;
     const runId = resumeCount > 0 ? runIdRef.current : ++runIdRef.current;
@@ -223,18 +230,23 @@ export function useTTSGeneration() {
 
     if (items.length === 0) {
       if (isActive(runId)) {
+        const nothingLeft = !!opts?.onlyMissing && skipped === 0;
         setProgress(prev => ({
           isRunning: false,
           isDone: true,
-          // Keep prior progress when only-missing resume finds nothing left to do.
-          currentSlide: opts?.onlyMissing ? prev.currentSlide : 0,
-          totalSlides: opts?.onlyMissing ? prev.totalSlides : 0,
+          // Keep prior progress only when every remaining clip already has playable audio.
+          currentSlide: nothingLeft ? prev.currentSlide : 0,
+          totalSlides: nothingLeft ? prev.totalSlides : 0,
           currentSlideTitle: '',
-          error: opts?.onlyMissing ? null : 'No narratable slide text found',
+          error: nothingLeft
+            ? null
+            : skipped > 0
+              ? null
+              : 'No narratable slide text found',
           skipped,
         }));
       }
-      return;
+      return { queued: 0, applied: 0, skippedNoText: skipped };
     }
 
     setProgress(prev => ({
@@ -258,7 +270,7 @@ export function useTTSGeneration() {
       const created = await createTtsJob({ voice, items });
       if (!isActive(runId)) {
         await cancelTtsJob(created.jobId).catch(() => {});
-        return;
+        return { queued: items.length, applied: appliedCount, skippedNoText: skipped };
       }
       activeJobIdRef.current = created.jobId;
 
@@ -337,7 +349,7 @@ export function useTTSGeneration() {
               return prev;
             });
             await sleep(1500);
-            if (!isActive(runId)) return;
+            if (!isActive(runId)) return { queued: items.length, applied: appliedCount, skippedNoText: skipped };
             const synthLeft = remainingSynthetics();
             return generateTTS(latestCourse, setCourse, voice, onSlideProgress, {
               onlyMissing: true,
@@ -350,7 +362,7 @@ export function useTTSGeneration() {
         }
       }
     } catch (err: any) {
-      if (!isActive(runId)) return;
+      if (!isActive(runId)) return { queued: items.length, applied: appliedCount, skippedNoText: skipped };
       const message = formatTtsErrorForUser(err);
       const fatal = err instanceof TTSRequestError && TTS_FATAL_CODES.has(err.code);
       const transient = isTransientTtsNetworkError(err);
@@ -380,7 +392,7 @@ export function useTTSGeneration() {
         });
         // Back off a bit more on later resumes (cold starts / flaky proxy).
         await sleep(2000 + resumeCount * 1500);
-        if (!isActive(runId)) return;
+        if (!isActive(runId)) return { queued: items.length, applied: appliedCount, skippedNoText: skipped };
         // New job for clips still missing, including unfinished cover/module synthetics.
         const synthLeft = remainingSynthetics();
         return generateTTS(latestCourse, setCourse, voice, onSlideProgress, {
@@ -407,6 +419,7 @@ export function useTTSGeneration() {
     } finally {
       if (isActive(runId)) activeJobIdRef.current = null;
     }
+    return { queued: items.length, applied: appliedCount, skippedNoText: skipped };
   }, []);
 
   const cancelTTS = useCallback(() => {

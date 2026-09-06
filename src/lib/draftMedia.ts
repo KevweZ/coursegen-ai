@@ -3,6 +3,8 @@
  * then re-attach images after the preview is visible.
  */
 
+import { hasPlayableNarrationUrl } from './narrationAudio';
+
 const HEAVY_RE = /^data:/i;
 const HEAVY_MIN = 1500; // chars — skip tiny placeholders
 
@@ -90,10 +92,10 @@ export function countCourseAudioClips(course: any): number {
   let n = 0;
   for (const m of course?.modules || []) {
     for (const s of m?.slides || []) {
-      if (typeof s?.voiceOverUrl === 'string' && s.voiceOverUrl.length > 40) n += 1;
+      if (hasPlayableNarrationUrl(s?.voiceOverUrl)) n += 1;
       for (const key of ['tabs', 'items'] as const) {
         for (const item of s?.data?.[key] || []) {
-          if (typeof item?.voiceOverUrl === 'string' && item.voiceOverUrl.length > 40) n += 1;
+          if (hasPlayableNarrationUrl(item?.voiceOverUrl)) n += 1;
         }
       }
     }

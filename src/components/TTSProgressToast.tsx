@@ -113,7 +113,9 @@ export const TTSProgressToast: React.FC<Props> = ({ progress, onDismiss }) => {
                         ? 'Audio generation failed'
                         : progress.error
                           ? 'Audio generation finished with errors'
-                          : 'Audio generation complete')
+                          : progress.currentSlide === 0 && progress.skipped > 0
+                            ? 'No new narration generated'
+                            : 'Audio generation complete')
                     : 'Generating narration audio'}
                 </p>
                 {progress.isRunning && (
@@ -123,11 +125,20 @@ export const TTSProgressToast: React.FC<Props> = ({ progress, onDismiss }) => {
                   </p>
                 )}
                 {progress.isDone && !progress.isRunning && (
-                  <p className="text-xs text-emerald-400 mt-0.5">
-                    {progress.currentSlide} slide{progress.currentSlide !== 1 ? 's' : ''} ready
+                  <p className={`text-xs mt-0.5 ${progress.error ? 'text-amber-300' : 'text-emerald-400'}`}>
+                    {progress.currentSlide > 0
+                      ? `${progress.currentSlide} clip${progress.currentSlide !== 1 ? 's' : ''} ready`
+                      : progress.error
+                        ? progress.error
+                        : 'No new clips generated'}
                   </p>
                 )}
-                {progress.error && (
+                {progress.isDone && !progress.isRunning && progress.skipped > 0 && !progress.error && (
+                  <p className="text-xs text-amber-300 mt-0.5">
+                    {progress.skipped} teaching slide{progress.skipped !== 1 ? 's' : ''} had no narration script
+                  </p>
+                )}
+                {progress.error && progress.currentSlide > 0 && (
                   <p className="text-xs text-red-400 mt-0.5 line-clamp-2">
                     {progress.error}
                   </p>
