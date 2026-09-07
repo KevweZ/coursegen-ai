@@ -843,11 +843,12 @@ export default function App() {
     return `${root} (${n})`;
   };
 
-  const draftSaveExtras = () => ({
+  const draftSaveExtras = (onProgress?: (msg: string) => void) => ({
     learningObjectives,
     syntheticSlideOverrides,
     syntheticAudioMap,
     examQuestions,
+    ...(onProgress ? { onProgress } : {}),
   });
 
   /** Always create a new library slot (never overwrites the active draft). */
@@ -865,7 +866,7 @@ export default function App() {
     try {
       const titleOverride = allocateUniqueDraftTitle(course.title || 'Untitled Course');
       const result = await draftManager.savePreviewDraft(course, playerConfig, theme, {
-        ...draftSaveExtras(),
+        ...draftSaveExtras(showDraftMessage),
         titleOverride,
       });
       showDraftMessage(
@@ -901,7 +902,7 @@ export default function App() {
       const meta = draftManager.drafts.find(d => d.id === activeDraftId);
       // Do not loadDraftAsync here — that used to race and overwrite freshly saved audio.
       if (!meta || meta.phase === 'preview') {
-        const updated = await draftManager.replacePreviewDraft(activeDraftId, course, playerConfig, theme, draftSaveExtras());
+        const updated = await draftManager.replacePreviewDraft(activeDraftId, course, playerConfig, theme, draftSaveExtras(showDraftMessage));
         showDraftMessage(
           updated.success
             ? `${updated.message} You can refresh safely — reopen from Save.`
@@ -918,7 +919,7 @@ export default function App() {
       showDraftMessage('Saving new draft…');
       const titleOverride = allocateUniqueDraftTitle(course.title || 'Untitled Course');
       const result = await draftManager.savePreviewDraft(course, playerConfig, theme, {
-        ...draftSaveExtras(),
+        ...draftSaveExtras(showDraftMessage),
         titleOverride,
       });
       showDraftMessage(
@@ -1256,7 +1257,7 @@ export default function App() {
     setIsSavingDraft(true);
     showDraftMessage('Overwriting draft…');
     try {
-      const result = await draftManager.replacePreviewDraft(id, course, playerConfig, theme, draftSaveExtras());
+      const result = await draftManager.replacePreviewDraft(id, course, playerConfig, theme, draftSaveExtras(showDraftMessage));
       showDraftMessage(result.message);
       if (result.success) {
         setActiveDraftId(id);

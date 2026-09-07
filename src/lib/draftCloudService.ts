@@ -118,6 +118,29 @@ function extForMime(type: string): string {
   return 'bin';
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)), ms);
+    promise.then(
+      v => { clearTimeout(t); resolve(v); },
+      e => { clearTimeout(t); reject(e); },
+    );
+  });
+}
+
+async function mapPool<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
+  if (!items.length) return;
+  let i = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (i < items.length) {
+      const idx = i;
+      i += 1;
+      await fn(items[idx]);
+    }
+  });
+  await Promise.all(workers);
+}
+
 /**
  * Upload each image/audio file individually. Never delete existing objects until the
  * new manifest is in place — a failed giant JSON upload used to wipe all cloud media.
@@ -125,34 +148,47 @@ function extForMime(type: string): string {
 async function uploadAssets(
   userId: string,
   draftId: string,
-  assets?: Record<string, string>
+  assets?: Record<string, string | Blob>
 ): Promise<void> {
   if (!assets || !Object.keys(assets).length) return;
 
   const prefix = assetPrefix(userId, draftId);
-  const uploaded: { path: string; name: string; type: string }[] = [];
-  let i = 0;
-  for (const [path, url] of Object.entries(assets)) {
-    if (typeof url !== 'string' || url.length < 8) continue;
-    const blob = dataUrlToBlob(url);
+  const entries = Object.entries(assets).filter(([, v]) => (
+    (typeof v === 'string' && v.length > 8) || (typeof Blob !== 'undefined' && v instanceof Blob && v.size > 0)
+  ));
+  const uploaded: Array<{ path: string; name: string; type: string } | null> = entries.map(() => null);
+
+  await mapPool(entries.map((entry, i) => ({ entry, i })), 3, async ({ entry, i }) => {
+    const [path, val] = entry;
+    const blob = val instanceof Blob ? val : await withTimeout(dataUrlToBlob(val), 20000, `pack ${path}`);
     const type = blob.type || 'application/octet-stream';
     const name = `${String(i).padStart(4, '0')}.${extForMime(type)}`;
-    i += 1;
-    const { error } = await supabase.storage.from(BUCKET).upload(`${prefix}/b/${name}`, blob, {
-      upsert: true,
-      contentType: type,
-    });
+    const { error } = await withTimeout(
+      supabase.storage.from(BUCKET).upload(`${prefix}/b/${name}`, blob, {
+        upsert: true,
+        contentType: type,
+      }),
+      45000,
+      `upload ${name}`,
+    );
     if (error) throw error;
-    uploaded.push({ path, name, type });
-  }
+    uploaded[i] = { path, name, type };
+  });
 
-  const manBody = JSON.stringify({ v: 2, files: uploaded });
-  const { error: manErr } = await supabase.storage
-    .from(BUCKET)
-    .upload(`${prefix}/manifest.json`, new Blob([manBody], { type: 'application/json' }), {
-      upsert: true,
-      contentType: 'application/json',
-    });
+  const files = uploaded.filter((f): f is { path: string; name: string; type: string } => !!f);
+  if (!files.length) throw new Error('No media files uploaded');
+
+  const manBody = JSON.stringify({ v: 2, files });
+  const { error: manErr } = await withTimeout(
+    supabase.storage
+      .from(BUCKET)
+      .upload(`${prefix}/manifest.json`, new Blob([manBody], { type: 'application/json' }), {
+        upsert: true,
+        contentType: 'application/json',
+      }),
+    20000,
+    'upload manifest',
+  );
   if (manErr) throw manErr;
 
   try {
@@ -164,13 +200,22 @@ async function uploadAssets(
       await supabase.storage.from(BUCKET).remove(stale.map(n => `${prefix}/${n}`));
     }
     const { data: bins } = await supabase.storage.from(BUCKET).list(`${prefix}/b`, { limit: 1000 });
-    const keep = new Set(uploaded.map(f => f.name));
+    const keep = new Set(files.map(f => f.name));
     const extra = (bins || [])
       .map(f => f.name)
       .filter(n => n && !keep.has(n))
       .map(n => `${prefix}/b/${n}`);
     if (extra.length) await supabase.storage.from(BUCKET).remove(extra);
   } catch { /* keep new manifest even if leftover cleanup fails */ }
+}
+
+/** Public wrapper so draft saves can sync IndexedDB blobs without blocking the UI. */
+export async function uploadCloudAssets(
+  userId: string,
+  draftId: string,
+  assets?: Record<string, string | Blob>
+): Promise<void> {
+  await uploadAssets(userId, draftId, assets);
 }
 
 export async function downloadCloudAssets(userId: string, draftId: string): Promise<Record<string, string>> {
@@ -254,7 +299,7 @@ export async function upsertCloudDraft(
   userId: string,
   meta: CloudDraftMeta,
   snapshot: CloudDraftSnapshot,
-  assets?: Record<string, string>,
+  assets?: Record<string, string | Blob>,
   workspaceId?: string | null
 ): Promise<{ ok: boolean; error?: string }> {
   if (!(await isCloudDraftsAvailable())) {

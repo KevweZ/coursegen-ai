@@ -27,6 +27,7 @@ import {
   countAudioAssetKeys,
   dataUrlToBlob,
   blobToDataUrl,
+  extractHeavyMediaToBlobs,
 } from './draftMedia';
 import {
   listCloudDrafts,
@@ -36,6 +37,7 @@ import {
   deleteCloudDraft,
   isCloudDraftsAvailable,
   resetCloudDraftsProbe,
+  uploadCloudAssets,
 } from './draftCloudService';
 
 export const MAX_PRO_DRAFTS = 3;
@@ -262,57 +264,82 @@ async function readDraftAssets(userId: string, draftId: string): Promise<Record<
   return {};
 }
 
+async function readDraftAssetBlobs(userId: string, draftId: string): Promise<Record<string, Blob>> {
+  const key = payloadKey(userId, draftId);
+  const existing = await idbGet<any>(STORE_ASSETS, key);
+  const out: Record<string, Blob> = {};
+  if (isAssetManifest(existing)) {
+    const collected: Record<string, unknown> = {};
+    const db = await openDraftsDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_ASSET_BLOBS, 'readonly');
+      const store = tx.objectStore(STORE_ASSET_BLOBS);
+      for (const path of existing.paths) {
+        const req = store.get(assetBlobKey(key, path));
+        req.onsuccess = () => {
+          collected[path] = req.result;
+        };
+      }
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    for (const [path, val] of Object.entries(collected)) {
+      if (val instanceof Blob && val.size > 0) out[path] = val;
+    }
+    return out;
+  }
+  return out;
+}
+
 async function writeDraftAssets(
   userId: string,
   draftId: string,
-  incoming?: Record<string, string> | null,
-): Promise<Record<string, string>> {
+  incoming?: Record<string, string | Blob> | null,
+  onProgress?: (msg: string) => void,
+): Promise<Record<string, string | Blob>> {
   const key = payloadKey(userId, draftId);
   const incomingRec = incoming && typeof incoming === 'object' ? incoming : {};
   let prevPaths: string[] = [];
-  let fat: Record<string, string> = {};
   try {
     const existing = await idbGet<any>(STORE_ASSETS, key);
     if (isAssetManifest(existing)) {
-      prevPaths = existing.paths.filter(p => typeof p === 'string');
-    } else if (existing && typeof existing === 'object') {
-      fat = await readDraftAssets(userId, draftId);
-      prevPaths = Object.keys(fat);
+      prevPaths = existing.paths.filter((p: unknown) => typeof p === 'string');
     }
+    // Legacy fat JSON is ignored here — converting it on the main thread froze Update Draft
+    // for tens of minutes. Incoming from the live course is the source of truth.
   } catch { /* ok */ }
 
-  const next: Record<string, string> = { ...fat, ...incomingRec };
-  const paths = [...new Set([...prevPaths, ...Object.keys(next)])];
+  const incomingEntries = Object.entries(incomingRec).filter(([, val]) => (
+    (typeof val === 'string' && val.length > 8) || (typeof Blob !== 'undefined' && val instanceof Blob && val.size > 0)
+  ));
+  const converted: Array<{ path: string; blob: Blob }> = [];
+  for (let i = 0; i < incomingEntries.length; i++) {
+    const [path, val] = incomingEntries[i];
+    if (i === 0 || i % 2 === 0) {
+      onProgress?.(`Saving media ${i + 1} of ${incomingEntries.length}…`);
+      await yieldToUi(0);
+    }
+    converted.push({
+      path,
+      blob: val instanceof Blob ? val : await dataUrlToBlob(val),
+    });
+  }
+
+  const paths = [...new Set([...prevPaths, ...converted.map(c => c.path)])];
   const db = await openDraftsDb();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction([STORE_ASSET_BLOBS, STORE_ASSETS], 'readwrite');
-    const blobs = tx.objectStore(STORE_ASSET_BLOBS);
+    const blobStore = tx.objectStore(STORE_ASSET_BLOBS);
     const mans = tx.objectStore(STORE_ASSETS);
-    for (const [path, url] of Object.entries(incomingRec)) {
-      if (typeof url !== 'string' || url.length < 8) continue;
-      try {
-        blobs.put(dataUrlToBlob(url), assetBlobKey(key, path));
-      } catch (e) {
-        reject(e);
-        return;
-      }
-    }
-    for (const [path, url] of Object.entries(fat)) {
-      if (path in incomingRec) continue;
-      if (typeof url !== 'string' || url.length < 8) continue;
-      try {
-        blobs.put(dataUrlToBlob(url), assetBlobKey(key, path));
-      } catch (e) {
-        reject(e);
-        return;
-      }
+    for (const { path, blob } of converted) {
+      blobStore.put(blob, assetBlobKey(key, path));
     }
     mans.put({ __nexcourseAssetManifest: 1, paths }, key);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error || new Error('IDB asset write failed'));
     tx.onabort = () => reject(tx.error || new Error('IDB asset write aborted'));
   });
-  return next;
+  return incomingRec;
 }
 
 function parseSnapshotRaw(raw: unknown): DraftSnapshot | null {
@@ -594,6 +621,7 @@ export interface UseDraftCoursesReturn {
       examQuestions?: any[];
       /** Force a distinct library name (e.g. "Course (1)") without renaming the live editor title. */
       titleOverride?: string;
+      onProgress?: (msg: string) => void;
     }
   ) => Promise<{ success: boolean; message: string; id?: string }>;
   saveDesignDraft: (design: Omit<DesignDraftSnapshot, 'phase'>) => Promise<{ success: boolean; message: string; id?: string }>;
@@ -617,6 +645,7 @@ export interface UseDraftCoursesReturn {
       syntheticSlideOverrides?: Record<string, any>;
       syntheticAudioMap?: Record<string, string>;
       examQuestions?: any[];
+      onProgress?: (msg: string) => void;
     }
   ) => Promise<{ success: boolean; message: string }>;
   replaceDesignDraft: (id: string, design: Omit<DesignDraftSnapshot, 'phase'>) => Promise<{ success: boolean; message: string }>;
@@ -701,21 +730,27 @@ export function useDraftCourses(
               report.errors.push(`“${meta.courseTitle}” — missing local content to upload`);
               continue;
             }
-            let assets = await readDraftAssets(userId, meta.id);
+            let extraAssets: Record<string, string> | undefined;
             if (snapshot.phase === 'preview' && snapshot.course) {
               const detached = detachHeavyMedia(snapshot.course);
               if (detached.size) {
-                assets = { ...assets, ...mediaMapToRecord(detached) };
+                extraAssets = mediaMapToRecord(detached);
                 await idbPut(STORE_PAYLOAD, payloadKey(userId, meta.id), snapshot);
-                await writeDraftAssets(userId, meta.id, assets);
+                await writeDraftAssets(userId, meta.id, extraAssets);
               }
             }
-            const up = await upsertCloudDraft(userId, meta, snapshot, assets, workspaceId);
+            const up = await upsertCloudDraft(userId, meta, snapshot, undefined, workspaceId);
             if (up.ok) {
               console.log(`[DraftCourses] Migrated "${meta.courseTitle}" → cloud`);
               cloudIds.add(meta.id);
               report.migrated += 1;
               if (up.error) report.errors.push(`“${meta.courseTitle}” — ${up.error}`);
+              try {
+                const blobs = await readDraftAssetBlobs(userId, meta.id);
+                if (Object.keys(blobs).length) await uploadCloudAssets(userId, meta.id, blobs);
+              } catch (assetErr: any) {
+                report.errors.push(`“${meta.courseTitle}” — media upload failed (${assetErr?.message || 'storage error'})`);
+              }
             } else {
               console.warn(`[DraftCourses] Cloud migrate skipped for ${meta.id}:`, up.error);
               report.failed += 1;
@@ -768,8 +803,10 @@ export function useDraftCourses(
       syntheticSlideOverrides?: Record<string, any>;
       syntheticAudioMap?: Record<string, string>;
       examQuestions?: any[];
+      onProgress?: (msg: string) => void;
     }
   ) => {
+    extras?.onProgress?.('Preparing draft…');
     // structuredClone keeps us from mutating the live editor course
     let working: any;
     try {
@@ -785,23 +822,26 @@ export function useDraftCourses(
       working.examQuestions = extras!.examQuestions;
     }
 
-    // Convert in-memory blob: TTS URLs → durable data: URLs before strip/detach
+    const audioClipsOnCourse = countCourseAudioClips(working);
+    extras?.onProgress?.('Packing images and audio…');
+    const blobAssets = await extractHeavyMediaToBlobs(working, (done, total) => {
+      extras?.onProgress?.(`Saving media ${done} of ${total}…`);
+    });
+
+    // Convert leftover remote/blob TTS URLs → durable data: URLs before strip/detach
     try {
       const { persistCourseAudioUrls, persistSyntheticAudioMap } = await import('../services/ttsService');
       working = await persistCourseAudioUrls(working);
       const synthPersisted = await persistSyntheticAudioMap(extras?.syntheticAudioMap || {});
-      // Stash synthetic audio into assets under a reserved prefix
       (working as any).__syntheticAudioPending = synthPersisted;
     } catch (e) {
       console.warn('[DraftCourses] Audio persist step failed:', e);
     }
 
     working = stripEphemeralMedia(working);
-    const audioClipsOnCourse = countCourseAudioClips(working);
     const before = approxCourseBytes(working);
     const media = detachHeavyMedia(working);
 
-    // Move pending synthetic audio into the assets map
     const pendingSynth = (working as any).__syntheticAudioPending as Record<string, string> | undefined;
     delete (working as any).__syntheticAudioPending;
     const syntheticAudioIds: string[] = [];
@@ -814,9 +854,10 @@ export function useDraftCourses(
     }
 
     const after = approxCourseBytes(working);
+    const assets: Record<string, string | Blob> = { ...blobAssets, ...mediaMapToRecord(media) };
     const audioClips = audioClipsOnCourse + syntheticAudioIds.length;
     console.log(
-      `[DraftCourses] Media split for save: ${media.size} asset(s), ` +
+      `[DraftCourses] Media split for save: ${Object.keys(assets).length} asset(s), ` +
       `${Math.round(before / 1024)}KB → ${Math.round(after / 1024)}KB shell` +
       `, ${audioClips} narration clip(s)` +
       (syntheticAudioIds.length ? `, ${syntheticAudioIds.length} synthetic audio` : '')
@@ -831,15 +872,15 @@ export function useDraftCourses(
       syntheticAudioIds,
       examQuestions: Array.isArray(extras?.examQuestions) ? extras!.examQuestions : working.examQuestions,
     };
-    const assets = mediaMapToRecord(media);
     return { snapshot, assets, draftId, audioClips };
   };
 
   const persistNew = async (
     meta: CourseDraft,
     snapshot: DraftSnapshot,
-    assets?: Record<string, string>,
+    assets?: Record<string, string | Blob>,
     expectedAudio = 0,
+    onProgress?: (msg: string) => void,
   ): Promise<{ ok: boolean; error?: string }> => {
     if (!userId) return { ok: false, error: 'Sign in to save drafts.' };
     try {
@@ -852,7 +893,7 @@ export function useDraftCourses(
         };
       }
       if (assets && Object.keys(assets).length) {
-        await writeDraftAssets(userId, meta.id, assets);
+        await writeDraftAssets(userId, meta.id, assets, onProgress);
       }
       await idbPut(STORE_PAYLOAD, payloadKey(userId, meta.id), snapshot);
       const next = [...draftsRef.current, metaFromDraft(meta)];
@@ -861,9 +902,20 @@ export function useDraftCourses(
       payloadCacheRef.current.set(meta.id, snapshot);
 
       let cloudNote = '';
-      const cloud = await upsertCloudDraft(userId, meta, snapshot, assets, workspaceId);
-      if (cloud.ok) setCloudEnabled(true);
-      else if (cloud.error) cloudNote = ` (local only — ${cloud.error})`;
+      const cloud = await upsertCloudDraft(userId, meta, snapshot, undefined, workspaceId);
+      if (cloud.ok) {
+        setCloudEnabled(true);
+        void (async () => {
+          try {
+            const blobs = await readDraftAssetBlobs(userId, meta.id);
+            if (Object.keys(blobs).length) await uploadCloudAssets(userId, meta.id, blobs);
+          } catch (e) {
+            console.warn('[DraftCourses] Background media sync failed:', e);
+          }
+        })();
+      } else if (cloud.error) {
+        cloudNote = ` (local only — ${cloud.error})`;
+      }
 
       console.log(`[DraftCourses] Saved "${meta.courseTitle}" in ${Math.round(performance.now() - t0)}ms`);
       return { ok: true, error: cloudNote || undefined };
@@ -882,8 +934,9 @@ export function useDraftCourses(
     id: string,
     metaPatch: Partial<CourseDraft>,
     snapshot: DraftSnapshot,
-    assets?: Record<string, string>,
+    assets?: Record<string, string | Blob>,
     expectedAudio = 0,
+    onProgress?: (msg: string) => void,
   ): Promise<{ ok: boolean; error?: string }> => {
     if (!userId) return { ok: false, error: 'Sign in to save drafts.' };
     try {
@@ -897,7 +950,7 @@ export function useDraftCourses(
       // Write audio/images FIRST. A lean payload with no matching assets is how
       // previous saves "succeeded" and then reopened silent.
       if (assets && Object.keys(assets).length) {
-        const written = await writeDraftAssets(userId, id, assets);
+        const written = await writeDraftAssets(userId, id, assets, onProgress);
         if (expectedAudio > 0 && countAudioAssetKeys(written) === 0) {
           return {
             ok: false,
@@ -917,9 +970,24 @@ export function useDraftCourses(
       setDrafts(next);
       payloadCacheRef.current.set(id, snapshot);
 
-      const cloud = await upsertCloudDraft(userId, nextMeta, snapshot, assets, workspaceId);
-      if (cloud.ok) setCloudEnabled(true);
-      return { ok: true, error: cloud.error };
+      const cloud = await upsertCloudDraft(userId, nextMeta, snapshot, undefined, workspaceId);
+      if (cloud.ok) {
+        setCloudEnabled(true);
+        void (async () => {
+          try {
+            const blobs = await readDraftAssetBlobs(userId, id);
+            if (Object.keys(blobs).length) await uploadCloudAssets(userId, id, blobs);
+          } catch (e) {
+            console.warn('[DraftCourses] Background media sync failed:', e);
+          }
+        })();
+      }
+      return {
+        ok: true,
+        error: cloud.ok
+          ? undefined
+          : `Saved on this device. Cloud sync failed (${cloud.error || 'unavailable'}).`,
+      };
     } catch (e: any) {
       return {
         ok: false,
@@ -940,6 +1008,7 @@ export function useDraftCourses(
       syntheticAudioMap?: Record<string, string>;
       examQuestions?: any[];
       titleOverride?: string;
+      onProgress?: (msg: string) => void;
     }
   ) => {
     if (!userId) return { success: false, message: 'Sign in to save drafts.' };
@@ -967,7 +1036,7 @@ export function useDraftCourses(
       theme,
       phase: 'preview',
     };
-    const result = await persistNew(meta, snapshot, assets, audioClips);
+    const result = await persistNew(meta, snapshot, assets, audioClips, extras?.onProgress);
     const audioNote = audioClips > 0 ? ` ${audioClips} narration clip${audioClips === 1 ? '' : 's'} stored.` : '';
     if (!result.ok) return { success: false, message: result.error || 'Failed to save draft.' };
     if (result.error?.includes('local only')) {
@@ -1197,6 +1266,7 @@ export function useDraftCourses(
       syntheticSlideOverrides?: Record<string, any>;
       syntheticAudioMap?: Record<string, string>;
       examQuestions?: any[];
+      onProgress?: (msg: string) => void;
     }
   ) => {
     if (!userId) return { success: false, message: 'Sign in to save drafts.' };
@@ -1208,13 +1278,13 @@ export function useDraftCourses(
       moduleCount: (snapshot.course.modules || []).length,
       theme,
       phase: 'preview',
-    }, snapshot, assets, audioClips);
+    }, snapshot, assets, audioClips, extras?.onProgress);
     if (!result.ok) return { success: false, message: result.error || 'Failed to update draft.' };
     const audioNote = audioClips > 0
       ? ` ${audioClips} narration clip${audioClips === 1 ? '' : 's'} stored.`
       : ' No narration clips were on the course at save time.';
-    const cloudNote = result.error ? ` ${result.error}` : '';
-    return { success: true, message: `Draft updated ✓${audioNote}${cloudNote} Reopen anytime from Save.` };
+    const cloudNote = result.error ? ` ${result.error}` : ' Cloud copy will finish in the background.';
+    return { success: true, message: `Draft updated ✓${audioNote}${cloudNote} You can refresh this tab now.` };
   }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const replaceDesignDraft = useCallback(async (id: string, design: Omit<DesignDraftSnapshot, 'phase'>) => {
@@ -1279,14 +1349,13 @@ export function useDraftCourses(
       setDrafts(next);
       payloadCacheRef.current.set(id, nextSnap);
 
-      const assets = await loadDraftAssets(id).catch(() => ({} as Record<string, string>));
-      const cloud = await upsertCloudDraft(userId, nextMeta, nextSnap, assets, workspaceId);
+      const cloud = await upsertCloudDraft(userId, nextMeta, nextSnap, undefined, workspaceId);
       if (cloud.ok) setCloudEnabled(true);
       return { success: true, message: `Draft renamed to "${trimmed}".` };
     } catch (e: any) {
       return { success: false, message: e?.message || 'Failed to rename draft.' };
     }
-  }, [userId, loadDraftAsync, loadDraftAssets, workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [userId, loadDraftAsync, workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     drafts,

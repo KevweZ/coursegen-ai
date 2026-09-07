@@ -88,8 +88,14 @@ export function mediaRecordToMap(rec?: Record<string, string> | null): MediaMap 
 }
 
 /** Convert a data: (or blob:) URL to a Blob for IndexedDB / storage. */
-export function dataUrlToBlob(dataUrl: string): Blob {
+export async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
   const raw = String(dataUrl || '');
+  if (raw.startsWith('blob:') || raw.startsWith('data:')) {
+    try {
+      const res = await fetch(raw);
+      if (res.ok || raw.startsWith('data:')) return await res.blob();
+    } catch { /* fall through */ }
+  }
   const comma = raw.indexOf(',');
   if (!raw.startsWith('data:') || comma < 0) {
     return new Blob([raw], { type: 'application/octet-stream' });
@@ -123,13 +129,56 @@ export function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
-export function countAudioAssetKeys(assets: Record<string, string> | null | undefined): number {
+export function countAudioAssetKeys(assets: Record<string, string | Blob> | null | undefined): number {
   if (!assets) return 0;
   let n = 0;
   for (const k of Object.keys(assets)) {
     if (/voiceOverUrl$/i.test(k) || k.startsWith('__synthetic__.')) n += 1;
   }
   return n;
+}
+
+/**
+ * Pull live blob:/data: media off the course as Blobs (no base64 round-trip).
+ * Mutates `course` in place (sets those fields to null).
+ */
+export async function extractHeavyMediaToBlobs(
+  course: any,
+  onProgress?: (done: number, total: number) => void,
+): Promise<Record<string, Blob>> {
+  const jobs: Array<{ obj: any; key: string; path: string; url: string }> = [];
+  const walk = (obj: any, path: string) => {
+    if (!obj || typeof obj !== 'object') return;
+    if (Array.isArray(obj)) {
+      for (let i = 0; i < obj.length; i++) walk(obj[i], `${path}[${i}]`);
+      return;
+    }
+    for (const key of Object.keys(obj)) {
+      const val = obj[key];
+      const childPath = path ? `${path}.${key}` : key;
+      if (typeof val === 'string' && (val.startsWith('blob:') || isHeavy(val))) {
+        jobs.push({ obj, key, path: childPath, url: val });
+      } else if (val && typeof val === 'object') {
+        walk(val, childPath);
+      }
+    }
+  };
+  walk(course, '');
+  const out: Record<string, Blob> = {};
+  for (let i = 0; i < jobs.length; i++) {
+    const { obj, key, path, url } = jobs[i];
+    onProgress?.(i + 1, jobs.length);
+    if (i === 0 || i % 2 === 0) {
+      await new Promise<void>(r => setTimeout(r, 0));
+    }
+    try {
+      out[path] = await dataUrlToBlob(url);
+      obj[key] = null;
+    } catch {
+      /* leave in place for later detach / strip */
+    }
+  }
+  return out;
 }
 
 /** Count durable narration clips currently on the course (slide + tab voiceOverUrl). */
