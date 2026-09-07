@@ -88,7 +88,14 @@ export function mediaRecordToMap(rec?: Record<string, string> | null): MediaMap 
 }
 
 export function isAudioAssetPath(path: string): boolean {
-  return /voiceOverUrl$/i.test(path) || /audioUrl$/i.test(path) || path.startsWith('__synthetic__.');
+  return (
+    /voiceOverUrl$/i.test(path)
+    || /audioUrl$/i.test(path)
+    || path.startsWith('__synthetic__.')
+    || path.startsWith('slide:')
+    || path.startsWith('tab:')
+    || path.startsWith('synth:')
+  );
 }
 
 export function mimeForAssetPath(path: string, type?: string): string {
@@ -124,16 +131,7 @@ export function revokeDraftPlayableUrls(draftId: string) {
 /** Turn stored blobs into session-playable object URLs (no base64 round-trip). */
 export function blobsToPlayableUrls(draftId: string, blobs: Record<string, Blob>): Record<string, string> {
   revokeDraftPlayableUrls(draftId);
-  const out: Record<string, string> = {};
-  const created: string[] = [];
-  for (const [path, blob] of Object.entries(blobs || {})) {
-    if (!(blob instanceof Blob) || blob.size < 8) continue;
-    const url = URL.createObjectURL(withAssetMime(path, blob));
-    out[path] = url;
-    created.push(url);
-  }
-  if (created.length) playableUrlsByDraft.set(draftId, created);
-  return out;
+  return addPlayableUrls(draftId, blobs);
 }
 
 /** Convert a data: (or blob:) URL to a Blob for IndexedDB / storage. */
@@ -149,8 +147,11 @@ export async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
       const res = await fetch(raw);
       if (res.ok || raw.startsWith('data:')) {
         const blob = await res.blob();
-        const type = blob.type || headerMime || 'application/octet-stream';
-        return blob.type === type ? blob : new Blob([blob], { type });
+        // Some browsers return an empty Blob from fetch(data:) — parse the payload instead.
+        if (blob.size >= 64 || !raw.startsWith('data:')) {
+          const type = blob.type || headerMime || 'application/octet-stream';
+          return blob.type === type ? blob : new Blob([blob], { type });
+        }
       }
     } catch { /* fall through */ }
   }
@@ -191,9 +192,150 @@ export function countAudioAssetKeys(assets: Record<string, string | Blob> | null
   if (!assets) return 0;
   let n = 0;
   for (const k of Object.keys(assets)) {
-    if (/voiceOverUrl$/i.test(k) || k.startsWith('__synthetic__.')) n += 1;
+    if (isAudioAssetPath(k)) n += 1;
   }
   return n;
+}
+
+export type NarrationRecord = { mime: string; data: ArrayBuffer };
+
+function isPackableAudioUrl(url: unknown): url is string {
+  if (typeof url !== 'string') return false;
+  const u = url.trim();
+  if (u.startsWith('blob:') && u.length > 12) return true;
+  if (u.startsWith('data:') && u.length >= 1500) return true;
+  if (/^https?:\/\//i.test(u) && u.length >= 40) return true;
+  return false;
+}
+
+export async function audioUrlToRecord(url: string): Promise<NarrationRecord | null> {
+  try {
+    const blob = await dataUrlToBlob(url);
+    if (!blob || blob.size < 64) return null;
+    const data = await blob.arrayBuffer();
+    if (data.byteLength < 64) return null;
+    const mime = blob.type && blob.type !== 'application/octet-stream' ? blob.type : 'audio/mpeg';
+    return { mime, data: data.slice(0) };
+  } catch {
+    return null;
+  }
+}
+
+/** Collect narration by slide/tab/synthetic id — independent of JSON path attach. */
+export async function collectNarrationRecords(
+  course: any,
+  syntheticAudioMap?: Record<string, string> | null,
+  onProgress?: (done: number, total: number) => void,
+): Promise<Record<string, NarrationRecord>> {
+  const jobs: Array<{ key: string; url: string }> = [];
+  for (const m of course?.modules || []) {
+    for (const s of m?.slides || []) {
+      if (s?.id && isPackableAudioUrl(s.voiceOverUrl)) {
+        jobs.push({ key: `slide:${s.id}`, url: s.voiceOverUrl });
+      }
+      for (const listKey of ['tabs', 'items'] as const) {
+        for (const item of s?.data?.[listKey] || []) {
+          if (item?.id && isPackableAudioUrl(item.voiceOverUrl)) {
+            jobs.push({ key: `tab:${s.id}:${listKey}:${item.id}`, url: item.voiceOverUrl });
+          }
+        }
+      }
+    }
+  }
+  for (const [id, url] of Object.entries(syntheticAudioMap || {})) {
+    if (id && isPackableAudioUrl(url)) jobs.push({ key: `synth:${id}`, url });
+  }
+  const out: Record<string, NarrationRecord> = {};
+  for (let i = 0; i < jobs.length; i++) {
+    onProgress?.(i + 1, jobs.length);
+    if (i === 0 || i % 2 === 0) await new Promise<void>(r => setTimeout(r, 0));
+    const rec = await audioUrlToRecord(jobs[i].url);
+    if (rec) out[jobs[i].key] = rec;
+  }
+  return out;
+}
+
+export function applyNarrationUrls(
+  course: any,
+  urls: Record<string, string>,
+): { course: any; synthetic: Record<string, string> } {
+  const synthetic: Record<string, string> = {};
+  const slideUrl = new Map<string, string>();
+  const tabUrl = new Map<string, string>();
+  const pathUrl = new Map<string, string>();
+  for (const [k, v] of Object.entries(urls || {})) {
+    if (!v) continue;
+    if (k.startsWith('synth:')) {
+      synthetic[k.slice(6)] = v;
+      continue;
+    }
+    if (k.startsWith('__synthetic__.')) {
+      synthetic[k.slice('__synthetic__.'.length)] = v;
+      continue;
+    }
+    if (k.startsWith('slide:')) {
+      slideUrl.set(k.slice(6), v);
+      continue;
+    }
+    const tab = k.match(/^tab:([^:]+):(tabs|items):(.+)$/);
+    if (tab) {
+      tabUrl.set(`${tab[1]}::${tab[2]}::${tab[3]}`, v);
+      continue;
+    }
+    if (isAudioAssetPath(k) || k.includes('.') || k.includes('[')) {
+      pathUrl.set(k, v);
+    }
+  }
+  if (!course?.modules) return { course, synthetic };
+  const next = {
+    ...course,
+    modules: course.modules.map((m: any) => ({
+      ...m,
+      slides: (m.slides || []).map((s: any) => {
+        let slide = s;
+        const su = s?.id ? slideUrl.get(s.id) : undefined;
+        if (su) slide = { ...slide, voiceOverUrl: su };
+        if (!slide.data || typeof slide.data !== 'object') return slide;
+        let data = slide.data;
+        let changed = false;
+        for (const listKey of ['tabs', 'items'] as const) {
+          if (!Array.isArray(data[listKey])) continue;
+          const list = data[listKey].map((item: any) => {
+            const tu = item?.id && s?.id ? tabUrl.get(`${s.id}::${listKey}::${item.id}`) : undefined;
+            if (!tu) return item;
+            changed = true;
+            return { ...item, voiceOverUrl: tu };
+          });
+          if (changed) data = { ...data, [listKey]: list };
+        }
+        return changed ? { ...slide, data } : slide;
+      }),
+    })),
+  };
+  for (const [path, url] of pathUrl) setByPath(next, path, url);
+  return { course: next, synthetic };
+}
+
+export function addPlayableUrls(draftId: string, blobs: Record<string, Blob>): Record<string, string> {
+  const out: Record<string, string> = {};
+  const created = playableUrlsByDraft.get(draftId) || [];
+  for (const [path, blob] of Object.entries(blobs || {})) {
+    if (!(blob instanceof Blob) || blob.size < 8) continue;
+    const url = URL.createObjectURL(withAssetMime(path, blob));
+    out[path] = url;
+    created.push(url);
+  }
+  if (created.length) playableUrlsByDraft.set(draftId, created);
+  return out;
+}
+
+export function narrationRecordsToBlobs(records: Record<string, NarrationRecord>): Record<string, Blob> {
+  const out: Record<string, Blob> = {};
+  for (const [k, rec] of Object.entries(records || {})) {
+    if (!rec?.data || rec.data.byteLength < 64) continue;
+    out[k] = new Blob([rec.data], { type: rec.mime || 'audio/mpeg' });
+  }
+  return out;
 }
 
 /**

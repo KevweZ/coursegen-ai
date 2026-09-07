@@ -29,7 +29,12 @@ import {
   blobToDataUrl,
   extractHeavyMediaToBlobs,
   withAssetMime,
-  blobsToPlayableUrls,
+  addPlayableUrls,
+  narrationRecordsToBlobs,
+  revokeDraftPlayableUrls,
+  collectNarrationRecords,
+  isAudioAssetPath,
+  type NarrationRecord,
 } from './draftMedia';
 import {
   listCloudDrafts,
@@ -47,13 +52,15 @@ export const MAX_TEAM_DRAFTS = 10;
 export const MAX_ADMIN_DRAFTS = 100;
 const STORAGE_PREFIX = 'nexcourse_drafts_v1_';
 const IDB_NAME = 'nexcourse_drafts_db';
-const IDB_VERSION = 5;
+const IDB_VERSION = 7;
 const STORE_INDEX = 'draft_index';
 const STORE_PAYLOAD = 'draft_payload';
 /** Manifest of per-file blobs (legacy: one fat Record of data-URLs) */
 const STORE_ASSETS = 'draft_assets';
 /** One Blob per image/audio path — avoids a single oversized IDB value */
 const STORE_ASSET_BLOBS = 'draft_asset_blobs';
+/** Narration clips as ArrayBuffer records keyed by slide/tab/synthetic id */
+const STORE_NARRATION = 'draft_narration';
 /** Confirmed deletes — prevents cloud/legacy refresh from resurrecting a draft */
 const STORE_TOMBSTONES = 'draft_tombstones';
 /** @deprecated v1 single-blob store — still read for migration */
@@ -168,6 +175,9 @@ function openDraftsDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(STORE_ASSET_BLOBS)) {
         db.createObjectStore(STORE_ASSET_BLOBS);
+      }
+      if (!db.objectStoreNames.contains(STORE_NARRATION)) {
+        db.createObjectStore(STORE_NARRATION);
       }
       if (!db.objectStoreNames.contains(STORE_TOMBSTONES)) {
         db.createObjectStore(STORE_TOMBSTONES);
@@ -346,6 +356,95 @@ async function writeDraftAssets(
     tx.onabort = () => reject(tx.error || new Error('IDB asset write aborted'));
   });
   return incomingRec;
+}
+
+function narrationKey(userId: string, draftId: string) {
+  return `${payloadKey(userId, draftId)}::`;
+}
+
+async function writeNarrationRecords(
+  userId: string,
+  draftId: string,
+  records: Record<string, NarrationRecord>,
+): Promise<number> {
+  const prefix = narrationKey(userId, draftId);
+  const db = await openDraftsDb();
+  const entries = Object.entries(records || {}).filter(([, rec]) => rec?.data && rec.data.byteLength >= 64);
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_NARRATION, 'readwrite');
+    const store = tx.objectStore(STORE_NARRATION);
+    const cursorReq = store.openCursor();
+    cursorReq.onsuccess = () => {
+      const cursor = cursorReq.result;
+      if (cursor) {
+        if (String(cursor.key).startsWith(prefix)) cursor.delete();
+        cursor.continue();
+        return;
+      }
+      for (const [id, rec] of entries) {
+        store.put(
+          new Blob([rec.data], { type: rec.mime || 'audio/mpeg' }),
+          `${prefix}${id}`,
+        );
+      }
+    };
+    cursorReq.onerror = () => reject(cursorReq.error);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error || new Error('IDB narration write failed'));
+    tx.onabort = () => reject(tx.error || new Error('IDB narration write aborted'));
+  });
+  return entries.length;
+}
+
+async function readNarrationBlobs(userId: string, draftId: string): Promise<Record<string, Blob>> {
+  const prefix = narrationKey(userId, draftId);
+  const out: Record<string, Blob> = {};
+  const db = await openDraftsDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_NARRATION, 'readonly');
+    const req = tx.objectStore(STORE_NARRATION).openCursor();
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) return;
+      const key = String(cursor.key);
+      if (key.startsWith(prefix)) {
+        const val = cursor.value as NarrationRecord | Blob | undefined;
+        const id = key.slice(prefix.length);
+        if (val instanceof Blob && val.size >= 64) {
+          out[id] = val;
+        } else if (val && typeof val === 'object' && !(val instanceof Blob)) {
+          const rec = val as NarrationRecord;
+          if (rec.data && rec.data.byteLength >= 64) {
+            out[id] = new Blob([rec.data], { type: rec.mime || 'audio/mpeg' });
+          }
+        }
+      }
+      cursor.continue();
+    };
+    req.onerror = () => reject(req.error);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  return out;
+}
+
+async function deleteNarrationRecords(userId: string, draftId: string): Promise<void> {
+  const prefix = narrationKey(userId, draftId);
+  const db = await openDraftsDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_NARRATION, 'readwrite');
+    const store = tx.objectStore(STORE_NARRATION);
+    const req = store.openCursor();
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) return;
+      if (String(cursor.key).startsWith(prefix)) cursor.delete();
+      cursor.continue();
+    };
+    req.onerror = () => reject(req.error);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
 }
 
 function parseSnapshotRaw(raw: unknown): DraftSnapshot | null {
@@ -640,6 +739,8 @@ export interface UseDraftCoursesReturn {
   ) => Promise<DraftSnapshot | null>;
   /** Heavy data-URL images for a draft (may be empty for legacy inline payloads) */
   loadDraftAssets: (id: string) => Promise<Record<string, string>>;
+  /** Narration clips keyed by slide:/tab:/synth: — apply before mounting the player */
+  loadDraftNarration: (id: string) => Promise<Record<string, string>>;
   deleteDraft: (id: string) => Promise<void>;
   replacePreviewDraft: (
     id: string,
@@ -813,6 +914,14 @@ export function useDraftCourses(
     }
   ) => {
     extras?.onProgress?.('Preparing draft…');
+    extras?.onProgress?.('Packing narration…');
+    // Pack from the live course object (not a clone) so blob:/data: clips are still fetchable.
+    const narrationRecords = await collectNarrationRecords(
+      course,
+      extras?.syntheticAudioMap,
+      (done, total) => extras?.onProgress?.(`Saving audio ${done} of ${total}…`),
+    );
+
     // structuredClone keeps us from mutating the live editor course
     let working: any;
     try {
@@ -828,7 +937,7 @@ export function useDraftCourses(
       working.examQuestions = extras!.examQuestions;
     }
 
-    const audioClipsOnCourse = countCourseAudioClips(working);
+    const audioClipsOnCourse = countCourseAudioClips(course);
     extras?.onProgress?.('Packing images and audio…');
     const blobAssets = await extractHeavyMediaToBlobs(working, (done, total) => {
       extras?.onProgress?.(`Saving media ${done} of ${total}…`);
@@ -860,10 +969,15 @@ export function useDraftCourses(
     }
 
     const after = approxCourseBytes(working);
-    const assets: Record<string, string | Blob> = { ...blobAssets, ...mediaMapToRecord(media) };
-    const audioClips = audioClipsOnCourse + syntheticAudioIds.length;
+    const assets: Record<string, string | Blob> = {
+      ...blobAssets,
+      ...mediaMapToRecord(media),
+      ...narrationRecordsToBlobs(narrationRecords),
+    };
+    const audioClips = Math.max(audioClipsOnCourse, Object.keys(narrationRecords).length) + syntheticAudioIds.length;
     console.log(
       `[DraftCourses] Media split for save: ${Object.keys(assets).length} asset(s), ` +
+      `${Object.keys(narrationRecords).length} narration buffer(s), ` +
       `${Math.round(before / 1024)}KB → ${Math.round(after / 1024)}KB shell` +
       `, ${audioClips} narration clip(s)` +
       (syntheticAudioIds.length ? `, ${syntheticAudioIds.length} synthetic audio` : '')
@@ -878,7 +992,7 @@ export function useDraftCourses(
       syntheticAudioIds,
       examQuestions: Array.isArray(extras?.examQuestions) ? extras!.examQuestions : working.examQuestions,
     };
-    return { snapshot, assets, draftId, audioClips };
+    return { snapshot, assets, draftId, audioClips, narrationRecords };
   };
 
   const persistNew = async (
@@ -887,12 +1001,13 @@ export function useDraftCourses(
     assets?: Record<string, string | Blob>,
     expectedAudio = 0,
     onProgress?: (msg: string) => void,
-  ): Promise<{ ok: boolean; error?: string }> => {
+    narrationRecords?: Record<string, NarrationRecord>,
+  ): Promise<{ ok: boolean; error?: string; packedNarration?: number }> => {
     if (!userId) return { ok: false, error: 'Sign in to save drafts.' };
     try {
       const t0 = performance.now();
-      const packedAudio = countAudioAssetKeys(assets);
-      if (expectedAudio > 0 && packedAudio === 0) {
+      const packedNarration = await writeNarrationRecords(userId, meta.id, narrationRecords || {});
+      if (expectedAudio > 0 && packedNarration === 0) {
         return {
           ok: false,
           error: 'Narration was generated but could not be packed for storage. Try saving again.',
@@ -924,7 +1039,7 @@ export function useDraftCourses(
       }
 
       console.log(`[DraftCourses] Saved "${meta.courseTitle}" in ${Math.round(performance.now() - t0)}ms`);
-      return { ok: true, error: cloudNote || undefined };
+      return { ok: true, error: cloudNote || undefined, packedNarration };
     } catch (e: any) {
       console.error('[DraftCourses] Save failed:', e);
       return {
@@ -943,31 +1058,19 @@ export function useDraftCourses(
     assets?: Record<string, string | Blob>,
     expectedAudio = 0,
     onProgress?: (msg: string) => void,
-  ): Promise<{ ok: boolean; error?: string }> => {
+    narrationRecords?: Record<string, NarrationRecord>,
+  ): Promise<{ ok: boolean; error?: string; packedNarration?: number }> => {
     if (!userId) return { ok: false, error: 'Sign in to save drafts.' };
     try {
-      const packedAudio = countAudioAssetKeys(assets);
-      if (expectedAudio > 0 && packedAudio === 0) {
+      const packedNarration = await writeNarrationRecords(userId, id, narrationRecords || {});
+      if (expectedAudio > 0 && packedNarration === 0) {
         return {
           ok: false,
           error: 'Narration was generated but could not be packed for storage. Try Update Draft again.',
         };
       }
-      // Write audio/images FIRST. A lean payload with no matching assets is how
-      // previous saves "succeeded" and then reopened silent.
       if (assets && Object.keys(assets).length) {
-        const written = await writeDraftAssets(userId, id, assets, onProgress);
-        if (expectedAudio > 0 && countAudioAssetKeys(written) === 0) {
-          return {
-            ok: false,
-            error: 'Could not store narration audio in this browser (storage may be full). Delete unused drafts, then Update Draft again.',
-          };
-        }
-      } else if (expectedAudio > 0) {
-        return {
-          ok: false,
-          error: 'Narration was generated but no audio files were packed. Try Update Draft again.',
-        };
+        await writeDraftAssets(userId, id, assets, onProgress);
       }
       await idbPut(STORE_PAYLOAD, payloadKey(userId, id), snapshot);
       const nextMeta = metaFromDraft({ ...draftsRef.current.find(d => d.id === id), ...metaPatch, id } as CourseDraft);
@@ -990,6 +1093,7 @@ export function useDraftCourses(
       }
       return {
         ok: true,
+        packedNarration,
         error: cloud.ok
           ? undefined
           : `Saved on this device. Cloud sync failed (${cloud.error || 'unavailable'}).`,
@@ -1029,7 +1133,7 @@ export function useDraftCourses(
     }
 
     const id = makeDraftId();
-    const { snapshot, assets, audioClips } = await preparePreviewSnapshot(course, playerConfig, theme, id, extras);
+    const { snapshot, assets, audioClips, narrationRecords } = await preparePreviewSnapshot(course, playerConfig, theme, id, extras);
     // titleOverride names the library slot only — keep the in-course title unchanged
     const courseTitle = (extras?.titleOverride || snapshot.course?.title || 'Untitled Course').trim()
       || 'Untitled Course';
@@ -1042,8 +1146,11 @@ export function useDraftCourses(
       theme,
       phase: 'preview',
     };
-    const result = await persistNew(meta, snapshot, assets, audioClips, extras?.onProgress);
-    const audioNote = audioClips > 0 ? ` ${audioClips} narration clip${audioClips === 1 ? '' : 's'} stored.` : '';
+    const result = await persistNew(meta, snapshot, assets, audioClips, extras?.onProgress, narrationRecords);
+    const stored = result.packedNarration ?? audioClips;
+    const audioNote = stored > 0
+      ? ` ${stored} narration clip${stored === 1 ? '' : 's'} stored.`
+      : ' No narration clips were on the course at save time.';
     if (!result.ok) return { success: false, message: result.error || 'Failed to save draft.' };
     if (result.error?.includes('local only')) {
       return {
@@ -1212,7 +1319,7 @@ export function useDraftCourses(
               for (const [k, v] of Object.entries(cloudAssets)) {
                 try { fromCloud[k] = await dataUrlToBlob(v); } catch { /* skip */ }
               }
-              return blobsToPlayableUrls(id, fromCloud);
+              return addPlayableUrls(id, fromCloud);
             }
           }
         } catch (cloudErr) {
@@ -1222,9 +1329,37 @@ export function useDraftCourses(
       if (!Object.keys(blobs).length) {
         return await readDraftAssets(userId, id);
       }
-      return blobsToPlayableUrls(id, blobs);
+      return addPlayableUrls(id, blobs);
     } catch (e) {
       console.warn('[DraftCourses] loadDraftAssets failed:', e);
+      return {};
+    }
+  }, [userId]);
+
+  const loadDraftNarration = useCallback(async (id: string): Promise<Record<string, string>> => {
+    if (!userId) return {};
+    try {
+      let blobs = await readNarrationBlobs(userId, id);
+      if (!Object.keys(blobs).length) {
+        const assets = await readDraftAssetBlobs(userId, id);
+        const fallback: Record<string, Blob> = {};
+        for (const [k, v] of Object.entries(assets)) {
+          if (
+            k.startsWith('slide:')
+            || k.startsWith('tab:')
+            || k.startsWith('synth:')
+            || k.startsWith('__synthetic__.')
+            || isAudioAssetPath(k)
+          ) {
+            fallback[k] = v;
+          }
+        }
+        blobs = fallback;
+      }
+      revokeDraftPlayableUrls(id);
+      return addPlayableUrls(id, blobs);
+    } catch (e) {
+      console.warn('[DraftCourses] loadDraftNarration failed:', e);
       return {};
     }
   }, [userId]);
@@ -1261,6 +1396,9 @@ export function useDraftCourses(
     try {
       await idbDelete(STORE_ASSETS, payloadKey(userId, id));
     } catch { /* continue */ }
+    try {
+      await deleteNarrationRecords(userId, id);
+    } catch { /* continue */ }
 
     await purgeLegacyDraft(userId, id);
 
@@ -1288,7 +1426,7 @@ export function useDraftCourses(
     }
   ) => {
     if (!userId) return { success: false, message: 'Sign in to save drafts.' };
-    const { snapshot, assets, audioClips } = await preparePreviewSnapshot(course, playerConfig, theme, id, extras);
+    const { snapshot, assets, audioClips, narrationRecords } = await preparePreviewSnapshot(course, playerConfig, theme, id, extras);
     const result = await persistReplace(id, {
       savedAt: new Date().toISOString(),
       courseTitle: snapshot.course.title || 'Untitled Course',
@@ -1296,10 +1434,11 @@ export function useDraftCourses(
       moduleCount: (snapshot.course.modules || []).length,
       theme,
       phase: 'preview',
-    }, snapshot, assets, audioClips, extras?.onProgress);
+    }, snapshot, assets, audioClips, extras?.onProgress, narrationRecords);
     if (!result.ok) return { success: false, message: result.error || 'Failed to update draft.' };
-    const audioNote = audioClips > 0
-      ? ` ${audioClips} narration clip${audioClips === 1 ? '' : 's'} stored.`
+    const stored = result.packedNarration ?? audioClips;
+    const audioNote = stored > 0
+      ? ` ${stored} narration clip${stored === 1 ? '' : 's'} stored.`
       : ' No narration clips were on the course at save time.';
     const cloudNote = result.error ? ` ${result.error}` : ' Cloud copy will finish in the background.';
     return { success: true, message: `Draft updated ✓${audioNote}${cloudNote} You can refresh this tab now.` };
@@ -1388,6 +1527,7 @@ export function useDraftCourses(
     loadDraft,
     loadDraftAsync,
     loadDraftAssets,
+    loadDraftNarration,
     deleteDraft,
     replacePreviewDraft,
     replaceDesignDraft,

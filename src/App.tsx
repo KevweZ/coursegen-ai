@@ -135,8 +135,10 @@ import { useDraftCourses } from './lib/useDraftCourses';
 import type { DesignDraftSnapshot } from './lib/useDraftCourses';
 import {
   attachHeavyMedia,
+  applyNarrationUrls,
   mediaRecordToMap,
   takeLegacyMedia,
+  isAudioAssetPath,
 } from './lib/draftMedia';
 import {
   ROUTES,
@@ -810,6 +812,7 @@ export default function App() {
     draftsAsAdmin,
     draftWorkspaceId
   );
+  const syntheticAudioMapRef = React.useRef<Record<string, string>>({});
   const [showDraftsPanel, setShowDraftsPanel] = React.useState(false);
   const [showViewDraftsModal, setShowViewDraftsModal] = React.useState(false);
   const [isSyncingDrafts, setIsSyncingDrafts] = React.useState(false);
@@ -846,14 +849,15 @@ export default function App() {
   const draftSaveExtras = (onProgress?: (msg: string) => void) => ({
     learningObjectives,
     syntheticSlideOverrides,
-    syntheticAudioMap,
+    syntheticAudioMap: syntheticAudioMapRef.current,
     examQuestions,
     ...(onProgress ? { onProgress } : {}),
   });
 
   /** Always create a new library slot (never overwrites the active draft). */
   const handleSaveDraft = async () => {
-    if (!course) {
+    const live = courseRef.current || course;
+    if (!live) {
       showDraftMessage('Nothing to save — open or generate a course first.');
       return;
     }
@@ -864,8 +868,8 @@ export default function App() {
     setIsSavingDraft(true);
     showDraftMessage('Saving new draft…');
     try {
-      const titleOverride = allocateUniqueDraftTitle(course.title || 'Untitled Course');
-      const result = await draftManager.savePreviewDraft(course, playerConfig, theme, {
+      const titleOverride = allocateUniqueDraftTitle(live.title || 'Untitled Course');
+      const result = await draftManager.savePreviewDraft(live, playerConfig, theme, {
         ...draftSaveExtras(showDraftMessage),
         titleOverride,
       });
@@ -888,7 +892,8 @@ export default function App() {
 
   /** Overwrite the currently open draft (or fall back to a new slot). */
   const handleUpdateActiveDraft = async () => {
-    if (!course) {
+    const live = courseRef.current || course;
+    if (!live) {
       showDraftMessage('Nothing to save — open or generate a course first.');
       return;
     }
@@ -902,7 +907,7 @@ export default function App() {
       const meta = draftManager.drafts.find(d => d.id === activeDraftId);
       // Do not loadDraftAsync here — that used to race and overwrite freshly saved audio.
       if (!meta || meta.phase === 'preview') {
-        const updated = await draftManager.replacePreviewDraft(activeDraftId, course, playerConfig, theme, draftSaveExtras(showDraftMessage));
+        const updated = await draftManager.replacePreviewDraft(activeDraftId, live, playerConfig, theme, draftSaveExtras(showDraftMessage));
         showDraftMessage(
           updated.success
             ? `${updated.message} You can refresh safely — reopen from Save.`
@@ -917,8 +922,8 @@ export default function App() {
         return;
       }
       showDraftMessage('Saving new draft…');
-      const titleOverride = allocateUniqueDraftTitle(course.title || 'Untitled Course');
-      const result = await draftManager.savePreviewDraft(course, playerConfig, theme, {
+      const titleOverride = allocateUniqueDraftTitle(live.title || 'Untitled Course');
+      const result = await draftManager.savePreviewDraft(live, playerConfig, theme, {
         ...draftSaveExtras(showDraftMessage),
         titleOverride,
       });
@@ -1069,7 +1074,10 @@ export default function App() {
     if (snapshot.syntheticSlideOverrides && typeof snapshot.syntheticSlideOverrides === 'object') {
       setSyntheticSlideOverrides(snapshot.syntheticSlideOverrides);
     }
-    setSyntheticAudioMap({});
+
+    const narrUrls = await draftManager.loadDraftNarration(id);
+    const applied = applyNarrationUrls(shell, narrUrls);
+    setSyntheticAudioMap(applied.synthetic);
     // Authoring preview: always allow free navigation so drafts aren't "frozen"
     // (linear/restricted + interaction gates make the player feel like a screenshot).
     setNavigationMode('free');
@@ -1086,9 +1094,9 @@ export default function App() {
     setScenarioCompleted(false);
     setCourseBg(null);
 
-    // One commit with the full lean course — progressive stub hydration left a non-interactive shell
-    setCourse(shell);
-    setOriginalCourse(shell);
+    // Restore narration onto the shell before first paint so refresh isn't silent
+    setCourse(applied.course);
+    setOriginalCourse(applied.course);
     // Restore pre-built mastery quiz questions (never regenerate on Begin)
     const restoredExamQs =
       (Array.isArray((shell as any).examQuestions) && (shell as any).examQuestions) ||
@@ -1109,7 +1117,7 @@ export default function App() {
     navigateTo(ROUTES.preview(id));
     showDraftMessage('Draft loaded ✓');
 
-    // Images + audio after first paint — idle so Nav/Next stay responsive
+    // Images after first paint — do not re-apply audio from the lean shell (that wiped narration).
     const attachImages = async () => {
       try {
         await new Promise<void>(r => setTimeout(r, 100));
@@ -1117,43 +1125,73 @@ export default function App() {
         const media = mediaRecordToMap(stored);
         legacyMedia.forEach((v, k) => { if (!media.has(k)) media.set(k, v); });
 
-        // Synthetic cover/objectives/module audio lives under __synthetic__.* keys
         const synthRestored: Record<string, string> = {};
+        const imageMedia = new Map<string, string>();
+        const audioMedia = new Map<string, string>();
+        const idNarration: Record<string, string> = {};
         for (const [k, v] of [...media.entries()]) {
           if (k.startsWith('__synthetic__.')) {
             synthRestored[k.slice('__synthetic__.'.length)] = v;
-            media.delete(k);
+            continue;
           }
+          if (k.startsWith('slide:') || k.startsWith('tab:') || k.startsWith('synth:')) {
+            idNarration[k] = v;
+            continue;
+          }
+          if (isAudioAssetPath(k)) {
+            audioMedia.set(k, v);
+            continue;
+          }
+          imageMedia.set(k, v);
         }
         if (Object.keys(synthRestored).length) {
-          setSyntheticAudioMap(synthRestored);
+          setSyntheticAudioMap(prev => ({ ...synthRestored, ...prev }));
         }
 
-        if (!media.size) {
-          const missingAudio = (shell.modules || []).some((m: any) =>
+        let working = applied.course;
+        if (Object.keys(idNarration).length && Object.keys(narrUrls).length === 0) {
+          const more = applyNarrationUrls(working, idNarration);
+          working = more.course;
+          if (Object.keys(more.synthetic).length) {
+            setSyntheticAudioMap(prev => ({ ...more.synthetic, ...prev }));
+          }
+        }
+
+        if (!imageMedia.size && !audioMedia.size) {
+          const missingAudio = (working.modules || []).some((m: any) =>
             (m.slides || []).some((s: any) =>
               !slideSkipsNarration(s) && (s.voiceOverText || s.narration) && !hasLiveNarrationUrl(s.voiceOverUrl)
             )
           );
-          if (missingAudio && voiceOverEnabled) {
+          if (missingAudio && voiceOverEnabled && !Object.keys(applied.synthetic).length && !Object.keys(synthRestored).length) {
             showDraftMessage(
               'Draft loaded — narration was not saved with this draft. Use Edit → Regenerate all narration to restore audio.'
             );
           }
+          if (working !== applied.course) {
+            setCourse(working);
+            setOriginalCourse(working);
+          }
           return;
         }
 
-        const keys = [...media.keys()].sort((a, b) => {
+        const keys = [...imageMedia.keys()];
+        if (Object.keys(narrUrls).length === 0) {
+          keys.push(...audioMedia.keys());
+        }
+        keys.sort((a, b) => {
           const au = /voiceOverUrl$|audioUrl$|^__synthetic__\./i.test(a) ? 0 : 1;
           const bu = /voiceOverUrl$|audioUrl$|^__synthetic__\./i.test(b) ? 0 : 1;
           return au - bu;
         });
-        let working = shell;
         const BATCH = 2;
+        const attachMap = Object.keys(narrUrls).length === 0
+          ? new Map([...imageMedia, ...audioMedia])
+          : imageMedia;
         for (let i = 0; i < keys.length; i += BATCH) {
           const subset = new Map<string, string>();
           for (const k of keys.slice(i, i + BATCH)) {
-            const v = media.get(k);
+            const v = attachMap.get(k);
             if (v) subset.set(k, v);
           }
           if (!subset.size) continue;
@@ -1170,7 +1208,7 @@ export default function App() {
           if (working.coverImage) setCourseBg(working.coverImage);
           await new Promise<void>(r => setTimeout(r, 32));
         }
-        console.log(`[Drafts] Attached ${media.size} media asset(s) after preview open`);
+        console.log(`[Drafts] Attached ${attachMap.size} media asset(s) after preview open`);
 
         // Remove auto-promoted floating overlays that broke tab layouts
         try {
@@ -1191,7 +1229,7 @@ export default function App() {
             !slideSkipsNarration(s) && (s.voiceOverText || s.narration) && !hasLiveNarrationUrl(s.voiceOverUrl)
           )
         );
-        if (missingAudio && voiceOverEnabled && !Object.keys(synthRestored).length) {
+        if (missingAudio && voiceOverEnabled && !Object.keys(applied.synthetic).length && !Object.keys(synthRestored).length) {
           showDraftMessage(
             'Draft loaded — some narration is missing. Use Edit → Regenerate all narration to restore audio.'
           );
@@ -1257,11 +1295,12 @@ export default function App() {
   };
 
   const handleReplaceDraft = async (id: string) => {
-    if (!course) return;
+    const live = courseRef.current || course;
+    if (!live) return;
     setIsSavingDraft(true);
     showDraftMessage('Overwriting draft…');
     try {
-      const result = await draftManager.replacePreviewDraft(id, course, playerConfig, theme, draftSaveExtras(showDraftMessage));
+      const result = await draftManager.replacePreviewDraft(id, live, playerConfig, theme, draftSaveExtras(showDraftMessage));
       showDraftMessage(result.message);
       if (result.success) {
         setActiveDraftId(id);
@@ -1915,6 +1954,7 @@ export default function App() {
       ? scormRt.syntheticAudioMap
       : {}
   );
+  syntheticAudioMapRef.current = syntheticAudioMap;
   // Closed captions toggle
   const [showCC, setShowCC] = useState(false);
 
