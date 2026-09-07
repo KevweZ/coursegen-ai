@@ -3,7 +3,7 @@
  * then re-attach images after the preview is visible.
  */
 
-import { hasPlayableNarrationUrl } from './narrationAudio';
+import { hasLiveNarrationUrl } from './narrationAudio';
 
 const HEAVY_RE = /^data:/i;
 const HEAVY_MIN = 1500; // chars — skip tiny placeholders
@@ -87,13 +87,71 @@ export function mediaRecordToMap(rec?: Record<string, string> | null): MediaMap 
   return map;
 }
 
+export function isAudioAssetPath(path: string): boolean {
+  return /voiceOverUrl$/i.test(path) || /audioUrl$/i.test(path) || path.startsWith('__synthetic__.');
+}
+
+export function mimeForAssetPath(path: string, type?: string): string {
+  const t = String(type || '').toLowerCase();
+  if (t && t !== 'application/octet-stream' && t !== 'application/json') return String(type);
+  if (isAudioAssetPath(path) || t.includes('mpeg') || t.includes('mp3') || t.includes('audio')) {
+    return 'audio/mpeg';
+  }
+  if (t.includes('png') || /coverImage|imageUrl|\.png/i.test(path)) return 'image/png';
+  if (t.includes('jpeg') || t.includes('jpg') || /\.jpe?g/i.test(path)) return 'image/jpeg';
+  if (t.includes('gif')) return 'image/gif';
+  if (t.includes('webp')) return 'image/webp';
+  return String(type || 'application/octet-stream');
+}
+
+export function withAssetMime(path: string, blob: Blob): Blob {
+  const type = mimeForAssetPath(path, blob.type);
+  if (blob.type === type) return blob;
+  return new Blob([blob], { type });
+}
+
+const playableUrlsByDraft = new Map<string, string[]>();
+
+export function revokeDraftPlayableUrls(draftId: string) {
+  const urls = playableUrlsByDraft.get(draftId);
+  if (!urls?.length) return;
+  for (const u of urls) {
+    try { URL.revokeObjectURL(u); } catch { /* ok */ }
+  }
+  playableUrlsByDraft.delete(draftId);
+}
+
+/** Turn stored blobs into session-playable object URLs (no base64 round-trip). */
+export function blobsToPlayableUrls(draftId: string, blobs: Record<string, Blob>): Record<string, string> {
+  revokeDraftPlayableUrls(draftId);
+  const out: Record<string, string> = {};
+  const created: string[] = [];
+  for (const [path, blob] of Object.entries(blobs || {})) {
+    if (!(blob instanceof Blob) || blob.size < 8) continue;
+    const url = URL.createObjectURL(withAssetMime(path, blob));
+    out[path] = url;
+    created.push(url);
+  }
+  if (created.length) playableUrlsByDraft.set(draftId, created);
+  return out;
+}
+
 /** Convert a data: (or blob:) URL to a Blob for IndexedDB / storage. */
 export async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
   const raw = String(dataUrl || '');
+  let headerMime = '';
+  if (raw.startsWith('data:')) {
+    const comma = raw.indexOf(',');
+    if (comma > 5) headerMime = raw.slice(5, comma).split(';')[0] || '';
+  }
   if (raw.startsWith('blob:') || raw.startsWith('data:')) {
     try {
       const res = await fetch(raw);
-      if (res.ok || raw.startsWith('data:')) return await res.blob();
+      if (res.ok || raw.startsWith('data:')) {
+        const blob = await res.blob();
+        const type = blob.type || headerMime || 'application/octet-stream';
+        return blob.type === type ? blob : new Blob([blob], { type });
+      }
     } catch { /* fall through */ }
   }
   const comma = raw.indexOf(',');
@@ -172,7 +230,7 @@ export async function extractHeavyMediaToBlobs(
       await new Promise<void>(r => setTimeout(r, 0));
     }
     try {
-      out[path] = await dataUrlToBlob(url);
+      out[path] = withAssetMime(path, await dataUrlToBlob(url));
       obj[key] = null;
     } catch {
       /* leave in place for later detach / strip */
@@ -186,10 +244,10 @@ export function countCourseAudioClips(course: any): number {
   let n = 0;
   for (const m of course?.modules || []) {
     for (const s of m?.slides || []) {
-      if (hasPlayableNarrationUrl(s?.voiceOverUrl)) n += 1;
+      if (hasLiveNarrationUrl(s?.voiceOverUrl)) n += 1;
       for (const key of ['tabs', 'items'] as const) {
         for (const item of s?.data?.[key] || []) {
-          if (hasPlayableNarrationUrl(item?.voiceOverUrl)) n += 1;
+          if (hasLiveNarrationUrl(item?.voiceOverUrl)) n += 1;
         }
       }
     }

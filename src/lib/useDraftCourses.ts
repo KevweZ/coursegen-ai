@@ -28,6 +28,8 @@ import {
   dataUrlToBlob,
   blobToDataUrl,
   extractHeavyMediaToBlobs,
+  withAssetMime,
+  blobsToPlayableUrls,
 } from './draftMedia';
 import {
   listCloudDrafts,
@@ -268,26 +270,30 @@ async function readDraftAssetBlobs(userId: string, draftId: string): Promise<Rec
   const key = payloadKey(userId, draftId);
   const existing = await idbGet<any>(STORE_ASSETS, key);
   const out: Record<string, Blob> = {};
-  if (isAssetManifest(existing)) {
-    const collected: Record<string, unknown> = {};
-    const db = await openDraftsDb();
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(STORE_ASSET_BLOBS, 'readonly');
-      const store = tx.objectStore(STORE_ASSET_BLOBS);
-      for (const path of existing.paths) {
-        const req = store.get(assetBlobKey(key, path));
-        req.onsuccess = () => {
-          collected[path] = req.result;
-        };
-      }
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
-    for (const [path, val] of Object.entries(collected)) {
-      if (val instanceof Blob && val.size > 0) out[path] = val;
+  if (!isAssetManifest(existing)) return out;
+  const db = await openDraftsDb();
+  const pending: Promise<void>[] = [];
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_ASSET_BLOBS, 'readonly');
+    const store = tx.objectStore(STORE_ASSET_BLOBS);
+    for (const path of existing.paths) {
+      if (typeof path !== 'string') continue;
+      const req = store.get(assetBlobKey(key, path));
+      req.onsuccess = () => {
+        const val = req.result;
+        if (!(val instanceof Blob) || val.size <= 0) return;
+        const type = val.type;
+        pending.push(
+          val.arrayBuffer().then(buf => {
+            if (buf.byteLength > 0) out[path] = withAssetMime(path, new Blob([buf], { type }));
+          }).catch(() => { /* skip corrupt blob */ })
+        );
+      };
     }
-    return out;
-  }
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  await Promise.all(pending);
   return out;
 }
 
@@ -321,7 +327,7 @@ async function writeDraftAssets(
     }
     converted.push({
       path,
-      blob: val instanceof Blob ? val : await dataUrlToBlob(val),
+      blob: withAssetMime(path, val instanceof Blob ? val : await dataUrlToBlob(val)),
     });
   }
 
@@ -1194,17 +1200,29 @@ export function useDraftCourses(
   const loadDraftAssets = useCallback(async (id: string): Promise<Record<string, string>> => {
     if (!userId) return {};
     try {
-      const local = await readDraftAssets(userId, id);
-      if (Object.keys(local).length) return local;
-
-      const cloudAssets = await downloadCloudAssets(userId, id);
-      if (Object.keys(cloudAssets).length) {
+      let blobs = await readDraftAssetBlobs(userId, id);
+      if (countAudioAssetKeys(blobs) === 0) {
         try {
-          await writeDraftAssets(userId, id, cloudAssets);
-        } catch { /* ok */ }
-        return cloudAssets;
+          const cloudAssets = await downloadCloudAssets(userId, id);
+          if (Object.keys(cloudAssets).length) {
+            await writeDraftAssets(userId, id, { ...blobs, ...cloudAssets });
+            blobs = await readDraftAssetBlobs(userId, id);
+            if (!Object.keys(blobs).length) {
+              const fromCloud: Record<string, Blob> = {};
+              for (const [k, v] of Object.entries(cloudAssets)) {
+                try { fromCloud[k] = await dataUrlToBlob(v); } catch { /* skip */ }
+              }
+              return blobsToPlayableUrls(id, fromCloud);
+            }
+          }
+        } catch (cloudErr) {
+          console.warn('[DraftCourses] Cloud media fallback failed:', cloudErr);
+        }
       }
-      return {};
+      if (!Object.keys(blobs).length) {
+        return await readDraftAssets(userId, id);
+      }
+      return blobsToPlayableUrls(id, blobs);
     } catch (e) {
       console.warn('[DraftCourses] loadDraftAssets failed:', e);
       return {};

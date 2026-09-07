@@ -79,7 +79,7 @@ import {
   SORTING_REORDER_HINT,
 } from './lib/knowledgeCheckOst';
 import { slideSkipsNarration } from './lib/enablingCoverage';
-import { hasPlayableNarrationUrl } from './lib/narrationAudio';
+import { hasLiveNarrationUrl } from './lib/narrationAudio';
 import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft, generateMasteryExam } from './services/aiService';
 import { createScormPackage, ScormVersion } from './services/scormService';
 import { FlashcardGrid } from './components/FlashcardGrid';
@@ -1132,7 +1132,7 @@ export default function App() {
         if (!media.size) {
           const missingAudio = (shell.modules || []).some((m: any) =>
             (m.slides || []).some((s: any) =>
-              !slideSkipsNarration(s) && (s.voiceOverText || s.narration) && !hasPlayableNarrationUrl(s.voiceOverUrl)
+              !slideSkipsNarration(s) && (s.voiceOverText || s.narration) && !hasLiveNarrationUrl(s.voiceOverUrl)
             )
           );
           if (missingAudio && voiceOverEnabled) {
@@ -1143,7 +1143,11 @@ export default function App() {
           return;
         }
 
-        const keys = [...media.keys()];
+        const keys = [...media.keys()].sort((a, b) => {
+          const au = /voiceOverUrl$|audioUrl$|^__synthetic__\./i.test(a) ? 0 : 1;
+          const bu = /voiceOverUrl$|audioUrl$|^__synthetic__\./i.test(b) ? 0 : 1;
+          return au - bu;
+        });
         let working = shell;
         const BATCH = 2;
         for (let i = 0; i < keys.length; i += BATCH) {
@@ -1184,7 +1188,7 @@ export default function App() {
 
         const missingAudio = (working.modules || []).some((m: any) =>
           (m.slides || []).some((s: any) =>
-            !slideSkipsNarration(s) && (s.voiceOverText || s.narration) && !hasPlayableNarrationUrl(s.voiceOverUrl)
+            !slideSkipsNarration(s) && (s.voiceOverText || s.narration) && !hasLiveNarrationUrl(s.voiceOverUrl)
           )
         );
         if (missingAudio && voiceOverEnabled && !Object.keys(synthRestored).length) {
@@ -1407,6 +1411,7 @@ export default function App() {
   const [course, setCourse] = useState<any>(isScormPlayer ? (window as any).__COURSE_DATA__ : null);
   /** Always-current ref so Save Changes uses the latest course even in stale closures */
   const courseRef = useRef<any>(null);
+  courseRef.current = course;
   const [outlineDraft, setOutlineDraft] = useState<CourseOutlineDraft | null>(null);
   /** Foundation snapshot that produced `outlineDraft` — drift means structure is stale. */
   const [outlineSourceFingerprint, setOutlineSourceFingerprint] = useState<string | null>(null);
@@ -1675,7 +1680,7 @@ export default function App() {
       setShowPlayerProperties(false);
       setIsSandboxMode(false);
       setMobileDesignDemo(false);
-      if (course) setStep('preview');
+      if (courseRef.current) setStep('preview');
       else { navigateTo(ROUTES.upload, true); setStep('home'); }
       return;
     }
@@ -1763,7 +1768,7 @@ export default function App() {
       navigateTo(ROUTES.upload, true);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftManager, isAdmin, course]);
+  }, [draftManager, isAdmin]);
 
   const pathBootstrappedForUser = React.useRef<string | null>(null);
 
@@ -2570,7 +2575,7 @@ export default function App() {
     }
     const tabs = currentSlide.data?.tabs || currentSlide.data?.items || [];
     const tab = (tabs || []).find((t: any) => t.id === tabId);
-    if (hasPlayableNarrationUrl(tab?.voiceOverUrl)) {
+    if (hasLiveNarrationUrl(tab?.voiceOverUrl)) {
       setActiveTabAudioUrl(tab.voiceOverUrl);
       const script = String(tab.voiceOverText || tab.narration || '').trim();
       setActiveTabNarrationText(script || null);
@@ -2590,10 +2595,10 @@ export default function App() {
       // Knowledge checks / mastery quiz: silent, same as Quiz Questions
       voiceOverEnabled && !slideSkipsNarration(currentSlide)
         ? (
-            (hasPlayableNarrationUrl(activeTabAudioUrl) ? activeTabAudioUrl : null)
-            || (hasPlayableNarrationUrl(currentSlide.voiceOverUrl) ? currentSlide.voiceOverUrl : null)
-            || (hasPlayableNarrationUrl((currentSlide as any).audioUrl) ? (currentSlide as any).audioUrl : null)
-            || (hasPlayableNarrationUrl(currentSyntheticUrl) ? currentSyntheticUrl : null)
+            (hasLiveNarrationUrl(activeTabAudioUrl) ? activeTabAudioUrl : null)
+            || (hasLiveNarrationUrl(currentSlide.voiceOverUrl) ? currentSlide.voiceOverUrl : null)
+            || (hasLiveNarrationUrl((currentSlide as any).audioUrl) ? (currentSlide as any).audioUrl : null)
+            || (hasLiveNarrationUrl(currentSyntheticUrl) ? currentSyntheticUrl : null)
           )
         : null,
       null  // ttsText always null: slides are silent while AI audio loads, then auto-play

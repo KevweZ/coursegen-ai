@@ -6,11 +6,19 @@ export function hasPlayableNarrationUrl(url: unknown): boolean {
   const u = url.trim();
   if (u.startsWith('blob:')) return false;
   // Real MP3 data URLs are tens of KB. Short leftovers in the draft shell are not playable.
-  if (u.startsWith('data:audio') || u.startsWith('data:application/octet-stream')) {
+  if (u.startsWith('data:audio') || u.startsWith('data:application/octet-stream') || u.startsWith('data:;')) {
     return u.length >= 2000;
   }
   if (/^https?:\/\//i.test(u) && u.length >= 40) return true;
   return false;
+}
+
+/** True when audio can play in this session (includes blob: object URLs restored from IndexedDB). */
+export function hasLiveNarrationUrl(url: unknown): boolean {
+  if (typeof url !== 'string') return false;
+  const u = url.trim();
+  if (u.startsWith('blob:') && u.length > 12) return true;
+  return hasPlayableNarrationUrl(u);
 }
 
 function stripMarkup(raw: string): string {
