@@ -1,20 +1,42 @@
 /**
- * Session cache of narration MP3 bytes, filled when TTS clips arrive.
- * Save writes this store instead of re-fetching huge data: URLs off the course.
+ * Narration MP3 bytes: in-memory map + IndexedDB that is written as each
+ * TTS clip arrives (not only at Save). Update Draft copies this store onto
+ * the draft id so reopen does not depend on walking huge data: URLs.
  */
 
 import type { NarrationRecord } from './draftMedia';
 import { audioUrlToRecord } from './draftMedia';
 
-const cache = new Map<string, NarrationRecord>();
+const G = globalThis as any;
+const CACHE_KEY = '__nexcourseNarrationCache';
+const SCOPE_KEY = '__nexcourseNarrationScope';
+const PENDING_KEY = '__nexcourseNarrationPending';
+
+function memoryMap(): Map<string, NarrationRecord> {
+  if (!G[CACHE_KEY]) G[CACHE_KEY] = new Map<string, NarrationRecord>();
+  return G[CACHE_KEY] as Map<string, NarrationRecord>;
+}
+
+function pendingWrites(): Promise<void>[] {
+  if (!G[PENDING_KEY]) G[PENDING_KEY] = [];
+  return G[PENDING_KEY] as Promise<void>[];
+}
+
+export function setLiveNarrationScope(scope: string | null | undefined) {
+  G[SCOPE_KEY] = String(scope || 'pending');
+}
+
+export function getLiveNarrationScope(): string {
+  return String(G[SCOPE_KEY] || 'pending');
+}
 
 export function clearNarrationCache() {
-  cache.clear();
+  memoryMap().clear();
 }
 
 export function getNarrationCache(): Record<string, NarrationRecord> {
   const out: Record<string, NarrationRecord> = {};
-  for (const [k, v] of cache) {
+  for (const [k, v] of memoryMap()) {
     if (v?.data && v.data.byteLength >= 64) {
       out[k] = { mime: v.mime || 'audio/mpeg', data: v.data.slice(0) };
     }
@@ -24,7 +46,125 @@ export function getNarrationCache(): Record<string, NarrationRecord> {
 
 export function stashNarrationRecord(key: string, rec: NarrationRecord | null | undefined) {
   if (!key || !rec?.data || rec.data.byteLength < 64) return;
-  cache.set(key, { mime: rec.mime || 'audio/mpeg', data: rec.data.slice(0) });
+  const copy = { mime: rec.mime || 'audio/mpeg', data: rec.data.slice(0) };
+  memoryMap().set(key, copy);
+  queueLivePut(key, copy);
+}
+
+const LIVE_DB = 'nexcourse_live_narration';
+const LIVE_VER = 1;
+const LIVE_STORE = 'clips';
+
+function openLiveDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') {
+      reject(new Error('IndexedDB is not available'));
+      return;
+    }
+    const req = indexedDB.open(LIVE_DB, LIVE_VER);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(LIVE_STORE)) db.createObjectStore(LIVE_STORE);
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error || new Error('Failed to open live narration DB'));
+  });
+}
+
+function liveKey(clipKey: string) {
+  return `${getLiveNarrationScope()}::${clipKey}`;
+}
+
+function queueLivePut(clipKey: string, rec: NarrationRecord) {
+  const run = (async () => {
+    try {
+      const db = await openLiveDb();
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(LIVE_STORE, 'readwrite');
+        tx.objectStore(LIVE_STORE).put(
+          { mime: rec.mime || 'audio/mpeg', bytes: new Uint8Array(rec.data) },
+          liveKey(clipKey),
+        );
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      });
+    } catch (e) {
+      console.warn('[Narration] Live clip persist failed:', clipKey, e);
+    }
+  })();
+  const list = pendingWrites();
+  list.push(run);
+  void run.finally(() => {
+    const i = list.indexOf(run);
+    if (i >= 0) list.splice(i, 1);
+  });
+}
+
+export async function flushLiveNarration() {
+  await Promise.allSettled([...pendingWrites()]);
+}
+
+export async function readLiveNarration(scope?: string): Promise<Record<string, NarrationRecord>> {
+  await flushLiveNarration();
+  const prefix = `${scope || getLiveNarrationScope()}::`;
+  const out: Record<string, NarrationRecord> = {};
+  try {
+    const db = await openLiveDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(LIVE_STORE, 'readonly');
+      const req = tx.objectStore(LIVE_STORE).openCursor();
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (!cursor) return;
+        const key = String(cursor.key);
+        if (key.startsWith(prefix)) {
+          const val = cursor.value as { mime?: string; bytes?: Uint8Array; data?: ArrayBuffer } | undefined;
+          const clipKey = key.slice(prefix.length);
+          const bytes = val?.bytes || val?.data;
+          if (bytes && (bytes as ArrayBuffer).byteLength >= 64) {
+            const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes as ArrayBuffer);
+            const copy = new Uint8Array(view.byteLength);
+            copy.set(view);
+            out[clipKey] = { mime: val?.mime || 'audio/mpeg', data: copy.buffer };
+          }
+        }
+        cursor.continue();
+      };
+      req.onerror = () => reject(req.error);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (e) {
+    console.warn('[Narration] Live clip read failed:', e);
+  }
+  return out;
+}
+
+export function playerElementHasAudio(): boolean {
+  if (typeof document === 'undefined') return false;
+  return Array.from(document.querySelectorAll('audio')).some((el) => {
+    const src = String((el as HTMLAudioElement).currentSrc || (el as HTMLAudioElement).src || '');
+    return src.length > 20 && (src.startsWith('blob:') || src.startsWith('data:') || /^https?:/.test(src));
+  });
+}
+
+export async function harvestPlayerAudio(slideId?: string | null): Promise<Record<string, NarrationRecord>> {
+  const out: Record<string, NarrationRecord> = {};
+  if (typeof document === 'undefined' || !slideId) return out;
+  for (const el of Array.from(document.querySelectorAll('audio'))) {
+    const src = String((el as HTMLAudioElement).currentSrc || (el as HTMLAudioElement).src || '');
+    if (src.length < 20) continue;
+    try {
+      const rec = await audioUrlToRecord(src);
+      if (rec) {
+        const key = `slide:${slideId}`;
+        out[key] = rec;
+        stashNarrationRecord(key, rec);
+      }
+    } catch { /* skip */ }
+  }
+  return out;
 }
 
 export function narrationKeyForJob(r: {
@@ -56,7 +196,7 @@ export function base64ToArrayBuffer(b64: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-/** Stash job MP3 bytes and return a session object URL for the player. */
+/** Stash job MP3 bytes (memory + IndexedDB) and return a session object URL. */
 export function stashJobResultAudio(r: {
   id?: string;
   target?: string | null;
@@ -66,7 +206,7 @@ export function stashJobResultAudio(r: {
   audioContentType?: string;
   audioBase64?: string;
 }): string | null {
-  const raw = String(r.audioBase64 || '').replace(/\s+/g, '');
+  const raw = String((r as any).audioBase64 || (r as any).audio || (r as any).base64 || '').replace(/\s+/g, '');
   if (raw.length < 80) return null;
   const key = narrationKeyForJob(r);
   if (!key) return null;

@@ -46,7 +46,7 @@ import {
   resetCloudDraftsProbe,
   uploadCloudAssets,
 } from './draftCloudService';
-import { getNarrationCache, stashNarrationBlobs } from './narrationCache';
+import { getNarrationCache, stashNarrationBlobs, flushLiveNarration, readLiveNarration, harvestPlayerAudio, playerElementHasAudio, getLiveNarrationScope } from './narrationCache';
 
 export const MAX_PRO_DRAFTS = 3;
 export const MAX_TEAM_DRAFTS = 10;
@@ -732,7 +732,9 @@ export interface UseDraftCoursesReturn {
       syntheticSlideOverrides?: Record<string, any>;
       syntheticAudioMap?: Record<string, string>;
       examQuestions?: any[];
+      currentSlideId?: string | null;
       /** Force a distinct library name (e.g. "Course (1)") without renaming the live editor title. */
+      titleOverride?: string;
       titleOverride?: string;
       onProgress?: (msg: string) => void;
     }
@@ -760,6 +762,7 @@ export interface UseDraftCoursesReturn {
       syntheticSlideOverrides?: Record<string, any>;
       syntheticAudioMap?: Record<string, string>;
       examQuestions?: any[];
+      currentSlideId?: string | null;
       onProgress?: (msg: string) => void;
     }
   ) => Promise<{ success: boolean; message: string }>;
@@ -918,18 +921,30 @@ export function useDraftCourses(
       syntheticSlideOverrides?: Record<string, any>;
       syntheticAudioMap?: Record<string, string>;
       examQuestions?: any[];
+      currentSlideId?: string | null;
       onProgress?: (msg: string) => void;
     }
   ) => {
     extras?.onProgress?.('Preparing draft…');
     extras?.onProgress?.('Packing narration…');
-    // Pack from the live course object (not a clone) so blob:/data: clips are still fetchable.
+    await flushLiveNarration();
     const collected = await collectNarrationRecords(
       course,
       extras?.syntheticAudioMap,
       (done, total) => extras?.onProgress?.(`Saving audio ${done} of ${total}…`),
     );
-    const narrationRecords = { ...collected, ...getNarrationCache() };
+    const liveScopes = new Set([getLiveNarrationScope(), draftId, 'pending'].filter(Boolean));
+    const fromLiveDb: Record<string, NarrationRecord> = {};
+    for (const scope of liveScopes) {
+      Object.assign(fromLiveDb, await readLiveNarration(scope));
+    }
+    const harvested = await harvestPlayerAudio(extras?.currentSlideId);
+    const narrationRecords = {
+      ...collected,
+      ...fromLiveDb,
+      ...getNarrationCache(),
+      ...harvested,
+    };
 
     // structuredClone keeps us from mutating the live editor course
     let working: any;
@@ -947,7 +962,7 @@ export function useDraftCourses(
     }
 
     const audioClipsOnCourse = countCourseAudioClips(course);
-    const cachedClips = Object.keys(getNarrationCache()).length;
+    const cachedClips = Object.keys(narrationRecords).length;
     extras?.onProgress?.('Packing images and audio…');
     const blobAssets = await extractHeavyMediaToBlobs(working, (done, total) => {
       extras?.onProgress?.(`Saving media ${done} of ${total}…`);
@@ -1127,6 +1142,7 @@ export function useDraftCourses(
       syntheticSlideOverrides?: Record<string, any>;
       syntheticAudioMap?: Record<string, string>;
       examQuestions?: any[];
+      currentSlideId?: string | null;
       titleOverride?: string;
       onProgress?: (msg: string) => void;
     }
@@ -1158,10 +1174,17 @@ export function useDraftCourses(
     };
     const result = await persistNew(meta, snapshot, assets, audioClips, extras?.onProgress, narrationRecords);
     const stored = result.packedNarration ?? audioClips;
+    if (!result.ok) return { success: false, message: result.error || 'Failed to save draft.' };
+    if (stored === 0 && (Object.keys(narrationRecords || {}).length > 0 || playerElementHasAudio())) {
+      return {
+        success: false,
+        message: 'Audio is in the player but was not stored with this draft. Wait until narration finishes, then save again.',
+        id,
+      };
+    }
     const audioNote = stored > 0
       ? ` ${stored} narration clip${stored === 1 ? '' : 's'} stored.`
       : ' No narration clips were on the course at save time.';
-    if (!result.ok) return { success: false, message: result.error || 'Failed to save draft.' };
     if (result.error?.includes('local only')) {
       return {
         success: true,
@@ -1367,6 +1390,15 @@ export function useDraftCourses(
         blobs = fallback;
       }
       if (!Object.keys(blobs).length) {
+        const liveRecs = await readLiveNarration(id);
+        if (Object.keys(liveRecs).length) {
+          blobs = narrationRecordsToBlobs(liveRecs);
+          try {
+            await writeNarrationRecords(userId, id, liveRecs);
+          } catch { /* still play from live store this session */ }
+        }
+      }
+      if (!Object.keys(blobs).length) {
         try {
           const cloudAssets = await downloadCloudAssets(userId, id);
           const fromCloud: Record<string, Blob> = {};
@@ -1459,6 +1491,7 @@ export function useDraftCourses(
       syntheticSlideOverrides?: Record<string, any>;
       syntheticAudioMap?: Record<string, string>;
       examQuestions?: any[];
+      currentSlideId?: string | null;
       onProgress?: (msg: string) => void;
     }
   ) => {
@@ -1474,6 +1507,12 @@ export function useDraftCourses(
     }, snapshot, assets, audioClips, extras?.onProgress, narrationRecords);
     if (!result.ok) return { success: false, message: result.error || 'Failed to update draft.' };
     const stored = result.packedNarration ?? audioClips;
+    if (stored === 0 && (Object.keys(narrationRecords || {}).length > 0 || playerElementHasAudio())) {
+      return {
+        success: false,
+        message: 'Audio is in the player but was not stored with this draft. Wait until narration finishes, then click Update current draft again.',
+      };
+    }
     const audioNote = stored > 0
       ? ` ${stored} narration clip${stored === 1 ? '' : 's'} stored.`
       : ' No narration clips were on the course at save time.';

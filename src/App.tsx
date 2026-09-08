@@ -140,7 +140,7 @@ import {
   takeLegacyMedia,
   isAudioAssetPath,
 } from './lib/draftMedia';
-import { clearNarrationCache, stashAudioUrl } from './lib/narrationCache';
+import { clearNarrationCache, stashAudioUrl, setLiveNarrationScope } from './lib/narrationCache';
 import {
   ROUTES,
   parseAppPath,
@@ -825,9 +825,14 @@ export default function App() {
   const [draftSaveMessage, setDraftSaveMessage] = React.useState<string | null>(null);
   const draftMessageTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [activeDraftId, setActiveDraftId] = React.useState<string | null>(null);
+  const currentSlideIdRef = React.useRef<string | null>(null);
   const [isSavingDraft, setIsSavingDraft] = React.useState(false);
   const [designDraftSavedFlash, setDesignDraftSavedFlash] = React.useState(false);
   const playerDefaultsLoadedFor = React.useRef<string | null>(null);
+
+  React.useEffect(() => {
+    setLiveNarrationScope(activeDraftId || 'pending');
+  }, [activeDraftId]);
 
   const showDraftMessage = (msg: string) => {
     setDraftSaveMessage(msg);
@@ -852,6 +857,7 @@ export default function App() {
     syntheticSlideOverrides,
     syntheticAudioMap: syntheticAudioMapRef.current,
     examQuestions,
+    currentSlideId: currentSlideIdRef.current,
     ...(onProgress ? { onProgress } : {}),
   });
 
@@ -902,6 +908,7 @@ export default function App() {
       await handleSaveDraft();
       return;
     }
+    setLiveNarrationScope(activeDraftId);
     setIsSavingDraft(true);
     showDraftMessage('Updating current draft…');
     try {
@@ -914,7 +921,6 @@ export default function App() {
             ? `${updated.message} You can refresh safely — reopen from Save.`
             : updated.message
         );
-        if (updated.success) navigateTo(ROUTES.preview(activeDraftId), true);
         return;
       }
       // Active id isn’t a preview draft — create a new slot (do not nest handleSaveDraft busy state)
@@ -1051,6 +1057,7 @@ export default function App() {
     }
 
     clearNarrationCache();
+    setLiveNarrationScope(id);
 
     const shell = snapshot.course;
     const legacyMedia = mediaRecordToMap(takeLegacyMedia(id));
@@ -2632,18 +2639,26 @@ export default function App() {
   useEffect(() => {
     // Only load/play audio while the course player is visible — never during generate/upload
     if (step !== 'preview' || !currentSlide) return;
+    currentSlideIdRef.current = currentSlide.id || null;
+    const playUrl = voiceOverEnabled && !slideSkipsNarration(currentSlide)
+      ? (
+          (hasLiveNarrationUrl(activeTabAudioUrl) ? activeTabAudioUrl : null)
+          || (hasLiveNarrationUrl(currentSlide.voiceOverUrl) ? currentSlide.voiceOverUrl : null)
+          || (hasLiveNarrationUrl((currentSlide as any).audioUrl) ? (currentSlide as any).audioUrl : null)
+          || (hasLiveNarrationUrl(currentSyntheticUrl) ? currentSyntheticUrl : null)
+        )
+      : null;
+    if (playUrl && currentSlide.id) {
+      const key = currentSyntheticUrl && playUrl === currentSyntheticUrl
+        ? `synth:${currentSlide.id}`
+        : `slide:${currentSlide.id}`;
+      void stashAudioUrl(key, playUrl);
+    }
     player.loadSlide(
       currentSlide.id,
       // AI audio only — never fall back to browser TTS
       // Knowledge checks / mastery quiz: silent, same as Quiz Questions
-      voiceOverEnabled && !slideSkipsNarration(currentSlide)
-        ? (
-            (hasLiveNarrationUrl(activeTabAudioUrl) ? activeTabAudioUrl : null)
-            || (hasLiveNarrationUrl(currentSlide.voiceOverUrl) ? currentSlide.voiceOverUrl : null)
-            || (hasLiveNarrationUrl((currentSlide as any).audioUrl) ? (currentSlide as any).audioUrl : null)
-            || (hasLiveNarrationUrl(currentSyntheticUrl) ? currentSyntheticUrl : null)
-          )
-        : null,
+      playUrl,
       null  // ttsText always null: slides are silent while AI audio loads, then auto-play
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3739,6 +3754,7 @@ export default function App() {
     setCourse(stamped);
     setOriginalCourse(stamped);
     clearNarrationCache();
+    setLiveNarrationScope('pending');
     setSyntheticAudioMap({});
     setExploredBySlide({});
     // Always open a newly generated course on the title/cover slide — never reuse
