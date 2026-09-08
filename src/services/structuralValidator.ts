@@ -5,6 +5,7 @@
  */
 
 import { findUncoveredEnablings, slideSkipsNarration } from '../lib/enablingCoverage';
+import { applyFieldTextFix } from '../lib/qcTextFix';
 
 export type IssueSeverity = 'error' | 'warning' | 'info';
 export type IssueType =
@@ -685,6 +686,8 @@ const STUB_PATTERNS = [
   /\[TODO\]/i,
   /to be (added|completed|filled|written)/i,
   /this slide covers key content for module/i,
+  /consistent with voiceOverText/i,
+  /space before °C/i,
 ];
 
 function checkStubContent(slide: any, modIdx: number, slideIdx: number, modTitle: string): QCIssue[] {
@@ -712,6 +715,39 @@ function checkStubContent(slide: any, modIdx: number, slideIdx: number, modTitle
         fixActions: ['simplify', 'regenerate'],
       }));
       break; // one issue per slide is enough
+    }
+  }
+  return issues;
+}
+
+/** Catch QA/app-logic notes that leaked into learner-facing on-screen text. */
+function checkOstLooksLikeQaNotes(slide: any, modIdx: number, slideIdx: number, modTitle: string): QCIssue[] {
+  const fieldsToCheck: { field: string; value: string }[] = [];
+  if (slide.content) fieldsToCheck.push({ field: 'content', value: String(slide.content) });
+  (slide.data?.tabs ?? slide.data?.items ?? []).forEach((item: any, i: number) => {
+    const key = Array.isArray(slide.data?.tabs) ? 'tabs' : 'items';
+    if (item?.content) fieldsToCheck.push({ field: `data.${key}.${i}.content`, value: String(item.content) });
+  });
+
+  const issues: QCIssue[] = [];
+  for (const { field, value } of fieldsToCheck) {
+    if (
+      /consistent with voiceOverText/i.test(value) ||
+      /space before °C/i.test(value) ||
+      /suggested fix/i.test(value) ||
+      /\(or\s+[\d.].{0,40}consistent with/i.test(value)
+    ) {
+      issues.push(baseIssue(slide, modIdx, slideIdx, modTitle, {
+        field,
+        type: 'clarity',
+        severity: 'error',
+        message: 'On-screen text looks like an internal QA note, not learner content.',
+        originalText: value.slice(0, 240),
+        suggestion: '',
+        autoFixable: false,
+        fixActions: ['regenerate'],
+      }));
+      break;
     }
   }
   return issues;
@@ -759,6 +795,7 @@ export function validateCourse(course: any, narrationEnabled = false): QCReport 
       issues.push(...checkEmptyInteraction(slide, modIdx, slideIdx, modTitle));
       issues.push(...checkDiagram(slide, modIdx, slideIdx, modTitle));
       issues.push(...checkStubContent(slide, modIdx, slideIdx, modTitle));  // A3: hotspot stubs
+      issues.push(...checkOstLooksLikeQaNotes(slide, modIdx, slideIdx, modTitle));
       issues.push(...checkColorContrast(slide, modIdx, slideIdx, modTitle));
       issues.push(...checkThemeConsistency(slide, modIdx, slideIdx, modTitle));
     });
@@ -829,7 +866,7 @@ export function applyFixes(course: any, confirmedIssues: QCIssue[]): any {
     const mod = cloned.modules?.[issue.moduleIndex];
     if (!mod) return;
     const slide = mod.slides?.[issue.slideIndex];
-    if (!slide || slide.id !== issue.slideId) return;
+    if (!slide || String(slide.id ?? '') !== String(issue.slideId ?? '') || !String(slide.id ?? '').trim()) return;
 
     const parts = issue.field.split('.');
     let obj = slide;
@@ -840,7 +877,7 @@ export function applyFixes(course: any, confirmedIssues: QCIssue[]): any {
     }
     const lastKey = parts[parts.length - 1];
     if (obj != null && lastKey) {
-      obj[lastKey] = issue.suggestion;
+      obj[lastKey] = applyFieldTextFix(obj[lastKey], issue.originalText, issue.suggestion);
     }
   });
 

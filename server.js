@@ -3017,6 +3017,8 @@ Rules:
 - Only flag CLEAR errors. Do not suggest rewrites for style or voice.
 - For spelling: provide the exact corrected word/phrase (not the whole field).
 - For grammar: minimal fix, preserve the author's voice and meaning.
+- "suggestion" MUST be the exact replacement phrase only. NEVER include explanations, alternatives, or notes such as "(space before °C)", "consistent with voiceOverText usage", or "or 750–950°C". Put any reasoning only in "message".
+- Flag on-screen text (field "content") that looks like internal QA or app notes rather than learner content.
 - Return [] if no issues found.
 - Maximum 3 issues per slide.
 

@@ -136,28 +136,47 @@ export function sanitizeOstText(text: unknown): string {
     .join('\n\n');
 }
 
-/** Shorten a sentence for on-screen bullet (keep meaning, avoid walls of text). */
+/** Complete on-screen phrase — never append ellipsis or cut mid-thought with "…". */
 function shortenForOst(sentence: string, maxWords = 12): string {
-  const clean = sentence.replace(/[.!?]+$/, '').replace(/\s+/g, ' ').trim();
+  const clean = sentence.replace(/[.!?]+$/, '').replace(/…+\s*$/g, '').replace(/\s+/g, ' ').trim();
   const words = clean.split(/\s+/).filter(Boolean);
   if (words.length <= maxWords) return clean;
-  return `${words.slice(0, maxWords).join(' ')}…`;
+  const clause = clean.split(/[,—–:;]/)[0].trim();
+  const clauseWords = clause.split(/\s+/).filter(Boolean);
+  if (clauseWords.length >= 4) return clause;
+  return words.slice(0, maxWords).join(' ');
+}
+
+/** Split a long bullet into complete short phrases instead of truncating with "…". */
+function expandLongOstLine(line: string): string[] {
+  const body = line.replace(/^[-*•]\s+/, '').replace(/^\d+[.)]\s+/, '').replace(/…+\s*$/g, '').trim();
+  if (!body) return [];
+  const words = body.split(/\s+/).filter(Boolean);
+  if (words.length <= 14) return [body];
+  const parts = body
+    .split(/[,—–;]/)
+    .map(p => p.replace(/[.!?]+$/, '').replace(/…+\s*$/g, '').trim())
+    .filter(p => p.split(/\s+/).filter(Boolean).length >= 4);
+  if (parts.length >= 2) return parts.slice(0, 4);
+  return [body];
+}
+
+/** Turn prose or mixed OST into 3–5 short markdown bullets (no trailing ellipsis). */
+export function toShortOstBullets(text: unknown): string {
+  return toBullets(coerceOstText(text));
 }
 
 function toBullets(text: string): string {
   const trimmed = text.trim();
   if (!trimmed) return '';
   if (alreadyBulleted(trimmed)) {
-    return filterMeaningfulOstLines(
-      stripCta(trimmed)
-        .split(/\n/)
-        .map(l => l.trim())
-        .filter(Boolean)
-        .slice(0, 6)
-        .map(l => (/^[-*•]\s+|^\d+[.)]\s+/.test(l) ? l.replace(/^[-*•]\s+/, '- ').replace(/^\d+[.)]\s+/, '- ') : `- ${l}`))
-    )
-      .slice(0, 5)
-      .join('\n');
+    const expanded = stripCta(trimmed)
+      .split(/\n/)
+      .map(l => l.trim())
+      .filter(Boolean)
+      .flatMap(expandLongOstLine)
+      .map(l => `- ${l.replace(/^[-*•]\s+/, '')}`);
+    return filterMeaningfulOstLines(expanded).slice(0, 6).join('\n');
   }
 
   const sentences = trimmed
@@ -197,7 +216,14 @@ export function formatTabIntroOst(opts: {
     if (!keepAuthored && words < 45 && sentences <= 2 && vo.length > body.length + 30) {
       body = toBullets(vo);
     } else if (!keepAuthored) {
-      body = toBullets(body);
+      const parts = body
+        .replace(/\s+/g, ' ')
+        .split(/(?<=[.!?])\s+/)
+        .map(s => s.replace(/[.!?]+$/, '').replace(/…+\s*$/g, '').trim())
+        .filter(s => s.length > 8 && !/^(select|choose|click|tap)\b/i.test(s));
+      body = parts.length
+        ? parts.slice(0, 6).map(s => `- ${s}`).join('\n')
+        : toBullets(body);
     }
   } else if (vo) {
     body = toBullets(vo);

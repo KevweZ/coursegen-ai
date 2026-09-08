@@ -142,6 +142,7 @@ import {
   isAudioAssetPath,
 } from './lib/draftMedia';
 import { clearNarrationCache, stashAudioUrl, setLiveNarrationScope } from './lib/narrationCache';
+import { mergeRegenIntoSlide, patchCourseSlideById, slidesMatchId } from './lib/slideRegenMerge';
 import {
   ROUTES,
   parseAppPath,
@@ -1591,6 +1592,8 @@ export default function App() {
   const [regenTargetType, setRegenTargetType] = useState<string>('content');
   const [regenNoInteraction, setRegenNoInteraction] = useState(false);
   const [isRegenSlideRunning, setIsRegenSlideRunning] = useState(false);
+  const [regenConfirmOpen, setRegenConfirmOpen] = useState(false);
+  const pendingSlideRegenRef = useRef<null | (() => Promise<void>)>(null);
   /** Knowledge-check slides where learner clicked Check Answers / Submit */
   const [kcCheckedSlideIds, setKcCheckedSlideIds] = useState<Set<string>>(() => new Set());
 
@@ -4335,36 +4338,19 @@ export default function App() {
           course.title ?? '',
           isTakeaway ? 'content' : targetType
         );
-        pushUndo();
-        setCourse(prev => {
-          if (!prev) return prev;
-          const cloned = JSON.parse(JSON.stringify(prev));
-          for (const mod of cloned.modules) {
-            const idx = mod.slides.findIndex((s: any) => s.id === slide.id);
-            if (idx >= 0) {
-              mod.slides[idx] = {
-                ...mod.slides[idx],
-                type: isTakeaway ? 'key-takeaways' : result.type,
-                content: result.content ?? mod.slides[idx].content,
-                voiceOverText: result.voiceOverText || mod.slides[idx].voiceOverText,
-                narration: result.voiceOverText || mod.slides[idx].narration,
-                data: result.data !== undefined
-                  ? (isTakeaway && !result.data
-                      ? {
-                          objectives: [
-                            { id: '1', label: `Review ${slide.title}`, content: '' },
-                            { id: '2', label: 'Apply the core module practices', content: '' },
-                            { id: '3', label: 'Confirm understanding before moving on', content: '' },
-                            { id: '4', label: 'Follow up with next steps', content: '' },
-                          ],
-                        }
-                      : result.data)
-                  : mod.slides[idx].data,
-              };
-              break;
-            }
-          }
-          return cloned;
+        await applySlideRegenAndAudio(slide, {
+          ...result,
+          type: isTakeaway ? 'key-takeaways' : result.type,
+          data: isTakeaway && !result.data
+            ? {
+                objectives: [
+                  { id: '1', label: `Review ${slide.title}`, content: '' },
+                  { id: '2', label: 'Apply the core module practices', content: '' },
+                  { id: '3', label: 'Confirm understanding before moving on', content: '' },
+                  { id: '4', label: 'Follow up with next steps', content: '' },
+                ],
+              }
+            : result.data,
         });
         showDraftMessage('Slide regenerated ✓');
       } catch (err: any) {
@@ -4376,31 +4362,25 @@ export default function App() {
         pushUndo();
         setCourse(prev => {
           if (!prev) return prev;
-          const cloned = JSON.parse(JSON.stringify(prev));
-          for (const mod of cloned.modules) {
-            const idx = mod.slides.findIndex((s: any) => s.id === slide.id);
-            if (idx >= 0) {
-              mod.slides[idx] = {
-                ...mod.slides[idx],
-                content: isTakeaway
-                  ? `## Key Takeaways\n\n- Review ${slide.title}\n- Apply the core module practices\n- Confirm understanding before moving on\n- Follow up with next steps`
-                  : `## ${slide.title}\n\n- Key point related to ${slide.title}\n- Practical application for learners\n- Common pitfall to avoid\n- Next step to take`,
-                voiceOverText: `Let's review the key points for ${slide.title}.`,
-                data: isTakeaway
-                  ? {
-                      objectives: [
-                        { id: '1', label: `Review ${slide.title}`, content: '' },
-                        { id: '2', label: 'Apply the core module practices', content: '' },
-                        { id: '3', label: 'Confirm understanding before moving on', content: '' },
-                        { id: '4', label: 'Follow up with next steps', content: '' },
-                      ],
-                    }
-                  : mod.slides[idx].data,
-              };
-              break;
-            }
-          }
-          return cloned;
+          return patchCourseSlideById(prev, slide.id, (s: any) => ({
+            ...s,
+            content: isTakeaway
+              ? `## Key Takeaways\n\n- Review ${slide.title}\n- Apply the core module practices\n- Confirm understanding before moving on\n- Follow up with next steps`
+              : `## ${slide.title}\n\n- Key point related to ${slide.title}\n- Practical application for learners\n- Common pitfall to avoid\n- Next step to take`,
+            voiceOverText: `Let's review the key points for ${slide.title}.`,
+            narration: `Let's review the key points for ${slide.title}.`,
+            voiceOverUrl: undefined,
+            data: isTakeaway
+              ? {
+                  objectives: [
+                    { id: '1', label: `Review ${slide.title}`, content: '' },
+                    { id: '2', label: 'Apply the core module practices', content: '' },
+                    { id: '3', label: 'Confirm understanding before moving on', content: '' },
+                    { id: '4', label: 'Follow up with next steps', content: '' },
+                  ],
+                }
+              : s.data,
+          }));
         });
       }
     } finally {
@@ -4705,6 +4685,8 @@ export default function App() {
   };
 
   const handleUpdateSlideMedia = (slideId: string, updates: any) => {
+    const id = String(slideId || '').trim();
+    if (!id) return;
     setCourse(prev => {
       if (!prev) return prev;
       return {
@@ -4712,11 +4694,70 @@ export default function App() {
         modules: (prev.modules || []).map((mod: any) => ({
           ...mod,
           slides: (mod.slides || []).map((s: any) =>
-            s.id === slideId ? { ...s, ...updates } : s
+            slidesMatchId(s.id, id) ? { ...s, ...updates } : s
           ),
         })),
       };
     });
+  };
+
+  /** Apply AI regen to ONE slide by id, then rebuild narration audio for that slide. */
+  async function applySlideRegenAndAudio(
+    slideSnapshot: any,
+    result: { type: string; data?: any; content?: string; voiceOverText?: string },
+  ) {
+    const id = String(slideSnapshot?.id || '').trim();
+    if (!id) {
+      throw new Error('This slide has no id — cannot update it without risking other slides.');
+    }
+    pushUndo();
+    setCourse((prev: any) => {
+      if (!prev) return prev;
+      return patchCourseSlideById(prev, id, (s: any) => mergeRegenIntoSlide(s, result));
+    });
+
+    const newScript = String(result.voiceOverText || '').trim();
+    const skipAudio = slideSkipsNarration({ ...slideSnapshot, type: result.type, voiceOverText: newScript });
+    if (!voiceOverEnabled || skipAudio || !newScript) return;
+
+    showDraftMessage('Regenerating narration audio…');
+    try {
+      const { generateSlideTTS: genTTS, urlToDataUrl } = await import('./services/ttsService');
+      const toDurable = async (blobUrl: string) => {
+        try { return await urlToDataUrl(blobUrl); } catch { return blobUrl; }
+      };
+      const durable = await toDurable(await genTTS(newScript, { voice: ttsVoice as any }));
+      void stashAudioUrl(`slide:${id}`, durable);
+      handleUpdateSlideMedia(id, { voiceOverUrl: durable });
+
+      const listKey = Array.isArray(result.data?.tabs) ? 'tabs' : Array.isArray(result.data?.items) ? 'items' : null;
+      const tabs: any[] = listKey ? [...(result.data?.[listKey] || [])] : [];
+      const tabJobs = tabs
+        .map((t, i) => ({ t, i, text: String(t?.voiceOverText || '').trim() }))
+        .filter(j => j.text);
+      if (listKey && tabJobs.length) {
+        const nextTabs = [...tabs];
+        for (let n = 0; n < tabJobs.length; n++) {
+          const job = tabJobs[n];
+          showDraftMessage(`Generating tab audio ${n + 1}/${tabJobs.length}…`);
+          const tabUrl = await toDurable(await genTTS(job.text, { voice: ttsVoice as any }));
+          nextTabs[job.i] = { ...nextTabs[job.i], voiceOverUrl: tabUrl };
+          void stashAudioUrl(`tab:${id}:${listKey}:${job.t?.id}`, tabUrl);
+          await new Promise(r => setTimeout(r, 200));
+        }
+        setCourse(prev => {
+          if (!prev) return prev;
+          return patchCourseSlideById(prev, id, (s: any) => ({
+            ...s,
+            voiceOverUrl: durable,
+            data: { ...(s.data || {}), [listKey]: nextTabs },
+          }));
+        });
+      }
+    } catch (e) {
+      console.warn('[slide regen] TTS failed', e);
+      showDraftMessage('Slide updated. Audio could not be regenerated — use Regenerate audio on this slide.');
+    }
   };
 
   /** Keep floatingImagesMap and course.floatingMedia in sync (drafts / SCORM). */
@@ -4753,7 +4794,7 @@ export default function App() {
         modules: (prev.modules || []).map((mod: any) => ({
           ...mod,
           slides: (mod.slides || []).map((s: any) => {
-            if (s.id !== slideId) return s;
+            if (!slidesMatchId(s.id, slideId)) return s;
             return clear({ ...s, floatingMedia: [...(s.floatingMedia || []), newImg] });
           }),
         })),
@@ -4774,7 +4815,7 @@ export default function App() {
         modules: (prev.modules || []).map((mod: any) => ({
           ...mod,
           slides: (mod.slides || []).map((s: any) => {
-            if (s.id !== slideId) return s;
+            if (!slidesMatchId(s.id, slideId)) return s;
             const floatingMedia = (s.floatingMedia || []).filter((i: FloatingImage) => i.id !== img.id);
             if (img.tabId === '__intro__') {
               return { ...s, floatingMedia, data: { ...s.data, introImageUrl: img.url } };
@@ -5803,16 +5844,7 @@ export default function App() {
               if (!slide) return;
               try {
                 const result = await regenerateSlideData(slide, course.title ?? '', normalizeRegenSlideType(slide));
-                const cloned = JSON.parse(JSON.stringify(course));
-                const target = cloned.modules[moduleIndex].slides[slideIndex];
-                target.type = result.type;
-                if (result.data !== undefined) target.data = result.data;
-                if (result.content != null) target.content = result.content;
-                if (result.voiceOverText) {
-                  target.voiceOverText = result.voiceOverText;
-                  target.narration = result.voiceOverText;
-                }
-                pushUndo(); setCourse(cloned);
+                await applySlideRegenAndAudio(slide, result);
                 setQcReport(prev => prev ? {
                   ...prev,
                   issues: prev.issues.filter(i =>
@@ -7195,21 +7227,7 @@ export default function App() {
                                             setIsRegenSlideRunning(true);
                                             try {
                                               const result = await regenerateSlideData(currentSlide, course?.title ?? '', 'matching');
-                                              pushUndo();
-                                              setCourse((prev: any) => {
-                                                if (!prev) return prev;
-                                                return {
-                                                  ...prev,
-                                                  modules: prev.modules.map((m: any) => ({
-                                                    ...m,
-                                                    slides: m.slides.map((s: any) =>
-                                                      s.id === currentSlide.id
-                                                        ? { ...s, type: result.type, data: result.data, content: result.content ?? s.content }
-                                                        : s
-                                                    ),
-                                                  })),
-                                                };
-                                              });
+                                              await applySlideRegenAndAudio(currentSlide, result);
                                               setQcReport(prev => prev ? {
                                                 ...prev,
                                                 issues: prev.issues.filter(i => !(i.slideId === currentSlide.id && i.type === 'interaction_empty')),
@@ -8519,6 +8537,21 @@ export default function App() {
                                   value={introTitleHex}
                                   onPick={(hex) => patchTabs(tabs.map((t: any) => ({ ...t, labelColor: hex })), { introLabelColor: hex })}
                                 />
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Introduction tab text</label>
+                                <textarea
+                                  rows={5}
+                                  value={coerceOstText(editingSlide.content)}
+                                  onChange={(e) => {
+                                    const updated = {
+                                      ...(editingSlideRef.current ?? editingSlide),
+                                      content: sanitizeOstText(e.target.value),
+                                    };
+                                    editingSlideRef.current = updated;
+                                    setEditingSlide(updated);
+                                  }}
+                                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 resize-none"
+                                  placeholder="Short bullets for the Introduction tab (one idea per line)…"
+                                />
                               </div>
                             )}
                             {!unify && (
@@ -8532,6 +8565,21 @@ export default function App() {
                                 <TitleDots
                                   value={introTitleHex}
                                   onPick={(hex) => patchTabs(tabs, { introLabelColor: hex })}
+                                />
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Tab text</label>
+                                <textarea
+                                  rows={5}
+                                  value={coerceOstText(editingSlide.content)}
+                                  onChange={(e) => {
+                                    const updated = {
+                                      ...(editingSlideRef.current ?? editingSlide),
+                                      content: sanitizeOstText(e.target.value),
+                                    };
+                                    editingSlideRef.current = updated;
+                                    setEditingSlide(updated);
+                                  }}
+                                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 resize-none"
+                                  placeholder="Short bullets for the Introduction tab (one idea per line)…"
                                 />
                               </div>
                             )}
@@ -8985,8 +9033,7 @@ export default function App() {
                     return (
                       <div className="space-y-4">
                         <div className="p-3 bg-amber-900/20 border border-amber-700/30 rounded-xl text-xs text-amber-200 leading-relaxed">
-                          Regenerate only this slide. Intended type: <strong className="text-amber-100">{intendedType}</strong>.
-                          Confirm or change it below, then click Regenerate.
+                          Regenerates only this slide’s on-screen text, narration script, and spoken audio. Other slides stay as they are. You’ll get a confirm prompt before it runs.
                         </div>
                         <label className="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-700 bg-slate-950 cursor-pointer">
                           <div>
@@ -9056,7 +9103,7 @@ export default function App() {
                         )}
                         <button
                           disabled={isRegenSlideRunning}
-                          onClick={async () => {
+                          onClick={() => {
                             if (!editingSlide || !course) return;
                             if (isSynthetic) {
                               showDraftMessage('This system slide can’t be regenerated as an interaction. Edit its text under Edit Text, or use Media tools for audio.');
@@ -9065,73 +9112,41 @@ export default function App() {
                             const slideSnapshot = editingSlide;
                             const courseTitle = course.title ?? '';
                             const typeToBuild = effectiveType;
-                            editingSlideRef.current = null;
-                            setEditingSlide(null);
-                            setIsRegenSlideRunning(true);
-                            try {
-                              const result = await regenerateSlideData(
-                                slideSnapshot,
-                                courseTitle,
-                                typeToBuild
-                              );
-                              const slideExists = (course.modules || []).some((m: any) =>
-                                (m.slides || []).some((s: any) => s.id === slideSnapshot.id)
-                              );
-                              if (!slideExists) {
-                                throw new Error('Could not find this slide in the course to update. Try closing Edit and opening the slide again.');
-                              }
-                              pushUndo();
-                              setCourse((prev: any) => {
-                                if (!prev) return prev;
-                                return {
+                            pendingSlideRegenRef.current = async () => {
+                              editingSlideRef.current = null;
+                              setEditingSlide(null);
+                              setIsRegenSlideRunning(true);
+                              try {
+                                const result = await regenerateSlideData(
+                                  slideSnapshot,
+                                  courseTitle,
+                                  typeToBuild
+                                );
+                                await applySlideRegenAndAudio(slideSnapshot, result);
+                                setQcReport(prev => prev ? {
                                   ...prev,
-                                  modules: prev.modules.map((m: any) => ({
-                                    ...m,
-                                    slides: m.slides.map((s: any) => {
-                                      if (s.id !== slideSnapshot.id) return s;
-                                      const nextData = result.data !== undefined ? { ...result.data } : { ...(s.data || {}) };
-                                      if (result.type === 'tabbed-vertical' && slideSnapshot.data?.tabSkin) {
-                                        nextData.tabSkin = slideSnapshot.data.tabSkin;
-                                      }
-                                      if (result.type === 'tabbed-horizontal') {
-                                        if (slideSnapshot.data?.tabSkin) nextData.tabSkin = slideSnapshot.data.tabSkin;
-                                        if (slideSnapshot.data?.blocksWellColor) nextData.blocksWellColor = slideSnapshot.data.blocksWellColor;
-                                        if (slideSnapshot.data?.showProcessStepLabels === false) nextData.showProcessStepLabels = false;
-                                      }
-                                      return {
-                                        ...s,
-                                        type: result.type,
-                                        data: nextData,
-                                        content: result.content != null ? result.content : s.content,
-                                        voiceOverText: result.voiceOverText || s.voiceOverText,
-                                        narration: result.voiceOverText || s.narration,
-                                      };
-                                    }),
-                                  })),
-                                };
-                              });
-                              setQcReport(prev => prev ? {
-                                ...prev,
-                                issues: prev.issues.filter(i =>
-                                  !(i.slideId === slideSnapshot.id && (i.type === 'interaction_empty' || i.fixActions?.includes('regenerate')))
-                                ),
-                              } : null);
-                              showDraftMessage(
-                                isTabOrientationSwap(slideSnapshot, typeToBuild)
-                                  ? 'Tab layout switched — existing content kept ✓'
-                                  : 'Slide regenerated ✓'
-                              );
-                            } catch (err: any) {
-                              console.error('[Edit Slide] Regenerate failed:', err);
-                              const msg = String(err?.message || err || '');
-                              const hint = /failed to fetch|networkerror|load failed|timeout/i.test(msg)
-                                ? 'API unreachable (often a cold start). Wait ~20s and try Regenerate again.'
-                                : (msg || 'Regeneration failed. Please try again.');
-                              showDraftMessage(hint);
-                              alert(hint);
-                            } finally {
-                              setIsRegenSlideRunning(false);
-                            }
+                                  issues: prev.issues.filter(i =>
+                                    !(i.slideId === slideSnapshot.id && (i.type === 'interaction_empty' || i.fixActions?.includes('regenerate')))
+                                  ),
+                                } : null);
+                                showDraftMessage(
+                                  isTabOrientationSwap(slideSnapshot, typeToBuild)
+                                    ? 'Tab layout switched — existing content kept ✓'
+                                    : 'Slide regenerated. Narration and audio were also rebuilt ✓'
+                                );
+                              } catch (err: any) {
+                                console.error('[Edit Slide] Regenerate failed:', err);
+                                const msg = String(err?.message || err || '');
+                                const hint = /failed to fetch|networkerror|load failed|timeout/i.test(msg)
+                                  ? 'API unreachable (often a cold start). Wait ~20s and try Regenerate again.'
+                                  : (msg || 'Regeneration failed. Please try again.');
+                                showDraftMessage(hint);
+                                alert(hint);
+                              } finally {
+                                setIsRegenSlideRunning(false);
+                              }
+                            };
+                            setRegenConfirmOpen(true);
                           }}
                           className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-sm transition-all disabled:opacity-50"
                         >
@@ -9545,6 +9560,26 @@ export default function App() {
         createdExpiresAt={reviewLinkExpiresAt}
         onClose={() => setShowReviewLinkModal(false)}
         onCreate={handleCreateReviewLink}
+      />
+
+      <ConfirmDialog
+        open={regenConfirmOpen}
+        title="Regenerate this slide?"
+        body="This rebuilds on-screen text, the narration script, and the spoken audio for this slide only. Other slides are not changed. You can still edit the new text afterward."
+        primaryLabel="Regenerate slide"
+        cancelLabel="Cancel"
+        busy={isRegenSlideRunning}
+        onPrimary={() => {
+          const run = pendingSlideRegenRef.current;
+          pendingSlideRegenRef.current = null;
+          setRegenConfirmOpen(false);
+          void run?.();
+        }}
+        onCancel={() => {
+          if (isRegenSlideRunning) return;
+          pendingSlideRegenRef.current = null;
+          setRegenConfirmOpen(false);
+        }}
       />
 
       <ConfirmDialog

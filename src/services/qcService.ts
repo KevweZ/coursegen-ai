@@ -5,7 +5,8 @@
  */
 
 import { QCIssue, QCReport, IssueSeverity, IssueType, FixAction, validateCourse, applyFixes } from './structuralValidator';
-import { coerceOstText } from '../lib/formatTabIntroOst';
+import { coerceOstText, toShortOstBullets } from '../lib/formatTabIntroOst';
+import { cleanQcSuggestion } from '../lib/qcTextFix';
 import { parseHeadingBulletSections, resolveClickRevealSlide } from '../lib/parseHeadingSections';
 import { coerceCarouselColor } from '../lib/colorContrast';
 import { slideSkipsNarration, stripSlideNarration } from '../lib/enablingCoverage';
@@ -127,7 +128,7 @@ function aiIssuesToQCIssues(
         severity: raw.severity,
         message: raw.message,
         originalText: raw.originalText,
-        suggestion: raw.suggestion,
+        suggestion: cleanQcSuggestion(raw.suggestion, raw.originalText),
         autoFixable: raw.severity === 'error' && raw.type === 'spelling',
       };
     });
@@ -256,12 +257,12 @@ const SCHEMA_HINTS: Record<string, string> = {
   'multiple-choice':'{ "questionText": "string", "options": [{ "id": "string", "text": "string", "isCorrect": boolean }], "feedback": "string" }',
   'multiple-answers':'{ "questionText": "string", "options": [{ "id": "string", "text": "string", "isCorrect": boolean }], "feedback": "string" }',
   'true-false':    '{ "questionText": "string", "options": [{ "id": "a", "text": "True", "isCorrect": true }, { "id": "b", "text": "False", "isCorrect": false }], "feedback": "string" }',
-  content:         '{ "bullets": ["key point 1", "key point 2", "key point 3"] }',
+  content:         '{ "bullets": ["5-8 word phrase", "5-8 word phrase", "5-8 word phrase"], "voiceOverText": "3-4 spoken sentences that expand the bullets without reading them verbatim" }',
   diagram:         '{ "mermaidCode": "flowchart TD\\n  A[Start] --> B[Step]\\n  B --> C[End]", "caption": "optional short caption" }',
   'carousel-panel':'{ "cards": [{ "id": "string", "label": "string", "color": "#4f46e5", "description": "string", "expandedContent": "string" }] }',
   'click-reveal':  '{ "items": [{ "id": "string", "term": "string", "definition": "- short bullet\\n- short bullet" }] }',
-  'tabbed-horizontal': '{ "introContent": "2-4 short educational sentences about the topic (NOT click instructions alone)", "tabs": [{ "id": "string", "label": "string", "content": "- short bullet\\n- another bullet", "voiceOverText": "spoken elaboration" }] }',
-  'tabbed-vertical':   '{ "introContent": "2-4 short educational sentences about the topic (NOT click instructions alone)", "tabs": [{ "id": "string", "label": "string", "content": "- short bullet\\n- another bullet", "voiceOverText": "spoken elaboration" }] }',
+  'tabbed-horizontal': '{ "introContent": "- short 5-8 word bullet\\n- another complete bullet\\n- another complete bullet", "voiceOverText": "spoken intro that expands ONLY the intro bullets, not the topic tabs", "tabs": [{ "id": "string", "label": "string", "content": "- short bullet\\n- another bullet", "voiceOverText": "spoken elaboration for this tab only" }] }',
+  'tabbed-vertical':   '{ "introContent": "- short 5-8 word bullet\\n- another complete bullet\\n- another complete bullet", "voiceOverText": "spoken intro that expands ONLY the intro bullets, not the topic tabs", "tabs": [{ "id": "string", "label": "string", "content": "- short bullet\\n- another bullet", "voiceOverText": "spoken elaboration for this tab only" }] }',
   hotspot:         '{ "hotspots": [{ "id": "string", "x": 30, "y": 40, "label": "string", "content": "string" }], "imageUrl": "" }',
 };
 
@@ -371,9 +372,9 @@ Rules:
 - For matching: every item id must appear as a key in correctAnswers mapping to a target id
 - For drop-targets: every item must have a category that exactly matches one entry in categories[]
 - For sorting: correctOrder must list every item id in the intended sequence; items should NOT already be in correctOrder
-- For content with bullets: return { "bullets": ["...", "..."] }
+- For content with bullets: return { "bullets": ["5-8 word complete phrase", "..."], "voiceOverText": "spoken expansion of those bullets" }. NEVER write full paragraph OST. NEVER end bullets with "..."
 - For diagram: return valid mermaidCode (flowchart/sequence) that illustrates the slide title
-${isTabbed ? '- For tabbed slides: include "introContent" with 2–4 short educational sentences about the topic. Do NOT make introContent only a click instruction. You may end with "Select a tab to continue →". Each tab "content" MUST be a markdown string of short bullets (never an object or array).' : ''}
+${isTabbed ? '- For tabbed slides: introContent MUST be 3–5 SHORT complete bullets (5–8 words each), same density as Overview slides. Do NOT write intro paragraphs and do NOT truncate with ellipses. voiceOverText is the Introduction narration only (do not recap tab content). Each tab "content" MUST be markdown short bullets; each tab "voiceOverText" elaborates that tab only.' : ''}
 ${type === 'click-reveal' ? '- For click-reveal: each item "definition" MUST be 3–5 SHORT BULLETS (5–8 words), not sentences. Put spoken explanation in voiceOverText. Slide-level content must be empty or 1 framing line — do NOT repeat the reveal bullets on the slide.' : ''}
 ${type === 'carousel-panel' ? '- For carousel: pick card colors ONLY from this dark set so white text stays readable: #4f46e5, #0f766e, #9f1239, #1d4ed8, #b45309, #6d28d9, #166534, #0f172a. Never white, yellow, pink, or pastels.' : ''}
 ${isKc ? '- For knowledge checks: introContent/content is 1–2 framing bullets about WHAT is being tested (e.g. "Match each traffic sign to its function"). Do NOT list answers, meanings, or categories that give away the match. voiceOverText MUST be "" — knowledge checks have no spoken narration. Teaching detail belongs in feedback after submit.' : ''}
@@ -422,10 +423,16 @@ ${isKc ? '- For knowledge checks: introContent/content is 1–2 framing bullets 
       : Array.isArray(parsed.items)
         ? parsed.items.map((it: any) => (typeof it === 'string' ? it : it.content || it.title || '')).filter(Boolean)
         : [];
-    const content = bullets.length
-      ? bullets.map(b => `- ${b}`).join('\n')
+    const rawOst = bullets.length
+      ? bullets.map(b => `- ${String(b).replace(/^[-*•]\s+/, '')}`).join('\n')
       : (parsed.content || slide.content || `Key points for: ${slide.title}`);
-    return { type: 'content', data: undefined, content, voiceOverText: parsed.voiceOverText };
+    const content = toShortOstBullets(rawOst) || coerceOstText(rawOst);
+    return {
+      type: 'content',
+      data: undefined,
+      content,
+      voiceOverText: parsed.voiceOverText || parsed.narration || slide.voiceOverText,
+    };
   }
 
   // Normalize matching pairs → items/targets if model returns pairs
@@ -460,12 +467,13 @@ ${isKc ? '- For knowledge checks: introContent/content is 1–2 framing bullets 
     const rawTabs = parsed.tabs || parsed.items || [];
     const listKey = Array.isArray(parsed.tabs) ? 'tabs' : 'items';
     const tabs = (Array.isArray(rawTabs) ? rawTabs : []).map((t: any, i: number) => normalizeTabRecord(t, i));
-    const introContent = coerceOstText(parsed.introContent || parsed.content);
+    const introContent = toShortOstBullets(parsed.introContent || parsed.content)
+      || coerceOstText(parsed.introContent || parsed.content);
     return {
       type,
       data: { [listKey]: tabs },
-      content: introContent || slide.content,
-      voiceOverText: parsed.voiceOverText,
+      content: introContent || toShortOstBullets(slide.content) || slide.content,
+      voiceOverText: parsed.voiceOverText || parsed.narration || slide.voiceOverText,
     };
   }
 

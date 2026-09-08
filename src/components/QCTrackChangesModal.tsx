@@ -7,7 +7,8 @@ import {
 } from 'lucide-react';
 import { QCReport, QCIssue } from '../services/qcService';
 
-type FilterTab = 'all' | 'error' | 'warning' | 'info';
+type SeverityTab = 'error' | 'warning' | 'info';
+type FilterTab = 'all' | 'ost' | 'narration' | 'images' | SeverityTab;
 
 interface Props {
   open: boolean;
@@ -41,10 +42,28 @@ const SEVERITY_CONFIG = {
 
 const FILTER_LABELS: Record<FilterTab, string> = {
   all: 'All',
+  ost: 'OST',
+  narration: 'Narration',
+  images: 'Images',
   error: 'Must fix',
   warning: 'Review',
   info: 'Notes',
 };
+
+/** Bucket a finding so authors can filter OST vs narration vs images. */
+function issueSurface(issue: QCIssue): 'ost' | 'narration' | 'images' {
+  const field = String(issue.field || '').toLowerCase();
+  const type = String(issue.type || '').toLowerCase();
+  if (
+    type === 'color_contrast' ||
+    /image|media|hotspot|mermaid|diagram/.test(field) ||
+    /image|diagram/.test(type)
+  ) {
+    return 'images';
+  }
+  if (field.includes('voiceover') || field.includes('narration')) return 'narration';
+  return 'ost';
+}
 
 /** Map QC field keys to plain English for beta testers. */
 function humanizeField(field?: string): string {
@@ -90,7 +109,7 @@ function IssueCard({
   onRegenerate: () => Promise<void>;
   highlighted?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(!!issue.suggestion && issue.suggestion !== issue.originalText);
+  const [expanded, setExpanded] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
   const cfg = SEVERITY_CONFIG[issue.severity];
   const Icon = cfg.icon;
@@ -138,17 +157,13 @@ function IssueCard({
             <span className="text-[10px] text-slate-600">·</span>
             <span className="text-[10px] text-slate-500 truncate">{issue.slideTitle}</span>
           </div>
-          <p className="text-sm text-slate-200 mt-1 leading-snug">{issue.message}</p>
+          <p className="text-sm text-slate-200 mt-1 leading-snug">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">QA issue · </span>
+            {issue.message}
+          </p>
           <p className="mt-1.5 inline-flex items-center text-[11px] text-slate-400 bg-slate-800/60 border border-slate-700/60 px-2 py-0.5 rounded">
             Where: {humanizeField(issue.field)}
           </p>
-          {/* Always-visible fix preview so Confirm Fix is meaningful without expanding */}
-          {canConfirmFix && issue.suggestion && !confirmed && (
-            <p className="mt-2 text-[11px] text-emerald-300/90 leading-snug">
-              <span className="font-semibold text-emerald-400">Suggested fix: </span>
-              <span className="text-emerald-200/90">{issue.suggestion.length > 140 ? `${issue.suggestion.slice(0, 140)}…` : issue.suggestion}</span>
-            </p>
-          )}
         </div>
         {(issue.originalText || issue.suggestion) && (
           <button
@@ -161,7 +176,7 @@ function IssueCard({
         )}
       </div>
 
-      {/* Diff view */}
+      {/* Diff view — original (red) then suggested fix (green). No duplicate "Suggested fix" line above. */}
       <AnimatePresence>
         {expanded && (issue.originalText || issue.suggestion) && (
           <motion.div
@@ -172,20 +187,26 @@ function IssueCard({
             className="overflow-hidden"
           >
             <div className="px-4 pb-3 space-y-2">
-              <div className="rounded-lg overflow-hidden border border-slate-700/50 text-xs font-mono">
-                {issue.originalText && (
-                  <div className="bg-red-900/20 border-b border-slate-700/30 px-3 py-2 text-red-300 leading-relaxed">
-                    <span className="text-red-500 font-black mr-2">−</span>
-                    {issue.originalText}
+              {issue.originalText && (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-red-400/80 mb-1">Current text</p>
+                  <div className="rounded-lg overflow-hidden border border-red-900/40 text-xs">
+                    <div className="bg-red-900/20 px-3 py-2 text-red-300 leading-relaxed">
+                      {issue.originalText}
+                    </div>
                   </div>
-                )}
-                {issue.suggestion && (
-                  <div className="bg-emerald-900/20 px-3 py-2 text-emerald-300 leading-relaxed">
-                    <span className="text-emerald-500 font-black mr-2">+</span>
-                    {issue.suggestion}
+                </div>
+              )}
+              {issue.suggestion && (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-400/80 mb-1">Suggested fix</p>
+                  <div className="rounded-lg overflow-hidden border border-emerald-900/40 text-xs">
+                    <div className="bg-emerald-900/20 px-3 py-2 text-emerald-300 leading-relaxed">
+                      {issue.suggestion}
+                    </div>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </motion.div>
         )}
@@ -297,7 +318,13 @@ export function QCTrackChangesModal({
 
   const filteredIssues = useMemo(() => {
     if (!report) return [];
-    const list = report.issues.filter(i => filter === 'all' || i.severity === filter);
+    const list = report.issues.filter(i => {
+      if (filter === 'all') return true;
+      if (filter === 'ost' || filter === 'narration' || filter === 'images') {
+        return issueSurface(i) === filter;
+      }
+      return i.severity === filter;
+    });
     if (!focusSlideId) return list;
     // Focused slide's issues first so the learner sees them immediately
     return [...list].sort((a, b) => {
@@ -454,8 +481,14 @@ export function QCTrackChangesModal({
 
               {/* Filter tabs */}
               {report.totalIssues > 0 && (
-                <div className="flex gap-1 px-6 pt-3 shrink-0">
-                  {(['all', 'error', 'warning', 'info'] as FilterTab[]).map(tab => (
+                <div className="flex gap-1 px-6 pt-3 shrink-0 flex-wrap">
+                  {(['all', 'ost', 'narration', 'images', 'error', 'warning', 'info'] as FilterTab[]).map(tab => {
+                    const count = tab === 'all'
+                      ? report.totalIssues
+                      : tab === 'ost' || tab === 'narration' || tab === 'images'
+                        ? report.issues.filter(i => issueSurface(i) === tab).length
+                        : report.issues.filter(i => i.severity === tab).length;
+                    return (
                     <button
                       key={tab}
                       onClick={() => setFilter(tab)}
@@ -465,9 +498,10 @@ export function QCTrackChangesModal({
                           : 'border-transparent text-slate-500 hover:text-slate-300'
                       }`}
                     >
-                      {tab === 'all' ? `All (${report.totalIssues})` : FILTER_LABELS[tab]}
+                      {tab === 'all' ? `All (${count})` : `${FILTER_LABELS[tab]}${count ? ` (${count})` : ''}`}
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
