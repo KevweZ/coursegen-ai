@@ -231,12 +231,12 @@ export async function collectNarrationRecords(
   for (const m of course?.modules || []) {
     for (const s of m?.slides || []) {
       if (s?.id && isPackableAudioUrl(s.voiceOverUrl)) {
-        jobs.push({ key: `slide:${s.id}`, url: s.voiceOverUrl });
+        jobs.push({ key: `slide:${String(s.id)}`, url: s.voiceOverUrl });
       }
       for (const listKey of ['tabs', 'items'] as const) {
         for (const item of s?.data?.[listKey] || []) {
           if (item?.id && isPackableAudioUrl(item.voiceOverUrl)) {
-            jobs.push({ key: `tab:${s.id}:${listKey}:${item.id}`, url: item.voiceOverUrl });
+            jobs.push({ key: `tab:${String(s.id)}:${listKey}:${String(item.id)}`, url: item.voiceOverUrl });
           }
         }
       }
@@ -293,7 +293,7 @@ export function applyNarrationUrls(
       ...m,
       slides: (m.slides || []).map((s: any) => {
         let slide = s;
-        const su = s?.id ? slideUrl.get(s.id) : undefined;
+        const su = s?.id ? slideUrl.get(String(s.id)) : undefined;
         if (su) slide = { ...slide, voiceOverUrl: su };
         if (!slide.data || typeof slide.data !== 'object') return slide;
         let data = slide.data;
@@ -301,7 +301,7 @@ export function applyNarrationUrls(
         for (const listKey of ['tabs', 'items'] as const) {
           if (!Array.isArray(data[listKey])) continue;
           const list = data[listKey].map((item: any) => {
-            const tu = item?.id && s?.id ? tabUrl.get(`${s.id}::${listKey}::${item.id}`) : undefined;
+            const tu = item?.id && s?.id ? tabUrl.get(`${String(s.id)}::${listKey}::${String(item.id)}`) : undefined;
             if (!tu) return item;
             changed = true;
             return { ...item, voiceOverUrl: tu };

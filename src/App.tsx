@@ -140,6 +140,7 @@ import {
   takeLegacyMedia,
   isAudioAssetPath,
 } from './lib/draftMedia';
+import { clearNarrationCache, stashAudioUrl } from './lib/narrationCache';
 import {
   ROUTES,
   parseAppPath,
@@ -1048,6 +1049,8 @@ export default function App() {
       navigateTo(ROUTES.upload, true);
       return false;
     }
+
+    clearNarrationCache();
 
     const shell = snapshot.course;
     const legacyMedia = mediaRecordToMap(takeLegacyMedia(id));
@@ -3735,6 +3738,7 @@ export default function App() {
     });
     setCourse(stamped);
     setOriginalCourse(stamped);
+    clearNarrationCache();
     setSyntheticAudioMap({});
     setExploredBySlide({});
     // Always open a newly generated course on the title/cover slide — never reuse
@@ -8700,6 +8704,10 @@ export default function App() {
                                     const blobUrl = await genTTS(mainText, { voice: ttsVoice as any });
                                     const durable = await toDurable(blobUrl);
                                     nextSlide = { ...nextSlide, voiceOverUrl: durable };
+                                    void stashAudioUrl(
+                                      synthetic ? `synth:${editingSlide.id}` : `slide:${editingSlide.id}`,
+                                      durable,
+                                    );
                                     if (synthetic) {
                                       // Injected slides are not in course.modules — persist via syntheticAudioMap
                                       setSyntheticAudioMap(prev => ({ ...prev, [editingSlide.id]: durable }));
@@ -8722,6 +8730,10 @@ export default function App() {
                                       showDraftMessage(`Generating tab audio ${n + 1}/${tabJobs.length}…`);
                                       const tabUrl = await toDurable(await genTTS(job.text, { voice: ttsVoice as any }));
                                       nextTabs[job.i] = { ...nextTabs[job.i], voiceOverUrl: tabUrl };
+                                      void stashAudioUrl(
+                                        `tab:${editingSlide.id}:${listKey}:${job.t.id}`,
+                                        tabUrl,
+                                      );
                                       await new Promise(r => setTimeout(r, 200));
                                     }
                                     nextSlide = {

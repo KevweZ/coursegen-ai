@@ -8,6 +8,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { slideSkipsNarration } from '../lib/enablingCoverage';
 import { hasPlayableNarrationUrl, slideNarrationScript, tabNarrationScript } from '../lib/narrationAudio';
+import { stashJobResultAudio } from '../lib/narrationCache';
 import {
   createTtsJob,
   pollTtsJob,
@@ -52,10 +53,6 @@ function sleep(ms: number) {
   return new Promise(r => setTimeout(r, ms));
 }
 
-function audioResultToDataUrl(result: TtsJobResultItem): string {
-  return `data:${result.audioContentType || 'audio/mpeg'};base64,${result.audioBase64}`;
-}
-
 function applyJobResults(
   results: TtsJobResultItem[],
   setCourse: SetCourse,
@@ -63,26 +60,26 @@ function applyJobResults(
 ) {
   if (!results?.length) return;
 
-  const slidePatches: TtsJobResultItem[] = [];
-  const tabPatches: TtsJobResultItem[] = [];
-  const syntheticPatches: TtsJobResultItem[] = [];
+  const slidePatches: Array<{ r: TtsJobResultItem; url: string }> = [];
+  const tabPatches: Array<{ r: TtsJobResultItem; url: string }> = [];
+  const syntheticPatches: Array<{ r: TtsJobResultItem; url: string }> = [];
 
   for (const r of results) {
-    if (r.target === 'synthetic' || (r.id.startsWith('__') && r.id.endsWith('__'))) {
-      syntheticPatches.push(r);
+    const url = stashJobResultAudio(r);
+    if (!url) continue;
+    if (r.target === 'synthetic' || (String(r.id).startsWith('__') && String(r.id).endsWith('__'))) {
+      syntheticPatches.push({ r, url });
     } else if (r.target === 'tab' || r.tabId) {
-      tabPatches.push(r);
+      tabPatches.push({ r, url });
     } else {
-      slidePatches.push(r);
+      slidePatches.push({ r, url });
     }
   }
 
   if (syntheticPatches.length && setSyntheticAudioMap) {
     setSyntheticAudioMap(prev => {
       const next = { ...prev };
-      for (const r of syntheticPatches) {
-        next[r.id] = audioResultToDataUrl(r);
-      }
+      for (const { r, url } of syntheticPatches) next[r.id] = url;
       return next;
     });
   }
@@ -96,14 +93,15 @@ function applyJobResults(
           ...m,
           slides: (m.slides || []).map((s: any) => {
             let slide = s;
-            for (const r of slidePatches) {
-              if (r.id === s.id || r.slideId === s.id) {
-                slide = { ...slide, voiceOverUrl: audioResultToDataUrl(r) };
+            const sid = String(s.id);
+            for (const { r, url } of slidePatches) {
+              if (String(r.id) === sid || String(r.slideId || '') === sid) {
+                slide = { ...slide, voiceOverUrl: url };
               }
             }
-            for (const r of tabPatches) {
-              const slideId = r.slideId || r.id.split('::tab::')[0];
-              if (slide.id !== slideId) continue;
+            for (const { r, url } of tabPatches) {
+              const slideId = String(r.slideId || r.id.split('::tab::')[0] || '');
+              if (sid !== slideId) continue;
               const data = { ...(slide.data || {}) };
               const listKey =
                 r.listKey === 'items' || r.listKey === 'tabs'
@@ -114,10 +112,10 @@ function applyJobResults(
                       ? 'items'
                       : 'tabs';
               const list = Array.isArray(data[listKey]) ? [...data[listKey]] : [];
-              const tabId = r.tabId || r.id.split('::tab::')[1];
-              const idx = list.findIndex((t: any) => t.id === tabId);
+              const tabId = String(r.tabId || r.id.split('::tab::')[1] || '');
+              const idx = list.findIndex((t: any) => String(t.id) === tabId);
               if (idx < 0) continue;
-              list[idx] = { ...list[idx], voiceOverUrl: audioResultToDataUrl(r) };
+              list[idx] = { ...list[idx], voiceOverUrl: url };
               slide = { ...slide, data: { ...data, [listKey]: list } };
             }
             return slide;
