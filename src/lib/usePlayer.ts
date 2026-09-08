@@ -93,6 +93,7 @@ export function usePlayer(): Player {
   const rafRef = useRef<number | null>(null);
   // Guard against race conditions during rapid slide switching
   const loadingSlideId = useRef<string>('');
+  const loadGeneration = useRef(0);
   // Stores current event listener functions so they can be removed on slide change
   const listenersRef = useRef<{
     loadedmetadata: (() => void) | null;
@@ -312,25 +313,18 @@ export function usePlayer(): Player {
    * Stops any current playback, resets all state, attaches new audio listeners.
    */
   const loadSlide = useCallback((slideId: string, audioSrc?: string | null, ttsText?: string | null) => {
+    const gen = ++loadGeneration.current;
     const audio = audioRef.current;
-    if (!audio) return;
 
     console.log(`[usePlayer] ------------------------------------------------`);
     console.log(`[usePlayer] Lifecycle Step 1/3: Halting previous playback (Slide -> ${slideId})`);
 
-    // Stop and unload previous audio
     cancelRaf();
     window.speechSynthesis.cancel();
-    audio.pause();
-    audio.removeAttribute('src'); // Strictly unbind old source
-    audio.load();
 
-    console.log(`[usePlayer] Lifecycle Step 2/3: Resetting internal time to 0`);
-    
     loadingSlideId.current = slideId;
     const hasAudio = !!audioSrc || !!ttsText;
 
-    // Reset state immediately (snap to new slide) — use functional form to preserve volume
     setState(prev => ({
       activeSlideId: slideId,
       audioSrc: audioSrc ?? null,
@@ -341,62 +335,76 @@ export function usePlayer(): Player {
       isSeeking: false,
       isEnded: false,
       hasAudio,
-      isLoading: !!audioSrc, // loading = true only for actual network audio
-      volume: prev.volume,   // preserve user's volume setting across slides
+      isLoading: !!audioSrc,
+      volume: prev.volume,
     }));
 
+    if (!audio) {
+      if (hasAudio) {
+        requestAnimationFrame(() => {
+          if (loadGeneration.current === gen && audioRef.current) loadSlide(slideId, audioSrc, ttsText);
+        });
+      }
+      return;
+    }
 
-    if (!hasAudio) return;
-    if (ttsText && !audioSrc) return; // TTS is ready instantly
-
-    // ----- Attach event handlers -----
-
-    const onLoadedMetadata = () => {
-      // Guard: ignore stale callbacks from a previous slide
-      if (loadingSlideId.current !== slideId) return;
-      console.log(`[usePlayer] Metadata confirmed for slide ${slideId}. Valid duration: ${audio.duration}s`);
-      setState(prev =>
-        prev.activeSlideId === slideId
-          ? { ...prev, duration: audio.duration, isLoading: false }
-          : prev
-      );
-    };
-
-    const onEnded = () => {
-      if (loadingSlideId.current !== slideId) return;
-      console.log(`[usePlayer] Hardware playback lifecycle completed natively for slide: ${slideId}`);
-      cancelRaf();
-      setState(prev =>
-        prev.activeSlideId === slideId
-          ? { ...prev, isPlaying: false, isEnded: true }
-          : prev
-      );
-    };
-
-    const onError = () => {
-      console.warn('[usePlayer] Audio failed to load:', audioSrc);
-      setState(prev =>
-        prev.activeSlideId === slideId
-          ? { ...prev, hasAudio: false, isLoading: false }
-          : prev
-      );
-    };
-
-    // Remove previous listeners before attaching new ones
     const prev = listenersRef.current;
     if (prev.loadedmetadata) audio.removeEventListener('loadedmetadata', prev.loadedmetadata);
     if (prev.ended) audio.removeEventListener('ended', prev.ended);
     if (prev.error) audio.removeEventListener('error', prev.error);
+    listenersRef.current = { loadedmetadata: null, ended: null, error: null };
 
-    // Store references to the new listeners for cleanup on next slide
+    audio.pause();
+    // Do not audio.load() on an empty src — that fires a spurious error that
+    // used to flip the bar to "No narration" after a successful restore.
+    audio.removeAttribute('src');
+
+    if (!hasAudio) return;
+    if (ttsText && !audioSrc) return;
+
+    let acceptErrors = false;
+
+    const onLoadedMetadata = () => {
+      if (loadGeneration.current !== gen || loadingSlideId.current !== slideId) return;
+      console.log(`[usePlayer] Metadata confirmed for slide ${slideId}. Valid duration: ${audio.duration}s`);
+      setState(prevState =>
+        prevState.activeSlideId === slideId
+          ? { ...prevState, hasAudio: true, duration: audio.duration, isLoading: false }
+          : prevState
+      );
+    };
+
+    const onEnded = () => {
+      if (loadGeneration.current !== gen || loadingSlideId.current !== slideId) return;
+      console.log(`[usePlayer] Hardware playback lifecycle completed natively for slide: ${slideId}`);
+      cancelRaf();
+      setState(prevState =>
+        prevState.activeSlideId === slideId
+          ? { ...prevState, isPlaying: false, isEnded: true }
+          : prevState
+      );
+    };
+
+    const onError = () => {
+      if (loadGeneration.current !== gen || loadingSlideId.current !== slideId) return;
+      if (!acceptErrors) return;
+      const current = String(audio.currentSrc || audio.src || '');
+      if (!current || current === window.location.href) return;
+      console.warn('[usePlayer] Audio failed to load:', audioSrc);
+      setState(prevState =>
+        prevState.activeSlideId === slideId
+          ? { ...prevState, hasAudio: false, isLoading: false }
+          : prevState
+      );
+    };
+
     listenersRef.current = { loadedmetadata: onLoadedMetadata, ended: onEnded, error: onError };
-
     audio.addEventListener('loadedmetadata', onLoadedMetadata);
     audio.addEventListener('ended', onEnded);
     audio.addEventListener('error', onError);
 
-    // Begin loading
     audio.src = audioSrc!;
+    acceptErrors = true;
     audio.load();
   }, []);
 

@@ -1087,6 +1087,15 @@ export default function App() {
 
     const narrUrls = await draftManager.loadDraftNarration(id);
     const applied = applyNarrationUrls(shell, narrUrls);
+    if (snapshot.phase === 'preview') {
+      for (const sid of snapshot.syntheticAudioIds || []) {
+        const url =
+          narrUrls[`synth:${sid}`]
+          || narrUrls[`__synthetic__.${sid}`]
+          || narrUrls[`slide:${sid}`];
+        if (url) applied.synthetic[sid] = url;
+      }
+    }
     setSyntheticAudioMap(applied.synthetic);
     // Authoring preview: always allow free navigation so drafts aren't "frozen"
     // (linear/restricted + interaction gates make the player feel like a screenshot).

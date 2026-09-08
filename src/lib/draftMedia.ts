@@ -88,6 +88,18 @@ export function mediaRecordToMap(rec?: Record<string, string> | null): MediaMap 
   return map;
 }
 
+/** Cover / tour / module chrome lives in syntheticAudioMap, not course.modules. */
+export function syntheticIdFromNarrationKey(key: string): string | null {
+  const k = String(key || '');
+  let id = '';
+  if (k.startsWith('synth:')) id = k.slice(6);
+  else if (k.startsWith('__synthetic__.')) id = k.slice('__synthetic__.'.length);
+  else if (k.startsWith('slide:')) id = k.slice(6);
+  else if (k.startsWith('__') && k.endsWith('__')) id = k;
+  if (id.startsWith('__') && id.endsWith('__')) return id;
+  return null;
+}
+
 export function isAudioAssetPath(path: string): boolean {
   return (
     /voiceOverUrl$/i.test(path)
@@ -340,12 +352,9 @@ export function applyNarrationUrls(
   const pathUrl = new Map<string, string>();
   for (const [k, v] of Object.entries(urls || {})) {
     if (!v) continue;
-    if (k.startsWith('synth:')) {
-      synthetic[k.slice(6)] = v;
-      continue;
-    }
-    if (k.startsWith('__synthetic__.')) {
-      synthetic[k.slice('__synthetic__.'.length)] = v;
+    const synthId = syntheticIdFromNarrationKey(k);
+    if (synthId) {
+      synthetic[synthId] = v;
       continue;
     }
     if (k.startsWith('slide:')) {
