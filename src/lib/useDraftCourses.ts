@@ -1370,9 +1370,12 @@ export function useDraftCourses(
       if (!Object.keys(blobs).length) {
         return await readDraftAssets(userId, id);
       }
-      // Append image object URLs only. Do not revoke — loadDraftNarration already
-      // attached audio, and revoking those URLs would mute the player after restore.
-      return addPlayableUrls(id, blobs);
+      const imagesOnly: Record<string, Blob> = {};
+      for (const [k, v] of Object.entries(blobs)) {
+        if (!isAudioAssetPath(k)) imagesOnly[k] = v;
+      }
+      // Images only — narration object URLs were already created by loadDraftNarration.
+      return addPlayableUrls(id, imagesOnly);
     } catch (e) {
       console.warn('[DraftCourses] loadDraftAssets failed:', e);
       return {};

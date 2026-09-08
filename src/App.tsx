@@ -136,6 +136,7 @@ import type { DesignDraftSnapshot } from './lib/useDraftCourses';
 import {
   attachHeavyMedia,
   applyNarrationUrls,
+  indexRestoredNarrationUrls,
   mediaRecordToMap,
   takeLegacyMedia,
   isAudioAssetPath,
@@ -814,6 +815,7 @@ export default function App() {
     draftWorkspaceId
   );
   const syntheticAudioMapRef = React.useRef<Record<string, string>>({});
+  const restoredBySlideRef = React.useRef<Record<string, string>>({});
   const [showDraftsPanel, setShowDraftsPanel] = React.useState(false);
   const [showViewDraftsModal, setShowViewDraftsModal] = React.useState(false);
   const [isSyncingDrafts, setIsSyncingDrafts] = React.useState(false);
@@ -1058,6 +1060,7 @@ export default function App() {
 
     clearNarrationCache();
     setLiveNarrationScope(id);
+    restoredBySlideRef.current = {};
 
     const shell = snapshot.course;
     const legacyMedia = mediaRecordToMap(takeLegacyMedia(id));
@@ -1087,15 +1090,31 @@ export default function App() {
 
     const narrUrls = await draftManager.loadDraftNarration(id);
     const applied = applyNarrationUrls(shell, narrUrls);
+    const bySlide = indexRestoredNarrationUrls(narrUrls);
+    for (const [sid, url] of Object.entries(bySlide)) {
+      if (sid.startsWith('__') && sid.endsWith('__') && url) applied.synthetic[sid] = url;
+    }
     if (snapshot.phase === 'preview') {
       for (const sid of snapshot.syntheticAudioIds || []) {
         const url =
-          narrUrls[`synth:${sid}`]
+          bySlide[sid]
+          || narrUrls[`synth:${sid}`]
           || narrUrls[`__synthetic__.${sid}`]
           || narrUrls[`slide:${sid}`];
-        if (url) applied.synthetic[sid] = url;
+        if (url) {
+          applied.synthetic[sid] = url;
+          bySlide[sid] = url;
+        }
       }
     }
+    restoredBySlideRef.current = bySlide;
+    console.log(
+      `[Drafts] Restored ${Object.keys(narrUrls).length} clip key(s), ` +
+      `${Object.keys(applied.synthetic).length} chrome, ` +
+      `cover=${applied.synthetic['__cover__'] ? 'yes' : 'no'}`,
+      Object.keys(narrUrls).slice(0, 12),
+    );
+    if (Object.keys(narrUrls).length) setVoiceOverEnabled(true);
     setSyntheticAudioMap(applied.synthetic);
     // Authoring preview: always allow free navigation so drafts aren't "frozen"
     // (linear/restricted + interaction gates make the player feel like a screenshot).
@@ -1169,15 +1188,27 @@ export default function App() {
           imageMedia.set(k, v);
         }
         if (Object.keys(synthRestored).length) {
-          setSyntheticAudioMap(prev => ({ ...prev, ...synthRestored }));
+          setSyntheticAudioMap(prev => {
+            const next = { ...prev };
+            for (const [k, v] of Object.entries(synthRestored)) {
+              if (v && !next[k]) next[k] = v;
+            }
+            return next;
+          });
         }
 
         let working = applied.course;
-        if (Object.keys(idNarration).length) {
+        if (Object.keys(idNarration).length && Object.keys(narrUrls).length === 0) {
           const more = applyNarrationUrls(working, idNarration);
           working = more.course;
           if (Object.keys(more.synthetic).length) {
-            setSyntheticAudioMap(prev => ({ ...prev, ...more.synthetic }));
+            setSyntheticAudioMap(prev => {
+              const next = { ...prev };
+              for (const [k, v] of Object.entries(more.synthetic)) {
+                if (v && !next[k]) next[k] = v;
+              }
+              return next;
+            });
           }
         }
 
@@ -2654,12 +2685,14 @@ export default function App() {
     // Only load/play audio while the course player is visible — never during generate/upload
     if (step !== 'preview' || !currentSlide) return;
     currentSlideIdRef.current = currentSlide.id || null;
+    const restoredUrl = restoredBySlideRef.current[currentSlide.id];
     const playUrl = voiceOverEnabled && !slideSkipsNarration(currentSlide)
       ? (
           (hasLiveNarrationUrl(activeTabAudioUrl) ? activeTabAudioUrl : null)
           || (hasLiveNarrationUrl(currentSlide.voiceOverUrl) ? currentSlide.voiceOverUrl : null)
           || (hasLiveNarrationUrl((currentSlide as any).audioUrl) ? (currentSlide as any).audioUrl : null)
           || (hasLiveNarrationUrl(currentSyntheticUrl) ? currentSyntheticUrl : null)
+          || (hasLiveNarrationUrl(restoredUrl) ? restoredUrl : null)
         )
       : null;
     if (playUrl && currentSlide.id) {

@@ -96,8 +96,27 @@ export function syntheticIdFromNarrationKey(key: string): string | null {
   else if (k.startsWith('__synthetic__.')) id = k.slice('__synthetic__.'.length);
   else if (k.startsWith('slide:')) id = k.slice(6);
   else if (k.startsWith('__') && k.endsWith('__')) id = k;
+  else {
+    const m = k.match(/(__[a-z0-9-]+(?:-\d+)?__)/i);
+    if (m) id = m[1];
+  }
   if (id.startsWith('__') && id.endsWith('__')) return id;
   return null;
+}
+
+/** Map restored clip keys → slide id (cover/tour use __cover__, teaching slides use their id). */
+export function indexRestoredNarrationUrls(urls: Record<string, string>): Record<string, string> {
+  const byId: Record<string, string> = {};
+  for (const [k, v] of Object.entries(urls || {})) {
+    if (!v) continue;
+    const synth = syntheticIdFromNarrationKey(k);
+    if (synth) {
+      byId[synth] = v;
+      continue;
+    }
+    if (k.startsWith('slide:')) byId[k.slice(6)] = v;
+  }
+  return byId;
 }
 
 export function isAudioAssetPath(path: string): boolean {
@@ -207,14 +226,17 @@ export function narrationRecordToBlob(rec: NarrationRecord | null | undefined): 
 }
 
 const playableUrlsByDraft = new Map<string, string[]>();
+const playableBlobsByDraft = new Map<string, Blob[]>();
 
 export function revokeDraftPlayableUrls(draftId: string) {
   const urls = playableUrlsByDraft.get(draftId);
-  if (!urls?.length) return;
-  for (const u of urls) {
-    try { URL.revokeObjectURL(u); } catch { /* ok */ }
+  if (urls?.length) {
+    for (const u of urls) {
+      try { URL.revokeObjectURL(u); } catch { /* ok */ }
+    }
   }
   playableUrlsByDraft.delete(draftId);
+  playableBlobsByDraft.delete(draftId);
 }
 
 /** Turn stored blobs into session-playable object URLs (no base64 round-trip). */
@@ -403,14 +425,18 @@ export function applyNarrationUrls(
 export function addPlayableUrls(draftId: string, blobs: Record<string, Blob>): Record<string, string> {
   const out: Record<string, string> = {};
   const created = playableUrlsByDraft.get(draftId) || [];
+  const held = playableBlobsByDraft.get(draftId) || [];
   for (const [path, blob] of Object.entries(blobs || {})) {
     const min = isAudioAssetPath(path) ? 64 : 8;
     if (!(blob instanceof Blob) || blob.size < min) continue;
-    const url = URL.createObjectURL(withAssetMime(path, blob));
+    const playable = withAssetMime(path, blob);
+    held.push(playable);
+    const url = URL.createObjectURL(playable);
     out[path] = url;
     created.push(url);
   }
   if (created.length) playableUrlsByDraft.set(draftId, created);
+  if (held.length) playableBlobsByDraft.set(draftId, held);
   return out;
 }
 
