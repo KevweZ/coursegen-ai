@@ -827,6 +827,10 @@ export function useDraftCourses(
       const tombstones = await readTombstones(userId);
       let local = (await loadDraftsForUser(userId)).filter(d => !tombstones.has(d.id));
       report.localCount = local.length;
+      // Show this device’s drafts immediately — don’t wait on cloud round-trips.
+      setDrafts(local);
+      setIsReady(true);
+
       resetCloudDraftsProbe();
       const cloudOk = await isCloudDraftsAvailable();
       setCloudEnabled(cloudOk);
@@ -901,7 +905,6 @@ export function useDraftCourses(
       setDrafts(merged);
     } catch (e) {
       console.error('[DraftCourses] refresh failed:', e);
-      setDrafts([]);
       report.errors.push(e instanceof Error ? e.message : 'Refresh failed');
     } finally {
       setIsReady(true);
@@ -910,7 +913,11 @@ export function useDraftCourses(
   }, [userId, workspaceId]);
 
   useEffect(() => {
-    setIsReady(false);
+    if (!userId) {
+      setDrafts([]);
+      setIsReady(true);
+      return;
+    }
     void refreshDrafts();
   }, [refreshDrafts]);
 

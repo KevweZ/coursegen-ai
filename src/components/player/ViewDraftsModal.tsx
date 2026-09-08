@@ -152,7 +152,7 @@ export const ViewDraftsModal: React.FC<Props> = ({
           </div>
 
           <div className="flex-1 overflow-y-auto p-5 space-y-3 custom-scrollbar min-h-[320px]">
-            {!isReady || refreshing ? (
+            {!isReady && drafts.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 gap-3 text-slate-400">
                 <Loader2 className="w-8 h-8 animate-spin text-indigo-400" />
                 <p className="text-sm font-bold text-white">Syncing drafts to your account…</p>

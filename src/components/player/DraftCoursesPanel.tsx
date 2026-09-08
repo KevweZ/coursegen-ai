@@ -21,6 +21,10 @@ interface Props {
   currentCourseTitle?: string;
   activeDraftId?: string | null;
   isSaving?: boolean;
+  /** Which save action is in progress — used so only that control shows a spinner. */
+  savingKind?: 'update' | 'replace' | 'save' | null;
+  /** Draft id being overwritten (replace) or updated (update). */
+  savingDraftId?: string | null;
   onSave: () => void;
   /** Overwrite the draft currently open in the player (when one is active). */
   onUpdateCurrent?: () => void;
@@ -62,7 +66,7 @@ function SlotBar({ used, total, theme }: { used: number; total: number; theme: s
 
 export const DraftCoursesPanel: React.FC<Props> = ({
   isOpen, onClose, theme, drafts, slotsUsed, slotsTotal, canSave,
-  isAuthenticated, currentCourseTitle, activeDraftId, isSaving, onSave, onUpdateCurrent,
+  isAuthenticated, currentCourseTitle, activeDraftId, isSaving, savingKind, savingDraftId, onSave, onUpdateCurrent,
   onLoad, onDelete, onReplace, onRename, saveMessage,
 }) => {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -174,7 +178,7 @@ export const DraftCoursesPanel: React.FC<Props> = ({
                           : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-900/30 hover:shadow-indigo-900/50'
                       )}
                     >
-                      {savingBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                      {savingBusy && savingKind === 'update' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                       Update current draft
                     </button>
                   )}
@@ -191,7 +195,7 @@ export const DraftCoursesPanel: React.FC<Props> = ({
                         : 'bg-slate-700/30 text-slate-500 cursor-not-allowed'
                     )}
                   >
-                    {savingBusy && !onUpdateCurrent ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    {savingBusy && savingKind === 'save' && !onUpdateCurrent ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                     {canSave ? 'Save as new draft' : 'All slots used — delete one first'}
                   </button>
 
@@ -350,7 +354,9 @@ export const DraftCoursesPanel: React.FC<Props> = ({
                               theme === 'light' ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-slate-700/50 hover:bg-slate-600 text-slate-200'
                             )}
                           >
-                            {savingBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                            {savingBusy && savingKind === 'replace' && savingDraftId === draft.id
+                              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              : <Save className="w-3.5 h-3.5" />}
                             Overwrite
                           </button>
                           {onRename && (

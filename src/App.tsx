@@ -175,6 +175,7 @@ import ClickRevealInteraction from './components/interactions/ClickRevealInterac
 import { getRecommendedGames } from './lib/gameEngine';
 import { DUMMY_COURSE, DUMMY_EXAM_QUESTIONS } from './lib/dummyCourse';
 import { sanitizeOstText, coerceOstText } from './lib/formatTabIntroOst';
+import { qcFieldTouchesNarration } from './lib/qcTextFix';
 import { useScaleToFit } from './hooks/useScaleToFit';
 import { FloatingImageCanvas } from './components/FloatingImageCanvas';
 import { TrialInvitePanel } from './components/TrialInvitePanel';
@@ -830,6 +831,13 @@ export default function App() {
   const [activeDraftId, setActiveDraftId] = React.useState<string | null>(null);
   const currentSlideIdRef = React.useRef<string | null>(null);
   const [isSavingDraft, setIsSavingDraft] = React.useState(false);
+  const [draftSaveKind, setDraftSaveKind] = React.useState<'update' | 'replace' | 'save' | null>(null);
+  const [draftSaveId, setDraftSaveId] = React.useState<string | null>(null);
+  const [qcAudioConfirm, setQcAudioConfirm] = React.useState<{
+    ids: string[];
+    options?: { dismissRemaining?: boolean };
+    slideIds: string[];
+  } | null>(null);
   const [designDraftSavedFlash, setDesignDraftSavedFlash] = React.useState(false);
   const playerDefaultsLoadedFor = React.useRef<string | null>(null);
 
@@ -876,6 +884,8 @@ export default function App() {
       return;
     }
     setIsSavingDraft(true);
+    setDraftSaveKind('save');
+    setDraftSaveId(null);
     showDraftMessage('Saving new draft…');
     try {
       const titleOverride = allocateUniqueDraftTitle(live.title || 'Untitled Course');
@@ -897,6 +907,8 @@ export default function App() {
       showDraftMessage(err?.message || 'Failed to save draft.');
     } finally {
       setIsSavingDraft(false);
+      setDraftSaveKind(null);
+      setDraftSaveId(null);
     }
   };
 
@@ -913,6 +925,8 @@ export default function App() {
     }
     setLiveNarrationScope(activeDraftId);
     setIsSavingDraft(true);
+    setDraftSaveKind('update');
+    setDraftSaveId(activeDraftId);
     showDraftMessage('Updating current draft…');
     try {
       const meta = draftManager.drafts.find(d => d.id === activeDraftId);
@@ -951,6 +965,8 @@ export default function App() {
       showDraftMessage(err?.message || 'Failed to update draft.');
     } finally {
       setIsSavingDraft(false);
+      setDraftSaveKind(null);
+      setDraftSaveId(null);
     }
   };
 
@@ -1354,6 +1370,8 @@ export default function App() {
     const live = courseRef.current || course;
     if (!live) return;
     setIsSavingDraft(true);
+    setDraftSaveKind('replace');
+    setDraftSaveId(id);
     showDraftMessage('Overwriting draft…');
     try {
       const result = await draftManager.replacePreviewDraft(id, live, playerConfig, theme, draftSaveExtras(showDraftMessage));
@@ -1364,6 +1382,8 @@ export default function App() {
       }
     } finally {
       setIsSavingDraft(false);
+      setDraftSaveKind(null);
+      setDraftSaveId(null);
     }
   };
 
@@ -4760,6 +4780,104 @@ export default function App() {
     }
   };
 
+  const finishQcApplyUi = (confirmedIds: string[], options?: { dismissRemaining?: boolean }) => {
+    const dismissRemaining = !!options?.dismissRemaining;
+    const applied = new Set(confirmedIds);
+    if (dismissRemaining) {
+      setQcReport(null);
+      setQcConfirmed(new Set());
+      setQcDeclined(new Set());
+      setQcModalOpen(false);
+      return;
+    }
+    const remaining = (qcReport?.issues ?? []).filter(i => !applied.has(i.id));
+    if (remaining.length === 0) {
+      setQcReport(null);
+      setQcConfirmed(new Set());
+      setQcDeclined(new Set());
+      setQcModalOpen(false);
+      return;
+    }
+    setQcReport(prev => prev ? {
+      ...prev,
+      issues: remaining,
+      totalIssues: remaining.length,
+      errors: remaining.filter(i => i.severity === 'error').length,
+      warnings: remaining.filter(i => i.severity === 'warning').length,
+      info: remaining.filter(i => i.severity === 'info').length,
+    } : null);
+    setQcConfirmed(new Set());
+    const remainingIds = new Set(remaining.map(i => i.id));
+    setQcDeclined(prev => {
+      const next = new Set<string>();
+      prev.forEach(id => { if (remainingIds.has(id)) next.add(id); });
+      return next;
+    });
+  };
+
+  async function applyQcConfirmedFixes(
+    confirmedIds: string[],
+    options?: { dismissRemaining?: boolean },
+    regenAudioSlideIds: string[] = [],
+  ) {
+    if (course && qcReport) {
+      const fixed = applyConfirmedFixes(course, confirmedIds, qcReport);
+      pushUndo();
+      setCourse(fixed);
+      if (voiceOverEnabled && regenAudioSlideIds.length) {
+        showDraftMessage('Regenerating narration audio for QA fixes…');
+        try {
+          const { generateSlideTTS: genTTS, urlToDataUrl } = await import('./services/ttsService');
+          const toDurable = async (blobUrl: string) => {
+            try { return await urlToDataUrl(blobUrl); } catch { return blobUrl; }
+          };
+          for (const slideId of regenAudioSlideIds) {
+            let found: any = null;
+            for (const m of fixed.modules || []) {
+              found = (m.slides || []).find((s: any) => slidesMatchId(s.id, slideId));
+              if (found) break;
+            }
+            if (!found || slideSkipsNarration(found)) continue;
+            const script = String(found.voiceOverText || found.narration || '').trim();
+            if (script) {
+              const durable = await toDurable(await genTTS(script, { voice: ttsVoice as any }));
+              void stashAudioUrl(`slide:${slideId}`, durable);
+              handleUpdateSlideMedia(slideId, {
+                voiceOverUrl: durable,
+                voiceOverText: found.voiceOverText,
+                narration: found.narration,
+              });
+            }
+            const listKey = Array.isArray(found.data?.tabs) ? 'tabs' : Array.isArray(found.data?.items) ? 'items' : null;
+            if (listKey) {
+              const tabs = [...(found.data[listKey] || [])];
+              let changed = false;
+              for (let i = 0; i < tabs.length; i++) {
+                const text = String(tabs[i]?.voiceOverText || '').trim();
+                if (!text) continue;
+                const tabUrl = await toDurable(await genTTS(text, { voice: ttsVoice as any }));
+                tabs[i] = { ...tabs[i], voiceOverUrl: tabUrl };
+                void stashAudioUrl(`tab:${slideId}:${listKey}:${tabs[i].id}`, tabUrl);
+                changed = true;
+              }
+              if (changed) {
+                setCourse(prev => patchCourseSlideById(prev, slideId, (s: any) => ({
+                  ...s,
+                  data: { ...(s.data || {}), [listKey]: tabs },
+                })));
+              }
+            }
+          }
+          showDraftMessage('QA fixes applied and narration audio updated ✓');
+        } catch (e) {
+          console.warn('[QC] audio regen failed', e);
+          showDraftMessage('Text fixes applied. Audio could not be regenerated — use Regenerate audio on those slides.');
+        }
+      }
+    }
+    finishQcApplyUi(confirmedIds, options);
+  };
+
   /** Keep floatingImagesMap and course.floatingMedia in sync (drafts / SCORM). */
   const syncFloatingImages = (slideId: string, imgs: FloatingImage[]) => {
     if (!slideId) return;
@@ -5456,32 +5574,19 @@ export default function App() {
                       onClick={() => {
                         setAdminDropdownOpen(false);
                         setShowViewDraftsModal(true);
-                        setIsSyncingDrafts(true);
                         void (async () => {
                           try {
                             const report = await draftManager.refreshDrafts();
                             if (report.migrated > 0 && report.failed === 0) {
                               showDraftMessage(
-                                `Synced ${report.migrated} draft${report.migrated === 1 ? '' : 's'} to your account — open View Drafts on your iPhone to see them.`
+                                `Synced ${report.migrated} draft${report.migrated === 1 ? '' : 's'} to your account — they also appear on other devices.`
                               );
                             } else if (report.failed > 0) {
                               showDraftMessage(
                                 `Cloud sync issue: ${report.errors[0] || `${report.failed} draft(s) failed`}. Local drafts: ${report.localCount}, cloud: ${report.cloudCount}.`
                               );
-                            } else if (report.cloudCount > 0) {
-                              showDraftMessage(
-                                `Account has ${report.cloudCount} draft${report.cloudCount === 1 ? '' : 's'} ready on other devices.`
-                              );
-                            } else if (report.localCount > 0) {
-                              showDraftMessage(
-                                `Found ${report.localCount} draft(s) on this device but none in the cloud yet. Tap Sync in View Drafts, or re-save the draft.`
-                              );
-                            } else {
-                              showDraftMessage('No drafts found on this device yet.');
                             }
-                          } finally {
-                            setIsSyncingDrafts(false);
-                          }
+                          } catch { /* list already visible from login / local cache */ }
                         })();
                       }}
                       className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800 text-sm font-medium transition-all text-left"
@@ -5694,6 +5799,8 @@ export default function App() {
               currentCourseTitle={course?.title}
               activeDraftId={activeDraftId}
               isSaving={isSavingDraft}
+              savingKind={draftSaveKind}
+              savingDraftId={draftSaveId}
               onSave={handleSaveDraft}
               onUpdateCurrent={activeDraftId ? () => { void handleUpdateActiveDraft(); } : undefined}
               onLoad={handleLoadDraft}
@@ -5717,7 +5824,6 @@ export default function App() {
             slotsUsed={draftManager.slotsUsed}
             slotsTotal={draftManager.slotsTotal}
             onRefresh={async () => {
-              setIsSyncingDrafts(true);
               try {
                 const report = await draftManager.refreshDrafts();
                 if (report.migrated > 0 && report.failed === 0) {
@@ -5737,9 +5843,7 @@ export default function App() {
                       : 'No drafts to sync yet.'
                   );
                 }
-              } finally {
-                setIsSyncingDrafts(false);
-              }
+              } catch { /* keep the current list visible */ }
             }}
             onLoad={handleLoadDraft}
             onDelete={(id) => { void draftManager.deleteDraft(id); }}
@@ -5875,46 +5979,18 @@ export default function App() {
               }
             }}
             onApply={(confirmedIds, options) => {
-              if (course && qcReport) {
-                const fixed = applyConfirmedFixes(course, confirmedIds, qcReport);
-                pushUndo(); setCourse(fixed);
-              }
-              const dismissRemaining = !!options?.dismissRemaining;
-              const applied = new Set(confirmedIds);
-
-              if (dismissRemaining) {
-                // Legacy: clear report + confirmation state and close (pending discarded)
-                setQcReport(null);
-                setQcConfirmed(new Set());
-                setQcDeclined(new Set());
-                setQcModalOpen(false);
+              const issues = (qcReport?.issues ?? []).filter(i => confirmedIds.includes(i.id));
+              const slideIds = [...new Set(
+                issues
+                  .filter(i => qcFieldTouchesNarration(i.field))
+                  .map(i => i.slideId)
+                  .filter(Boolean)
+              )];
+              if (slideIds.length && voiceOverEnabled) {
+                setQcAudioConfirm({ ids: confirmedIds, options, slideIds });
                 return;
               }
-
-              // Keep pending + declined; remove only the applied issues
-              const remaining = (qcReport?.issues ?? []).filter(i => !applied.has(i.id));
-              if (remaining.length === 0) {
-                setQcReport(null);
-                setQcConfirmed(new Set());
-                setQcDeclined(new Set());
-                setQcModalOpen(false);
-                return;
-              }
-              setQcReport(prev => prev ? {
-                ...prev,
-                issues: remaining,
-                totalIssues: remaining.length,
-                errors: remaining.filter(i => i.severity === 'error').length,
-                warnings: remaining.filter(i => i.severity === 'warning').length,
-                info: remaining.filter(i => i.severity === 'info').length,
-              } : null);
-              setQcConfirmed(new Set());
-              const remainingIds = new Set(remaining.map(i => i.id));
-              setQcDeclined(prev => {
-                const next = new Set<string>();
-                prev.forEach(id => { if (remainingIds.has(id)) next.add(id); });
-                return next;
-              });
+              void applyQcConfirmedFixes(confirmedIds, options, []);
             }}
           />
 
@@ -9560,6 +9636,24 @@ export default function App() {
         createdExpiresAt={reviewLinkExpiresAt}
         onClose={() => setShowReviewLinkModal(false)}
         onCreate={handleCreateReviewLink}
+      />
+
+      <ConfirmDialog
+        open={!!qcAudioConfirm}
+        title="Regenerate spoken audio?"
+        body={
+          qcAudioConfirm
+            ? `These QA fixes change the narration script on ${qcAudioConfirm.slideIds.length} slide${qcAudioConfirm.slideIds.length === 1 ? '' : 's'}. Spoken audio will be rebuilt so it matches the new wording.`
+            : ''
+        }
+        primaryLabel="Apply and regenerate audio"
+        cancelLabel="Cancel"
+        onPrimary={() => {
+          const pending = qcAudioConfirm;
+          setQcAudioConfirm(null);
+          if (pending) void applyQcConfirmedFixes(pending.ids, pending.options, pending.slideIds);
+        }}
+        onCancel={() => setQcAudioConfirm(null)}
       />
 
       <ConfirmDialog

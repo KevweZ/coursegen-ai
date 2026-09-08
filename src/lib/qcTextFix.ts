@@ -55,3 +55,8 @@ export function applyFieldTextFix(
   }
   return cleaned;
 }
+
+export function qcFieldTouchesNarration(field?: string): boolean {
+  const f = String(field || '').toLowerCase();
+  return f.includes('voiceover') || f.includes('narration');
+}
