@@ -1,6 +1,7 @@
 import { CourseOutline, TerminalObjectiveGroup, ExamConfig, ExamQuestion } from "../types/course";
 import { coerceCarouselColor } from "../lib/colorContrast";
 import { ensureEnablingSlideCoverage, preserveEnablingIndex, normalizeTerminalGroups, slideSkipsNarration, stripSlideNarration } from "../lib/enablingCoverage";
+import { allocateKnowledgeCheckSlots, ensureKnowledgeCheckBudget } from "../lib/knowledgeCheckBudget";
 
 // ── Secure AI Proxy Client ───────────────────────────────────────────────────
 // API keys live ONLY in server.js — never in the browser bundle.
@@ -454,12 +455,17 @@ export async function generateCourseOutline(
   // Honor explicit arrays including [] — never re-expand to sorting/matching when the user cleared types.
   const uniqueQuizActivities = [...new Set(quizActivities)];
   const kcMode = configParams.knowledgeCheckMode || 'per-module';
-  const kcCount = Math.max(1, configParams.knowledgeCheckCount ?? 1);
-  const kcDirective = configParams.includeKnowledgeChecks === false || uniqueQuizActivities.length === 0
+  const kcCount = Math.max(0, Math.floor(configParams.knowledgeCheckCount ?? 2));
+  const includeKCs = configParams.includeKnowledgeChecks !== false && uniqueQuizActivities.length > 0 && kcCount > 0;
+  const moduleHint = Math.max(1, normalizeTerminalGroups(objectives).length);
+  const totalSlots = includeKCs && kcMode === 'total'
+    ? allocateKnowledgeCheckSlots(moduleHint, 'total', kcCount, Array.from({ length: moduleHint }, () => 1))
+    : [];
+  const kcDirective = !includeKCs
     ? 'NO knowledge check slides'
     : kcMode === 'per-module'
-    ? `Exactly ${kcCount} Knowledge Check slide(s) per module (type must be one of: ${uniqueQuizActivities.join(', ')}). Title MUST start with "Knowledge Check:".`
-    : `About ${kcCount} Knowledge Check slides total across the course (type must be one of: ${uniqueQuizActivities.join(', ')}). Title MUST start with "Knowledge Check:".`;
+    ? `Exactly ${kcCount} Knowledge Check slide(s) per module (type must be one of: ${uniqueQuizActivities.join(', ')}). Title MUST start with "Knowledge Check:". This cap is independent of enabling count — a module with 6 enablings and a cap of ${kcCount} still gets ${kcCount} checks, not 6.`
+    : `Exactly ${kcCount} Knowledge Check slides for the WHOLE course (not per module; type must be one of: ${uniqueQuizActivities.join(', ')}). Title MUST start with "Knowledge Check:". Spread them across ${moduleHint} module(s): typical split is ${totalSlots.join(' / ')} (leftover checks go to denser modules). Never exceed ${kcCount} total.`;
 
   const allowedTypesForSchema = [
     'content', 'diagram', 'key-takeaways',
@@ -494,7 +500,10 @@ export async function generateCourseOutline(
      - Plain teaching slides: type: "content"
      CRITICAL — QUIZ-ONLY TYPES: Never use sorting, matching, drop-targets, multiple-choice, or multiple-answers as regular content slides. Those belong ONLY under Knowledge Checks (see #4).
   4. ${kcDirective}
-     Knowledge Check slides teach nothing new — they assess. Allowed Knowledge Check types: ${uniqueQuizActivities.join(', ')}.
+     HARD RULE — KNOWLEDGE CHECK COUNT IS INDEPENDENT OF ENABLING COVERAGE:
+     Enabling coverage (1–2 teaching slides per enabling) does NOT add knowledge checks. Do NOT emit one Knowledge Check per enabling.
+     Prefer each check to assess a different enabling in that module; only assess the same enabling twice after every enabling already has a check. Still never exceed the Course Settings cap.
+     Knowledge Check slides teach nothing new — they assess. Allowed Knowledge Check types: ${uniqueQuizActivities.join(', ') || 'none'}.
      Prefer spreading different quiz activity types (quiz MC, sorting, matching, drop-targets) across checks when multiple are allowed.
      Interaction pick rules: sorting = arrange steps/phases/order; drop-targets = categorize into bins (multi-bin or one bin + distractors); matching = pair terms; quiz = MC. Never use drop-targets for sequencing.
   5. ${configParams.includeSummarySlides !== false ? 'Module Summary / Key Takeaways slide (type: "key-takeaways") — REQUIRED at end of each module. Use type key-takeaways with data.objectives array of {id,label,content}. Do NOT use plain content/summary markdown bullets for module summaries.' : 'NO summary slide'}
@@ -575,7 +584,14 @@ export async function generateCourseOutline(
   }
 
   parsedOutline.learningObjectives = objectives;
-  return ensureEnablingSlideCoverage(parsedOutline, objectives);
+  const withCoverage = ensureEnablingSlideCoverage(parsedOutline, objectives);
+  return ensureKnowledgeCheckBudget(withCoverage, {
+    includeKnowledgeChecks: includeKCs,
+    knowledgeCheckMode: kcMode,
+    knowledgeCheckCount: kcCount,
+    quizActivityTypes: uniqueQuizActivities,
+    objectives,
+  });
 }
 
 export async function hydrateCourseContent(
@@ -589,14 +605,33 @@ export async function hydrateCourseContent(
     scenarioConfig?: ScenarioConfigForGeneration;
     /** Whitelist from Course Settings — coerced after hydrate */
     interactionTypes?: string[];
+    includeKnowledgeChecks?: boolean;
+    knowledgeCheckMode?: 'total' | 'per-module';
+    knowledgeCheckCount?: number;
+    quizActivityTypes?: string[];
   },
   onProgress?: (pct: number) => void
 ): Promise<CourseOutline> {
+  const quizActivities = [...new Set(
+    (Array.isArray(configParams.quizActivityTypes)
+      ? configParams.quizActivityTypes
+      : ['sorting', 'matching', 'drop-targets']
+    ).map(t => (t === 'mc' || t === 'ma' || t === 'tf' ? 'quiz' : t))
+  )];
+  const hydrateKcCount = Math.max(0, Math.floor(configParams.knowledgeCheckCount ?? 2));
+  const skeleton = ensureKnowledgeCheckBudget(outlineDraft, {
+    includeKnowledgeChecks: configParams.includeKnowledgeChecks !== false && quizActivities.length > 0 && hydrateKcCount > 0,
+    knowledgeCheckMode: configParams.knowledgeCheckMode === 'total' ? 'total' : 'per-module',
+    knowledgeCheckCount: hydrateKcCount,
+    quizActivityTypes: quizActivities,
+    objectives: outlineDraft.learningObjectives,
+  });
+
   const fullCourse: CourseOutline = {
-    title: outlineDraft.title,
-    description: outlineDraft.description,
-    visualTheme: outlineDraft.visualTheme,
-    learningObjectives: outlineDraft.learningObjectives,
+    title: skeleton.title,
+    description: skeleton.description,
+    visualTheme: skeleton.visualTheme,
+    learningObjectives: skeleton.learningObjectives,
     modules: []
   };
 
@@ -1081,12 +1116,12 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     moduleIndex: number;
     chunkIndex: number;
     chunkCount: number;
-    emptyModule: (typeof outlineDraft.modules)[number];
+    emptyModule: (typeof skeleton.modules)[number];
     chunk: any[];
   };
   const chunkJobs: HydrateChunkJob[] = [];
-  for (let moduleIndex = 0; moduleIndex < outlineDraft.modules.length; moduleIndex++) {
-    const emptyModule = outlineDraft.modules[moduleIndex];
+  for (let moduleIndex = 0; moduleIndex < skeleton.modules.length; moduleIndex++) {
+    const emptyModule = skeleton.modules[moduleIndex];
     const slideChunks: any[][] = [];
     for (let i = 0; i < emptyModule.slides.length; i += CHUNK_SIZE) {
       slideChunks.push(emptyModule.slides.slice(i, i + CHUNK_SIZE));
@@ -1114,7 +1149,7 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     const chunkModule = { ...emptyModule, slides: chunk };
     const label = `Module "${emptyModule.title}" Chunk ${chunkIndex + 1}`;
 
-    const groups = normalizeTerminalGroups(outlineDraft.learningObjectives);
+    const groups = normalizeTerminalGroups(skeleton.learningObjectives);
     const enablingList = groups[moduleIndex]?.enablingObjectives || [];
     const enablingNote = enablingList.length
       ? `\nThis module's enabling objectives (keep enablingIndex on each teaching slide; teach that enabling):\n${enablingList.map((e, i) => `${i}: ${e}`).join('\n')}\n`
@@ -1179,8 +1214,8 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
   );
 
   // --- Assemble modules in outline order ---
-  for (let moduleIndex = 0; moduleIndex < outlineDraft.modules.length; moduleIndex++) {
-    const emptyModule = outlineDraft.modules[moduleIndex];
+  for (let moduleIndex = 0; moduleIndex < skeleton.modules.length; moduleIndex++) {
+    const emptyModule = skeleton.modules[moduleIndex];
     const moduleChunks = chunkResults
       .filter(r => r.moduleIndex === moduleIndex)
       .sort((a, b) => a.chunkIndex - b.chunkIndex);
@@ -1343,7 +1378,8 @@ RULES:
 2. Use Bloom Remembering/Understanding verbs only.
 3. Every question must be directly answerable from the provided content.
 4. ${config.questionMode === 'per-module' ? `Generate exactly ${config.questionCount} questions per module.` : `Distribute ${totalNeeded} questions evenly across ${course.modules.length} modules.`}
-5. Each question must have a 1-sentence explanation.
+5. Prefer questions that each test a different enabling objective. Only write a second question on the same enabling after every enabling in that module already has one.
+6. Each question must have a 1-sentence explanation.
 OUTPUT: Return ONLY valid JSON: { "questions": [{ "id": "q1", "type": "mc", "question": "...", "options": [...], "correctAnswer": 0, "explanation": "...", "moduleIndex": 0 }] }`;
 
   const objectivesJson = JSON.stringify(course.learningObjectives ?? []);

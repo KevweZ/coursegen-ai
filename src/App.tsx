@@ -3197,6 +3197,10 @@ export default function App() {
               courseType: outlineCourseType,
               scenarioConfig: outlineInteractions.includes('scenario') ? scenarioConfig : undefined,
               interactionTypes: outlineInteractions,
+              includeKnowledgeChecks: true,
+              knowledgeCheckMode: outlineExamCfg.knowledgeCheckMode || 'per-module',
+              knowledgeCheckCount: outlineExamCfg.knowledgeCheckCount ?? 1,
+              quizActivityTypes: outlineQuizActivityTypes,
             },
             // Leave 55–100% for images + audio in finalize
             (pct) => setProgress(20 + Math.round(pct * 0.35))
@@ -3726,6 +3730,16 @@ export default function App() {
             courseType: settingsSnap.preset,
             scenarioConfig: contentInteractions.includes('scenario') ? scenarioConfig : undefined,
             interactionTypes: contentInteractions,
+            includeKnowledgeChecks: true,
+            knowledgeCheckMode: settingsSnap.examConfig.knowledgeCheckMode || 'per-module',
+            knowledgeCheckCount: settingsSnap.examConfig.knowledgeCheckCount ?? 1,
+            quizActivityTypes: (
+              Array.isArray(settingsSnap.examConfig.knowledgeCheckQuestionTypes)
+                ? settingsSnap.examConfig.knowledgeCheckQuestionTypes
+                : ['sorting', 'matching', 'drop-targets']
+            ).filter(t =>
+              ['sorting', 'matching', 'drop-targets', 'mc', 'ma', 'tf'].includes(t)
+            ),
           },
           (pct) => setProgress(45 + Math.round(pct * 0.1))
         );
@@ -4578,6 +4592,16 @@ export default function App() {
           courseType: settingsSnap.preset,
           scenarioConfig: contentInteractions.includes('scenario') ? scenarioConfig : undefined,
           interactionTypes: contentInteractions,
+          includeKnowledgeChecks: true,
+          knowledgeCheckMode: settingsSnap.examConfig.knowledgeCheckMode || 'per-module',
+          knowledgeCheckCount: settingsSnap.examConfig.knowledgeCheckCount ?? 1,
+          quizActivityTypes: (
+            Array.isArray(settingsSnap.examConfig.knowledgeCheckQuestionTypes)
+              ? settingsSnap.examConfig.knowledgeCheckQuestionTypes
+              : ['sorting', 'matching', 'drop-targets']
+          ).filter(t =>
+            ['sorting', 'matching', 'drop-targets', 'mc', 'ma', 'tf'].includes(t)
+          ),
         },
         // Leave 55–100% for images + audio in finalize
         (pct) => setProgress(Math.round(pct * 0.55))

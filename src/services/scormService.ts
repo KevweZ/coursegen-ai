@@ -199,6 +199,15 @@ function countSlides(course: CourseOutline): number {
   return course.modules.reduce((sum, mod) => sum + mod.slides.length, 0);
 }
 
+/** Strip React DEV source metadata so a leftover development player cannot leak local paths. */
+function sanitizeScormPlayerJs(js: string): string {
+  return js
+    .replace(/fileName:\s*["'][^"']*["']/g, 'fileName:""')
+    .replace(/,\s*lineNumber:\s*\d+\s*,\s*columnNumber:\s*\d+/g, '')
+    .replace(/["'][A-Za-z]:\/(?:Users|home)\/[^"']+["']/gi, '""')
+    .replace(/["']\/Users\/[^"']+["']/g, '""');
+}
+
 function splitScormPlayerBundle(html: string, title: string): { shellHtml: string; playerJs: string } {
   const open = html.match(/<script[^>]*type=["']module["'][^>]*>/i);
   const start = open && open.index != null ? open.index + open[0].length : 0;
@@ -207,7 +216,7 @@ function splitScormPlayerBundle(html: string, title: string): { shellHtml: strin
   const cut = closeMatch && closeMatch.index != null
     ? closeMatch.index
     : after.length;
-  let playerJs = after.slice(0, cut).trim();
+  let playerJs = sanitizeScormPlayerJs(after.slice(0, cut).trim());
   const rest = closeMatch && closeMatch.index != null
     ? after.slice(closeMatch.index + closeMatch[0].length)
     : '';

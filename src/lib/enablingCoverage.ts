@@ -175,11 +175,9 @@ export function ensureEnablingSlideCoverage<T extends {
   const nextModules = modules.map((mod, mi) => {
     const ens = groups[mi].enablingObjectives;
     const slides = [...(mod.slides || [])];
-    const kcAndSummary = slides.filter(s => !isTeachingSlide(s)).map(s => {
-      if (s.enablingIndex == null) return s;
-      const { enablingIndex: _ignored, ...rest } = s;
-      return rest;
-    });
+    // Keep enablingIndex on knowledge checks so the KC budget can spread
+    // questions across enablings before it strips the field.
+    const kcAndSummary = slides.filter(s => !isTeachingSlide(s));
     const teaching = slides.filter(s => isTeachingSlide(s));
 
     if (ens.length === 0) {
