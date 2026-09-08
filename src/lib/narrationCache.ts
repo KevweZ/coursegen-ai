@@ -5,7 +5,7 @@
  */
 
 import type { NarrationRecord } from './draftMedia';
-import { audioUrlToRecord } from './draftMedia';
+import { audioUrlToRecord, coerceStoredAudioBlob, narrationRecordToBlob } from './draftMedia';
 
 const G = globalThis as any;
 const CACHE_KEY = '__nexcourseNarrationCache';
@@ -78,13 +78,12 @@ function liveKey(clipKey: string) {
 function queueLivePut(clipKey: string, rec: NarrationRecord) {
   const run = (async () => {
     try {
+      const blob = narrationRecordToBlob(rec);
+      if (!blob) return;
       const db = await openLiveDb();
       await new Promise<void>((resolve, reject) => {
         const tx = db.transaction(LIVE_STORE, 'readwrite');
-        tx.objectStore(LIVE_STORE).put(
-          { mime: rec.mime || 'audio/mpeg', bytes: new Uint8Array(rec.data) },
-          liveKey(clipKey),
-        );
+        tx.objectStore(LIVE_STORE).put(blob, liveKey(clipKey));
         tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error);
         tx.onabort = () => reject(tx.error);
@@ -108,7 +107,7 @@ export async function flushLiveNarration() {
 export async function readLiveNarration(scope?: string): Promise<Record<string, NarrationRecord>> {
   await flushLiveNarration();
   const prefix = `${scope || getLiveNarrationScope()}::`;
-  const out: Record<string, NarrationRecord> = {};
+  const raw: Array<{ clipKey: string; val: unknown }> = [];
   try {
     const db = await openLiveDb();
     await new Promise<void>((resolve, reject) => {
@@ -119,15 +118,7 @@ export async function readLiveNarration(scope?: string): Promise<Record<string, 
         if (!cursor) return;
         const key = String(cursor.key);
         if (key.startsWith(prefix)) {
-          const val = cursor.value as { mime?: string; bytes?: Uint8Array; data?: ArrayBuffer } | undefined;
-          const clipKey = key.slice(prefix.length);
-          const bytes = val?.bytes || val?.data;
-          if (bytes && (bytes as ArrayBuffer).byteLength >= 64) {
-            const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes as ArrayBuffer);
-            const copy = new Uint8Array(view.byteLength);
-            copy.set(view);
-            out[clipKey] = { mime: val?.mime || 'audio/mpeg', data: copy.buffer };
-          }
+          raw.push({ clipKey: key.slice(prefix.length), val: cursor.value });
         }
         cursor.continue();
       };
@@ -137,6 +128,17 @@ export async function readLiveNarration(scope?: string): Promise<Record<string, 
     });
   } catch (e) {
     console.warn('[Narration] Live clip read failed:', e);
+    return {};
+  }
+  const out: Record<string, NarrationRecord> = {};
+  for (const { clipKey, val } of raw) {
+    const blob = coerceStoredAudioBlob(val);
+    if (!blob) continue;
+    try {
+      const data = await blob.arrayBuffer();
+      if (data.byteLength < 64) continue;
+      out[clipKey] = { mime: blob.type || 'audio/mpeg', data: data.slice(0) };
+    } catch { /* skip corrupt clip */ }
   }
   return out;
 }

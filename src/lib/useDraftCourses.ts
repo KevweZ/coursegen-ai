@@ -34,6 +34,9 @@ import {
   revokeDraftPlayableUrls,
   collectNarrationRecords,
   isAudioAssetPath,
+  coerceStoredAudioBlob,
+  cloneStandaloneBlob,
+  narrationRecordToBlob,
   type NarrationRecord,
 } from './draftMedia';
 import {
@@ -369,25 +372,21 @@ async function writeNarrationRecords(
   records: Record<string, NarrationRecord>,
 ): Promise<number> {
   const prefix = narrationKey(userId, draftId);
+  const entries: Array<{ id: string; blob: Blob }> = [];
+  for (const [id, rec] of Object.entries(records || {})) {
+    const blob = narrationRecordToBlob(rec);
+    if (blob) entries.push({ id, blob });
+  }
   const db = await openDraftsDb();
-  const entries = Object.entries(records || {}).filter(([, rec]) => rec?.data && rec.data.byteLength >= 64);
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE_NARRATION, 'readwrite');
     const store = tx.objectStore(STORE_NARRATION);
     const cursorReq = store.openCursor();
     cursorReq.onsuccess = () => {
       const cursor = cursorReq.result;
-      if (cursor) {
-        if (String(cursor.key).startsWith(prefix)) cursor.delete();
-        cursor.continue();
-        return;
-      }
-      for (const [id, rec] of entries) {
-        store.put(
-          { mime: rec.mime || 'audio/mpeg', bytes: new Uint8Array(rec.data) },
-          `${prefix}${id}`,
-        );
-      }
+      if (!cursor) return;
+      if (String(cursor.key).startsWith(prefix)) cursor.delete();
+      cursor.continue();
     };
     cursorReq.onerror = () => reject(cursorReq.error);
     tx.oncomplete = () => resolve();
@@ -395,6 +394,16 @@ async function writeNarrationRecords(
     tx.onabort = () => reject(tx.error || new Error('IDB narration write aborted'));
   });
   if (entries.length) {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_NARRATION, 'readwrite');
+      const store = tx.objectStore(STORE_NARRATION);
+      for (const { id, blob } of entries) {
+        store.put(blob, `${prefix}${id}`);
+      }
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error('IDB narration write failed'));
+      tx.onabort = () => reject(tx.error || new Error('IDB narration write aborted'));
+    });
     const verify = await readNarrationBlobs(userId, draftId);
     const n = Object.keys(verify).length;
     if (n === 0) {
@@ -407,7 +416,7 @@ async function writeNarrationRecords(
 
 async function readNarrationBlobs(userId: string, draftId: string): Promise<Record<string, Blob>> {
   const prefix = narrationKey(userId, draftId);
-  const out: Record<string, Blob> = {};
+  const raw: Array<{ id: string; val: unknown }> = [];
   const db = await openDraftsDb();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE_NARRATION, 'readonly');
@@ -417,15 +426,7 @@ async function readNarrationBlobs(userId: string, draftId: string): Promise<Reco
       if (!cursor) return;
       const key = String(cursor.key);
       if (key.startsWith(prefix)) {
-        const val = cursor.value as any;
-        const id = key.slice(prefix.length);
-        if (val instanceof Blob && val.size >= 64) {
-          out[id] = val;
-        } else if (val?.bytes && (val.bytes as Uint8Array).byteLength >= 64) {
-          out[id] = new Blob([val.bytes], { type: val.mime || 'audio/mpeg' });
-        } else if (val?.data && (val.data as ArrayBuffer).byteLength >= 64) {
-          out[id] = new Blob([val.data], { type: val.mime || 'audio/mpeg' });
-        }
+        raw.push({ id: key.slice(prefix.length), val: cursor.value });
       }
       cursor.continue();
     };
@@ -433,6 +434,13 @@ async function readNarrationBlobs(userId: string, draftId: string): Promise<Reco
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
+  const out: Record<string, Blob> = {};
+  for (const { id, val } of raw) {
+    const coerced = coerceStoredAudioBlob(val);
+    if (!coerced) continue;
+    const standalone = await cloneStandaloneBlob(coerced, id);
+    if (standalone) out[id] = standalone;
+  }
   return out;
 }
 
@@ -1362,6 +1370,8 @@ export function useDraftCourses(
       if (!Object.keys(blobs).length) {
         return await readDraftAssets(userId, id);
       }
+      // Append image object URLs only. Do not revoke — loadDraftNarration already
+      // attached audio, and revoking those URLs would mute the player after restore.
       return addPlayableUrls(id, blobs);
     } catch (e) {
       console.warn('[DraftCourses] loadDraftAssets failed:', e);
@@ -1371,66 +1381,63 @@ export function useDraftCourses(
 
   const loadDraftNarration = useCallback(async (id: string): Promise<Record<string, string>> => {
     if (!userId) return {};
+    const blobs: Record<string, Blob> = {};
+    const merge = (src: Record<string, Blob> | null | undefined) => {
+      for (const [k, v] of Object.entries(src || {})) {
+        if (!isAudioAssetPath(k)) continue;
+        if (!(v instanceof Blob) || v.size < 64) continue;
+        const prev = blobs[k];
+        if (!prev || v.size >= prev.size) blobs[k] = v;
+      }
+    };
     try {
-      let blobs = await readNarrationBlobs(userId, id);
-      if (!Object.keys(blobs).length) {
-        const assets = await readDraftAssetBlobs(userId, id);
-        const fallback: Record<string, Blob> = {};
-        for (const [k, v] of Object.entries(assets)) {
-          if (
-            k.startsWith('slide:')
-            || k.startsWith('tab:')
-            || k.startsWith('synth:')
-            || k.startsWith('__synthetic__.')
-            || isAudioAssetPath(k)
-          ) {
-            fallback[k] = v;
-          }
-        }
-        blobs = fallback;
-      }
-      if (!Object.keys(blobs).length) {
-        const liveRecs = await readLiveNarration(id);
-        if (Object.keys(liveRecs).length) {
-          blobs = narrationRecordsToBlobs(liveRecs);
-          try {
-            await writeNarrationRecords(userId, id, liveRecs);
-          } catch { /* still play from live store this session */ }
-        }
-      }
-      if (!Object.keys(blobs).length) {
-        try {
-          const cloudAssets = await downloadCloudAssets(userId, id);
-          const fromCloud: Record<string, Blob> = {};
-          for (const [k, v] of Object.entries(cloudAssets)) {
-            if (
-              !(
-                k.startsWith('slide:')
-                || k.startsWith('tab:')
-                || k.startsWith('synth:')
-                || k.startsWith('__synthetic__.')
-                || isAudioAssetPath(k)
-              )
-            ) continue;
-            try { fromCloud[k] = await dataUrlToBlob(v); } catch { /* skip */ }
-          }
-          blobs = fromCloud;
-          if (Object.keys(blobs).length) {
-            try {
-              await writeDraftAssets(userId, id, blobs);
-            } catch { /* play from cloud this session anyway */ }
-          }
-        } catch (cloudErr) {
-          console.warn('[DraftCourses] Cloud narration fallback failed:', cloudErr);
-        }
-      }
-      await stashNarrationBlobs(blobs);
-      revokeDraftPlayableUrls(id);
-      return addPlayableUrls(id, blobs);
+      merge(await readNarrationBlobs(userId, id));
     } catch (e) {
-      console.warn('[DraftCourses] loadDraftNarration failed:', e);
-      return {};
+      console.warn('[DraftCourses] draft_narration read failed:', e);
     }
+    try {
+      merge(narrationRecordsToBlobs(await readLiveNarration(id)));
+      merge(narrationRecordsToBlobs(await readLiveNarration('pending')));
+    } catch (e) {
+      console.warn('[DraftCourses] live narration read failed:', e);
+    }
+    try {
+      const assets = await readDraftAssetBlobs(userId, id);
+      const audio: Record<string, Blob> = {};
+      for (const [k, v] of Object.entries(assets)) {
+        if (isAudioAssetPath(k)) audio[k] = v;
+      }
+      merge(audio);
+    } catch (e) {
+      console.warn('[DraftCourses] asset-blob narration read failed:', e);
+    }
+    if (!Object.keys(blobs).length) {
+      try {
+        const cloudAssets = await downloadCloudAssets(userId, id);
+        const fromCloud: Record<string, Blob> = {};
+        for (const [k, v] of Object.entries(cloudAssets)) {
+          if (!isAudioAssetPath(k)) continue;
+          try {
+            const blob = await dataUrlToBlob(v);
+            if (blob.size >= 64) fromCloud[k] = blob;
+          } catch { /* skip */ }
+        }
+        merge(fromCloud);
+        if (Object.keys(blobs).length) {
+          try {
+            await writeDraftAssets(userId, id, blobs);
+          } catch { /* play from cloud this session anyway */ }
+        }
+      } catch (cloudErr) {
+        console.warn('[DraftCourses] Cloud narration fallback failed:', cloudErr);
+      }
+    }
+    console.log(`[DraftCourses] Restored ${Object.keys(blobs).length} narration blob(s) for ${id}`);
+    try {
+      await stashNarrationBlobs(blobs);
+    } catch { /* play this session even if live stash fails */ }
+    revokeDraftPlayableUrls(id);
+    return addPlayableUrls(id, blobs);
   }, [userId]);
 
   /** Sync API — only returns cached payloads (kept for legacy callers) */

@@ -1125,7 +1125,12 @@ export default function App() {
     setStep('preview');
     setActiveDraftId(id);
     navigateTo(ROUTES.preview(id));
-    showDraftMessage('Draft loaded ✓');
+    const restored = Object.keys(narrUrls).length;
+    showDraftMessage(
+      restored > 0
+        ? `Draft loaded ✓ ${restored} narration clip${restored === 1 ? '' : 's'} restored.`
+        : 'Draft loaded ✓'
+    );
 
     // Images after first paint — do not re-apply audio from the lean shell (that wiped narration).
     const attachImages = async () => {
@@ -1155,15 +1160,15 @@ export default function App() {
           imageMedia.set(k, v);
         }
         if (Object.keys(synthRestored).length) {
-          setSyntheticAudioMap(prev => ({ ...synthRestored, ...prev }));
+          setSyntheticAudioMap(prev => ({ ...prev, ...synthRestored }));
         }
 
         let working = applied.course;
-        if (Object.keys(idNarration).length && Object.keys(narrUrls).length === 0) {
+        if (Object.keys(idNarration).length) {
           const more = applyNarrationUrls(working, idNarration);
           working = more.course;
           if (Object.keys(more.synthetic).length) {
-            setSyntheticAudioMap(prev => ({ ...more.synthetic, ...prev }));
+            setSyntheticAudioMap(prev => ({ ...prev, ...more.synthetic }));
           }
         }
 
@@ -1173,7 +1178,7 @@ export default function App() {
               !slideSkipsNarration(s) && (s.voiceOverText || s.narration) && !hasLiveNarrationUrl(s.voiceOverUrl)
             )
           );
-          if (missingAudio && voiceOverEnabled && !Object.keys(applied.synthetic).length && !Object.keys(synthRestored).length) {
+          if (missingAudio && voiceOverEnabled && Object.keys(narrUrls).length === 0 && !Object.keys(applied.synthetic).length && !Object.keys(synthRestored).length) {
             showDraftMessage(
               'Draft loaded — narration was not saved with this draft. Use Edit → Regenerate all narration to restore audio.'
             );
@@ -1239,7 +1244,7 @@ export default function App() {
             !slideSkipsNarration(s) && (s.voiceOverText || s.narration) && !hasLiveNarrationUrl(s.voiceOverUrl)
           )
         );
-        if (missingAudio && voiceOverEnabled && !Object.keys(applied.synthetic).length && !Object.keys(synthRestored).length) {
+        if (missingAudio && voiceOverEnabled && Object.keys(narrUrls).length === 0 && !Object.keys(applied.synthetic).length && !Object.keys(synthRestored).length) {
           showDraftMessage(
             'Draft loaded — some narration is missing. Use Edit → Regenerate all narration to restore audio.'
           );

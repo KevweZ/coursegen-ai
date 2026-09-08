@@ -9,6 +9,7 @@ const HEAVY_RE = /^data:/i;
 const HEAVY_MIN = 1500; // chars — skip tiny placeholders
 
 export type MediaMap = Map<string, string>;
+export type NarrationRecord = { mime: string; data: ArrayBuffer };
 
 function isHeavy(val: unknown): val is string {
   return typeof val === 'string' && HEAVY_RE.test(val) && val.length >= HEAVY_MIN;
@@ -117,6 +118,82 @@ export function withAssetMime(path: string, blob: Blob): Blob {
   return new Blob([blob], { type });
 }
 
+function copyBytes(view: ArrayBufferView): Uint8Array | null {
+  try {
+    const copy = new Uint8Array(view.byteLength);
+    copy.set(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
+    return copy;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Turn anything IndexedDB may hand back (Blob, ArrayBuffer, Uint8Array,
+ * `{ mime, bytes }`, array-like) into a real in-memory audio Blob.
+ * Nested Uint8Array records often fail to play after a tab reload.
+ */
+export function coerceStoredAudioBlob(val: unknown, mimeHint = 'audio/mpeg'): Blob | null {
+  try {
+    if (val instanceof Blob) {
+      if (val.size < 64) return null;
+      const mime = mimeForAssetPath('synth:clip', val.type) || mimeHint;
+      return val.type === mime ? val : new Blob([val], { type: mime });
+    }
+    const rec = val as { mime?: string; type?: string; bytes?: unknown; data?: unknown; buffer?: unknown } | null;
+    const mime = rec?.mime || rec?.type || mimeHint;
+    const raw = rec && typeof rec === 'object'
+      ? (rec.bytes ?? rec.data ?? rec.buffer ?? val)
+      : val;
+    if (raw instanceof Blob) return coerceStoredAudioBlob(raw, mime);
+    if (raw instanceof ArrayBuffer) {
+      if (raw.byteLength < 64) return null;
+      return new Blob([raw.slice(0)], { type: mime || 'audio/mpeg' });
+    }
+    if (ArrayBuffer.isView(raw)) {
+      const copy = copyBytes(raw as ArrayBufferView);
+      if (!copy || copy.byteLength < 64) return null;
+      return new Blob([copy], { type: mime || 'audio/mpeg' });
+    }
+    if (Array.isArray(raw) && raw.length >= 64) {
+      return new Blob([Uint8Array.from(raw)], { type: mime || 'audio/mpeg' });
+    }
+    if (raw && typeof raw === 'object' && typeof (raw as { length?: number }).length === 'number') {
+      const len = Number((raw as { length: number }).length);
+      if (len < 64) return null;
+      const copy = Uint8Array.from(raw as ArrayLike<number>);
+      if (copy.byteLength < 64) return null;
+      return new Blob([copy], { type: mime || 'audio/mpeg' });
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+/** Copy IDB Blobs into a standalone Blob so object URLs survive the transaction closing. */
+export async function cloneStandaloneBlob(blob: Blob, path = 'synth:clip'): Promise<Blob | null> {
+  if (!(blob instanceof Blob) || blob.size < 64) return null;
+  try {
+    const buf = await blob.arrayBuffer();
+    if (buf.byteLength < 64) return null;
+    return withAssetMime(path, new Blob([buf], { type: blob.type || 'audio/mpeg' }));
+  } catch {
+    return null;
+  }
+}
+
+export function narrationRecordToBlob(rec: NarrationRecord | null | undefined): Blob | null {
+  if (!rec?.data || rec.data.byteLength < 64) return null;
+  try {
+    const copy = copyBytes(new Uint8Array(rec.data));
+    if (!copy || copy.byteLength < 64) return null;
+    return new Blob([copy], { type: rec.mime || 'audio/mpeg' });
+  } catch {
+    return null;
+  }
+}
+
 const playableUrlsByDraft = new Map<string, string[]>();
 
 export function revokeDraftPlayableUrls(draftId: string) {
@@ -196,8 +273,6 @@ export function countAudioAssetKeys(assets: Record<string, string | Blob> | null
   }
   return n;
 }
-
-export type NarrationRecord = { mime: string; data: ArrayBuffer };
 
 function isPackableAudioUrl(url: unknown): url is string {
   if (typeof url !== 'string') return false;
@@ -320,7 +395,8 @@ export function addPlayableUrls(draftId: string, blobs: Record<string, Blob>): R
   const out: Record<string, string> = {};
   const created = playableUrlsByDraft.get(draftId) || [];
   for (const [path, blob] of Object.entries(blobs || {})) {
-    if (!(blob instanceof Blob) || blob.size < 8) continue;
+    const min = isAudioAssetPath(path) ? 64 : 8;
+    if (!(blob instanceof Blob) || blob.size < min) continue;
     const url = URL.createObjectURL(withAssetMime(path, blob));
     out[path] = url;
     created.push(url);
