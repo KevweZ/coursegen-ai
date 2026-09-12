@@ -631,7 +631,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
                 iconColor: 'text-indigo-400',
                 checkColor: 'text-indigo-400',
                 title: 'Instructional Designers',
-                body: 'Upload source content, then use Course Settings to shape the course—objectives, assessments, interactions, and structure. Familiar ID controls, without rebuilding everything by hand.',
+                body: 'Upload source content, then use Course Settings to shape the course—objectives, assessments, interactions, and structure. The eLearning is the Develop output; you still own whether training is the right lever and what happens after the LMS.',
                 bullets: ['Tune objectives, quizzes & interactions', 'Skip manual work in authoring tools', 'Full edit control before publishing'],
               },
               {
