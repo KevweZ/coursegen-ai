@@ -397,7 +397,7 @@ export function MethodologyPage({ onGetStarted, onBack }: Props) {
                 SMEs are the knowledge source in any eLearning project — but rarely have the tools
                 or skills to produce polished digital learning on their own. NexCourse AI gives
                 SMEs a self-service publishing pipeline: upload your existing materials,
-                then review and edit a structured, interactive SCORM course — without learning an authoring tool.
+                then review and edit a structured, interactive SCORM course — without needing an authoring tool.
               </p>
               <div className="space-y-2">
                 {[

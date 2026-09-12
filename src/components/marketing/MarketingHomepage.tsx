@@ -415,7 +415,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
 
           <motion.p initial={{ opacity:0, y:14 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.5, delay:0.12 }}
             className="text-xl md:text-2xl font-bold text-white tracking-tight mb-4 max-w-3xl leading-snug">
-            Turn a PPT, PDF, or Word file into an editable SCORM course for the LMS you already use — without learning an authoring tool.
+            Turn a PPT, PDF, or Word file into an editable SCORM course for your LMS — without needing an authoring tool.
           </motion.p>
 
           <motion.p initial={{ opacity:0, y:12 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.5, delay:0.2 }}
