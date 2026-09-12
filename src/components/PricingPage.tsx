@@ -494,7 +494,7 @@ export function PricingPage() {
               Choose Your <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">Plan</span>
             </h1>
             <p className="text-xl text-slate-400 max-w-2xl mx-auto leading-relaxed mb-8">
-              Upload documents. Get LMS-ready SCORM courses. Pricing for solo creators and small L&amp;D teams — without fake enterprise claims.
+              Turn documents into editable SCORM courses for the LMS you already use. Pricing for solo creators and small L&amp;D teams — without fake enterprise claims.
             </p>
 
             {/* Creator billing toggle */}

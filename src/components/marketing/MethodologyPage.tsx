@@ -126,9 +126,9 @@ export function MethodologyPage({ onGetStarted, onBack }: Props) {
             initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.2 }}
             className="text-slate-400 text-lg max-w-2xl mx-auto leading-relaxed"
           >
-            NexCourse AI is not a slide generator. It is a fully automated implementation of
+            NexCourse AI is not a slide generator. It is an automated implementation of
             evidence-based instructional design — grounded in decades of learning science research —
-            compressed into a single click.
+            applied when you upload a file.
           </motion.p>
           <motion.div
             initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.3 }}
@@ -151,7 +151,7 @@ export function MethodologyPage({ onGetStarted, onBack }: Props) {
         <div className="max-w-6xl mx-auto">
           <FadeIn className="text-center mb-14">
             <p className="text-rose-400 text-sm font-black uppercase tracking-widest mb-3">The Reality of eLearning Production</p>
-            <h2 className="text-4xl font-black text-white">Traditional Development Takes Weeks.<br />We Do It in Minutes.</h2>
+            <h2 className="text-4xl font-black text-white">Traditional authoring takes weeks.<br />You start from a built, editable course.</h2>
           </FadeIn>
 
           {/* Before / After comparison */}
@@ -184,7 +184,7 @@ export function MethodologyPage({ onGetStarted, onBack }: Props) {
               <div className="flex items-center gap-3 mb-6">
                 <Zap className="w-6 h-6 text-emerald-400" />
                 <h3 className="text-xl font-black text-white">NexCourse AI Workflow</h3>
-                <span className="ml-auto text-emerald-400 font-black text-sm bg-emerald-500/10 border border-emerald-500/30 px-3 py-1 rounded-full">~5 minutes</span>
+                <span className="ml-auto text-emerald-400 font-black text-sm bg-emerald-500/10 border border-emerald-500/30 px-3 py-1 rounded-full">No authoring tool</span>
               </div>
               <ol className="space-y-3">
                 {[
@@ -193,7 +193,7 @@ export function MethodologyPage({ onGetStarted, onBack }: Props) {
                   ['Step 3', 'Select interaction types and assessment style'],
                   ['Step 4', 'AI generates full course outline with ISD-compliant structure'],
                   ['Step 5', 'AI hydrates every slide with content, narration, and interactions'],
-                  ['Step 6', 'Review, edit, and export SCORM package — upload to any LMS'],
+                  ['Step 6', 'Review, edit, and export a SCORM package — upload to the LMS you already use'],
                 ].map(([step, task]) => (
                   <li key={step} className="flex gap-3 text-sm">
                     <span className="text-emerald-400 font-bold shrink-0 w-16">{step}</span>
@@ -381,7 +381,7 @@ export function MethodologyPage({ onGetStarted, onBack }: Props) {
                   'Skip the storyboard → go straight to review',
                   'AI output matches professional ISD standards',
                   'Edit any slide with the built-in rich-text editor',
-                  'Export SCORM in one click for any LMS',
+                  'Export SCORM for the LMS you already use',
                 ].map(p => (
                   <p key={p} className="flex items-center gap-2 text-sm text-slate-300">
                     <ChevronRight className="w-4 h-4 text-indigo-400 shrink-0" />{p}
@@ -397,7 +397,7 @@ export function MethodologyPage({ onGetStarted, onBack }: Props) {
                 SMEs are the knowledge source in any eLearning project — but rarely have the tools
                 or skills to produce polished digital learning on their own. NexCourse AI gives
                 SMEs a self-service publishing pipeline: upload your existing materials,
-                and receive a fully structured, interactive course in minutes. No design skills. No coding.
+                then review and edit a structured, interactive SCORM course — without learning an authoring tool.
               </p>
               <div className="space-y-2">
                 {[

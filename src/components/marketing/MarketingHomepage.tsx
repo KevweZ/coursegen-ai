@@ -261,11 +261,11 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
   ];
 
   const MARKETING_FAQS = [
-    { q: 'How does NexCourse AI work?', a: 'Upload a PDF, Word doc, PowerPoint, or technical document. NexCourse AI analyzes the file, applies instructional design structure, and builds an interactive course with slides, knowledge checks, and narration. Export a SCORM package straight to your LMS—typically in minutes, not weeks.' },
+    { q: 'How does NexCourse AI work?', a: 'Upload a PDF, Word doc, PowerPoint, or technical document. NexCourse AI analyzes the file, applies instructional design structure, and builds an interactive course with slides, knowledge checks, and narration. You review and edit, then export a SCORM package for the LMS you already use.' },
     { q: 'What file types does it support?', a: 'PDF, Microsoft PowerPoint (.pptx), and Microsoft Word (.docx). You can also type a topic if you do not have a file yet.' },
     { q: 'Do I need experience with authoring tools?', a: 'No. Subject matter experts and corporate teams can publish without authoring-tool expertise. Instructional designers get extra Course Settings controls—objectives, assessments, interactions, and structure—then can edit everything before publishing.' },
     { q: 'Is there a free trial?', a: 'We offer trial access by invitation—contact us to request early access. Paid plans are credit-based and cover course generation, AI narration, and interactive content.' },
-    { q: 'What is SCORM and which LMS platforms does it work with?', a: 'SCORM is the standard package format for eLearning. NexCourse AI exports SCORM 1.2 and 2004 packages for LMS platforms such as Moodle, Canvas, Blackboard, Cornerstone, TalentLMS, Docebo, and more.' },
+    { q: 'What is SCORM and which LMS platforms does it work with?', a: 'SCORM is the standard package format for eLearning. NexCourse AI exports SCORM 1.2 and 2004 packages you upload to the LMS you already use — for example Moodle, Canvas, Blackboard, Cornerstone, TalentLMS, Docebo, and SuccessFactors when SCORM is enabled.' },
     { q: 'Can I edit the AI-generated course?', a: 'Yes. Every slide is editable after generation—text, structure, images, quizzes, narration, and interactions—before you export.' },
     { q: 'Is my data and content private?', a: 'Yes. Uploaded files and generated courses stay private to your account. We do not use your content to train AI models.' },
     { q: 'How do I cancel my subscription?', a: 'Cancel anytime from My Account & Billing. No cancellation fees; your plan stays active until the end of the billing period.' },
@@ -298,17 +298,17 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
 
   const features = [
     { icon: Brain,      title: 'Document → Course',       description: 'Upload a technical document, PDF, Word doc, or PowerPoint. AI structures modules, objectives, and slides using adult-learning principles.', color: 'from-indigo-600/20 to-purple-600/20', delay: 0 },
-    { icon: Layers,     title: 'Interactions Built In',   description: 'Hotspots, tabs, flashcards, timelines, and assessments are all integrated—no eLearning design or development experience needed.', color: 'from-purple-600/20 to-pink-600/20',   delay: 0.05 },
+    { icon: Layers,     title: 'Interactions Built In',   description: 'Hotspots, tabs, flashcards, timelines, and assessments are built into the course — you can edit them before you publish.', color: 'from-purple-600/20 to-pink-600/20',   delay: 0.05 },
     { icon: Mic,        title: 'AI Voice-Over',            description: 'Professional narration generated for each slide. Choose voices and speeds, then edit scripts anytime.',        color: 'from-cyan-600/20 to-blue-600/20',     delay: 0.1 },
-    { icon: FileOutput, title: 'SCORM for Any LMS',        description: 'Export SCORM 1.2 or 2004 and publish to Canvas, Moodle, Blackboard, Cornerstone, and more.',                      color: 'from-emerald-600/20 to-teal-600/20', delay: 0.15 },
+    { icon: FileOutput, title: 'SCORM for Your LMS',       description: 'Export SCORM 1.2 or 2004 and upload the package to the LMS you already use — including SuccessFactors, Moodle, Canvas, and others that accept SCORM.', color: 'from-emerald-600/20 to-teal-600/20', delay: 0.15 },
     { icon: Image,      title: 'Edit Before You Publish',  description: 'Refine text, images, quizzes, and interactions in preview—full control without rebuilding from scratch.',         color: 'from-amber-600/20 to-orange-600/20',  delay: 0.2 },
     { icon: BarChart3,  title: 'Quizzes & Tracking',      description: 'Mastery checks with completion and score reporting that align with your LMS.',          color: 'from-rose-600/20 to-red-600/20',      delay: 0.25 },
   ];
 
-  const stats = [
+  const stats: Array<{ label: string; value?: number; suffix?: string; text?: string }> = [
     { label: 'Interaction Types',  value: 20,  suffix: '+' },
     { label: 'Knowledge Checks',   value: 8,   suffix: '+' },
-    { label: 'LMS Compatible',     value: 100, suffix: '%' },
+    { label: 'SCORM export',       text: '1.2 / 2004' },
     { label: 'AI Voice Options',   value: 6,   suffix: ''  },
   ];
 
@@ -414,13 +414,13 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
           </motion.h1>
 
           <motion.p initial={{ opacity:0, y:14 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.5, delay:0.12 }}
-            className="text-2xl md:text-3xl font-bold text-white tracking-tight mb-4 max-w-2xl leading-snug">
-            Upload a document. Get an interactive, LMS-ready course.
+            className="text-xl md:text-2xl font-bold text-white tracking-tight mb-4 max-w-3xl leading-snug">
+            Turn a PPT, PDF, or Word file into an editable SCORM course for the LMS you already use — without learning an authoring tool.
           </motion.p>
 
           <motion.p initial={{ opacity:0, y:12 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.5, delay:0.2 }}
-            className="text-slate-400 text-base md:text-lg max-w-xl mb-10 leading-relaxed">
-            PDFs, PowerPoints, Word docs, and technical documents become ready-made eLearning courses in minutes—no development experience needed.
+            className="text-slate-400 text-base md:text-lg max-w-2xl mb-10 leading-relaxed">
+            Review and edit slides, narration, and interactions, then export SCORM 1.2 or 2004 for your company LMS.
           </motion.p>
 
           <motion.div initial={{ opacity:0, y:14 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.5, delay:0.26 }}
@@ -463,10 +463,14 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
             </button>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center border-t border-slate-800/60 mt-16 pt-10">
-            {stats.map(({ label, value, suffix }) => (
-              <div key={label}>
-                <div className="text-3xl font-black text-white mb-1"><AnimatedCounter target={value} suffix={suffix} /></div>
-                <p className="text-slate-500 text-xs font-medium">{label}</p>
+            {stats.map((stat) => (
+              <div key={stat.label}>
+                <div className="text-3xl font-black text-white mb-1">
+                  {'text' in stat && stat.text
+                    ? stat.text
+                    : <AnimatedCounter target={stat.value ?? 0} suffix={stat.suffix || ''} />}
+                </div>
+                <p className="text-slate-500 text-xs font-medium">{stat.label}</p>
               </div>
             ))}
           </div>
@@ -486,14 +490,14 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
             <motion.h2 initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
               transition={{ duration: 0.5 }}
               className="text-4xl md:text-5xl font-black text-white mb-4">
-              From document to{' '}
+              From document to an{' '}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-indigo-400">
-                published course
-              </span>{' '}
-              in minutes.
+                editable SCORM course
+              </span>
+              .
             </motion.h2>
             <p className="text-slate-400 text-lg max-w-2xl mx-auto">
-              Upload what you already have. We apply instructional design and build the interactions.
+              Upload what you already have. We apply instructional design and build the interactions — you review, edit, and publish to your LMS.
             </p>
           </div>
 
@@ -534,8 +538,8 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
                   borderColor: 'border-emerald-500/30',
                   pillColor: 'bg-emerald-500/20 text-emerald-300',
                   title: 'Edit, Export, Publish',
-                  description: 'Refine anything in preview, then download SCORM 1.2 or 2004 and upload to your company LMS—completion tracking included.',
-                  tags: ['SCORM 1.2', 'SCORM 2004', 'Any LMS'],
+                  description: 'Refine anything in preview, then download SCORM 1.2 or 2004 and upload it to the LMS you already use.',
+                  tags: ['SCORM 1.2', 'SCORM 2004', 'Your LMS'],
                 },
               ].map(({ step, icon: Icon, color, iconColor, borderColor, pillColor, title, description, tags }, i) => (
                 <motion.div
@@ -638,7 +642,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
                 iconColor: 'text-cyan-400',
                 checkColor: 'text-cyan-400',
                 title: 'Corporate Teams',
-                body: 'Upload the PowerPoint, Word doc, or PDF you already use. Get an interactive eLearning version ready for employees.',
+                body: 'Upload the PowerPoint, Word doc, or PDF you already use. Get an editable, interactive eLearning version you can publish to your LMS.',
                 bullets: ['PPT, Word, or PDF in', 'Interactive course out', 'Publish straight to the LMS'],
               },
             ].map(({ icon: Icon, border, bg, iconBg, iconColor, checkColor, title, body, bullets }, i) => (

@@ -6164,7 +6164,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    <p className="text-sm text-slate-400 font-medium">AI-powered authoring that analyzes your content and builds a complete, SCORM-compliant, interactive course — automatically.</p>
+                    <p className="text-sm text-slate-400 font-medium">Upload a document. NexCourse builds an editable, SCORM-ready course you can review and publish to your LMS.</p>
                     <button
                       onClick={() => handleStartDetails()}
                       disabled={!uploadedFile}
