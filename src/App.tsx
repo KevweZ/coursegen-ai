@@ -183,6 +183,7 @@ import { TrialInvitePanel } from './components/TrialInvitePanel';
 import { FloatingImage } from './types/course';
 import { stripCourseAutoPromotedFloating, floatingMapFromCourse } from './lib/promoteSlideImages';
 import { buildReviewSnapshot, createReviewLink, fetchReviewSnapshot } from './lib/reviewLinkService';
+import { downloadReviewScriptDocx } from './lib/reviewScriptDocx';
 import TabbedHorizontal from './components/interactions/TabbedContentHorizontal';
 import TabbedVertical from './components/interactions/TabbedContentVertical';
 import FolderExplorer from './components/interactions/FolderExplorer';
@@ -1547,6 +1548,7 @@ export default function App() {
   const [scormVersion, setScormVersion] = useState<ScormVersion>('1.2');
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
+  const [isExportingReviewScript, setIsExportingReviewScript] = useState(false);
 
   // Mobile portrait orientation detection
   const [isPortrait, setIsPortrait] = useState(() =>
@@ -4704,6 +4706,22 @@ export default function App() {
     }
   };
 
+  const exportReviewScript = async () => {
+    if (!course || isExportingReviewScript || !allSlides.length) return;
+    setIsExportingReviewScript(true);
+    try {
+      await downloadReviewScriptDocx(course.title || 'Untitled Course', allSlides, {
+        examQuestions,
+      });
+      showDraftMessage('Downloaded the review script (OST and narration) as a Word file.');
+    } catch (e: any) {
+      console.error('Failed to export review script', e);
+      showDraftMessage(e?.message || 'Could not build the review script.');
+    } finally {
+      setIsExportingReviewScript(false);
+    }
+  };
+
   const handleUpdateSlideMedia = (slideId: string, updates: any) => {
     const id = String(slideId || '').trim();
     if (!id) return;
@@ -6662,6 +6680,16 @@ export default function App() {
                     >
                       <Link2 className="w-3 h-3" />
                       <span className="hidden lg:inline">Review link</span>
+                    </button>
+                    <button
+                      type="button"
+                      title="Download on-screen text and narration as a Word file for SME markup"
+                      disabled={isExportingReviewScript}
+                      onClick={() => void exportReviewScript()}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-teal-700/50 hover:bg-teal-800/20 text-teal-300 text-[11px] font-semibold disabled:opacity-60"
+                    >
+                      {isExportingReviewScript ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
+                      <span className="hidden lg:inline">{isExportingReviewScript ? 'Script…' : 'Review script'}</span>
                     </button>
                   </div>
                 </div>
