@@ -228,26 +228,87 @@ function itemNarration(item: any): string[] {
   return narrationLines(item?.voiceOverText || item?.narration);
 }
 
-function quizOptions(data: any): string[] {
-  if (!data || typeof data !== 'object') return [];
-  if (Array.isArray(data.options)) {
-    return data.options.flatMap((o: any, i: number) => {
-      const t = firstText(o?.text, o?.label, o?.content, typeof o === 'string' ? o : '').join(' ');
-      return t ? [`${String.fromCharCode(65 + (i % 26))}. ${t}`] : [];
-    });
+function optionText(o: any): string {
+  return firstText(o?.text, o?.label, o?.content, typeof o === 'string' ? o : '').join(' ');
+}
+
+function isOptionCorrect(o: any, i: number, data: any): boolean {
+  if (o && typeof o === 'object' && (o.isCorrect === true || o.correct === true)) return true;
+  const ca = data?.correctAnswer;
+  if (ca == null) return false;
+  if (typeof ca === 'number') return ca === i;
+  if (typeof ca === 'string') {
+    if (typeof o === 'string') return o === ca;
+    return ca === String(o?.id || '') || ca === String(o?.text || '');
   }
-  if (Array.isArray(data.pairs)) {
-    return data.pairs.flatMap((p: any) => {
+  if (Array.isArray(ca)) {
+    if (ca.includes(i)) return true;
+    if (o && typeof o === 'object') return ca.includes(o.id) || ca.includes(o.text);
+  }
+  return false;
+}
+
+function quizOptionBlock(data: any): { label: string; lines: OstLine[] } | null {
+  if (!data || typeof data !== 'object') return null;
+
+  if (Array.isArray(data.options) && data.options.length) {
+    const lines = data.options.flatMap((o: any, i: number) => {
+      const t = optionText(o);
+      if (!t) return [];
+      const letter = `${String.fromCharCode(65 + (i % 26))}. ${t}`;
+      return [{
+        text: isOptionCorrect(o, i, data) ? `${letter}    ✓ Correct` : letter,
+        level: 0,
+        kind: 'bullet' as const,
+      }];
+    });
+    return lines.length ? { label: 'Options', lines } : null;
+  }
+
+  if (Array.isArray(data.pairs) && data.pairs.length) {
+    const lines = data.pairs.flatMap((p: any) => {
       const term = firstText(p?.term, p?.left).join(' ');
       const def = firstText(p?.definition, p?.right, p?.match).join(' ');
-      if (term && def) return [`${term} → ${def}`];
-      return term ? [term] : [];
+      if (term && def) return [{ text: `${term} → ${def}    ✓ Correct`, level: 0, kind: 'bullet' as const }];
+      return term ? [{ text: `${term}    ✓ Correct`, level: 0, kind: 'bullet' as const }] : [];
     });
+    return lines.length ? { label: 'Correct matches', lines } : null;
   }
-  if (Array.isArray(data.items)) {
-    return data.items.flatMap((it: any) => firstText(it?.content, it?.label, it?.text));
+
+  if (Array.isArray(data.correctOrder) && data.correctOrder.length && Array.isArray(data.items)) {
+    const byId = new Map((data.items as any[]).map((it: any) => [String(it?.id ?? ''), it]));
+    const lines = data.correctOrder.map((id: any, i: number) => {
+      const it = byId.get(String(id));
+      const t = firstText(it?.content, it?.label, it?.text, typeof it === 'string' ? it : '').join(' ') || String(id);
+      return { text: `${i + 1}. ${t}    ✓ Correct order`, level: 0, kind: 'number' as const };
+    });
+    return lines.length ? { label: 'Correct order', lines } : null;
   }
-  return [];
+
+  if (Array.isArray(data.items) && Array.isArray(data.targets) && data.correctAnswers && typeof data.correctAnswers === 'object') {
+    const items = data.items as any[];
+    const targets = data.targets as any[];
+    const map = data.correctAnswers as Record<string, string>;
+    const lines = Object.entries(map).flatMap(([itemId, targetId]) => {
+      const item = items.find((it: any) => String(it?.id) === String(itemId));
+      const target = targets.find((it: any) => String(it?.id) === String(targetId));
+      const left = firstText(item?.content, item?.label, item?.text, itemId).join(' ');
+      const right = firstText(target?.content, target?.label, target?.text, targetId).join(' ');
+      if (!left && !right) return [];
+      return [{ text: `${left} → ${right}    ✓ Correct`, level: 0, kind: 'bullet' as const }];
+    });
+    return lines.length ? { label: 'Correct matches', lines } : null;
+  }
+
+  if (Array.isArray(data.items) && data.items.length) {
+    const lines = (data.items as any[]).flatMap((it: any) => {
+      const t = firstText(it?.content, it?.label, it?.text).join(' ');
+      return t ? [{ text: t, level: 0, kind: 'bullet' as const }] : [];
+    });
+    return lines.length ? { label: 'Options / items', lines } : null;
+  }
+
+  return null;
 }
 
 function objectiveOst(raw: unknown): OstLine[] {
@@ -397,7 +458,7 @@ export function buildReviewScriptModel(
       } else {
         examQuestions.forEach((q: any, qi: number) => {
           const qOst = firstText(q?.question, q?.prompt, q?.questionText);
-          const opts = quizOptions(q);
+          const opts = quizOptionBlock(q);
           const blocks: ReviewBlock[] = [
             {
               label: 'On-screen text',
@@ -405,7 +466,7 @@ export function buildReviewScriptModel(
               style: 'ost',
             },
           ];
-          if (opts.length) blocks.push({ label: 'Options', lines: toOstLines(opts), style: 'ost' });
+          if (opts) blocks.push({ label: opts.label, lines: opts.lines, style: 'ost' });
           blocks.push({
             label: 'Narration',
             lines: [{
@@ -420,10 +481,10 @@ export function buildReviewScriptModel(
       }
     } else if (isKnowledgeCheckSlide(slide)) {
       const qOst = ost.length ? ost : toOstLines(firstText(data.question, data.questionText, data.prompt, slide.content));
-      const opts = quizOptions(data);
+      const opts = quizOptionBlock(data);
       const blocks = ostAndNarrationBlocks(qOst, [], true);
-      if (opts.length) {
-        blocks.splice(1, 0, { label: 'Options / items', lines: toOstLines(opts), style: 'ost' });
+      if (opts) {
+        blocks.splice(1, 0, { label: opts.label, lines: opts.lines, style: 'ost' });
       }
       sections.push({ heading: 'Question', blocks });
     } else if (silent) {
@@ -472,15 +533,15 @@ function wText(text: string): string {
 
 function wP(text: string, style?: string, italic?: boolean): string {
   const pPr = style
-    ? `<w:pPr><w:pStyle w:val="${style}"/></w:pPr>`
+    ? `<w:pPr><w:pStyle w:val="${style}"/>${italic ? '<w:rPr><w:i/></w:rPr>' : ''}</w:pPr>`
     : italic
       ? '<w:pPr><w:rPr><w:i/></w:rPr></w:pPr>'
       : '';
   if (!text) return `<w:p>${pPr}</w:p>`;
-  if (italic && !style) {
+  if (italic) {
     const t = xmlEscape(text);
     const space = /^\s|\s$/.test(text) ? ' xml:space="preserve"' : '';
-    return `<w:p><w:pPr><w:rPr><w:i/></w:rPr></w:pPr><w:r><w:rPr><w:i/></w:rPr><w:t${space}>${t}</w:t></w:r></w:p>`;
+    return `<w:p>${pPr}<w:r><w:rPr><w:i/></w:rPr><w:t${space}>${t}</w:t></w:r></w:p>`;
   }
   return `<w:p>${pPr}${wText(text)}</w:p>`;
 }
@@ -497,7 +558,7 @@ function wOstLine(line: OstLine): string {
   }
   const level = Math.max(0, line.level || 0);
   const left = 360 + level * 360;
-  return `<w:p><w:pPr><w:ind w:left="${left}" w:hanging="180"/><w:spacing w:after="40"/></w:pPr>${wText(`• ${text}`)}</w:p>`;
+  return `<w:p><w:pPr><w:ind w:left="${left}" w:hanging="180"/><w:spacing w:after="60"/></w:pPr>${wText(`• ${text}`)}</w:p>`;
 }
 
 function headingLooksLikeType(heading: string, typeLabel: string): boolean {
@@ -505,20 +566,18 @@ function headingLooksLikeType(heading: string, typeLabel: string): boolean {
   return h === typeLabel.trim().toLowerCase();
 }
 
+function wBlockLabel(label: string, style: ReviewBlock['style']): string {
+  if (style === 'narration' || style === 'note') return wP(label, 'LabelNarration');
+  return wP(label, 'LabelOst');
+}
+
 function documentXml(courseTitle: string, rows: ReviewSlideRow[]): string {
   const parts: string[] = [];
   parts.push(wP(courseTitle || 'Untitled course', 'Title'));
-  parts.push(wP('Review script — on-screen text and narration', 'Subtitle'));
-  parts.push(wP(
-    'Headings match the table of contents (Course Objectives, Slide 1.1, and so on). '
-    + 'Mark up this file and send slide + section notes for edits. '
-    + 'This document does not update the course automatically.',
-  ));
-  parts.push(wP(`Generated ${new Date().toISOString().slice(0, 10)}.`));
 
-  for (const row of rows) {
+  rows.forEach((row, index) => {
     const mod = row.moduleLabel ? ` · ${row.moduleLabel}` : '';
-    parts.push(wP(row.heading, 'Heading1'));
+    parts.push(wP(row.heading, index === 0 ? 'Heading1First' : 'Heading1'));
     if (!headingLooksLikeType(row.heading, row.typeLabel)) {
       parts.push(wP(`${row.typeLabel}${mod}`, 'Heading2'));
     }
@@ -527,15 +586,15 @@ function documentXml(courseTitle: string, rows: ReviewSlideRow[]): string {
         parts.push(wP(section.heading, 'Heading2'));
       }
       for (const block of section.blocks) {
-        parts.push(wP(block.label));
+        parts.push(wBlockLabel(block.label, block.style));
         if (block.style === 'note' || block.style === 'narration') {
-          for (const line of block.lines) parts.push(wP(line.text, undefined, true));
+          for (const line of block.lines) parts.push(wP(line.text, 'NarrationBody', true));
         } else {
           for (const line of block.lines) parts.push(wOstLine(line));
         }
       }
     }
-  }
+  });
 
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -549,10 +608,13 @@ function documentXml(courseTitle: string, rows: ReviewSlideRow[]): string {
 const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>
-  <w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="160"/></w:pPr><w:rPr><w:b/><w:sz w:val="48"/></w:rPr></w:style>
-  <w:style w:type="paragraph" w:styleId="Subtitle"><w:name w:val="Subtitle"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="200"/></w:pPr><w:rPr><w:i/><w:sz w:val="22"/><w:color w:val="475569"/></w:rPr></w:style>
-  <w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:before="360" w:after="80"/></w:pPr><w:rPr><w:b/><w:sz w:val="28"/></w:rPr></w:style>
-  <w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:before="200" w:after="60"/></w:pPr><w:rPr><w:b/><w:sz w:val="22"/><w:color w:val="334155"/></w:rPr></w:style>
+  <w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="240"/></w:pPr><w:rPr><w:b/><w:sz w:val="48"/></w:rPr></w:style>
+  <w:style w:type="paragraph" w:styleId="Heading1First"><w:name w:val="Slide heading first"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:before="120" w:after="80"/><w:pbdr><w:bottom w:val="single" w:sz="12" w:space="4" w:color="CBD5E1"/></w:pbdr></w:pPr><w:rPr><w:b/><w:sz w:val="28"/></w:rPr></w:style>
+  <w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:before="560" w:after="80"/><w:pbdr><w:top w:val="single" w:sz="12" w:space="18" w:color="CBD5E1"/><w:bottom w:val="single" w:sz="6" w:space="4" w:color="E2E8F0"/></w:pbdr></w:pPr><w:rPr><w:b/><w:sz w:val="28"/></w:rPr></w:style>
+  <w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:before="280" w:after="80"/></w:pPr><w:rPr><w:b/><w:sz w:val="22"/><w:color w:val="334155"/></w:rPr></w:style>
+  <w:style w:type="paragraph" w:styleId="LabelOst"><w:name w:val="On-screen text label"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:before="200" w:after="80"/></w:pPr><w:rPr><w:b/><w:caps/><w:sz w:val="20"/><w:color w:val="0F766E"/></w:rPr></w:style>
+  <w:style w:type="paragraph" w:styleId="LabelNarration"><w:name w:val="Narration label"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:before="280" w:after="80"/></w:pPr><w:rPr><w:b/><w:caps/><w:sz w:val="20"/><w:color w:val="4338CA"/></w:rPr></w:style>
+  <w:style w:type="paragraph" w:styleId="NarrationBody"><w:name w:val="Narration body"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="160"/><w:ind w:left="180"/></w:pPr><w:rPr><w:i/><w:sz w:val="22"/><w:color w:val="334155"/></w:rPr></w:style>
 </w:styles>`;
 
 const CONTENT_TYPES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
