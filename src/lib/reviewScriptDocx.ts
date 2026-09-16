@@ -9,9 +9,15 @@ import { stripSlideTypePrefix } from './stripSlideTypePrefix';
 
 type AnySlide = Record<string, any>;
 
+interface OstLine {
+  text: string;
+  level: number;
+  kind: 'bullet' | 'number' | 'plain';
+}
+
 interface ReviewBlock {
   label: string;
-  lines: string[];
+  lines: OstLine[];
   style: 'ost' | 'narration' | 'note';
 }
 
@@ -21,12 +27,26 @@ interface ReviewSection {
 }
 
 interface ReviewSlideRow {
-  slideNumber: number;
+  heading: string;
   title: string;
   typeLabel: string;
   moduleLabel?: string;
   sections: ReviewSection[];
 }
+
+interface ReviewScriptExtras {
+  examQuestions?: any[];
+  tocRefs?: Record<string, string>;
+}
+
+const CHROME_HEADINGS: Record<string, string> = {
+  cover: 'Course Introduction',
+  'player-tour': 'Player Tour',
+  'course-objectives': 'Course Objectives',
+  'exam-intro': 'Mastery Quiz Intro',
+  'mastery-exam': 'Quiz Questions',
+  'exam-results': 'Quiz Results',
+};
 
 const TYPE_LABELS: Record<string, string> = {
   cover: 'Course cover',
@@ -163,18 +183,33 @@ function itemHeading(item: any, index: number, prefix: string): string {
   return `${prefix} ${index + 1}`;
 }
 
-function uniqueLines(...groups: string[][]): string[] {
+function parseOstLine(line: string): OstLine {
+  const raw = String(line || '');
+  const dashed = raw.match(/^[—–]\s+(.*)$/);
+  if (dashed) return { text: dashed[1], level: 1, kind: 'bullet' };
+  return { text: raw, level: 0, kind: 'bullet' };
+}
+
+function toOstLines(lines: string[]): OstLine[] {
+  return lines.map(parseOstLine);
+}
+
+function uniqueOst(...groups: OstLine[][]): OstLine[] {
   const seen = new Set<string>();
-  const out: string[] = [];
+  const out: OstLine[] = [];
   for (const group of groups) {
     for (const line of group) {
-      const key = line.toLowerCase();
-      if (seen.has(key)) continue;
+      const key = line.text.toLowerCase();
+      if (!key || seen.has(key)) continue;
       seen.add(key);
       out.push(line);
     }
   }
   return out;
+}
+
+function uniqueLines(...groups: string[][]): string[] {
+  return uniqueOst(...groups.map(toOstLines)).map(l => l.text);
 }
 
 function itemOst(item: any): string[] {
@@ -215,57 +250,114 @@ function quizOptions(data: any): string[] {
   return [];
 }
 
-function objectiveLines(raw: unknown): string[] {
+function objectiveOst(raw: unknown): OstLine[] {
   if (!Array.isArray(raw) || !raw.length) return [];
-  const out: string[] = [];
+  const out: OstLine[] = [];
+  let n = 0;
   for (const obj of raw) {
     if (typeof obj === 'string') {
       const t = obj.trim();
-      if (t) out.push(t);
+      if (!t) continue;
+      n += 1;
+      out.push({ text: `${n}. ${t}`, level: 0, kind: 'number' });
       continue;
     }
     const term = String(obj?.terminalObjective || '').trim();
-    if (term) out.push(term);
+    if (term) {
+      n += 1;
+      out.push({ text: `${n}. ${term}`, level: 0, kind: 'number' });
+    }
     for (const en of obj?.enablingObjectives || []) {
       const e = String(en || '').trim();
-      if (e) out.push(`— ${e}`);
+      if (e) out.push({ text: e, level: 1, kind: 'bullet' });
     }
   }
   return out;
 }
 
-function ostAndNarrationBlocks(ost: string[], narration: string[], silent: boolean): ReviewBlock[] {
+function ostAndNarrationBlocks(ost: OstLine[] | string[], narration: string[], silent: boolean): ReviewBlock[] {
+  const ostLines = Array.isArray(ost) && ost.length && typeof ost[0] === 'object'
+    ? (ost as OstLine[])
+    : toOstLines((ost as string[]) || []);
   const blocks: ReviewBlock[] = [];
   blocks.push({
     label: 'On-screen text',
-    lines: ost.length ? ost : ['(No on-screen text)'],
+    lines: ostLines.length ? ostLines : [{ text: '(No on-screen text)', level: 0, kind: 'plain' }],
     style: 'ost',
   });
   if (silent) {
     blocks.push({
       label: 'Narration',
-      lines: ['No narration — knowledge checks and the mastery quiz are silent.'],
+      lines: [{
+        text: 'No narration — knowledge checks and the mastery quiz are silent.',
+        level: 0,
+        kind: 'plain',
+      }],
       style: 'note',
     });
   } else {
+    const narr = narration.length ? narration : ['(No narration script)'];
     blocks.push({
       label: 'Narration',
-      lines: narration.length ? narration : ['(No narration script)'],
+      lines: narr.map(t => ({ text: t, level: 0, kind: 'plain' as const })),
       style: 'narration',
     });
   }
   return blocks;
 }
 
+function inferTocRefs(slides: AnySlide[]): Record<string, string> {
+  const refs: Record<string, string> = {};
+  const skip = new Set([
+    'cover', 'player-tour', 'course-objectives', 'module-cover',
+    'exam-intro', 'mastery-exam', 'exam-results', 'closing',
+  ]);
+  let moduleNum = 0;
+  let n = 0;
+  for (const slide of slides) {
+    if (!slide) continue;
+    const type = String(slide.type || '');
+    const id = String(slide.id || '');
+    if (type === 'module-cover' || id.startsWith('__module-cover-')) {
+      const m = id.match(/__module-cover-(\d+)__/);
+      moduleNum = Number(slide._moduleNumber) || (m ? Number(m[1]) : moduleNum + 1);
+      n = 0;
+      continue;
+    }
+    if (skip.has(type)) continue;
+    const overview = id.match(/__module-overview-(\d+)__/);
+    if (overview) {
+      moduleNum = Number(overview[1]);
+      n = 0;
+    } else if (!moduleNum) {
+      moduleNum = 1;
+    }
+    n += 1;
+    if (id) refs[id] = `${moduleNum}.${n}`;
+  }
+  return refs;
+}
+
+function playerHeading(slide: AnySlide, tocRef?: string): string {
+  const type = String(slide?.type || '');
+  const title = stripSlideTypePrefix(String(slide?.title || 'Untitled slide')).trim() || 'Untitled slide';
+  if (CHROME_HEADINGS[type]) return CHROME_HEADINGS[type];
+  if (type === 'closing') return title || 'Thank You';
+  if (type === 'module-cover') return title;
+  if (tocRef) return `Slide ${tocRef} — ${title}`;
+  return title;
+}
+
 export function buildReviewScriptModel(
   slides: AnySlide[],
-  extras?: { examQuestions?: any[] },
+  extras?: ReviewScriptExtras,
 ): ReviewSlideRow[] {
   const examQuestions = Array.isArray(extras?.examQuestions) ? extras!.examQuestions! : [];
+  const tocRefs = { ...inferTocRefs(slides), ...(extras?.tocRefs || {}) };
   let moduleLabel = '';
   const rows: ReviewSlideRow[] = [];
 
-  slides.forEach((slide, index) => {
+  slides.forEach((slide) => {
     if (!slide) return;
     const type = String(slide.type || '');
     const id = String(slide.id || '');
@@ -279,17 +371,16 @@ export function buildReviewScriptModel(
     const nested = listFor(data, kind?.listKey || null);
     const prefix = kind?.prefix || 'Item';
 
-    const introOst = uniqueLines(
+    const introOst = toOstLines(uniqueLines(
       htmlToLines(slide.content),
       htmlToLines(data.introContent),
       htmlToLines(data.prompt),
       htmlToLines(data.question),
       htmlToLines(data.questionText),
       htmlToLines(data.introduction),
-    );
+    ));
     const introNarr = silent ? [] : narrationLines(slide.voiceOverText || slide.narration);
-    const objLines = objectiveLines(slide._objectives);
-    const ost = uniqueLines(objLines, introOst);
+    const ost = uniqueOst(objectiveOst(slide._objectives), introOst);
 
     const sections: ReviewSection[] = [];
 
@@ -297,30 +388,42 @@ export function buildReviewScriptModel(
       if (!examQuestions.length) {
         sections.push({
           heading: 'Questions',
-          blocks: [{ label: 'Note', lines: ['No mastery-quiz questions were attached to this course.'], style: 'note' }],
+          blocks: [{
+            label: 'Note',
+            lines: [{ text: 'No mastery-quiz questions were attached to this course.', level: 0, kind: 'plain' }],
+            style: 'note',
+          }],
         });
       } else {
         examQuestions.forEach((q: any, qi: number) => {
           const qOst = firstText(q?.question, q?.prompt, q?.questionText);
           const opts = quizOptions(q);
           const blocks: ReviewBlock[] = [
-            { label: 'On-screen text', lines: qOst.length ? qOst : ['(No question text)'], style: 'ost' },
+            {
+              label: 'On-screen text',
+              lines: qOst.length ? toOstLines(qOst) : [{ text: '(No question text)', level: 0, kind: 'plain' }],
+              style: 'ost',
+            },
           ];
-          if (opts.length) blocks.push({ label: 'Options', lines: opts, style: 'ost' });
+          if (opts.length) blocks.push({ label: 'Options', lines: toOstLines(opts), style: 'ost' });
           blocks.push({
             label: 'Narration',
-            lines: ['No narration — knowledge checks and the mastery quiz are silent.'],
+            lines: [{
+              text: 'No narration — knowledge checks and the mastery quiz are silent.',
+              level: 0,
+              kind: 'plain',
+            }],
             style: 'note',
           });
           sections.push({ heading: `Question ${qi + 1}`, blocks });
         });
       }
     } else if (isKnowledgeCheckSlide(slide)) {
-      const qOst = ost.length ? ost : firstText(data.question, data.questionText, data.prompt, slide.content);
+      const qOst = ost.length ? ost : toOstLines(firstText(data.question, data.questionText, data.prompt, slide.content));
       const opts = quizOptions(data);
       const blocks = ostAndNarrationBlocks(qOst, [], true);
       if (opts.length) {
-        blocks.splice(1, 0, { label: 'Options / items', lines: opts, style: 'ost' });
+        blocks.splice(1, 0, { label: 'Options / items', lines: toOstLines(opts), style: 'ost' });
       }
       sections.push({ heading: 'Question', blocks });
     } else if (silent) {
@@ -348,9 +451,10 @@ export function buildReviewScriptModel(
       });
     }
 
+    const title = stripSlideTypePrefix(String(slide.title || 'Untitled slide')).trim() || 'Untitled slide';
     rows.push({
-      slideNumber: index + 1,
-      title: stripSlideTypePrefix(String(slide.title || 'Untitled slide')).trim() || 'Untitled slide',
+      heading: playerHeading(slide, tocRefs[id]),
+      title,
       typeLabel: typeLabel(slide),
       moduleLabel: moduleLabel || undefined,
       sections,
@@ -381,8 +485,24 @@ function wP(text: string, style?: string, italic?: boolean): string {
   return `<w:p>${pPr}${wText(text)}</w:p>`;
 }
 
-function wBullet(text: string): string {
-  return `<w:p><w:pPr><w:ind w:left="360"/></w:pPr>${wText(`• ${text}`)}</w:p>`;
+function wOstLine(line: OstLine): string {
+  const text = line.text;
+  if (line.kind === 'plain') {
+    return wP(text);
+  }
+  if (line.kind === 'number') {
+    const t = xmlEscape(text);
+    const space = /^\s|\s$/.test(text) ? ' xml:space="preserve"' : '';
+    return `<w:p><w:pPr><w:spacing w:after="80"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t${space}>${t}</w:t></w:r></w:p>`;
+  }
+  const level = Math.max(0, line.level || 0);
+  const left = 360 + level * 360;
+  return `<w:p><w:pPr><w:ind w:left="${left}" w:hanging="180"/><w:spacing w:after="40"/></w:pPr>${wText(`• ${text}`)}</w:p>`;
+}
+
+function headingLooksLikeType(heading: string, typeLabel: string): boolean {
+  const h = heading.replace(/^Slide\s+[\d.]+\s+[—–-]\s+/, '').trim().toLowerCase();
+  return h === typeLabel.trim().toLowerCase();
 }
 
 function documentXml(courseTitle: string, rows: ReviewSlideRow[]): string {
@@ -390,7 +510,7 @@ function documentXml(courseTitle: string, rows: ReviewSlideRow[]): string {
   parts.push(wP(courseTitle || 'Untitled course', 'Title'));
   parts.push(wP('Review script — on-screen text and narration', 'Subtitle'));
   parts.push(wP(
-    'Slide numbers match the course player (for example 14 / 52 in SuccessFactors). '
+    'Headings match the table of contents (Course Objectives, Slide 1.1, and so on). '
     + 'Mark up this file and send slide + section notes for edits. '
     + 'This document does not update the course automatically.',
   ));
@@ -398,20 +518,20 @@ function documentXml(courseTitle: string, rows: ReviewSlideRow[]): string {
 
   for (const row of rows) {
     const mod = row.moduleLabel ? ` · ${row.moduleLabel}` : '';
-    parts.push(wP(`Slide ${row.slideNumber} — ${row.title}`, 'Heading1'));
-    parts.push(wP(`${row.typeLabel}${mod}`, 'Heading2'));
+    parts.push(wP(row.heading, 'Heading1'));
+    if (!headingLooksLikeType(row.heading, row.typeLabel)) {
+      parts.push(wP(`${row.typeLabel}${mod}`, 'Heading2'));
+    }
     for (const section of row.sections) {
       if (section.heading && section.heading !== 'Slide') {
         parts.push(wP(section.heading, 'Heading2'));
       }
       for (const block of section.blocks) {
         parts.push(wP(block.label));
-        if (block.style === 'note') {
-          for (const line of block.lines) parts.push(wP(line, undefined, true));
-        } else if (block.style === 'narration') {
-          for (const line of block.lines) parts.push(wP(line, undefined, true));
+        if (block.style === 'note' || block.style === 'narration') {
+          for (const line of block.lines) parts.push(wP(line.text, undefined, true));
         } else {
-          for (const line of block.lines) parts.push(wBullet(line));
+          for (const line of block.lines) parts.push(wOstLine(line));
         }
       }
     }
@@ -461,7 +581,7 @@ function safeFileStem(title: string): string {
 export async function buildReviewScriptDocxBlob(
   courseTitle: string,
   slides: AnySlide[],
-  extras?: { examQuestions?: any[] },
+  extras?: ReviewScriptExtras,
 ): Promise<Blob> {
   const rows = buildReviewScriptModel(slides, extras);
   const zip = new JSZip();
@@ -483,7 +603,7 @@ export async function buildReviewScriptDocxBlob(
 export async function downloadReviewScriptDocx(
   courseTitle: string,
   slides: AnySlide[],
-  extras?: { examQuestions?: any[] },
+  extras?: ReviewScriptExtras,
 ): Promise<void> {
   const blob = await buildReviewScriptDocxBlob(courseTitle, slides, extras);
   const url = URL.createObjectURL(blob);

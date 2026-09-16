@@ -4712,6 +4712,7 @@ export default function App() {
     try {
       await downloadReviewScriptDocx(course.title || 'Untitled Course', allSlides, {
         examQuestions,
+        tocRefs: Object.fromEntries(tocRefBySlideId),
       });
       showDraftMessage('Downloaded the review script (OST and narration) as a Word file.');
     } catch (e: any) {
