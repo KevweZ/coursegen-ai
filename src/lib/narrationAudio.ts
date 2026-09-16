@@ -1,10 +1,20 @@
 import { coerceOstText } from './formatTabIntroOst';
 
+/** SCORM export rewrites data: audio into relative media/001.mp3 (same folder as PNGs). */
+function isPackagedRelativeAudio(url: string): boolean {
+  const u = url.trim();
+  if (!u || u.includes('://') || u.startsWith('data:') || u.startsWith('blob:') || u.startsWith('javascript:')) {
+    return false;
+  }
+  return /\.(mp3|m4a|aac|wav|ogg|webm)(\?|#|$)/i.test(u);
+}
+
 /** True when a stored voiceOverUrl can actually play after a refresh (not a dead blob:). */
 export function hasPlayableNarrationUrl(url: unknown): boolean {
   if (typeof url !== 'string') return false;
   const u = url.trim();
   if (u.startsWith('blob:')) return false;
+  if (isPackagedRelativeAudio(u)) return true;
   // Real MP3 data URLs are tens of KB. Short leftovers in the draft shell are not playable.
   if (u.startsWith('data:audio') || u.startsWith('data:application/octet-stream') || u.startsWith('data:;')) {
     return u.length >= 2000;
