@@ -7,6 +7,16 @@
 
 const DEFAULT_IMAGE_MODEL = 'google/gemini-3.1-flash-image-preview';
 
+/** Appended to every image prompt. Models often typeset titles if the prompt names them. */
+export const IMAGE_NO_TEXT_RULE =
+  'HARD RULE: The image must contain absolutely no text of any kind — no titles, captions, letters, numbers, words, labels, signs with writing, logos, watermarks, UI chrome, or typography. If an object would normally have writing (boxes, trucks, screens, posters, packaging), show that surface blank. Visuals only.';
+
+function withNoTextRule(prompt: string): string {
+  const p = String(prompt || '').trim();
+  if (/HARD RULE: The image must contain absolutely no text/i.test(p)) return p;
+  return `${p}\n\n${IMAGE_NO_TEXT_RULE}`;
+}
+
 /** Soft-pace between image API calls (was 1.2–2.0s sequential). */
 const IMAGE_PACE_MS = 400;
 /** Bounded parallel image generation — same $ as sequential, lower wall clock. */
@@ -304,28 +314,27 @@ function pickRelevantSourceImage(
 }
 
 function buildModuleBannerPrompt(moduleTitle: string, courseTitle: string): string {
+  const subject = [moduleTitle, courseTitle].filter(Boolean).join(' — ').slice(0, 180);
   return (
-    `Professional eLearning course module banner image. ` +
-    `Module title: "${moduleTitle}". Course: "${courseTitle}". ` +
+    `Professional eLearning module banner photograph. Subject: ${subject}. ` +
     `Style: Clean modern corporate illustration, wide landscape (16:9 aspect ratio). ` +
     `Abstract conceptual visuals that evoke the subject matter. ` +
     `Muted professional gradient background (blues, teals, or slate purples). ` +
     `Sophisticated minimalist design with subtle geometric or abstract elements. ` +
-    `No text, no human faces, no logos, no charts. High quality.`
+    `No human faces, no logos, no charts. Do not typeset the module or course name.`
   );
 }
 
 function buildCourseCoverPrompt(courseTitle: string, description?: string): string {
-  const topic = description?.trim()
-    ? description.trim().slice(0, 220)
-    : courseTitle;
+  // Do not pass the course title as something to "title" the picture — image
+  // models will paint those words onto the photo (often cropped / misspelled).
+  const topic = (description?.trim() || courseTitle || 'professional workplace').slice(0, 220);
   return (
-    `Create a photorealistic educational cover image for an eLearning course titled "${courseTitle}". ` +
-    `The image MUST clearly depict the real-world subject of the course so a learner instantly recognizes the topic. ` +
-    `Examples: cars/vehicles for automotive; HVAC units, ductwork, or air handlers for HVAC; pumps and piping for pump courses; ` +
-    `electrical panels for electrical safety. Subject context: ${topic}. ` +
+    `Photorealistic educational cover photograph of this subject: ${topic}. ` +
+    `Show the real-world workplace, equipment, or setting so a learner instantly recognizes the topic. ` +
+    `Examples of the kind of visual (do not copy these words into the image): cars for automotive; HVAC units for HVAC; pumps and piping for pump courses; electrical panels for electrical safety. ` +
     `Composition: wide 16:9 landscape, the subject fills most of the frame, professional lighting, clean modern look. ` +
-    `Do NOT include any text, titles, captions, logos, watermarks, UI chrome, or people faces.`
+    `No people faces. Do not write a course title or any other words on the image.`
   );
 }
 
@@ -334,7 +343,7 @@ async function callImageEndpoint(prompt: string, model = DEFAULT_IMAGE_MODEL): P
     const response = await fetch('/api/generate-image', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, model }),
+      body: JSON.stringify({ prompt: withNoTextRule(prompt), model }),
     });
 
     if (!response.ok) {
@@ -603,8 +612,8 @@ export async function enrichHotspotAndCarouselImages(
               mi,
               si,
               prompt:
-                `Educational diagram-style illustration for: "${slide.title}". ` +
-                `Clean labeled technical cutaway or schematic, light background, no text overlay, high quality, 16:9.`,
+                `Unlabeled educational diagram-style illustration of: ${slide.title}. ` +
+                `Clean technical cutaway or schematic, light background, high quality, 16:9. No labels, callouts, or lettering.`,
             });
           }
         }
@@ -624,8 +633,7 @@ export async function enrichHotspotAndCarouselImages(
                 si,
                 cardIndex,
                 prompt:
-                  `Simple educational illustration for carousel card "${c.label || c.title || 'topic'}" ` +
-                  `in course "${course.title || ''}". Soft colors. Do not draw any text, letters, numbers, captions, labels, or logos.`,
+                  `Simple educational illustration of: ${c.label || c.title || 'topic'}. Soft colors, no lettering.`,
               });
             }
             return c;
@@ -802,13 +810,12 @@ export function topicBenefitsFromVisual(label: string, content?: string): boolea
   return false;
 }
 
-function buildSlideVisualPrompt(courseTitle: string, slideTitle: string, subject: string): string {
+function buildSlideVisualPrompt(_courseTitle: string, _slideTitle: string, subject: string): string {
   return (
     `Simple clear educational photo or illustration of: ${subject}. ` +
-    `Context: course "${courseTitle}", slide "${slideTitle}". ` +
     `Show the real-world subject so a learner recognizes it instantly. ` +
     `Wide landscape composition, clean professional look, soft background. ` +
-    `Do not draw any text, letters, numbers, captions, labels, signs, logos, or watermarks in the image. Visuals only.`
+    `Do not typeset titles, captions, or labels — the player already shows the words.`
   );
 }
 

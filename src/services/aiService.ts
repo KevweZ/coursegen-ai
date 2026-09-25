@@ -9,8 +9,11 @@ import {
   storyboardOutlineInstructions,
   storyboardSourceWindow,
   STORYBOARD_CONTENT_TYPES,
+  remapStoryboardScenarioModules,
+  remapStoryboardScenarioSlide,
   type SourceMode,
 } from "../lib/storyboardSource";
+import { applyAlignedQuizPrompt } from "../lib/knowledgeCheckOst";
 
 // ── Secure AI Proxy Client ───────────────────────────────────────────────────
 // API keys live ONLY in server.js — never in the browser bundle.
@@ -488,7 +491,7 @@ export async function generateCourseOutline(
     ? [...new Set([...uniqueQuizActivities, 'quiz', 'multiple-answers'])]
     : uniqueQuizActivities;
   const kcDirective = sourceMode === 'storyboard'
-    ? 'Only include a Knowledge Check slide if the storyboard already specifies an exit check, knowledge check, decision quiz, or a learner screen that asks the learner to select answers. Use quiz for one correct option; use multiple-answers when the spec says select two / select all that apply. Do NOT add extra checks to meet a Course Settings count. Title MUST start with "Knowledge Check:" when you do include one.'
+    ? 'Only include a Knowledge Check slide if the storyboard already specifies an exit check, knowledge check, decision quiz, a "Scenario:" situation + question, or a learner screen that asks the learner to select answers. Use quiz for one correct option; use multiple-answers when the spec says select two / select all that apply. Do NOT use type scenario for a one-question situation box. Do NOT add extra checks to meet a Course Settings count. Title MUST start with "Knowledge Check:" when you do include one.'
     : !includeKCs
     ? 'NO knowledge check slides'
     : kcMode === 'per-module'
@@ -614,6 +617,9 @@ export async function generateCourseOutline(
 
   // Hard whitelist — never trust the model to stay inside Course Settings interactions
   if (Array.isArray(parsedOutline.modules)) {
+    if (sourceMode === 'storyboard') {
+      parsedOutline.modules = remapStoryboardScenarioModules(parsedOutline.modules as any) as any;
+    }
     parsedOutline.modules = coerceInteractionTypes(parsedOutline.modules, outlineInteractions) as any;
   }
 
@@ -762,11 +768,13 @@ export async function hydrateCourseContent(
   - options[].text must be meaningful (10+ chars). NEVER: "A", "B", "True", "False" unless it's genuinely a T/F slide
   - feedback: string explaining why the correct answer is right (this is where teaching detail goes AFTER submit)
   - Slide-level content: 1 framing bullet about what is being tested. voiceOverText MUST be "" (empty). Knowledge checks have no spoken narration — same as Mastery Quiz questions. Do not give away the answer on screen.
+  - mediaPrompt describes a photograph with NO text, letters, or labels in the image.
 
   MULTIPLE-ANSWERS:
   - Same schema as QUIZ plus scenarioText when a situation exists.
   - Use when the learner must select TWO or more options ("select two", "select all that apply").
   - Mark isCorrect true on every correct option (2+). Do not collapse those into a single multiple-choice pair.
+  - If the stem says "select N" but a different number of options are marked correct (including all of them), rewrite the stem to "Select the … that …". Never leave a false count in the prompt.
   - FAIL CONDITION: missing questionText or fewer than 2 options -> regenerate
 
   ACCORDION (DEPRECATED — use click-reveal instead):
@@ -802,7 +810,7 @@ export async function hydrateCourseContent(
   - Chronological entries only. 4-6 events max. year field required.
 
   HOTSPOT:
-  - MUST include a mediaPrompt string (describe the image to show)
+  - MUST include a mediaPrompt string (describe the unlabeled image to show — no letters or captions in the picture)
   - MUST include 2-5 hotspots, each with x (0-100), y (0-100), label, content
   - FAIL CONDITION: no hotspots -> change type to "content" instead
 
@@ -878,7 +886,7 @@ export async function hydrateCourseContent(
   - FAIL CONDITION: empty or syntactically invalid mermaidCode → change type to "content" instead
 
   CONTENT / KEY-TAKEAWAYS / SUMMARY:
-  - Do NOT embed full-slide images. Use mediaPrompt to describe what image should appear.
+  - Do NOT embed full-slide images. Use mediaPrompt to describe what image should appear (no text in the image).
   - content must use ### headers, bullet lists, or callout blocks -- NOT bare paragraphs.
   - BULLET BREVITY (see Global Principle above): each bullet is a SHORT PHRASE, 5-8 words. NOT a complete explanatory
     sentence — the narration explains, the bullet just labels. MAXIMUM 5-6 bullets per slide.
@@ -1021,6 +1029,10 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
 
   // --- Helper: validate and normalize a parsed slide ---
   function processSlide(slide: any): any[] {
+    if (sourceMode === 'storyboard') {
+      slide = remapStoryboardScenarioSlide(slide);
+    }
+
     if (slide.type === 'carousel-panel') {
       const cards = slide.data?.cards || slide.data?.items;
       if (Array.isArray(cards)) {
@@ -1043,6 +1055,11 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
       if (!Array.isArray(opts) || opts.length < 2) {
         slide.type = 'content';
         slide.content = slide.content || `**${slide.title || 'Knowledge Check'}**\n\nReview this topic, then continue. (Interactive question options were incomplete and were converted to content.)`;
+      } else {
+        if (slide.data) slide.data = applyAlignedQuizPrompt({ ...slide.data, options: opts });
+        if (Array.isArray(slide.interactions) && slide.interactions[0]) {
+          slide.interactions[0] = applyAlignedQuizPrompt({ ...slide.interactions[0], options: opts });
+        }
       }
     }
     else if (slide.type === 'sorting' && (!slide.data?.items?.length && !slide.interactions?.[0]?.items?.length)) {
@@ -1333,6 +1350,9 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     const allow = sourceMode === 'storyboard'
       ? [...new Set([...configParams.interactionTypes, ...STORYBOARD_CONTENT_TYPES])]
       : configParams.interactionTypes;
+    if (sourceMode === 'storyboard') {
+      fullCourse.modules = remapStoryboardScenarioModules(fullCourse.modules as any) as any;
+    }
     fullCourse.modules = coerceInteractionTypes(fullCourse.modules as any, allow) as any;
   }
 

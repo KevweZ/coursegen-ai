@@ -477,9 +477,19 @@ app.post('/api/parse-document',
 );
 
 // ─── 5c. Image Generation Endpoint ──────────────────────────────────────────
+const IMAGE_NO_TEXT_RULE =
+  'HARD RULE: The image must contain absolutely no text of any kind — no titles, captions, letters, numbers, words, labels, signs with writing, logos, watermarks, UI chrome, or typography. If an object would normally have writing (boxes, trucks, screens, posters, packaging), show that surface blank. Visuals only.';
+
+function withImageNoTextRule(prompt) {
+  const p = String(prompt || '').trim();
+  if (/HARD RULE: The image must contain absolutely no text/i.test(p)) return p;
+  return `${p}\n\n${IMAGE_NO_TEXT_RULE}`;
+}
+
 /** OpenAI image fallback — used when OPENROUTER_API_KEY is not set (common on Render). */
 async function generateImageViaOpenAI(prompt) {
   if (!OPENAI_API_KEY) return null;
+  prompt = withImageNoTextRule(prompt);
   // Prefer gpt-image-1 when available; fall back to dall-e-3 URL response.
   const attempts = [
     {
@@ -547,7 +557,7 @@ async function generateImageViaOpenRouter(prompt, model) {
     },
     body: JSON.stringify({
       model,
-      messages: [{ role: 'user', content: prompt.trim() }],
+      messages: [{ role: 'user', content: withImageNoTextRule(prompt) }],
       modalities: ['image', 'text'],
     }),
   });

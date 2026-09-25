@@ -55,7 +55,8 @@ export function storyboardAnalyzeInstructions(): string {
   guided reveal / click-to-explore / progressive reveal → click-reveal
   tabbed process / tabs → tabbed-horizontal
   hotspot explore → hotspot
-  decision / branching / single-select / multi-select / exit check / knowledge check → quiz or multiple-answers
+  decision / branching / single-select / multi-select / exit check / knowledge check / situation + question → quiz or multiple-answers
+- A screen titled "Scenario:" with one question is a knowledge check with a situation box, NOT a branching scenario engine.
 - objectivesInferred should be false when the storyboard already lists learner objectives.`;
 }
 
@@ -80,10 +81,11 @@ HARD RULES:
   guided reveal, click-to-explore, progressive reveal → click-reveal
   tabbed process, tabs → tabbed-horizontal (or tabbed-vertical if the spec is a side tab list)
   hotspot explore → hotspot
-  branching / decision tree (multi-node) → scenario
   single-select / "which of the following" / one correct option → quiz
   select two / select all that apply / more than one correct → multiple-answers (NOT quiz)
-  exit check / knowledge check → quiz or multiple-answers using the select-one vs select-two rule above
+  exit check / knowledge check / decision / "Scenario:" situation + question → quiz or multiple-answers using the select-one vs select-two rule above
+- NEVER use type "scenario" (branching ScenarioEngine) for a screen that is a yellow situation box plus ONE question. That is a knowledge check: situation → data.scenarioText, question → questionText, choices → options.
+- Type "scenario" is ONLY for a multi-node branching spec (decision tree with several nodes / "if the learner chooses A then…"). A title that starts with "Scenario:" is not enough.
 - A content screen that asks the learner to pick answers is a Knowledge Check, even if the storyboard did not title it "Knowledge Check".
 - Tag teaching slides with enablingIndex when an enabling is obvious; it is OK if several screens share one enabling.
 - Module count: one module unless the storyboard clearly labels multiple modules.`;
@@ -100,6 +102,47 @@ These rules OVERRIDE the short-bullet rewrite and CEAP narration formula for thi
 - Visual direction / "use exactly SC-01-….jpg" is NOT implemented in this cut — do not mention missing assets on the slide.
 - Interaction items (tabs, click-reveal terms, hotspots, quiz options) must come from the screen spec, including correct answers when the spec marks them.
 - Quiz / knowledge-check screens: put the situation box, carrier alert, yellow callout, or short story in data.scenarioText (plain prose, not the question). Put the actual question in questionText. Do not drop the situation.
+- A screen titled "Scenario:" (or a workplace vignette + one question) is quiz / multiple-answers with scenarioText. Do NOT emit type "scenario" unless the spec is a multi-node branching tree.
 - "Select two" / "select all that apply" / more than one correct → type multiple-answers with one option per listed choice (e.g. Cost, Service, Inventory, Risk). Mark every option the spec treats as correct; if the spec is inconsistent, prefer the listed choices over inventing pair-combo options.
+- If the stem says "select two" / "select N" but the answer key marks a different number of options correct — including ALL options correct — rewrite the stem to "Select the … that …" so the count in the prompt matches the key. Do not keep a false "select two" when four answers are right.
 - Do not invent extra flashcards, tabs, or hotspot pins beyond what the screen lists.`;
+}
+
+function scenarioHasNodes(data: any): boolean {
+  return Array.isArray(data?.nodes) && data.nodes.length > 0 && !!data.startNodeId;
+}
+
+function quizTypeFromOptions(options: any[]): 'quiz' | 'multiple-answers' {
+  const correct = (options || []).filter((o: any) => o?.isCorrect === true || o?.correct === true).length;
+  return correct >= 2 ? 'multiple-answers' : 'quiz';
+}
+
+/**
+ * Storyboard "Scenario:" screens are knowledge checks with a situation box.
+ * Only keep type "scenario" when the payload is already a branching tree.
+ */
+export function remapStoryboardScenarioSlide<T extends { type?: string; data?: any; interactions?: any[] }>(slide: T): T {
+  if (!slide || slide.type !== 'scenario') return slide;
+  if (scenarioHasNodes(slide.data)) return slide;
+  const src = slide.data || slide.interactions?.[0] || {};
+  const options = Array.isArray(src.options) ? src.options : [];
+  const nextType = quizTypeFromOptions(options);
+  const data = {
+    ...(slide.data || {}),
+    questionText: src.questionText || src.prompt || src.question || '',
+    scenarioText: src.scenarioText || src.stem || src.preamble || src.situation || '',
+    options,
+    feedback: src.feedback || slide.data?.feedback,
+  };
+  delete (data as any).nodes;
+  delete (data as any).startNodeId;
+  delete (data as any).endings;
+  return { ...slide, type: nextType, data };
+}
+
+export function remapStoryboardScenarioModules<T extends { slides?: any[] }>(modules: T[]): T[] {
+  return (modules || []).map(mod => ({
+    ...mod,
+    slides: (mod.slides || []).map(s => remapStoryboardScenarioSlide(s)),
+  }));
 }

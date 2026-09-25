@@ -20,13 +20,13 @@ export function TabbedHorizontalPreview() {
   const accent = '#4f46e5';
 
   return (
-    <div className="w-full max-w-lg mx-auto flex flex-col overflow-hidden select-none bg-white">
+    <div className="w-full max-w-lg mx-auto flex flex-col overflow-hidden select-none" style={{ background: '#eef2ff' }}>
       <div className="p-5 min-h-[150px]">
-        <p className="text-xs font-bold uppercase tracking-[0.18em] mb-1" style={{ color: accent }}>
+        <p className="text-xs font-bold uppercase tracking-[0.18em] mb-1 text-slate-900">
           STEP {String(activeIndex + 1).padStart(2, '0')}
         </p>
         <h3 className="font-extrabold text-base text-slate-900 mb-2">{step.label}</h3>
-        <p className="text-slate-600 text-sm leading-relaxed">{step.content}</p>
+        <p className="text-slate-700 text-sm leading-relaxed">{step.content}</p>
       </div>
       <div className="relative flex items-center justify-center gap-3 py-5" style={{ background: rail, minHeight: 72 }}>
         <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ background: accent }} />

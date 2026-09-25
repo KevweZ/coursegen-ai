@@ -78,6 +78,8 @@ import {
   splitKnowledgeCheckOst,
   SORTING_REORDER_HINT,
   quizScenarioText,
+  alignQuizSelectPrompt,
+  emptyScenarioQuizKind,
 } from './lib/knowledgeCheckOst';
 import { slideSkipsNarration } from './lib/enablingCoverage';
 import { hasLiveNarrationUrl } from './lib/narrationAudio';
@@ -7202,7 +7204,7 @@ export default function App() {
                                )}
 
                                {/* QUIZ (multiple-choice / true-false with submit flow) */}
-                               {(currentSlide?.type === 'quiz' || (currentSlide?.type as string) === 'multiple-choice' || (currentSlide?.type as string) === 'true-false') && (() => {
+                               {(currentSlide?.type === 'quiz' || (currentSlide?.type as string) === 'multiple-choice' || (currentSlide?.type as string) === 'true-false' || emptyScenarioQuizKind(currentSlide) === 'quiz') && (() => {
                                  const interactions = currentSlide.interactions || [];
                                  const quiz = interactions[0] || currentSlide.data;
                                  const qKey = currentSlide.id;
@@ -7229,7 +7231,7 @@ export default function App() {
                                          {quizScenarioText(quiz) || quizScenarioText(currentSlide)}
                                        </div>
                                      )}
-                                     <p className={cn('font-bold text-xl lg:text-2xl leading-snug', theme === 'light' ? 'text-slate-800' : 'text-slate-100')}>{quiz.questionText || quiz.prompt || quiz.question}</p>
+                                     <p className={cn('font-bold text-xl lg:text-2xl leading-snug', theme === 'light' ? 'text-slate-800' : 'text-slate-100')}>{alignQuizSelectPrompt(quiz.questionText || quiz.prompt || quiz.question, quiz.options)}</p>
                                      <div className="space-y-3 w-full max-w-4xl">
                                        {quiz.options.map((opt: any, i: number) => {
                                          const label = opt.text || opt.label || opt;
@@ -7282,7 +7284,7 @@ export default function App() {
                                })()}
 
                                {/* MULTIPLE ANSWERS (multi-select) */}
-                               {currentSlide?.type === 'multiple-answers' && (() => {
+                               {(currentSlide?.type === 'multiple-answers' || emptyScenarioQuizKind(currentSlide) === 'multiple-answers') && (() => {
                                  const quiz = (currentSlide.interactions?.[0]) || currentSlide.data;
                                  const qKey = currentSlide.id + '-ma';
                                  const maState: { selected: number[]; submitted: boolean } = (quizState as any)[qKey] || { selected: [], submitted: false };
@@ -7300,7 +7302,7 @@ export default function App() {
                                          {quizScenarioText(quiz) || quizScenarioText(currentSlide)}
                                        </div>
                                      )}
-                                     <p className={cn('font-bold text-lg', theme === 'light' ? 'text-slate-800' : 'text-slate-100')}>{quiz.questionText || quiz.prompt || quiz.question}</p>
+                                     <p className={cn('font-bold text-lg', theme === 'light' ? 'text-slate-800' : 'text-slate-100')}>{alignQuizSelectPrompt(quiz.questionText || quiz.prompt || quiz.question, quiz.options)}</p>
                                      <p className={cn('text-xs font-bold uppercase tracking-wider', theme === 'light' ? 'text-indigo-600' : 'text-indigo-400')}>Select all correct answers</p>
                                      <div className="space-y-2.5 w-full">
                                        {quiz.options.map((opt: any, i: number) => {
@@ -8020,7 +8022,7 @@ export default function App() {
                                   );
                                })()}
 
-                               {currentSlide?.type === 'scenario' && (() => {
+                               {currentSlide?.type === 'scenario' && !emptyScenarioQuizKind(currentSlide) && (() => {
                                  const scenarioData = currentSlide.data as ScenarioData | undefined;
                                  if (!scenarioData?.nodes || !scenarioData?.startNodeId) {
                                    return (

@@ -142,3 +142,76 @@ export function quizScenarioText(source: any): string {
   const d = source.data && typeof source.data === 'object' ? source.data : source;
   return String(d.scenarioText || d.stem || d.preamble || d.situation || '').trim();
 }
+
+const COUNT_WORDS: Record<string, number> = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+};
+
+function optionIsCorrect(opt: any): boolean {
+  return opt?.isCorrect === true || opt?.correct === true;
+}
+
+function statedSelectCount(text: string): number | null {
+  const selectMatch = String(text || '').match(
+    /\b(?:select|choose|pick)\s+(?:the\s+)?(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b/i
+  );
+  const whichMatch = String(text || '').match(
+    /\bwhich\s+(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b/i
+  );
+  const token = selectMatch?.[1] || whichMatch?.[1];
+  if (!token) return null;
+  const fromWord = COUNT_WORDS[token.toLowerCase()];
+  if (fromWord) return fromWord;
+  const n = parseInt(token, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * When a stem says "select two" but the key marks a different number correct
+ * (including all-of-the-above), drop the false count so learners are not
+ * boxed into picking only N answers.
+ */
+export function alignQuizSelectPrompt(questionText: string, options?: any[]): string {
+  const q = String(questionText || '');
+  if (!q.trim() || !Array.isArray(options) || options.length < 2) return q;
+  const stated = statedSelectCount(q);
+  if (stated == null) return q;
+  const correctCount = options.filter(optionIsCorrect).length;
+  if (correctCount === stated) return q;
+  let next = q.replace(
+    /\b((?:select|choose|pick)\s+)(?:the\s+)?(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+/i,
+    (_m, verb: string) => `${String(verb).replace(/\s+$/, '')} the `
+  );
+  next = next.replace(
+    /\bwhich\s+(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+/i,
+    'which '
+  );
+  return next;
+}
+
+export function applyAlignedQuizPrompt(target: any): any {
+  if (!target || typeof target !== 'object') return target;
+  const options = Array.isArray(target.options) ? target.options : [];
+  const key = target.questionText != null ? 'questionText'
+    : target.prompt != null ? 'prompt'
+    : target.question != null ? 'question'
+    : null;
+  if (!key) return target;
+  const aligned = alignQuizSelectPrompt(String(target[key] || ''), options);
+  if (aligned === target[key]) return target;
+  return { ...target, [key]: aligned };
+}
+
+/**
+ * Empty branching-scenario payloads with quiz options should play as a KC.
+ * Used when a storyboard "Scenario:" screen was typed as ScenarioEngine.
+ */
+export function emptyScenarioQuizKind(slide: any): 'quiz' | 'multiple-answers' | null {
+  if (!slide || slide.type !== 'scenario') return null;
+  const d = slide.data || {};
+  if (Array.isArray(d.nodes) && d.nodes.length > 0 && d.startNodeId) return null;
+  const opts = d.options || slide.interactions?.[0]?.options;
+  if (!Array.isArray(opts) || opts.length < 2) return null;
+  const correct = opts.filter((o: any) => o?.isCorrect === true || o?.correct === true).length;
+  return correct >= 2 ? 'multiple-answers' : 'quiz';
+}

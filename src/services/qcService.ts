@@ -10,6 +10,7 @@ import { cleanQcSuggestion } from '../lib/qcTextFix';
 import { parseHeadingBulletSections, resolveClickRevealSlide } from '../lib/parseHeadingSections';
 import { coerceCarouselColor } from '../lib/colorContrast';
 import { slideSkipsNarration, stripSlideNarration } from '../lib/enablingCoverage';
+import { applyAlignedQuizPrompt } from '../lib/knowledgeCheckOst';
 
 const BATCH_SIZE = 5;
 /** Always use same-origin /api/* (Cloudflare Worker → Render). Never localhost in production. */
@@ -272,6 +273,12 @@ export function normalizeRegenSlideType(slide: any, preferred?: string): string 
   if (raw === 'drag-drop' || raw === 'drag-drop-activity') return 'drop-targets';
   if (raw === 'multiple-choice') return 'quiz';
   if (raw === 'multiple-answer') return 'multiple-answers';
+  if (raw === 'scenario') {
+    const d = slide?.data || {};
+    const hasNodes = Array.isArray(d.nodes) && d.nodes.length > 0 && d.startNodeId;
+    if (!hasNodes) return 'quiz';
+    return 'scenario';
+  }
   if (raw === 'knowledge-check') {
     const d = slide?.data || {};
     if (Array.isArray(d.targets) || Array.isArray(d.pairs) || d.correctAnswers) return 'matching';
@@ -408,7 +415,7 @@ Rules:
 ${isTabbed ? '- For tabbed slides: introContent MUST be 3–5 SHORT complete bullets (5–8 words each), same density as Overview slides. Do NOT write intro paragraphs and do NOT truncate with ellipses. voiceOverText is the Introduction narration only (do not recap tab content). Each tab "content" MUST be markdown short bullets; each tab "voiceOverText" elaborates that tab only.' : ''}
 ${type === 'click-reveal' ? '- For click-reveal: each item "definition" MUST be 3–5 SHORT BULLETS (5–8 words), not sentences. Put spoken explanation in voiceOverText. Slide-level content must be empty or 1 framing line — do NOT repeat the reveal bullets on the slide.' : ''}
 ${type === 'carousel-panel' ? '- For carousel: pick card colors ONLY from this dark set so white text stays readable: #4f46e5, #0f766e, #9f1239, #1d4ed8, #b45309, #6d28d9, #166534, #0f172a. Never white, yellow, pink, or pastels.' : ''}
-${isKc ? '- For knowledge checks: introContent/content is 1–2 framing bullets about WHAT is being tested (e.g. "Match each traffic sign to its function"). Put any situation/story in scenarioText. Do NOT list answers, meanings, or categories that give away the match. voiceOverText MUST be "" — knowledge checks have no spoken narration. Teaching detail belongs in feedback after submit.' : ''}
+${isKc ? '- For knowledge checks: introContent/content is 1–2 framing bullets about WHAT is being tested (e.g. "Match each traffic sign to its function"). Put any situation/story in scenarioText. Do NOT list answers, meanings, or categories that give away the match. voiceOverText MUST be "" — knowledge checks have no spoken narration. Teaching detail belongs in feedback after submit. If the stem says "select N" but a different number of options are marked correct (including all of them), rewrite the stem to "Select the … that …". A "Scenario:" title with one question is a quiz with scenarioText, not a branching tree.' : ''}
 - Do NOT include markdown, backticks, or any explanation — pure JSON only`;
 
   let lastErr: any = null;
@@ -535,13 +542,18 @@ ${isKc ? '- For knowledge checks: introContent/content is 1–2 framing bullets 
   if (isKc && parsed.introContent) {
     return {
       type,
-      data: parsed,
+      data: applyAlignedQuizPrompt(parsed),
       content: coerceOstText(parsed.introContent),
       voiceOverText: '',
     };
   }
 
-  const out = { type, data: parsed, content: parsed.content, voiceOverText: parsed.voiceOverText };
+  const out = {
+    type,
+    data: isKc ? applyAlignedQuizPrompt(parsed) : parsed,
+    content: parsed.content,
+    voiceOverText: parsed.voiceOverText,
+  };
   return slideSkipsNarration(out) ? stripSlideNarration(out) : out;
 }
 

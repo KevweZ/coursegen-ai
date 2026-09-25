@@ -57,6 +57,8 @@ const INTRO_COLOR = TAB_INTRO_DEFAULT_HEX;
 const PANEL_H = 520;
 /** Light classic rail — indigo/slate, not a teal lock-in. */
 export const PROCESS_RAIL_DEFAULT = '#f1f5f9';
+/** Same fill as click-reveal light cards (`#eef2ff`) so Overview text stays black-on-pale. */
+export const PROCESS_PANEL_DEFAULT = '#eef2ff';
 /** Tall enough for 36px circles + active scale + border without a scrollbar. */
 const RAIL_H = 96;
 
@@ -181,11 +183,14 @@ export default function TabbedContentHorizontal({
 
   const blocks = isBlocksSkin(skin);
   const well = resolveHexColor(wellColor, BLOCKS_WELL_DEFAULT);
-  const panelBg = blocks ? well : (isLight ? '#ffffff' : '#0f172a');
+  // Classic canvas matches click-reveal open cards: pale indigo + dark body text.
+  // Accent color stays on the rail, not on Overview / CTA (those were unreadable on gray).
+  const panelBg = blocks ? well : (isLight ? PROCESS_PANEL_DEFAULT : '#0f172a');
   const ink = blocks ? contrastTextOn(well) : (isLight ? '#0f172a' : '#f8fafc');
   const muted = blocks
     ? (ink === '#ffffff' ? 'rgba(248,250,252,0.82)' : 'rgba(15,23,42,0.72)')
-    : (isLight ? '#475569' : '#cbd5e1');
+    : (isLight ? '#334155' : '#cbd5e1');
+  const labelInk = ink;
   const rail = resolveHexColor(railColor, PROCESS_RAIL_DEFAULT);
   const railInk = contrastTextOn(rail);
   const railIsDark = railInk === '#ffffff';
@@ -228,7 +233,7 @@ export default function TabbedContentHorizontal({
               {(inIntro || showStepLabels) && (
                 <p
                   className="text-sm font-bold uppercase tracking-[0.18em] mb-2"
-                  style={{ color: activeColor }}
+                  style={{ color: labelInk }}
                 >
                   {inIntro ? 'Overview' : stepLabel(activeIndex + 1)}
                 </p>
@@ -257,7 +262,7 @@ export default function TabbedContentHorizontal({
                 />
               )}
               {inIntro && (
-                <p className="mt-6 text-xs font-semibold" style={{ color: activeColor }}>
+                <p className="mt-6 text-xs font-semibold" style={{ color: muted }}>
                   {showStepLabels ? 'Select a step below to continue →' : 'Select below to continue →'}
                 </p>
               )}
