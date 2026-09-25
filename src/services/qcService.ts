@@ -248,14 +248,14 @@ const SCHEMA_HINTS: Record<string, string> = {
   accordion:       '{ "items": [{ "id": "string", "title": "string", "content": "string" }] }',
   flashcards:      '{ "cards": [{ "id": "string", "front": "string", "back": "string" }] }',
   timeline:        '{ "events": [{ "id": "string", "year": "string", "title": "string", "content": "string" }] }',
-  quiz:            '{ "questionText": "string", "options": [{ "id": "string", "text": "string", "isCorrect": boolean }], "feedback": "string" }',
-  'multiple-answer':'{ "questionText": "string", "options": [{ "id": "string", "text": "string", "isCorrect": boolean }] }',
+  quiz:            '{ "questionText": "string", "scenarioText": "optional short situation the learner reads first", "options": [{ "id": "string", "text": "string", "isCorrect": boolean }], "feedback": "string" }',
+  'multiple-answer':'{ "questionText": "string", "scenarioText": "optional short situation", "options": [{ "id": "string", "text": "string", "isCorrect": boolean }] }',
   jeopardy:        '{ "categories": [{ "id": "string", "title": "string", "questions": [{ "id": "string", "points": number, "question": "string", "answer": "string" }] }] }',
   matching:        '{ "items": [{ "id": "i1", "content": "left term" }], "targets": [{ "id": "t1", "content": "right definition" }], "correctAnswers": { "i1": "t1" } }',
   sorting:         '{ "items": [{ "id": "string", "content": "string" }], "correctOrder": ["id1", "id2"] }',
   'drop-targets':  '{ "items": [{ "id": "string", "content": "string", "category": "string" }], "categories": ["Cat A", "Cat B"] }',
-  'multiple-choice':'{ "questionText": "string", "options": [{ "id": "string", "text": "string", "isCorrect": boolean }], "feedback": "string" }',
-  'multiple-answers':'{ "questionText": "string", "options": [{ "id": "string", "text": "string", "isCorrect": boolean }], "feedback": "string" }',
+  'multiple-choice':'{ "questionText": "string", "scenarioText": "optional short situation the learner reads first", "options": [{ "id": "string", "text": "string", "isCorrect": boolean }], "feedback": "string" }',
+  'multiple-answers':'{ "questionText": "string", "scenarioText": "optional short situation", "options": [{ "id": "string", "text": "string", "isCorrect": boolean }], "feedback": "string" }',
   'true-false':    '{ "questionText": "string", "options": [{ "id": "a", "text": "True", "isCorrect": true }, { "id": "b", "text": "False", "isCorrect": false }], "feedback": "string" }',
   content:         '{ "bullets": ["5-8 word phrase", "5-8 word phrase", "5-8 word phrase"], "voiceOverText": "3-4 spoken sentences that expand the bullets without reading them verbatim" }',
   diagram:         '{ "mermaidCode": "flowchart TD\\n  A[Start] --> B[Step]\\n  B --> C[End]", "caption": "optional short caption" }',
@@ -330,10 +330,35 @@ function normalizeTabRecord(tab: any, index: number) {
  * the AI. Returns `{ type, data, content? }` to merge into the course.
  * Pass `targetType` to change the interaction kind (or `"content"` for plain bullets).
  */
+function existingItemLock(slide: any, _type: string): string {
+  const d = slide?.data || {};
+  const labels: string[] = [];
+  const seen = new Set<string>();
+  const push = (v: unknown) => {
+    const t = String(v || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!t) return;
+    const key = t.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    labels.push(t);
+  };
+  (d.cards || []).forEach((c: any) => push(c.front || c.label || c.term));
+  (d.items || []).forEach((it: any) => push(it.term || it.label || it.title || it.content || it.text));
+  (d.hotspots || d.points || []).forEach((p: any) => push(p.label));
+  (d.tabs || []).forEach((t: any) => push(t.label));
+  (d.options || []).forEach((o: any) => push(o.text || o.label));
+  if (!labels.length) return '';
+  return `
+LOCK TO EXISTING TOPICS — do not invent extra items:
+- Keep exactly ${labels.length} item(s). Do not add or drop topics.
+- Use these labels (you may tighten wording, not replace the subject): ${labels.map(l => `"${l}"`).join('; ')}`;
+}
+
 export async function regenerateSlideData(
   slide: any,
   courseTopic: string,
-  targetType?: string
+  targetType?: string,
+  opts?: { sourceMode?: 'raw' | 'storyboard'; sourceContent?: string }
 ): Promise<{ type: string; data: any; content?: string; voiceOverText?: string }> {
   const type = normalizeRegenSlideType(slide, targetType);
 
@@ -357,17 +382,23 @@ export async function regenerateSlideData(
   const schema = SCHEMA_HINTS[type] ?? SCHEMA_HINTS.content;
   const isTabbed = type === 'tabbed-horizontal' || type === 'tabbed-vertical';
   const isKc = ['quiz', 'matching', 'sorting', 'drop-targets', 'multiple-choice', 'multiple-answers', 'true-false'].includes(type);
+  const storyboardLock = opts?.sourceMode === 'storyboard';
+  const sourceClip = storyboardLock && opts?.sourceContent
+    ? `\nThis course was built from a storyboard. Follow that screen's OST, narration, and listed items — do not redesign the teaching.\nSOURCE (excerpt):\n${String(opts.sourceContent).slice(0, 8000)}\n`
+    : '';
+  const itemLock = existingItemLock(slide, type);
   const prompt = `Regenerate rich, educational content for this "${type}" slide.
 
 Slide title: "${slide.title}"
 Course topic: "${courseTopic}"
 ${slide.content ? `Existing slide text (for context): "${String(slide.content).slice(0, 400)}"` : ''}
+${sourceClip}${itemLock}
 
 Return ONLY a valid JSON object matching this exact schema for the "${type}" type:
 ${schema}
 
 Rules:
-- Use 3–6 items/events/cards/options unless the schema implies otherwise
+- ${itemLock ? 'Use the locked item count and labels above. Do not invent extra cards/tabs/options.' : 'Use 3–6 items/events/cards/options unless the schema implies otherwise'}
 - Write in clear, professional English
 - For matching: every item id must appear as a key in correctAnswers mapping to a target id
 - For drop-targets: every item must have a category that exactly matches one entry in categories[]
@@ -377,7 +408,7 @@ Rules:
 ${isTabbed ? '- For tabbed slides: introContent MUST be 3–5 SHORT complete bullets (5–8 words each), same density as Overview slides. Do NOT write intro paragraphs and do NOT truncate with ellipses. voiceOverText is the Introduction narration only (do not recap tab content). Each tab "content" MUST be markdown short bullets; each tab "voiceOverText" elaborates that tab only.' : ''}
 ${type === 'click-reveal' ? '- For click-reveal: each item "definition" MUST be 3–5 SHORT BULLETS (5–8 words), not sentences. Put spoken explanation in voiceOverText. Slide-level content must be empty or 1 framing line — do NOT repeat the reveal bullets on the slide.' : ''}
 ${type === 'carousel-panel' ? '- For carousel: pick card colors ONLY from this dark set so white text stays readable: #4f46e5, #0f766e, #9f1239, #1d4ed8, #b45309, #6d28d9, #166534, #0f172a. Never white, yellow, pink, or pastels.' : ''}
-${isKc ? '- For knowledge checks: introContent/content is 1–2 framing bullets about WHAT is being tested (e.g. "Match each traffic sign to its function"). Do NOT list answers, meanings, or categories that give away the match. voiceOverText MUST be "" — knowledge checks have no spoken narration. Teaching detail belongs in feedback after submit.' : ''}
+${isKc ? '- For knowledge checks: introContent/content is 1–2 framing bullets about WHAT is being tested (e.g. "Match each traffic sign to its function"). Put any situation/story in scenarioText. Do NOT list answers, meanings, or categories that give away the match. voiceOverText MUST be "" — knowledge checks have no spoken narration. Teaching detail belongs in feedback after submit.' : ''}
 - Do NOT include markdown, backticks, or any explanation — pure JSON only`;
 
   let lastErr: any = null;

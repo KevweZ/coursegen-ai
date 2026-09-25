@@ -135,3 +135,10 @@ export function knowledgeCheckFramingOst(content: unknown): string {
 export function knowledgeCheckInstruction(content: unknown, extraHint?: string): string {
   return splitKnowledgeCheckOst(content, extraHint).instruction;
 }
+
+/** Short story / situation the learner reads before a quiz question (not the question itself). */
+export function quizScenarioText(source: any): string {
+  if (!source || typeof source !== 'object') return '';
+  const d = source.data && typeof source.data === 'object' ? source.data : source;
+  return String(d.scenarioText || d.stem || d.preamble || d.situation || '').trim();
+}

@@ -16,19 +16,20 @@ const H_STEPS = [
 export function TabbedHorizontalPreview() {
   const [activeIndex, setActiveIndex] = useState(0);
   const step = H_STEPS[activeIndex];
-  const rail = '#0d9488';
+  const rail = '#f1f5f9';
+  const accent = '#4f46e5';
 
   return (
     <div className="w-full max-w-lg mx-auto flex flex-col overflow-hidden select-none bg-white">
       <div className="p-5 min-h-[150px]">
-        <p className="text-xs font-bold uppercase tracking-[0.18em] mb-1" style={{ color: rail }}>
+        <p className="text-xs font-bold uppercase tracking-[0.18em] mb-1" style={{ color: accent }}>
           STEP {String(activeIndex + 1).padStart(2, '0')}
         </p>
         <h3 className="font-extrabold text-base text-slate-900 mb-2">{step.label}</h3>
         <p className="text-slate-600 text-sm leading-relaxed">{step.content}</p>
       </div>
       <div className="relative flex items-center justify-center gap-3 py-5" style={{ background: rail, minHeight: 72 }}>
-        <div className="absolute top-0 left-0 right-0 h-[3px] bg-orange-400" />
+        <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ background: accent }} />
         {H_STEPS.map((t, i) => {
           const isActive = i === activeIndex;
           return (
@@ -36,13 +37,11 @@ export function TabbedHorizontalPreview() {
               key={t.id}
               type="button"
               onClick={() => setActiveIndex(i)}
-              className="relative z-[1] w-8 h-8 rounded-full text-[11px] font-black"
+              className="relative z-[1] w-8 h-8 rounded-full text-[11px] font-black border-2"
               style={
                 isActive
-                  ? { background: '#fff', color: rail }
-                  : i < activeIndex
-                  ? { background: 'rgba(15,23,42,0.45)', color: '#fff' }
-                  : { background: 'rgba(255,255,255,0.28)', color: '#fff' }
+                  ? { background: accent, color: '#fff', borderColor: accent }
+                  : { background: '#fff', color: '#334155', borderColor: '#cbd5e1' }
               }
             >
               {i + 1}

@@ -5,6 +5,7 @@
 import React from 'react';
 import { coerceOstText, sanitizeOstText } from '../../lib/formatTabIntroOst';
 import { CAROUSEL_CARD_HEX, carouselCardHex } from '../../lib/colorContrast';
+import { quizScenarioText } from '../../lib/knowledgeCheckOst';
 
 interface Props {
   slide: any;
@@ -387,6 +388,13 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
     return (
       <div className="space-y-3">
         <label className={labelClass}>Question &amp; answers</label>
+        <textarea
+          rows={3}
+          value={quizScenarioText({ data: d })}
+          onChange={(e) => patchData(slide, { scenarioText: e.target.value }, onPatch)}
+          className={areaClass}
+          placeholder="Optional situation / short story the learner reads before the question"
+        />
         <textarea
           rows={2}
           value={question}

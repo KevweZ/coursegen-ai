@@ -438,6 +438,9 @@ export function buildReviewScriptModel(
       htmlToLines(data.prompt),
       htmlToLines(data.question),
       htmlToLines(data.questionText),
+      htmlToLines(data.scenarioText),
+      htmlToLines(data.stem),
+      htmlToLines(data.preamble),
       htmlToLines(data.introduction),
     ));
     const introNarr = silent ? [] : narrationLines(slide.voiceOverText || slide.narration);

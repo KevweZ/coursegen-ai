@@ -22,6 +22,8 @@ const KEEP_DATA_KEYS = [
   'introLabelColor',
   'unifyTabColors',
   'introImageUrl',
+  'processRailColor',
+  'railColor',
 ];
 
 function pickKeptMedia(existingData: Record<string, unknown> | undefined): Record<string, unknown> {

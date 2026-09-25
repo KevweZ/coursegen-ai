@@ -2,6 +2,15 @@ import { CourseOutline, TerminalObjectiveGroup, ExamConfig, ExamQuestion } from 
 import { coerceCarouselColor } from "../lib/colorContrast";
 import { ensureEnablingSlideCoverage, preserveEnablingIndex, normalizeTerminalGroups, slideSkipsNarration, stripSlideNarration } from "../lib/enablingCoverage";
 import { allocateKnowledgeCheckSlots, ensureKnowledgeCheckBudget } from "../lib/knowledgeCheckBudget";
+import {
+  STORYBOARD_SOURCE_CHARS,
+  storyboardAnalyzeInstructions,
+  storyboardHydrateInstructions,
+  storyboardOutlineInstructions,
+  storyboardSourceWindow,
+  STORYBOARD_CONTENT_TYPES,
+  type SourceMode,
+} from "../lib/storyboardSource";
 
 // ── Secure AI Proxy Client ───────────────────────────────────────────────────
 // API keys live ONLY in server.js — never in the browser bundle.
@@ -279,11 +288,14 @@ export interface FileAnalysisResult {
 
 export async function analyzeUploadedFile(
   fileText: string,
-  fileName: string
+  fileName: string,
+  opts?: { sourceMode?: SourceMode },
 ): Promise<FileAnalysisResult> {
+  const sourceMode: SourceMode = opts?.sourceMode === 'storyboard' ? 'storyboard' : 'raw';
+  const storyboardBlock = sourceMode === 'storyboard' ? `\n\n${storyboardAnalyzeInstructions()}\n` : '';
   const systemInstruction = `You are an expert Instructional Designer and File Analysis Engine.
   Your job is to read uploaded document structures and extract a full eLearning course blueprint.
-  
+  ${storyboardBlock}
   TASKS:
   1. Extract title(s), section headers, key topics, and definitions.
      NOTE: The source text may be pre-parsed structured Markdown from a PPTX or PDF:
@@ -293,6 +305,7 @@ export async function analyzeUploadedFile(
      - "> Speaker Notes:" = presenter notes for context
      Use this structure to identify modules and map content accurately.
   2. Generate a clean, professional course Title (concise, no raw artifact file names).
+     Never use "Storyboard", "Build Specification", or "Developer Handoff" as the course title when the file is a spec for a subject-matter course.
   3. Write a 2-4 sentence Description (what learners will learn, context, why it matters).
   4. Classify the complexity (simple vs moderate vs complex).
   5. Suggest a recommended Preset based on CONTENT DEPTH AND COMPLEXITY, not raw slide count:
@@ -311,6 +324,7 @@ export async function analyzeUploadedFile(
      - Generate 2-4 Terminal Objectives (the high-level outcome the course achieves). For each, generate 2-4 Enabling Objectives (the individual knowledge/skill steps needed to reach it).
      - Terminal Objective example format: "Given [a scenario/condition], the learner will [single Bloom's verb] [specific knowledge/skill] [to a measurable standard]."
      - Enabling Objective example format: "The learner will [single Bloom's verb] [specific sub-skill or concept]."
+     - In STORYBOARD MODE, prefer the spec's listed objectives over inventing a new set (see STORYBOARD MODE rules above).
   
   OUTPUT FORMAT: Return ONLY raw JSON:
   {
@@ -328,7 +342,8 @@ export async function analyzeUploadedFile(
     "possibleModules": ["string"]
   }`;
   
-  const userPrompt = `Analyze the following source material from a file named "${fileName}":\n\n${fileText.slice(0, 12000)}`;
+  const windowChars = sourceMode === 'storyboard' ? STORYBOARD_SOURCE_CHARS : 12000;
+  const userPrompt = `Analyze the following source material from a file named "${fileName}":\n\n${fileText.slice(0, windowChars)}`;
   
   const text = await executeAnthropicAI('complex', systemInstruction, userPrompt, 4096);
   const cleanedText = extractJsonFromText(text);
@@ -439,6 +454,8 @@ export async function generateCourseOutline(
     conversionPreferences?: string[];
     /** AB | ABC | ABCD — used when drafting objectives-aligned module titles */
     objectiveFormat?: string;
+    /** Storyboard specs follow listed screens; raw lecture uploads stay on the default path. */
+    sourceMode?: SourceMode;
   }
 ): Promise<CourseOutlineDraft> {
   // Games temporarily disabled at product level — ignore any passed IDs
@@ -449,7 +466,9 @@ export async function generateCourseOutline(
     ? configParams.quizActivityTypes
     : ['sorting', 'matching', 'drop-targets']
   ).map(t => {
-    if (t === 'mc' || t === 'ma' || t === 'tf') return 'quiz';
+    if (t === 'mc') return 'quiz';
+    if (t === 'ma') return 'multiple-answers';
+    if (t === 'tf') return 'true-false';
     return t;
   });
   // Honor explicit arrays including [] — never re-expand to sorting/matching when the user cleared types.
@@ -461,7 +480,16 @@ export async function generateCourseOutline(
   const totalSlots = includeKCs && kcMode === 'total'
     ? allocateKnowledgeCheckSlots(moduleHint, 'total', kcCount, Array.from({ length: moduleHint }, () => 1))
     : [];
-  const kcDirective = !includeKCs
+  const sourceMode: SourceMode = configParams.sourceMode === 'storyboard' ? 'storyboard' : 'raw';
+  const outlineInteractions = sourceMode === 'storyboard'
+    ? [...new Set([...contentInteractions, ...STORYBOARD_CONTENT_TYPES])]
+    : contentInteractions;
+  const schemaQuizActivities = sourceMode === 'storyboard'
+    ? [...new Set([...uniqueQuizActivities, 'quiz', 'multiple-answers'])]
+    : uniqueQuizActivities;
+  const kcDirective = sourceMode === 'storyboard'
+    ? 'Only include a Knowledge Check slide if the storyboard already specifies an exit check, knowledge check, decision quiz, or a learner screen that asks the learner to select answers. Use quiz for one correct option; use multiple-answers when the spec says select two / select all that apply. Do NOT add extra checks to meet a Course Settings count. Title MUST start with "Knowledge Check:" when you do include one.'
+    : !includeKCs
     ? 'NO knowledge check slides'
     : kcMode === 'per-module'
     ? `Exactly ${kcCount} Knowledge Check slide(s) per module (type must be one of: ${uniqueQuizActivities.join(', ')}). Title MUST start with "Knowledge Check:". This cap is independent of enabling count — a module with 6 enablings and a cap of ${kcCount} still gets ${kcCount} checks, not 6.`
@@ -469,14 +497,18 @@ export async function generateCourseOutline(
 
   const allowedTypesForSchema = [
     'content', 'diagram', 'key-takeaways',
-    ...contentInteractions.filter(t => !['content', 'diagram', 'key-takeaways'].includes(t)),
-    ...uniqueQuizActivities,
+    ...outlineInteractions.filter(t => !['content', 'diagram', 'key-takeaways'].includes(t)),
+    ...schemaQuizActivities,
   ];
   const schemaTypeEnum = [...new Set(allowedTypesForSchema)].join('|') || 'content|quiz';
 
+  const storyboardBlock = sourceMode === 'storyboard'
+    ? `\n\n${storyboardOutlineInstructions(outlineInteractions)}\nThese STORYBOARD MODE rules OVERRIDE enabling-coverage slide counts, extra knowledge-check budgets, and "one module per terminal" expansion below.\n`
+    : '';
+
   const systemInstruction = `You are an Expert Senior Corporate Instructional Designer.
   Your ONLY job right now is to draft the TABLE OF CONTENTS (Outline) for a course. Do NOT write the actual content yet.
-  
+  ${storyboardBlock}
   COURSE STRUCTURE REQUIREMENTS:
   You must create EXACTLY ONE module per provided Terminal Objective (Learning Objective group).
   Every module MUST follow this exact sequence of slides:
@@ -485,7 +517,7 @@ export async function generateCourseOutline(
      ${configParams.includeModuleOverviewSlides !== false ? '- Module Overview slide (objectives accordion) immediately after each Module Title' : '- Module Overview slides are OFF — do NOT create overview or objectives slides'}
      Do NOT generate title, intro, overview, or objectives slides for any module. Each module must start directly with its first content or interaction slide.
   2. NO objectives slide — FORBIDDEN. Do NOT create any slide titled "Learning Objectives", "Module Objectives", "Objectives", or similar. Do NOT use click-reveal (or any other type) to restate objectives.${configParams.includeModuleOverviewSlides !== false ? ' The auto-injected Module Overview already shows this module\'s objective and sub-objectives from the canonical Learning Objectives list.' : ''}
-  3. Content & Interaction Slides — ONLY use these content interaction types as slide 'type': ${contentInteractions.join(', ') || 'content'}.
+  3. Content & Interaction Slides — ONLY use these content interaction types as slide 'type': ${outlineInteractions.join(', ') || 'content'}.
      HARD RULE — ENABLING COVERAGE (this drives length; there is NO global target slide count):
      - Each enabling objective in that module's terminal MUST have its own teaching slide(s). Do not skip an enabling. Do not put two enablings on one slide.
      - At least 1 and at most 2 teaching/interaction slides per enabling. Use a second slide only when the enabling needs to be chunked.
@@ -503,7 +535,7 @@ export async function generateCourseOutline(
      HARD RULE — KNOWLEDGE CHECK COUNT IS INDEPENDENT OF ENABLING COVERAGE:
      Enabling coverage (1–2 teaching slides per enabling) does NOT add knowledge checks. Do NOT emit one Knowledge Check per enabling.
      Prefer each check to assess a different enabling in that module; only assess the same enabling twice after every enabling already has a check. Still never exceed the Course Settings cap.
-     Knowledge Check slides teach nothing new — they assess. Allowed Knowledge Check types: ${uniqueQuizActivities.join(', ') || 'none'}.
+     Knowledge Check slides teach nothing new — they assess. Allowed Knowledge Check types: ${schemaQuizActivities.join(', ') || 'none'}.
      Prefer spreading different quiz activity types (quiz MC, sorting, matching, drop-targets) across checks when multiple are allowed.
      Interaction pick rules: sorting = arrange steps/phases/order; drop-targets = categorize into bins (multi-bin or one bin + distractors); matching = pair terms; quiz = MC. Never use drop-targets for sequencing.
   5. ${configParams.includeSummarySlides !== false ? 'Module Summary / Key Takeaways slide (type: "key-takeaways") — REQUIRED at end of each module. Use type key-takeaways with data.objectives array of {id,label,content}. Do NOT use plain content/summary markdown bullets for module summaries.' : 'NO summary slide'}
@@ -532,14 +564,16 @@ export async function generateCourseOutline(
   const { getAvailableThemes } = await import('../lib/backgrounds');
   const availableThemes = getAvailableThemes();
 
-  const conversionNote = configParams.isSourceConversion && configParams.sourceContent
+  const conversionNote = sourceMode === 'storyboard' && configParams.sourceContent
+    ? `\n\n${storyboardOutlineInstructions(outlineInteractions)}\n\nSOURCE MATERIAL (storyboard):\n${storyboardSourceWindow(configParams.sourceContent)}`
+    : configParams.isSourceConversion && configParams.sourceContent
     ? `\n\nIMPORTANT: This course is being CONVERTED from an uploaded source document. Use the source material below as the primary content reference. Apply instructional design best practices: chunk dense content, convert lecture-style material into interactive learning segments, and apply progressive disclosure.\nConversion Preferences: ${(configParams.conversionPreferences || []).join(', ') || 'Default conversion'}\n\nSOURCE MATERIAL (first 4000 chars):\n${configParams.sourceContent.slice(0, 4000)}`
     : '';
 
     const userPrompt = `Draft the outline for a Corporate Training Course. Topic: "${prompt}".
     Learning Objectives: ${JSON.stringify(objectives)}
     Objective format for this course: ${configParams.objectiveFormat || 'AB'} (respect this structure when aligning modules to objectives).
-    SLIDE COUNT: Do NOT aim for a global target number of slides. Length comes from the objectives: one module per terminal, 1–2 teaching slides per enabling (plus knowledge checks / summaries when required below). AVAILABLE VISUAL THEMES: ${availableThemes.length > 0 ? availableThemes.join(", ") : "Neutral"}
+    SLIDE COUNT: ${sourceMode === 'storyboard' ? 'Follow the storyboard learner screens (one teaching slide per screen). Do not add extra slides for enabling coverage.' : 'Do NOT aim for a global target number of slides. Length comes from the objectives: one module per terminal, 1–2 teaching slides per enabling (plus knowledge checks / summaries when required below).'} AVAILABLE VISUAL THEMES: ${availableThemes.length > 0 ? availableThemes.join(", ") : "Neutral"}
     IMPORTANT AI DIRECTIVE: You must ONLY select a visualTheme if the course topic has a STRONG, LITERAL semantic match to that specific theme (e.g. use "Rigs" only for oil/gas/industrial topics, use "Forest" only for nature topics). If there is NO strong semantic match, you MUST default to "Neutral". Do not guess or select unrelated themes!
 
     MODULE TITLE QUALITY RULES:
@@ -580,10 +614,13 @@ export async function generateCourseOutline(
 
   // Hard whitelist — never trust the model to stay inside Course Settings interactions
   if (Array.isArray(parsedOutline.modules)) {
-    parsedOutline.modules = coerceInteractionTypes(parsedOutline.modules, contentInteractions) as any;
+    parsedOutline.modules = coerceInteractionTypes(parsedOutline.modules, outlineInteractions) as any;
   }
 
   parsedOutline.learningObjectives = objectives;
+  if (sourceMode === 'storyboard') {
+    return parsedOutline;
+  }
   const withCoverage = ensureEnablingSlideCoverage(parsedOutline, objectives);
   return ensureKnowledgeCheckBudget(withCoverage, {
     includeKnowledgeChecks: includeKCs,
@@ -609,6 +646,7 @@ export async function hydrateCourseContent(
     knowledgeCheckMode?: 'total' | 'per-module';
     knowledgeCheckCount?: number;
     quizActivityTypes?: string[];
+    sourceMode?: SourceMode;
   },
   onProgress?: (pct: number) => void
 ): Promise<CourseOutline> {
@@ -616,16 +654,19 @@ export async function hydrateCourseContent(
     (Array.isArray(configParams.quizActivityTypes)
       ? configParams.quizActivityTypes
       : ['sorting', 'matching', 'drop-targets']
-    ).map(t => (t === 'mc' || t === 'ma' || t === 'tf' ? 'quiz' : t))
+    ).map(t => (t === 'mc' ? 'quiz' : t === 'ma' ? 'multiple-answers' : t === 'tf' ? 'true-false' : t))
   )];
+  const sourceMode: SourceMode = configParams.sourceMode === 'storyboard' ? 'storyboard' : 'raw';
   const hydrateKcCount = Math.max(0, Math.floor(configParams.knowledgeCheckCount ?? 2));
-  const skeleton = ensureKnowledgeCheckBudget(outlineDraft, {
-    includeKnowledgeChecks: configParams.includeKnowledgeChecks !== false && quizActivities.length > 0 && hydrateKcCount > 0,
-    knowledgeCheckMode: configParams.knowledgeCheckMode === 'total' ? 'total' : 'per-module',
-    knowledgeCheckCount: hydrateKcCount,
-    quizActivityTypes: quizActivities,
-    objectives: outlineDraft.learningObjectives,
-  });
+  const skeleton = sourceMode === 'storyboard'
+    ? outlineDraft
+    : ensureKnowledgeCheckBudget(outlineDraft, {
+        includeKnowledgeChecks: configParams.includeKnowledgeChecks !== false && quizActivities.length > 0 && hydrateKcCount > 0,
+        knowledgeCheckMode: configParams.knowledgeCheckMode === 'total' ? 'total' : 'per-module',
+        knowledgeCheckCount: hydrateKcCount,
+        quizActivityTypes: quizActivities,
+        objectives: outlineDraft.learningObjectives,
+      });
 
   const fullCourse: CourseOutline = {
     title: skeleton.title,
@@ -635,10 +676,15 @@ export async function hydrateCourseContent(
     modules: []
   };
 
+  const storyboardHydrateBlock = sourceMode === 'storyboard'
+    ? `\n\n${storyboardHydrateInstructions()}\n`
+    : '';
+
   const systemInstruction = `You are an Expert eLearning Content Architect and Certified Instructional Designer.
   Your ONLY job: hydrate the provided module JSON skeleton with rich, ISD-compliant content. Do NOT change the slide structure.
   Keep module.title exactly as provided — do not lengthen it into a sentence or objective-style phrase.
   Keep each slide's enablingIndex exactly as provided. A teaching slide with enablingIndex N must teach that module's enabling objective N (0-based). Do not drop, merge, or skip enablings. Knowledge checks and summaries have no enablingIndex.
+  ${storyboardHydrateBlock}
 
   ========================================
   GLOBAL PRINCIPLE — ON-SCREEN TEXT vs NARRATION (APPLIES TO EVERY SLIDE)
@@ -711,10 +757,16 @@ export async function hydrateCourseContent(
 
   QUIZ:
   - questionText MUST be a complete question sentence ending with "?"
+  - Optional scenarioText: a short situation paragraph the learner reads BEFORE the question (carrier alert, workplace vignette, yellow-box story). Not the question itself. Omit when there is no situation.
   - Must have EXACTLY 4 options: 1 correct (isCorrect: true) + 3 plausible distractors
   - options[].text must be meaningful (10+ chars). NEVER: "A", "B", "True", "False" unless it's genuinely a T/F slide
   - feedback: string explaining why the correct answer is right (this is where teaching detail goes AFTER submit)
   - Slide-level content: 1 framing bullet about what is being tested. voiceOverText MUST be "" (empty). Knowledge checks have no spoken narration — same as Mastery Quiz questions. Do not give away the answer on screen.
+
+  MULTIPLE-ANSWERS:
+  - Same schema as QUIZ plus scenarioText when a situation exists.
+  - Use when the learner must select TWO or more options ("select two", "select all that apply").
+  - Mark isCorrect true on every correct option (2+). Do not collapse those into a single multiple-choice pair.
   - FAIL CONDITION: missing questionText or fewer than 2 options -> regenerate
 
   ACCORDION (DEPRECATED — use click-reveal instead):
@@ -764,7 +816,7 @@ export async function hydrateCourseContent(
   PROCESS (type: "tabbed-horizontal"):
   - This is a numbered process stepper, NOT a row of topic tabs. Learners click step circles in order.
   - data.tabs: array of 3-6 sequential STEP objects (ordered left to right)
-  - Each step: { "id": "t1", "label": "Short step name (2-5 words)", "color": "#0d9488", "content": "- Short bullet\\n- Another point", "voiceOverText": "2-4 spoken sentences elaborating this step" }
+  - Each step: { "id": "t1", "label": "Short step name (2-5 words)", "color": "#4f46e5", "content": "- Short bullet\\n- Another point", "voiceOverText": "2-4 spoken sentences elaborating this step" }
   - Labels are STEP NAMES (Identify the hazard, Isolate energy), never generic "Tab 1" / "Overview" / "Topic 2".
   - On-screen step content MUST be SHORT BULLETS only (3–5 bullets, 5–8 words each). Put explanations in voiceOverText. NEVER empty or symbol-only bullets (e.g. "-" alone).
   - Slide-level "content" is the OVERVIEW on-screen text shown before any step is selected. Format like steps: 3–5 SHORT BULLETS (5–10 words each) capturing the main points of the slide-level voiceOverText. Do NOT use only a click instruction as the entire intro. Do NOT add a "Select a step…" bullet — the player UI already shows that CTA. NEVER emit an empty bullet or a bullet whose only content is punctuation/symbols.
@@ -872,7 +924,7 @@ export async function hydrateCourseContent(
   - sorting: { items: [{ id: string, content: string }], correctOrder: string[] } — use for sequence/order/phases; correctOrder is item ids first→last
   - matching: { items: [{ id: string, content: string }], targets: [{ id: string, content: string }], correctAnswers: { [itemId]: targetId } } — NEVER use 'pairs'. Always include correctAnswers mapping every item id to its target id.
   - drop-targets: { items: [{ id: string, content: string, category: string }], categories: string[] } — category must match a categories[] entry, OR be "" for distractors. Require 2+ categories OR 1 category with at least one distractor. Never use for pure sequencing.
-  - quiz interactions: [{ type: 'multiple-choice', questionText: string, options: [{ id, text, isCorrect: boolean }], feedback: string }]
+  - quiz interactions: [{ type: 'multiple-choice', questionText: string, scenarioText?: string, options: [{ id, text, isCorrect: boolean }], feedback: string }]
   - jeopardy: { templateType: 'jeopardy', instructions: string, categories: [{ id, name, questions: [{ id, value: number, prompt: string, correctAnswer: string, isDailyDouble: boolean }] }] }
   - millionaire: { templateType: 'millionaire', instructions: string, questions: [{ id, difficulty: number, prompt: string, options: string[], correctAnswer: string, isSafeHaven: boolean }] }
   - diagram: { mermaidCode: string, caption?: string }  — mermaidCode must be raw Mermaid syntax, no markdown fences
@@ -885,7 +937,9 @@ export async function hydrateCourseContent(
   Knowledge checks (quiz, multiple-choice, multiple-answers, true-false, sorting, matching, drop-targets, knowledge-check) MUST use voiceOverText "". Learners read the on-screen task; do not generate spoken narration for them.
   Interactive slides must ALSO have: data (object) or interactions (array) as specified above.`;
 
-  const sourceNote = configParams.sourceContent
+  const sourceNote = sourceMode === 'storyboard' && configParams.sourceContent
+    ? `\n\nFollow the STORYBOARD MODE rules in the system instruction. Source (OST + narration):\n${storyboardSourceWindow(configParams.sourceContent)}`
+    : configParams.sourceContent
     ? `\n\nIMPORTANT: This course was converted from an uploaded source document. Base the content on the source material below. Transform lecture-style slides into interactive, learner-centric content. Preferences: ${(configParams.conversionPreferences || []).join(', ') || 'Default'}\n\nSOURCE MATERIAL (first 4000 chars):\n${configParams.sourceContent.slice(0, 4000)}`
     : '';
 
@@ -1276,7 +1330,10 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
   }
 
   if (configParams.interactionTypes?.length) {
-    fullCourse.modules = coerceInteractionTypes(fullCourse.modules as any, configParams.interactionTypes) as any;
+    const allow = sourceMode === 'storyboard'
+      ? [...new Set([...configParams.interactionTypes, ...STORYBOARD_CONTENT_TYPES])]
+      : configParams.interactionTypes;
+    fullCourse.modules = coerceInteractionTypes(fullCourse.modules as any, allow) as any;
   }
 
   return fullCourse;

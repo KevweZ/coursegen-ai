@@ -47,13 +47,16 @@ interface Props {
   skin?: string;
   /** Blocks skin content-well fill. */
   wellColor?: string;
+  /** Process step-bar fill. Default is a light classic rail (not teal). */
+  railColor?: string;
   /** When false, hide STEP 01 / STEP 02 labels (circles stay numbered). Default true. */
   showStepLabels?: boolean;
 }
 
 const INTRO_COLOR = TAB_INTRO_DEFAULT_HEX;
 const PANEL_H = 520;
-const RAIL_TEAL = '#0d9488';
+/** Light classic rail — indigo/slate, not a teal lock-in. */
+export const PROCESS_RAIL_DEFAULT = '#f1f5f9';
 /** Tall enough for 36px circles + active scale + border without a scrollbar. */
 const RAIL_H = 96;
 
@@ -93,6 +96,7 @@ export default function TabbedContentHorizontal({
   onPromoteTabImage,
   skin,
   wellColor,
+  railColor,
   showStepLabels = true,
 }: Props) {
   const normalized = useMemo(() => normalizeTabs(tabs), [tabs]);
@@ -129,7 +133,13 @@ export default function TabbedContentHorizontal({
   // eslint-disable-next-line react-hooks/exhaustive-deps -- only when tab id changes
   }, [activeTab?.id]);
 
-  if (!normalized.length) return null;
+  if (!normalized.length) {
+    return (
+      <div className={`w-full p-4 text-sm ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+        No steps on this process yet.
+      </div>
+    );
+  }
 
   const selectIntro = () => {
     resetScrollTop();
@@ -176,7 +186,18 @@ export default function TabbedContentHorizontal({
   const muted = blocks
     ? (ink === '#ffffff' ? 'rgba(248,250,252,0.82)' : 'rgba(15,23,42,0.72)')
     : (isLight ? '#475569' : '#cbd5e1');
-  const rail = RAIL_TEAL;
+  const rail = resolveHexColor(railColor, PROCESS_RAIL_DEFAULT);
+  const railInk = contrastTextOn(rail);
+  const railIsDark = railInk === '#ffffff';
+  const circleActive = railIsDark
+    ? { background: '#ffffff', color: rail, borderColor: '#ffffff' }
+    : { background: activeColor, color: '#ffffff', borderColor: activeColor };
+  const circleIdle = railIsDark
+    ? { background: 'rgba(255,255,255,0.28)', color: '#ffffff', borderColor: 'transparent' }
+    : { background: '#ffffff', color: '#334155', borderColor: '#cbd5e1' };
+  const circleDone = railIsDark
+    ? { background: 'rgba(15,23,42,0.45)', color: '#ffffff', borderColor: 'transparent' }
+    : { background: '#e2e8f0', color: '#334155', borderColor: 'transparent' };
 
   return (
     <div className={`w-full flex flex-col gap-2 select-none min-h-0 flex-1 ${blocks ? 'tab-skin-blocks' : ''}`}>
@@ -273,11 +294,7 @@ export default function TabbedContentHorizontal({
               title="Overview"
               aria-current={inIntro ? 'true' : undefined}
               className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-[12px] font-black border-2"
-              style={
-                inIntro
-                  ? { background: '#ffffff', color: rail, borderColor: '#ffffff' }
-                  : { background: 'rgba(15,23,42,0.35)', color: '#ffffff', borderColor: 'transparent' }
-              }
+              style={inIntro ? circleActive : circleIdle}
             >
               i
             </button>
@@ -295,15 +312,9 @@ export default function TabbedContentHorizontal({
                   aria-label={`Step ${i + 1}: ${tab.label.replace(/<[^>]+>/g, '')}`}
                   aria-current={isActive ? 'true' : undefined}
                   className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-[12px] font-black border-2 ${
-                    isDropTarget ? 'ring-2 ring-white ring-offset-2 ring-offset-teal-700' : ''
+                    isDropTarget ? 'ring-2 ring-indigo-400 ring-offset-2' : ''
                   }`}
-                  style={
-                    isActive
-                      ? { background: '#ffffff', color: rail, borderColor: '#ffffff' }
-                      : isDone
-                      ? { background: 'rgba(15,23,42,0.45)', color: '#ffffff', borderColor: 'transparent' }
-                      : { background: 'rgba(255,255,255,0.28)', color: '#ffffff', borderColor: 'transparent' }
-                  }
+                  style={isActive ? circleActive : isDone ? circleDone : circleIdle}
                 >
                   {i + 1}
                 </button>

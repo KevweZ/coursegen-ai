@@ -77,6 +77,7 @@ import { resolveClickRevealSlide } from './lib/parseHeadingSections';
 import {
   splitKnowledgeCheckOst,
   SORTING_REORDER_HINT,
+  quizScenarioText,
 } from './lib/knowledgeCheckOst';
 import { slideSkipsNarration } from './lib/enablingCoverage';
 import { hasLiveNarrationUrl } from './lib/narrationAudio';
@@ -112,6 +113,7 @@ import { loadPlayerProperties, savePlayerProperties, cachePlayerProperties } fro
 import { fetchAccountPreferences, pushAccountPreferences } from './lib/accountPreferences';
 import { CourseOutline, Slide, TerminalObjectiveGroup, ExamConfig, ExamQuestion, ExamSessionState, NavigationMode } from './types/course';
 import { extractTextFromFile, extractImagesFromFile, EXTRACT_DEADLINE_MS, SourceImage } from './lib/fileProcessor';
+import { looksLikeStoryboard, storyboardSourceWindow, type SourceMode } from './lib/storyboardSource';
 import { generateGameTemplate, generateStandaloneGame } from './services/aiGameService';
 import { GameContainer } from './components/game-templates/core/GameContainer';
 import { getRandomBackgroundForTheme } from './lib/backgrounds';
@@ -1766,6 +1768,11 @@ export default function App() {
       setIsSandboxMode(false);
       setMobileDesignDemo(false);
       setShowPlayerProperties(false);
+      setSourceMode('raw');
+      setExtractedFileText('');
+      storyboardDecisionForFileRef.current = null;
+      setStoryboardConfirmOpen(false);
+      pendingStoryboardAnalysisRef.current = null;
       return;
     }
     if (parsed.kind === 'building') {
@@ -2085,6 +2092,20 @@ export default function App() {
   const [buildMode, setBuildMode] = useState<'course' | 'game' | 'workflow'>('course');
   const [selectedGameType, setSelectedGameType] = useState<GameTemplateType>('jeopardy');
   const [extractedFileText, setExtractedFileText] = useState<string>('');
+  const [sourceMode, setSourceMode] = useState<SourceMode>('raw');
+  const [storyboardConfirmOpen, setStoryboardConfirmOpen] = useState(false);
+  const storyboardDecisionForFileRef = useRef<string | null>(null);
+  const pendingStoryboardAnalysisRef = useRef<{
+    file: File;
+    text: string;
+    path?: UploadPathChoice | 'game';
+    settingsOverride?: SavedCourseSettings | null;
+  } | null>(null);
+  const fileSourceConfig = (mode: SourceMode = sourceMode, text: string = extractedFileText) => (
+    mode === 'storyboard' && text
+      ? { sourceMode: 'storyboard' as const, sourceContent: storyboardSourceWindow(text) }
+      : {}
+  );
   const [voiceOverEnabled, setVoiceOverEnabled] = useState(
     () => typeof scormRt.voiceOverEnabled === 'boolean'
       ? scormRt.voiceOverEnabled
@@ -3111,6 +3132,7 @@ export default function App() {
           ['sorting', 'matching', 'drop-targets', 'mc', 'ma', 'tf'].includes(t)
         ),
         objectiveFormat,
+        ...fileSourceConfig(),
       }
     );
   };
@@ -3124,7 +3146,8 @@ export default function App() {
   const runAnalysis = async (
     file: File,
     path?: UploadPathChoice | 'game',
-    settingsOverride?: SavedCourseSettings | null
+    settingsOverride?: SavedCourseSettings | null,
+    resume?: { sourceMode: SourceMode; extractedText: string }
   ) => {
     clearColdStartCountdown();
     // Leave /upload immediately so welcome tour cannot remount on the progress screen
@@ -3139,7 +3162,7 @@ export default function App() {
       setProgress(prev => prev < 80 ? Math.min(80, prev + 5) : prev);
     }, 500);
     try {
-      const text = await extractTextFromFile(file);
+      const text = resume?.extractedText ?? await extractTextFromFile(file);
       setExtractedFileText(text);
 
       const effectivePath = path ?? (buildMode === 'game' ? 'game' : undefined);
@@ -3154,8 +3177,20 @@ export default function App() {
         return;
       }
 
+      const fileKey = `${file.name}:${file.size}:${file.lastModified}`;
+      const decidedMode: SourceMode | undefined = resume?.sourceMode
+        ?? (storyboardDecisionForFileRef.current === fileKey ? sourceMode : undefined);
+      if (looksLikeStoryboard(text, file.name) && !decidedMode) {
+        clearInterval(analysisTimer);
+        pendingStoryboardAnalysisRef.current = { file, text, path: effectivePath, settingsOverride };
+        setStoryboardConfirmOpen(true);
+        return;
+      }
+      const activeSourceMode: SourceMode = decidedMode ?? 'raw';
+      setSourceMode(activeSourceMode);
+
       // Course Builder: full AI analysis
-      const result = await analyzeUploadedFile(text, file.name);
+      const result = await analyzeUploadedFile(text, file.name, { sourceMode: activeSourceMode });
       clearInterval(analysisTimer);
       setProgress(100);
       setPrompt(result.title || file.name);
@@ -3211,6 +3246,7 @@ export default function App() {
               knowledgeCheckCount: outlineExamCfg.knowledgeCheckCount ?? 1,
               quizActivityTypes: outlineQuizActivityTypes,
               objectiveFormat: settingsOverride?.objectiveFormat ?? objectiveFormat,
+              ...fileSourceConfig(activeSourceMode, text),
             }
           );
           setOutlineDraft(draft);
@@ -3226,6 +3262,7 @@ export default function App() {
               knowledgeCheckMode: outlineExamCfg.knowledgeCheckMode || 'per-module',
               knowledgeCheckCount: outlineExamCfg.knowledgeCheckCount ?? 1,
               quizActivityTypes: outlineQuizActivityTypes,
+              ...fileSourceConfig(activeSourceMode, text),
             },
             // Leave 55–100% for images + audio in finalize
             (pct) => setProgress(20 + Math.round(pct * 0.35))
@@ -3283,6 +3320,7 @@ export default function App() {
             knowledgeCheckCount: outlineExamCfg.knowledgeCheckCount ?? 1,
             quizActivityTypes: outlineQuizActivityTypes,
             objectiveFormat: settingsOverride?.objectiveFormat ?? objectiveFormat,
+            ...fileSourceConfig(activeSourceMode, text),
           }
         );
         setOutlineDraft(draft);
@@ -3353,6 +3391,11 @@ export default function App() {
     // Course Builder: choose quick vs customize before analysis
     setPendingUploadFile(file);
     setUploadedFile(file);
+    setExtractedFileText('');
+    setSourceMode('raw');
+    storyboardDecisionForFileRef.current = null;
+    setStoryboardConfirmOpen(false);
+    pendingStoryboardAnalysisRef.current = null;
     setShowUploadPathModal(true);
   };
 
@@ -3390,6 +3433,10 @@ export default function App() {
     setShowUploadPathModal(false);
     setPendingUploadFile(null);
     setUploadedFile(null);
+    setSourceMode('raw');
+    storyboardDecisionForFileRef.current = null;
+    setStoryboardConfirmOpen(false);
+    pendingStoryboardAnalysisRef.current = null;
   };
 
   const captureFoundationFingerprint = (override?: Partial<FoundationFingerprintInput>) => {
@@ -3741,6 +3788,7 @@ export default function App() {
             ['sorting', 'matching', 'drop-targets', 'mc', 'ma', 'tf'].includes(t)
           ),
           objectiveFormat,
+          ...fileSourceConfig(),
         }
       );
       setOutlineDraft(draft);
@@ -3765,6 +3813,7 @@ export default function App() {
             ).filter(t =>
               ['sorting', 'matching', 'drop-targets', 'mc', 'ma', 'tf'].includes(t)
             ),
+            ...fileSourceConfig(),
           },
           (pct) => setProgress(45 + Math.round(pct * 0.1))
         );
@@ -4358,7 +4407,8 @@ export default function App() {
         const result = await regenerateSlideData(
           slide,
           course.title ?? '',
-          isTakeaway ? 'content' : targetType
+          isTakeaway ? 'content' : targetType,
+          fileSourceConfig()
         );
         await applySlideRegenAndAudio(slide, {
           ...result,
@@ -4604,6 +4654,7 @@ export default function App() {
           ).filter(t =>
             ['sorting', 'matching', 'drop-targets', 'mc', 'ma', 'tf'].includes(t)
           ),
+          ...fileSourceConfig(),
         },
         // Leave 55–100% for images + audio in finalize
         (pct) => setProgress(Math.round(pct * 0.55))
@@ -5033,7 +5084,7 @@ export default function App() {
             <AlertCircle className="w-16 h-16 text-red-500 mx-auto" />
             <h3 className="text-2xl font-bold text-white">Generation Failed</h3>
             <p className="text-red-400 font-medium max-w-lg mx-auto">{error}</p>
-            <button onClick={() => { setError(null); setStep('home'); }} className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl mt-4 font-bold transition-all">Start Over</button>
+            <button onClick={() => { setError(null); setSourceMode('raw'); setExtractedFileText(''); storyboardDecisionForFileRef.current = null; setStep('home'); }} className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl mt-4 font-bold transition-all">Start Over</button>
           </div>
         ) : (
           <div className="space-y-8 w-full max-w-xl mx-auto">
@@ -5966,7 +6017,7 @@ export default function App() {
               const slide = course?.modules?.[moduleIndex]?.slides?.[slideIndex];
               if (!slide) return;
               try {
-                const result = await regenerateSlideData(slide, course.title ?? '', normalizeRegenSlideType(slide));
+                const result = await regenerateSlideData(slide, course.title ?? '', normalizeRegenSlideType(slide), fileSourceConfig());
                 await applySlideRegenAndAudio(slide, result);
                 setQcReport(prev => prev ? {
                   ...prev,
@@ -6113,10 +6164,14 @@ export default function App() {
                        </div>
                        <div>
                          <h3 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">
-                           {isGenerating && settingsMode === 'quick' && !isAnalyzing ? 'Building Your Course' : 'Analyzing Document'}
+                           {storyboardConfirmOpen
+                             ? 'Storyboard detected'
+                             : isGenerating && settingsMode === 'quick' && !isAnalyzing ? 'Building Your Course' : 'Analyzing Document'}
                          </h3>
                          <p className="text-slate-400 mt-2">
-                           {isGenerating && settingsMode === 'quick' && !isAnalyzing
+                           {storyboardConfirmOpen
+                             ? 'Choose whether to follow the specified screens or treat this as lecture source.'
+                             : isGenerating && settingsMode === 'quick' && !isAnalyzing
                              ? 'Using your saved defaults to generate the full course…'
                              : 'Extracting structure, topics, and generating learning objectives...'}
                          </p>
@@ -6134,7 +6189,9 @@ export default function App() {
                            />
                          </div>
                          <p className="text-xs text-slate-600 text-center">
-                           {isGenerating && settingsMode === 'quick' && !isAnalyzing
+                           {storyboardConfirmOpen
+                             ? 'Waiting for your choice…'
+                             : isGenerating && settingsMode === 'quick' && !isAnalyzing
                              ? (progress < 40 ? 'Creating course structure...' :
                                 progress < 55 ? 'Writing slides and interactions...' :
                                 progress < 78 ? 'Adding course visuals…' :
@@ -6886,13 +6943,12 @@ export default function App() {
                     )}
                     <div className="flex-1 relative overflow-hidden flex flex-col min-h-0">
                     {/* ── Full-bleed slide frame ─────────────────────── */}
-                    <AnimatePresence mode="wait">
+                    <AnimatePresence initial={false}>
                       <motion.div
                         key={currentSlide?.id || `slide-${currentSlideIndex}`}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.25 }}
+                        transition={{ duration: 0.18 }}
                         className={cn(
                           "w-full min-h-0",
                           isFullBleed
@@ -7165,6 +7221,14 @@ export default function App() {
                                  return (
                                    <div className="space-y-5 w-full">
                                      <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
+                                     {(quizScenarioText(quiz) || quizScenarioText(currentSlide)) && (
+                                       <div className={cn(
+                                         'p-4 rounded-xl border text-sm leading-relaxed',
+                                         theme === 'light' ? 'bg-amber-50 border-amber-200 text-slate-800' : 'bg-amber-500/10 border-amber-500/30 text-slate-100'
+                                       )}>
+                                         {quizScenarioText(quiz) || quizScenarioText(currentSlide)}
+                                       </div>
+                                     )}
                                      <p className={cn('font-bold text-xl lg:text-2xl leading-snug', theme === 'light' ? 'text-slate-800' : 'text-slate-100')}>{quiz.questionText || quiz.prompt || quiz.question}</p>
                                      <div className="space-y-3 w-full max-w-4xl">
                                        {quiz.options.map((opt: any, i: number) => {
@@ -7228,6 +7292,14 @@ export default function App() {
                                  return (
                                    <div className="space-y-5 w-full">
                                      <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
+                                     {(quizScenarioText(quiz) || quizScenarioText(currentSlide)) && (
+                                       <div className={cn(
+                                         'p-4 rounded-xl border text-sm leading-relaxed',
+                                         theme === 'light' ? 'bg-amber-50 border-amber-200 text-slate-800' : 'bg-amber-500/10 border-amber-500/30 text-slate-100'
+                                       )}>
+                                         {quizScenarioText(quiz) || quizScenarioText(currentSlide)}
+                                       </div>
+                                     )}
                                      <p className={cn('font-bold text-lg', theme === 'light' ? 'text-slate-800' : 'text-slate-100')}>{quiz.questionText || quiz.prompt || quiz.question}</p>
                                      <p className={cn('text-xs font-bold uppercase tracking-wider', theme === 'light' ? 'text-indigo-600' : 'text-indigo-400')}>Select all correct answers</p>
                                      <div className="space-y-2.5 w-full">
@@ -7331,7 +7403,7 @@ export default function App() {
                                           onRegenerate={async () => {
                                             setIsRegenSlideRunning(true);
                                             try {
-                                              const result = await regenerateSlideData(currentSlide, course?.title ?? '', 'matching');
+                                              const result = await regenerateSlideData(currentSlide, course?.title ?? '', 'matching', fileSourceConfig());
                                               await applySlideRegenAndAudio(currentSlide, result);
                                               setQcReport(prev => prev ? {
                                                 ...prev,
@@ -7503,6 +7575,7 @@ export default function App() {
                                        theme={theme as any}
                                        skin={currentSlide.data?.tabSkin === 'blocks' ? 'blocks' : 'process'}
                                        wellColor={currentSlide.data?.blocksWellColor}
+                                       railColor={currentSlide.data?.processRailColor || currentSlide.data?.railColor}
                                        showStepLabels={currentSlide.data?.showProcessStepLabels !== false}
                                        introContent={currentSlide.content || ''}
                                        introColor={currentSlide.data?.introColor || (currentSlide.data?.unifyTabColors ? tabAccentHex((currentSlide.data?.tabs || currentSlide.data?.items || [])[0], 0) : undefined)}
@@ -8548,9 +8621,21 @@ export default function App() {
                                 </div>
                                 <p className="text-[11px] text-slate-500 leading-relaxed">
                                   {editingSlide.type === 'tabbed-horizontal'
-                                    ? 'Classic is the teal step bar on a light page. Blocks uses a dark (or colored) reading area behind the steps. Same interaction — switch back anytime.'
+                                    ? 'Classic is a light step bar on a white page (indigo numbered circles). Blocks uses a dark (or colored) reading area behind the steps. Same interaction — switch back anytime.'
                                     : 'Classic is the current rounded tabs. Blocks uses a dark (or colored) reading area beside the tabs. Same interaction — switch back anytime.'}
                                 </p>
+                                {editingSlide.type === 'tabbed-horizontal' && (
+                                  <div className="space-y-2 pt-1">
+                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Step bar color</p>
+                                    <ColorDots
+                                      value={String(editingSlide.data?.processRailColor || '#f1f5f9')}
+                                      onPick={(hex) => patchTabs(tabs, { processRailColor: hex })}
+                                    />
+                                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                                      Classic default is light gray. Pick indigo, teal, or any color if this module should match a stronger accent.
+                                    </p>
+                                  </div>
+                                )}
                                 {editingSlide.type === 'tabbed-horizontal' && (
                                   <label className="flex items-start gap-2.5 pt-1 cursor-pointer">
                                     <input
@@ -9225,7 +9310,8 @@ export default function App() {
                                 const result = await regenerateSlideData(
                                   slideSnapshot,
                                   courseTitle,
-                                  typeToBuild
+                                  typeToBuild,
+                                  fileSourceConfig()
                                 );
                                 await applySlideRegenAndAudio(slideSnapshot, result);
                                 setQcReport(prev => prev ? {
@@ -9665,6 +9751,53 @@ export default function App() {
         createdExpiresAt={reviewLinkExpiresAt}
         onClose={() => setShowReviewLinkModal(false)}
         onCreate={handleCreateReviewLink}
+      />
+
+      <ConfirmDialog
+        open={storyboardConfirmOpen}
+        title="This looks like a storyboard"
+        body="Build from the specified learner screens and scripts, or treat the file as lecture source and redesign it into a course."
+        primaryLabel="Follow storyboard"
+        secondaryLabel="Treat as lecture source"
+        cancelLabel="Cancel"
+        onPrimary={() => {
+          const pending = pendingStoryboardAnalysisRef.current;
+          pendingStoryboardAnalysisRef.current = null;
+          setStoryboardConfirmOpen(false);
+          if (!pending) return;
+          const fileKey = `${pending.file.name}:${pending.file.size}:${pending.file.lastModified}`;
+          storyboardDecisionForFileRef.current = fileKey;
+          setSourceMode('storyboard');
+          void runAnalysis(pending.file, pending.path, pending.settingsOverride, {
+            sourceMode: 'storyboard',
+            extractedText: pending.text,
+          });
+        }}
+        onSecondary={() => {
+          const pending = pendingStoryboardAnalysisRef.current;
+          pendingStoryboardAnalysisRef.current = null;
+          setStoryboardConfirmOpen(false);
+          if (!pending) return;
+          const fileKey = `${pending.file.name}:${pending.file.size}:${pending.file.lastModified}`;
+          storyboardDecisionForFileRef.current = fileKey;
+          setSourceMode('raw');
+          void runAnalysis(pending.file, pending.path, pending.settingsOverride, {
+            sourceMode: 'raw',
+            extractedText: pending.text,
+          });
+        }}
+        onCancel={() => {
+          pendingStoryboardAnalysisRef.current = null;
+          setStoryboardConfirmOpen(false);
+          setIsAnalyzing(false);
+          setAnalyzeError(null);
+          setUploadedFile(null);
+          setExtractedFileText('');
+          setSourceMode('raw');
+          storyboardDecisionForFileRef.current = null;
+          setProgress(0);
+          clearColdStartCountdown();
+        }}
       />
 
       <ConfirmDialog
