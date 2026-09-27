@@ -249,7 +249,7 @@ const SCHEMA_HINTS: Record<string, string> = {
   accordion:       '{ "items": [{ "id": "string", "title": "string", "content": "string" }] }',
   flashcards:      '{ "cards": [{ "id": "string", "front": "string", "back": "string" }] }',
   timeline:        '{ "events": [{ "id": "string", "year": "string", "title": "string", "content": "string" }] }',
-  quiz:            '{ "questionText": "string", "scenarioText": "optional short situation the learner reads first", "options": [{ "id": "string", "text": "string", "isCorrect": boolean }], "feedback": "string" }',
+  quiz:            '{ "questionText": "string", "scenarioText": "optional short situation the learner reads first", "options": [{ "id": "string", "text": "string", "isCorrect": boolean }], "feedback": "string", "questions": "optional [{ questionText, options, feedback }] when the screen has 2+ numbered questions" }',
   'multiple-answer':'{ "questionText": "string", "scenarioText": "optional short situation", "options": [{ "id": "string", "text": "string", "isCorrect": boolean }] }',
   jeopardy:        '{ "categories": [{ "id": "string", "title": "string", "questions": [{ "id": "string", "points": number, "question": "string", "answer": "string" }] }] }',
   matching:        '{ "items": [{ "id": "i1", "content": "left term" }], "targets": [{ "id": "t1", "content": "right definition" }], "correctAnswers": { "i1": "t1" } }',
@@ -261,7 +261,8 @@ const SCHEMA_HINTS: Record<string, string> = {
   content:         '{ "bullets": ["5-8 word phrase", "5-8 word phrase", "5-8 word phrase"], "voiceOverText": "3-4 spoken sentences that expand the bullets without reading them verbatim" }',
   diagram:         '{ "mermaidCode": "flowchart TD\\n  A[Start] --> B[Step]\\n  B --> C[End]", "caption": "optional short caption" }',
   'carousel-panel':'{ "cards": [{ "id": "string", "label": "string", "color": "#4f46e5", "description": "string", "expandedContent": "string" }] }',
-  'click-reveal':  '{ "items": [{ "id": "string", "term": "string", "definition": "- short bullet\\n- short bullet" }] }',
+  'click-reveal': '{ "items": [{ "id": "string", "term": "string", "definition": "- short bullet\\n- short bullet" }] }',
+  'choice-cards': '{ "prompt": "string", "selectMode": "multi", "feedback": "explanatory paragraph", "cards": [{ "id": "string", "label": "string", "body": "string", "isCorrect": true }] }',
   'tabbed-horizontal': '{ "introContent": "- short 5-8 word bullet\\n- another complete bullet\\n- another complete bullet", "voiceOverText": "spoken intro that expands ONLY the intro bullets, not the topic tabs", "tabs": [{ "id": "string", "label": "string", "content": "- short bullet\\n- another bullet", "voiceOverText": "spoken elaboration for this tab only" }] }',
   'tabbed-vertical':   '{ "introContent": "- short 5-8 word bullet\\n- another complete bullet\\n- another complete bullet", "voiceOverText": "spoken intro that expands ONLY the intro bullets, not the topic tabs", "tabs": [{ "id": "string", "label": "string", "content": "- short bullet\\n- another bullet", "voiceOverText": "spoken elaboration for this tab only" }] }',
   hotspot:         '{ "hotspots": [{ "id": "string", "x": 30, "y": 40, "label": "string", "content": "string" }], "imageUrl": "" }',
@@ -415,7 +416,8 @@ Rules:
 ${isTabbed ? '- For tabbed slides: introContent MUST be 3–5 SHORT complete bullets (5–8 words each), same density as Overview slides. Do NOT write intro paragraphs and do NOT truncate with ellipses. voiceOverText is the Introduction narration only (do not recap tab content). Each tab "content" MUST be markdown short bullets; each tab "voiceOverText" elaborates that tab only.' : ''}
 ${type === 'click-reveal' ? '- For click-reveal: each item "definition" MUST be 3–5 SHORT BULLETS (5–8 words), not sentences. Put spoken explanation in voiceOverText. Slide-level content must be empty or 1 framing line — do NOT repeat the reveal bullets on the slide.' : ''}
 ${type === 'carousel-panel' ? '- For carousel: pick card colors ONLY from this dark set so white text stays readable: #4f46e5, #0f766e, #9f1239, #1d4ed8, #b45309, #6d28d9, #166534, #0f172a. Never white, yellow, pink, or pastels.' : ''}
-${isKc ? '- For knowledge checks: introContent/content is 1–2 framing bullets about WHAT is being tested (e.g. "Match each traffic sign to its function"). Put any situation/story in scenarioText. Do NOT list answers, meanings, or categories that give away the match. voiceOverText MUST be "" — knowledge checks have no spoken narration. Teaching detail belongs in feedback after submit. If the stem says "select N" but a different number of options are marked correct (including all of them), rewrite the stem to "Select the … that …". A "Scenario:" title with one question is a quiz with scenarioText, not a branching tree.' : ''}
+${isKc ? '- For knowledge checks: introContent/content is 1–2 framing bullets about WHAT is being tested (e.g. "Match each traffic sign to its function"). Put any situation/story in scenarioText. Do NOT list answers, meanings, or categories that give away the match. voiceOverText MUST be "" — knowledge checks have no spoken narration. Teaching detail belongs in feedback after submit. If the stem says "select N" but a different number of options are marked correct (including all of them), rewrite the stem to "Select the … that …". A "Scenario:" title with one question is a quiz with scenarioText, not a branching tree. If the source lists 2+ numbered questions, return data.questions with each exact stem and options — do not invent a wrapping question.' : ''}
+${type === 'choice-cards' ? '- This is a teaching slide, not a knowledge check. Keep voiceOverText as the narration. cards are the tappable tiles. Do not title Knowledge Check.' : ''}
 - Do NOT include markdown, backticks, or any explanation — pure JSON only`;
 
   let lastErr: any = null;
@@ -535,6 +537,26 @@ ${isKc ? '- For knowledge checks: introContent/content is 1–2 framing bullets 
       type,
       data: { items },
       content: coerceOstText(parsed.introContent) || '',
+      voiceOverText: parsed.voiceOverText,
+    };
+  }
+
+  if (type === 'choice-cards') {
+    const cards = (parsed.cards || parsed.items || []).map((c: any, i: number) => ({
+      id: c.id || `cc-${i + 1}`,
+      label: coerceOstText(c.label || c.term || c.title) || `Card ${i + 1}`,
+      body: coerceOstText(c.body || c.description || c.content),
+      isCorrect: !!(c.isCorrect || c.accepted),
+    }));
+    return {
+      type,
+      data: {
+        prompt: parsed.prompt || '',
+        selectMode: parsed.selectMode === 'single' ? 'single' : 'multi',
+        feedback: parsed.feedback || '',
+        cards,
+      },
+      content: parsed.content || slide.content,
       voiceOverText: parsed.voiceOverText,
     };
   }

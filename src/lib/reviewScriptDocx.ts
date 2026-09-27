@@ -63,6 +63,7 @@ const TYPE_LABELS: Record<string, string> = {
   'folder-explorer': 'Folder explorer',
   'carousel-panel': 'Carousel',
   'click-reveal': 'Click to reveal',
+  'choice-cards': 'Choice cards',
   accordion: 'Accordion',
   timeline: 'Timeline',
   flashcards: 'Flashcards',
@@ -149,6 +150,7 @@ function nestedKind(type: string): { listKey: string; prefix: string } | null {
   if (type === 'folder-explorer') return { listKey: 'items', prefix: 'Folder' };
   if (type === 'carousel-panel') return { listKey: 'cards', prefix: 'Card' };
   if (type === 'click-reveal' || type === 'accordion') return { listKey: 'items', prefix: 'Item' };
+  if (type === 'choice-cards') return { listKey: 'cards', prefix: 'Card' };
   if (type === 'timeline') return { listKey: 'events', prefix: 'Event' };
   if (type === 'flashcards') return { listKey: 'cards', prefix: 'Card' };
   if (type === 'hotspot') return { listKey: 'hotspots', prefix: 'Hotspot' };

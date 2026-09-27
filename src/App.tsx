@@ -80,6 +80,7 @@ import {
   quizScenarioText,
   alignQuizSelectPrompt,
   emptyScenarioQuizKind,
+  quizQuestionList,
 } from './lib/knowledgeCheckOst';
 import { slideSkipsNarration } from './lib/enablingCoverage';
 import { hasLiveNarrationUrl } from './lib/narrationAudio';
@@ -176,6 +177,7 @@ import { CustomMatchingActivity } from './components/interactions/CustomMatching
 import { CustomSortingActivity } from './components/interactions/CustomSortingActivity';
 import { HotspotInteraction } from './components/interactions/HotspotInteraction';
 import ClickRevealInteraction from './components/interactions/ClickRevealInteraction';
+import ChoiceCardsInteraction from './components/interactions/ChoiceCardsInteraction';
 import { getRecommendedGames } from './lib/gameEngine';
 import { DUMMY_COURSE, DUMMY_EXAM_QUESTIONS } from './lib/dummyCourse';
 import { sanitizeOstText, coerceOstText } from './lib/formatTabIntroOst';
@@ -188,7 +190,7 @@ import { FloatingImage } from './types/course';
 import { stripCourseAutoPromotedFloating, floatingMapFromCourse } from './lib/promoteSlideImages';
 import { buildReviewSnapshot, createReviewLink, fetchReviewSnapshot } from './lib/reviewLinkService';
 import { downloadReviewScriptDocx } from './lib/reviewScriptDocx';
-import TabbedHorizontal from './components/interactions/TabbedContentHorizontal';
+import TabbedHorizontal, { PROCESS_PANEL_DEFAULT, PROCESS_PANEL_PRESETS } from './components/interactions/TabbedContentHorizontal';
 import TabbedVertical from './components/interactions/TabbedContentVertical';
 import FolderExplorer from './components/interactions/FolderExplorer';
 import CarouselPanel from './components/interactions/CarouselPanel';
@@ -7207,10 +7209,14 @@ export default function App() {
                                {(currentSlide?.type === 'quiz' || (currentSlide?.type as string) === 'multiple-choice' || (currentSlide?.type as string) === 'true-false' || emptyScenarioQuizKind(currentSlide) === 'quiz') && (() => {
                                  const interactions = currentSlide.interactions || [];
                                  const quiz = interactions[0] || currentSlide.data;
-                                 const qKey = currentSlide.id;
+                                 const questions = quizQuestionList(quiz).length ? quizQuestionList(quiz) : quizQuestionList(currentSlide);
+                                 const seqKey = currentSlide.id + '-seq';
+                                 const qIndex = Math.min(Number(quizState[seqKey]?.qIndex || 0), Math.max(0, questions.length - 1));
+                                 const currentQ = questions[qIndex];
+                                 const qKey = questions.length > 1 ? `${currentSlide.id}-q-${qIndex}` : currentSlide.id;
                                  const qs = quizState[qKey] || { selectedIdx: null, submitted: false };
 
-                                 if (!quiz || !quiz.options?.length || !quiz.questionText && !quiz.prompt && !quiz.question) return (
+                                 if (!currentQ) return (
                                    <div className={cn('p-6 rounded-xl border', theme === 'light' ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-amber-900/20 border-amber-600/30 text-amber-300')}>
                                      <AlertCircle className="w-6 h-6 mb-2" />
                                      <p className="font-bold">This question could not be loaded.</p>
@@ -7218,22 +7224,28 @@ export default function App() {
                                    </div>
                                  );
 
-                                 const correctIdx = quiz.options?.findIndex((o: any) => o.isCorrect || o.correct || o.id === quiz.correctAnswer || o.text === quiz.correctAnswer);
-                                 const correctLabel = correctIdx >= 0 ? (quiz.options[correctIdx]?.text || quiz.options[correctIdx]?.label || quiz.options[correctIdx]) : null;
+                                 const correctIdx = currentQ.options?.findIndex((o: any) => o.isCorrect || o.correct || o.id === quiz.correctAnswer || o.text === quiz.correctAnswer);
+                                 const correctLabel = correctIdx >= 0 ? (currentQ.options[correctIdx]?.text || currentQ.options[correctIdx]?.label || currentQ.options[correctIdx]) : null;
+                                 const scenario = currentQ.scenarioText || quizScenarioText(quiz) || quizScenarioText(currentSlide);
                                  return (
                                    <div className="space-y-5 w-full">
                                      <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                     {(quizScenarioText(quiz) || quizScenarioText(currentSlide)) && (
+                                     {questions.length > 1 && (
+                                       <p className={cn('text-xs font-bold uppercase tracking-wider', theme === 'light' ? 'text-indigo-600' : 'text-indigo-400')}>
+                                         Question {qIndex + 1} of {questions.length}
+                                       </p>
+                                     )}
+                                     {scenario && (
                                        <div className={cn(
                                          'p-4 rounded-xl border text-sm leading-relaxed',
                                          theme === 'light' ? 'bg-amber-50 border-amber-200 text-slate-800' : 'bg-amber-500/10 border-amber-500/30 text-slate-100'
                                        )}>
-                                         {quizScenarioText(quiz) || quizScenarioText(currentSlide)}
+                                         {scenario}
                                        </div>
                                      )}
-                                     <p className={cn('font-bold text-xl lg:text-2xl leading-snug', theme === 'light' ? 'text-slate-800' : 'text-slate-100')}>{alignQuizSelectPrompt(quiz.questionText || quiz.prompt || quiz.question, quiz.options)}</p>
+                                     <p className={cn('font-bold text-xl lg:text-2xl leading-snug', theme === 'light' ? 'text-slate-800' : 'text-slate-100')}>{currentQ.questionText}</p>
                                      <div className="space-y-3 w-full max-w-4xl">
-                                       {quiz.options.map((opt: any, i: number) => {
+                                       {currentQ.options.map((opt: any, i: number) => {
                                          const label = opt.text || opt.label || opt;
                                          const isSelected = qs.selectedIdx === i;
                                          const isCorrect = i === correctIdx;
@@ -7263,11 +7275,12 @@ export default function App() {
                                          disabled={qs.selectedIdx === null}
                                          onClick={() => {
                                            setQuizState(s => ({ ...s, [qKey]: { ...qs, submitted: true } }));
-                                           markKcChecked(currentSlide.id);
+                                           if (qIndex >= questions.length - 1) markKcChecked(currentSlide.id);
                                          }}
                                          className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-bold rounded-xl transition-all"
                                        >Submit Answer</button>
                                      ) : (
+                                       <div className="space-y-3">
                                        <div className={cn('p-4 rounded-xl font-bold flex flex-col gap-2', qs.selectedIdx === correctIdx ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-red-50 text-red-800 border border-red-200')}>
                                          <div className="flex items-center gap-2">
                                            {qs.selectedIdx === correctIdx ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
@@ -7276,7 +7289,17 @@ export default function App() {
                                          {qs.selectedIdx !== correctIdx && correctLabel && (
                                            <p className="text-sm font-medium">✓ Correct answer: <span className="font-bold">{correctLabel}</span></p>
                                          )}
-                                         {quiz.feedback && <p className="text-sm font-medium opacity-80">{quiz.feedback}</p>}
+                                         {(currentQ.feedback || quiz.feedback) && <p className="text-sm font-medium opacity-80">{currentQ.feedback || quiz.feedback}</p>}
+                                       </div>
+                                       {qIndex < questions.length - 1 && (
+                                         <button
+                                           type="button"
+                                           onClick={() => setQuizState(s => ({ ...s, [seqKey]: { qIndex: qIndex + 1 } }))}
+                                           className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-all"
+                                         >
+                                           Next question
+                                         </button>
+                                       )}
                                        </div>
                                      )}
                                    </div>
@@ -7578,6 +7601,7 @@ export default function App() {
                                        skin={currentSlide.data?.tabSkin === 'blocks' ? 'blocks' : 'process'}
                                        wellColor={currentSlide.data?.blocksWellColor}
                                        railColor={currentSlide.data?.processRailColor || currentSlide.data?.railColor}
+                                       panelColor={currentSlide.data?.processPanelColor}
                                        showStepLabels={currentSlide.data?.showProcessStepLabels !== false}
                                        introContent={currentSlide.content || ''}
                                        introColor={currentSlide.data?.introColor || (currentSlide.data?.unifyTabColors ? tabAccentHex((currentSlide.data?.tabs || currentSlide.data?.items || [])[0], 0) : undefined)}
@@ -7797,6 +7821,28 @@ export default function App() {
                                    </div>
                                  );
                                })()}
+
+                               {currentSlide?.type === 'choice-cards' && (
+                                 <div className="space-y-6 w-full">
+                                   <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
+                                   {currentSlide.content && (
+                                     <SmartContent
+                                       content={sanitizeContent(currentSlide.content)}
+                                       theme={theme}
+                                       accentColor={slideAccentColor}
+                                       className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')}
+                                     />
+                                   )}
+                                   <ChoiceCardsInteraction
+                                     cards={currentSlide.data?.cards || currentSlide.data?.items || []}
+                                     prompt={currentSlide.data?.prompt || ''}
+                                     feedback={currentSlide.data?.feedback || ''}
+                                     selectMode={currentSlide.data?.selectMode === 'single' ? 'single' : 'multi'}
+                                     theme={theme as any}
+                                     onChecked={() => markInteractionExplored(currentSlide.id, 'choice-cards-check')}
+                                   />
+                                 </div>
+                               )}
 
                                {/* EXAM INTRO */}
                                {currentSlide?.type === 'exam-intro' && (
@@ -8623,9 +8669,41 @@ export default function App() {
                                 </div>
                                 <p className="text-[11px] text-slate-500 leading-relaxed">
                                   {editingSlide.type === 'tabbed-horizontal'
-                                    ? 'Classic is a light step bar on a white page (indigo numbered circles). Blocks uses a dark (or colored) reading area behind the steps. Same interaction — switch back anytime.'
+                                    ? 'Classic uses the pale blue Click & Reveal canvas with black text, and a light step bar (indigo numbered circles). Blocks is a darker reading area. Same interaction — switch back anytime.'
                                     : 'Classic is the current rounded tabs. Blocks uses a dark (or colored) reading area beside the tabs. Same interaction — switch back anytime.'}
                                 </p>
+                                {editingSlide.type === 'tabbed-horizontal' && (
+                                  <div className="space-y-2 pt-1">
+                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Content canvas</p>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      {PROCESS_PANEL_PRESETS.map(hex => (
+                                        <button
+                                          key={hex}
+                                          type="button"
+                                          title={hex}
+                                          onClick={() => patchTabs(tabs, { processPanelColor: hex, tabSkin: 'process' })}
+                                          className={cn(
+                                            'w-5 h-5 rounded-full border-2',
+                                            String(editingSlide.data?.processPanelColor || PROCESS_PANEL_DEFAULT).toLowerCase() === hex
+                                              ? 'border-white'
+                                              : 'border-transparent'
+                                          )}
+                                          style={{ background: hex }}
+                                        />
+                                      ))}
+                                      <input
+                                        type="color"
+                                        value={editingSlide.data?.processPanelColor || PROCESS_PANEL_DEFAULT}
+                                        onChange={(e) => patchTabs(tabs, { processPanelColor: e.target.value, tabSkin: 'process' })}
+                                        className="w-6 h-6 rounded cursor-pointer bg-transparent border-0 p-0"
+                                        title="Custom canvas color"
+                                      />
+                                    </div>
+                                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                                      Default is the same pale blue as Click &amp; Reveal cards, with black text. The step bar below stays independent.
+                                    </p>
+                                  </div>
+                                )}
                                 {editingSlide.type === 'tabbed-horizontal' && (
                                   <div className="space-y-2 pt-1">
                                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Step bar color</p>
@@ -9129,6 +9207,7 @@ export default function App() {
                       { id: 'tabbed-horizontal', label: 'Process' },
                       { id: 'tabbed-vertical', label: 'Tabs (Vertical)' },
                       { id: 'click-reveal', label: 'Click & Reveal' },
+                      { id: 'choice-cards', label: 'Choice cards' },
                       { id: 'flashcards', label: 'Flashcards' },
                       { id: 'timeline', label: 'Timeline' },
                       { id: 'carousel-panel', label: 'Carousel' },

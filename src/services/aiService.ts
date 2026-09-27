@@ -13,7 +13,7 @@ import {
   remapStoryboardScenarioSlide,
   type SourceMode,
 } from "../lib/storyboardSource";
-import { applyAlignedQuizPrompt } from "../lib/knowledgeCheckOst";
+import { applyAlignedQuizPrompt, quizQuestionList } from "../lib/knowledgeCheckOst";
 
 // ── Secure AI Proxy Client ───────────────────────────────────────────────────
 // API keys live ONLY in server.js — never in the browser bundle.
@@ -44,7 +44,7 @@ const CONTENT_INTERACTION_TYPES = new Set([
   'content', 'diagram', 'key-takeaways', 'summary', 'title',
   'flashcards', 'timeline', 'hotspot', 'scenario',
   'tabbed-horizontal', 'tabbed-vertical', 'folder-explorer',
-  'carousel-panel', 'click-reveal', 'accordion',
+  'carousel-panel', 'click-reveal', 'accordion', 'choice-cards',
 ]);
 
 const QUIZ_SLIDE_TYPES = new Set([
@@ -491,7 +491,7 @@ export async function generateCourseOutline(
     ? [...new Set([...uniqueQuizActivities, 'quiz', 'multiple-answers'])]
     : uniqueQuizActivities;
   const kcDirective = sourceMode === 'storyboard'
-    ? 'Only include a Knowledge Check slide if the storyboard already specifies an exit check, knowledge check, decision quiz, a "Scenario:" situation + question, or a learner screen that asks the learner to select answers. Use quiz for one correct option; use multiple-answers when the spec says select two / select all that apply. Do NOT use type scenario for a one-question situation box. Do NOT add extra checks to meet a Course Settings count. Title MUST start with "Knowledge Check:" when you do include one.'
+    ? 'Only include a Knowledge Check slide if the storyboard already specifies an exit check, knowledge check, Keys/pass score, or a scored decision quiz. Teaching screens with tappable tiles and narration are choice-cards, not knowledge checks. Use quiz for one correct option; use multiple-answers when the spec says select two / select all that apply on a scored check. A screen with 2+ numbered questions is ONE quiz with data.questions. Do NOT use type scenario for a one-question situation box. Do NOT add extra checks to meet a Course Settings count. Title MUST start with "Knowledge Check:" only for scored checks.'
     : !includeKCs
     ? 'NO knowledge check slides'
     : kcMode === 'per-module'
@@ -764,7 +764,8 @@ export async function hydrateCourseContent(
   QUIZ:
   - questionText MUST be a complete question sentence ending with "?"
   - Optional scenarioText: a short situation paragraph the learner reads BEFORE the question (carrier alert, workplace vignette, yellow-box story). Not the question itself. Omit when there is no situation.
-  - Must have EXACTLY 4 options: 1 correct (isCorrect: true) + 3 plausible distractors
+  - Must have EXACTLY 4 options: 1 correct (isCorrect: true) + 3 plausible distractors. STORYBOARD EXCEPTION: copy the spec's option count (3 is valid). Do not invent extra distractors to reach 4.
+  - When the spec lists 2+ numbered questions on one screen, emit data.questions: [{ questionText, options, feedback }] — one object per numbered question, exact stems and Keys. Do not invent a different wrapping question. Do not collapse them into one multiple-answers item.
   - options[].text must be meaningful (10+ chars). NEVER: "A", "B", "True", "False" unless it's genuinely a T/F slide
   - feedback: string explaining why the correct answer is right (this is where teaching detail goes AFTER submit)
   - Slide-level content: 1 framing bullet about what is being tested. voiceOverText MUST be "" (empty). Knowledge checks have no spoken narration — same as Mastery Quiz questions. Do not give away the answer on screen.
@@ -772,10 +773,20 @@ export async function hydrateCourseContent(
 
   MULTIPLE-ANSWERS:
   - Same schema as QUIZ plus scenarioText when a situation exists.
-  - Use when the learner must select TWO or more options ("select two", "select all that apply").
+  - Use when the learner must select TWO or more options on a SCORED check ("select two", "select all that apply", Keys/pass score).
   - Mark isCorrect true on every correct option (2+). Do not collapse those into a single multiple-choice pair.
   - If the stem says "select N" but a different number of options are marked correct (including all of them), rewrite the stem to "Select the … that …". Never leave a false count in the prompt.
   - FAIL CONDITION: missing questionText or fewer than 2 options -> regenerate
+
+  CHOICE-CARDS (type: "choice-cards"):
+  - Teaching exploration, NOT a knowledge check. Narration plays. Do NOT title the slide "Knowledge Check:".
+  - Use when the spec shows 3–5 tappable tiles/cards (Cost / Service / Inventory / Risk) on a content screen with a spoken script.
+  - data.prompt: the on-screen prompt (one sentence).
+  - data.cards: [{ "id": "c1", "label": "Service", "body": "short phrase", "isCorrect": true }]
+  - data.feedback: short explanatory paragraph after Check (not pass/fail copy).
+  - data.selectMode: "multi" or "single" (default multi).
+  - voiceOverText: the storyboard narration. Never empty.
+  - FAIL CONDITION: fewer than 3 cards -> regenerate
 
   ACCORDION (DEPRECATED — use click-reveal instead):
   - If you would have used accordion, emit type "click-reveal" with items: [{ id, term, definition }]
@@ -928,11 +939,12 @@ export async function hydrateCourseContent(
   - flashcards: { cards: [{ front: string, back: string }] }
   - carousel-panel: { cards: [{ id: string, label: string, color: string, description: string, expandedContent: string }] }
   - click-reveal: { items: [{ id: string, term: string, definition: string }] }
+  - choice-cards: { prompt: string, selectMode?: 'multi'|'single', feedback?: string, cards: [{ id, label, body, isCorrect?: boolean }] }
   - timeline: { events: [{ id: string, year: string, title: string, content: string }] }
   - sorting: { items: [{ id: string, content: string }], correctOrder: string[] } — use for sequence/order/phases; correctOrder is item ids first→last
   - matching: { items: [{ id: string, content: string }], targets: [{ id: string, content: string }], correctAnswers: { [itemId]: targetId } } — NEVER use 'pairs'. Always include correctAnswers mapping every item id to its target id.
   - drop-targets: { items: [{ id: string, content: string, category: string }], categories: string[] } — category must match a categories[] entry, OR be "" for distractors. Require 2+ categories OR 1 category with at least one distractor. Never use for pure sequencing.
-  - quiz interactions: [{ type: 'multiple-choice', questionText: string, scenarioText?: string, options: [{ id, text, isCorrect: boolean }], feedback: string }]
+  - quiz interactions: [{ type: 'multiple-choice', questionText: string, scenarioText?: string, options: [{ id, text, isCorrect: boolean }], feedback: string, questions?: [{ questionText, options, feedback }] }]
   - jeopardy: { templateType: 'jeopardy', instructions: string, categories: [{ id, name, questions: [{ id, value: number, prompt: string, correctAnswer: string, isDailyDouble: boolean }] }] }
   - millionaire: { templateType: 'millionaire', instructions: string, questions: [{ id, difficulty: number, prompt: string, options: string[], correctAnswer: string, isSafeHaven: boolean }] }
   - diagram: { mermaidCode: string, caption?: string }  — mermaidCode must be raw Mermaid syntax, no markdown fences
@@ -1050,16 +1062,26 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     else if (isMissingData('accordion', 'items')) slide.type = 'content';
     else if (isMissingData('flashcards', 'cards')) slide.type = 'content';
     else if (isMissingData('click-reveal', 'items')) slide.type = 'content';
+    else if (isMissingData('choice-cards', 'cards')) slide.type = 'content';
     else if (slide.type === 'quiz' || slide.type === 'multiple-choice' || slide.type === 'multiple-answers' || slide.type === 'true-false') {
-      const opts = slide.interactions?.[0]?.options || slide.data?.options;
-      if (!Array.isArray(opts) || opts.length < 2) {
+      const list = quizQuestionList(slide.interactions?.[0] || slide.data || slide);
+      if (list.length >= 2) {
+        slide.data = {
+          ...(slide.data || {}),
+          questions: list,
+          questionText: list[0].questionText,
+          options: list[0].options,
+          feedback: list[0].feedback,
+          scenarioText: list[0].scenarioText,
+        };
+      } else if (list.length === 1) {
+        if (slide.data) slide.data = applyAlignedQuizPrompt({ ...slide.data, options: list[0].options, questionText: list[0].questionText });
+        if (Array.isArray(slide.interactions) && slide.interactions[0]) {
+          slide.interactions[0] = applyAlignedQuizPrompt({ ...slide.interactions[0], options: list[0].options });
+        }
+      } else {
         slide.type = 'content';
         slide.content = slide.content || `**${slide.title || 'Knowledge Check'}**\n\nReview this topic, then continue. (Interactive question options were incomplete and were converted to content.)`;
-      } else {
-        if (slide.data) slide.data = applyAlignedQuizPrompt({ ...slide.data, options: opts });
-        if (Array.isArray(slide.interactions) && slide.interactions[0]) {
-          slide.interactions[0] = applyAlignedQuizPrompt({ ...slide.interactions[0], options: opts });
-        }
       }
     }
     else if (slide.type === 'sorting' && (!slide.data?.items?.length && !slide.interactions?.[0]?.items?.length)) {

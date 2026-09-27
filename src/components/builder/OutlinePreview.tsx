@@ -16,6 +16,7 @@ const SLIDE_TYPE_LABELS: Record<string, string> = {
   'folder-explorer': 'Folder Explorer',
   'carousel-panel': 'Carousel Panel',
   'click-reveal': 'Click & Reveal',
+  'choice-cards': 'Choice cards',
   accordion: 'Click & Reveal',
   'key-takeaways': 'Key Takeaways',
   summary: 'Summary',
@@ -39,6 +40,7 @@ const PICKABLE_CONTENT_TYPES = [
   'folder-explorer',
   'carousel-panel',
   'click-reveal',
+  'choice-cards',
 ] as const;
 
 const LOCKED_SLIDE_TYPES = new Set([

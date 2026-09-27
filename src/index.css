@@ -526,6 +526,25 @@ img:not([loading]) {
 .interaction-light-fix .tab-skin-blocks em {
   color: inherit;
 }
+
+/* Process content canvas — lock black type on the pale click-reveal fill. */
+.interaction-light-fix .process-canvas-light,
+.interaction-light-fix .process-canvas-light p,
+.interaction-light-fix .process-canvas-light span,
+.interaction-light-fix .process-canvas-light li,
+.interaction-light-fix .process-canvas-light ul,
+.interaction-light-fix .process-canvas-light h3,
+.interaction-light-fix .process-canvas-light h4,
+.interaction-light-fix .process-canvas-light div,
+.interaction-light-fix .process-canvas-light strong,
+.interaction-light-fix .process-canvas-light em {
+  color: #0f172a !important;
+}
+.interaction-light-fix .process-canvas-light .tab-ost-body,
+.interaction-light-fix .process-canvas-light .tab-ost-body li,
+.interaction-light-fix .process-canvas-light .tab-ost-body p {
+  color: #334155 !important;
+}
 .interaction-dark-override .tab-skin-blocks button:not([draggable]),
 .interaction-dark-override .tab-skin-blocks button[aria-pressed="true"],
 .interaction-dark-override .tab-skin-blocks button[aria-selected="true"] {

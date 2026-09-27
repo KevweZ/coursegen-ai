@@ -24,6 +24,7 @@ const KEEP_DATA_KEYS = [
   'introImageUrl',
   'processRailColor',
   'railColor',
+  'processPanelColor',
 ];
 
 function pickKeptMedia(existingData: Record<string, unknown> | undefined): Record<string, unknown> {

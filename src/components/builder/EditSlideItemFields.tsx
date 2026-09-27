@@ -463,15 +463,65 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
             + Add answer choice
           </button>
         )}
-        {d.feedback != null && (
-          <textarea
-            rows={2}
-            value={coerceOstText(d.feedback)}
-            onChange={(e) => patchData(slide, { feedback: e.target.value }, onPatch)}
-            className={areaClass}
-            placeholder="Feedback after submit (optional)"
-          />
+        {Array.isArray(d.questions) && d.questions.length > 1 && (
+          <p className="text-[11px] text-slate-500 leading-relaxed">
+            This slide has {d.questions.length} questions. The fields above edit question 1; remaining questions are on the learner screen in order.
+          </p>
         )}
+        <textarea
+          rows={2}
+          value={coerceOstText(d.feedback)}
+          onChange={(e) => patchData(slide, { feedback: e.target.value }, onPatch)}
+          className={areaClass}
+          placeholder="Feedback after submit (optional)"
+        />
+      </div>
+    );
+  }
+
+  if (type === 'choice-cards') {
+    const d = slide.data || {};
+    const cards: any[] = Array.isArray(d.cards) ? d.cards : [];
+    return (
+      <div className="space-y-3">
+        <label className={labelClass}>Choice cards</label>
+        <textarea
+          rows={2}
+          value={d.prompt || ''}
+          onChange={(e) => patchData(slide, { prompt: e.target.value }, onPatch)}
+          className={areaClass}
+          placeholder="Prompt above the cards"
+        />
+        {cards.map((card, i) => (
+          <div key={card.id || i} className="rounded-xl border border-slate-700 bg-slate-950 p-3 space-y-2">
+            <input
+              value={card.label || ''}
+              onChange={(e) => {
+                const next = cards.map((c, j) => j === i ? { ...c, label: e.target.value } : c);
+                patchData(slide, { cards: next }, onPatch);
+              }}
+              className={fieldClass}
+              placeholder="Card label"
+            />
+            <textarea
+              rows={2}
+              value={card.body || card.description || ''}
+              onChange={(e) => {
+                const next = cards.map((c, j) => j === i ? { ...c, body: e.target.value } : c);
+                patchData(slide, { cards: next }, onPatch);
+              }}
+              className={areaClass}
+              placeholder="Short body"
+            />
+          </div>
+        ))}
+        <textarea
+          rows={3}
+          value={d.feedback || ''}
+          onChange={(e) => patchData(slide, { feedback: e.target.value }, onPatch)}
+          className={areaClass}
+          placeholder="Explanatory feedback after Check"
+        />
       </div>
     );
   }
@@ -506,6 +556,8 @@ export function sanitizeInteractionOstOnSave(slide: any): any {
       ...c,
       front: c.front != null ? clean(c.front) : c.front,
       back: c.back != null ? clean(c.back) : c.back,
+      label: c.label != null ? clean(c.label) : c.label,
+      body: c.body != null ? clean(c.body) : c.body,
       description: c.description != null ? clean(c.description) : c.description,
       expandedContent: c.expandedContent != null ? clean(c.expandedContent) : c.expandedContent,
     }));

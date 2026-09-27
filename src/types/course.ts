@@ -68,7 +68,8 @@ export type SlideType =
   | 'tabbed-vertical'
   | 'folder-explorer'
   | 'carousel-panel'
-  | 'click-reveal';
+  | 'click-reveal'
+  | 'choice-cards';
 
 export interface FloatingImage {
   id: string;

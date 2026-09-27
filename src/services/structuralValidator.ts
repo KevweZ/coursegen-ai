@@ -601,11 +601,12 @@ const INTERACTION_TYPES: Record<string, (slide: any) => boolean> = {
     return !cards || cards.length === 0;
   },
   'click-reveal':   s => !s.data?.items || s.data.items.length === 0,
+  'choice-cards':   s => !s.data?.cards || s.data.cards.length === 0,
   'tabbed-horizontal': s => !s.data?.tabs || s.data.tabs.length === 0,
   'tabbed-vertical':   s => !s.data?.tabs || s.data.tabs.length === 0,
   'folder-explorer':   s => !s.data?.items || s.data.items.length === 0,
   // Quiz data lives in slide.data (dummy course) OR slide.interactions[0] (AI pipeline)
-  quiz:             s => { const d = s.data || s.interactions?.[0]; return !d?.questionText && !d?.options?.length; },
+  quiz:             s => { const d = s.data || s.interactions?.[0]; return !d?.questionText && !d?.options?.length && !(Array.isArray(d?.questions) && d.questions.length); },
   'multiple-answer':s => { const d = s.data || s.interactions?.[0]; return !d?.questionText && !d?.options?.length; },
   'multiple-choice':s => { const d = s.data || s.interactions?.[0]; return !d?.questionText && !d?.options?.length; },
   'multiple-answers':s => { const d = s.data || s.interactions?.[0]; return !d?.questionText && !d?.options?.length; },

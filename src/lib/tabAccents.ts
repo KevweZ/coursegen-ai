@@ -64,6 +64,7 @@ export function resolveVerticalTabColorMode(raw: unknown): VerticalTabColorMode 
 
 export const BLOCKS_WELL_DEFAULT = '#0b1220';
 export const BLOCKS_WELL_PRESETS = [
+  '#eef2ff',
   '#0b1220',
   '#111827',
   '#1e293b',

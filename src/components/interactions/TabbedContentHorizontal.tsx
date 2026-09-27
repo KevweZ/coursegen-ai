@@ -47,8 +47,8 @@ interface Props {
   skin?: string;
   /** Blocks skin content-well fill. */
   wellColor?: string;
-  /** Process step-bar fill. Default is a light classic rail (not teal). */
-  railColor?: string;
+  /** Process content-canvas fill (classic). Default matches click-reveal open cards. */
+  panelColor?: string;
   /** When false, hide STEP 01 / STEP 02 labels (circles stay numbered). Default true. */
   showStepLabels?: boolean;
 }
@@ -59,6 +59,7 @@ const PANEL_H = 520;
 export const PROCESS_RAIL_DEFAULT = '#f1f5f9';
 /** Same fill as click-reveal light cards (`#eef2ff`) so Overview text stays black-on-pale. */
 export const PROCESS_PANEL_DEFAULT = '#eef2ff';
+export const PROCESS_PANEL_PRESETS = ['#eef2ff', '#f5f3ff', '#ecfeff', '#f8fafc', '#fff7ed'] as const;
 /** Tall enough for 36px circles + active scale + border without a scrollbar. */
 const RAIL_H = 96;
 
@@ -99,6 +100,7 @@ export default function TabbedContentHorizontal({
   skin,
   wellColor,
   railColor,
+  panelColor,
   showStepLabels = true,
 }: Props) {
   const normalized = useMemo(() => normalizeTabs(tabs), [tabs]);
@@ -182,14 +184,16 @@ export default function TabbedContentHorizontal({
     : (onPromoteTabImage && activeTab?.id ? (info: InFlowPromoteInfo) => onPromoteTabImage(activeTab.id, info) : undefined);
 
   const blocks = isBlocksSkin(skin);
-  const well = resolveHexColor(wellColor, BLOCKS_WELL_DEFAULT);
-  // Classic canvas matches click-reveal open cards: pale indigo + dark body text.
-  // Accent color stays on the rail, not on Overview / CTA (those were unreadable on gray).
-  const panelBg = blocks ? well : (isLight ? PROCESS_PANEL_DEFAULT : '#0f172a');
-  const ink = blocks ? contrastTextOn(well) : (isLight ? '#0f172a' : '#f8fafc');
-  const muted = blocks
-    ? (ink === '#ffffff' ? 'rgba(248,250,252,0.82)' : 'rgba(15,23,42,0.72)')
-    : (isLight ? '#334155' : '#cbd5e1');
+  const well = resolveHexColor(wellColor, PROCESS_PANEL_DEFAULT);
+  const requested = blocks
+    ? well
+    : resolveHexColor(panelColor, PROCESS_PANEL_DEFAULT);
+  // Light player: never use a dark well (that was gray canvas + white type).
+  const panelBg = isLight
+    ? (contrastTextOn(requested) === '#ffffff' ? PROCESS_PANEL_DEFAULT : requested)
+    : (blocks ? resolveHexColor(wellColor, BLOCKS_WELL_DEFAULT) : '#0f172a');
+  const ink = isLight ? '#0f172a' : '#f8fafc';
+  const muted = isLight ? '#334155' : '#cbd5e1';
   const labelInk = ink;
   const rail = resolveHexColor(railColor, PROCESS_RAIL_DEFAULT);
   const railInk = contrastTextOn(rail);
@@ -223,7 +227,7 @@ export default function TabbedContentHorizontal({
           </div>
         )}
 
-        <div key={panelKey} className="flex flex-1 min-h-0 w-full items-start overflow-hidden">
+        <div key={panelKey} className="flex flex-1 min-h-0 w-full items-start overflow-hidden process-canvas-light">
           <div
             ref={scrollRef}
             className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden custom-scrollbar"

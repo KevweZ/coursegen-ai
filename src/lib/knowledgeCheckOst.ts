@@ -202,6 +202,43 @@ export function applyAlignedQuizPrompt(target: any): any {
   return { ...target, [key]: aligned };
 }
 
+export type QuizQuestionItem = {
+  questionText: string;
+  options: any[];
+  feedback?: string;
+  scenarioText?: string;
+};
+
+function packQuizQuestion(q: any, fallbackScenario?: string): QuizQuestionItem | null {
+  if (!q || typeof q !== 'object') return null;
+  const options = Array.isArray(q.options) ? q.options : [];
+  const questionText = String(q.questionText || q.prompt || q.question || '').trim();
+  if (!questionText || options.length < 2) return null;
+  const scenarioText = quizScenarioText(q) || fallbackScenario || '';
+  return {
+    questionText: alignQuizSelectPrompt(questionText, options),
+    options,
+    feedback: q.feedback != null ? String(q.feedback) : undefined,
+    scenarioText: scenarioText || undefined,
+  };
+}
+
+/** One or more scored questions on a quiz / multiple-answers slide. */
+export function quizQuestionList(source: any): QuizQuestionItem[] {
+  if (!source || typeof source !== 'object') return [];
+  const d = source.data && typeof source.data === 'object' ? source.data : source;
+  const nested = Array.isArray(d.questions)
+    ? d.questions
+    : (Array.isArray(source.questions) ? source.questions : null);
+  if (nested && nested.length) {
+    return nested
+      .map((q: any) => packQuizQuestion(q, quizScenarioText(source)))
+      .filter(Boolean) as QuizQuestionItem[];
+  }
+  const one = packQuizQuestion(d, quizScenarioText(source));
+  return one ? [one] : [];
+}
+
 /**
  * Empty branching-scenario payloads with quiz options should play as a KC.
  * Used when a storyboard "Scenario:" screen was typed as ScenarioEngine.
