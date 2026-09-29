@@ -6,6 +6,7 @@ import React from 'react';
 import { coerceOstText, sanitizeOstText } from '../../lib/formatTabIntroOst';
 import { CAROUSEL_CARD_HEX, carouselCardHex } from '../../lib/colorContrast';
 import { quizScenarioText } from '../../lib/knowledgeCheckOst';
+import { inferChoiceCardsMode } from '../interactions/ChoiceCardsInteraction';
 
 interface Props {
   slide: any;
@@ -482,9 +483,18 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
   if (type === 'choice-cards') {
     const d = slide.data || {};
     const cards: any[] = Array.isArray(d.cards) ? d.cards : [];
+    const mode = inferChoiceCardsMode({ ...d, cards });
     return (
       <div className="space-y-3">
         <label className={labelClass}>Choice cards</label>
+        <select
+          value={mode}
+          onChange={(e) => patchData(slide, { mode: e.target.value }, onPatch)}
+          className={fieldClass}
+        >
+          <option value="explore">Click to reveal (visit each card)</option>
+          <option value="select">Select then Check</option>
+        </select>
         <textarea
           rows={2}
           value={d.prompt || ''}
@@ -511,8 +521,33 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
                 patchData(slide, { cards: next }, onPatch);
               }}
               className={areaClass}
-              placeholder="Short body"
+              placeholder="Short body on the card"
             />
+            {mode === 'explore' && (
+              <textarea
+                rows={2}
+                value={card.reveal || ''}
+                onChange={(e) => {
+                  const next = cards.map((c, j) => j === i ? { ...c, reveal: e.target.value } : c);
+                  patchData(slide, { cards: next }, onPatch);
+                }}
+                className={areaClass}
+                placeholder="Unique callout shown after this card is clicked"
+              />
+            )}
+            {mode === 'select' && (
+              <label className="flex items-center gap-2 text-xs text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={!!(card.isCorrect || card.accepted)}
+                  onChange={(e) => {
+                    const next = cards.map((c, j) => j === i ? { ...c, isCorrect: e.target.checked } : c);
+                    patchData(slide, { cards: next }, onPatch);
+                  }}
+                />
+                Highlight as a correct choice after Check
+              </label>
+            )}
           </div>
         ))}
         <textarea
@@ -520,7 +555,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
           value={d.feedback || ''}
           onChange={(e) => patchData(slide, { feedback: e.target.value }, onPatch)}
           className={areaClass}
-          placeholder="Explanatory feedback after Check"
+          placeholder={mode === 'explore' ? 'Optional wrap-up after all cards are visited' : 'Explanatory feedback after Check'}
         />
       </div>
     );

@@ -11,6 +11,9 @@ import {
   STORYBOARD_CONTENT_TYPES,
   remapStoryboardScenarioModules,
   remapStoryboardScenarioSlide,
+  expandStoryboardMultiQuestionSlides,
+  expandOneMultiQuestionSlide,
+  expandStoryboardQuizOutlineFromSource,
   type SourceMode,
 } from "../lib/storyboardSource";
 import { applyAlignedQuizPrompt, quizQuestionList } from "../lib/knowledgeCheckOst";
@@ -318,7 +321,8 @@ export async function analyzeUploadedFile(
      IMPORTANT: If the content covers multiple distinct topics, has procedures, real-world applications, or requires behavioral change, choose "standard" or "comprehensive". Do NOT downgrade to "quick" just because the source document is short.
   6. Recommend an objectiveFormat: "AB" (quick courses), "ABC" (standard), or "ABCD" (comprehensive).
   7. Classify Content Types and Map Interactions. E.g. Concepts -> "flashcards", Processes -> "timeline", Comparisons -> "click-reveal", Matching -> "drag-drop-activity". Return an array of these recommended interaction strings.
-  8. GENERATE OBJECTIVES using Bloom's Taxonomy:
+  8. GENERATE OBJECTIVES using Bloom's Taxonomy — UNLESS STORYBOARD MODE:
+     - STORYBOARD MODE: COPY listed learner objectives EXACTLY as written. Do not Bloom-rewrite, paraphrase, add Given/condition clauses, or change verbs. objectivesInferred must be false. Ignore the Bloom rules below for this file.
      - For standard eLearning (assessments via MCQ), focus almost exclusively on the REMEMBERING and UNDERSTANDING domains.
        * Remembering verbs: recall, identify, define, list, name, recognize, state, label, match, outline, retrieve
        * Understanding verbs: describe, explain, summarize, classify, compare, interpret, paraphrase, categorize
@@ -327,7 +331,6 @@ export async function analyzeUploadedFile(
      - Generate 2-4 Terminal Objectives (the high-level outcome the course achieves). For each, generate 2-4 Enabling Objectives (the individual knowledge/skill steps needed to reach it).
      - Terminal Objective example format: "Given [a scenario/condition], the learner will [single Bloom's verb] [specific knowledge/skill] [to a measurable standard]."
      - Enabling Objective example format: "The learner will [single Bloom's verb] [specific sub-skill or concept]."
-     - In STORYBOARD MODE, prefer the spec's listed objectives over inventing a new set (see STORYBOARD MODE rules above).
   
   OUTPUT FORMAT: Return ONLY raw JSON:
   {
@@ -340,7 +343,7 @@ export async function analyzeUploadedFile(
     "recommendedObjectiveFormat": "AB|ABC|ABCD",
     "recommendedInteractions": ["string"],
     "objectives": [{"terminalObjective": "string", "enablingObjectives": ["string"]}],
-    "objectivesInferred": true,
+    "objectivesInferred": "boolean — false when the file already lists learner objectives (always false in STORYBOARD MODE)",
     "detectedStructure": "string",
     "possibleModules": ["string"]
   }`;
@@ -491,7 +494,7 @@ export async function generateCourseOutline(
     ? [...new Set([...uniqueQuizActivities, 'quiz', 'multiple-answers'])]
     : uniqueQuizActivities;
   const kcDirective = sourceMode === 'storyboard'
-    ? 'Only include a Knowledge Check slide if the storyboard already specifies an exit check, knowledge check, Keys/pass score, or a scored decision quiz. Teaching screens with tappable tiles and narration are choice-cards, not knowledge checks. Use quiz for one correct option; use multiple-answers when the spec says select two / select all that apply on a scored check. A screen with 2+ numbered questions is ONE quiz with data.questions. Do NOT use type scenario for a one-question situation box. Do NOT add extra checks to meet a Course Settings count. Title MUST start with "Knowledge Check:" only for scored checks.'
+    ? 'Only include a Knowledge Check slide if the storyboard already specifies an exit check, knowledge check, Keys/pass score, or a scored decision quiz. Teaching screens with tappable tiles and narration are choice-cards, not knowledge checks. Use quiz for one correct option; use multiple-answers when the spec says select two / select all that apply on a scored check. A screen with 2+ numbered questions MUST become N Knowledge Check slides (one question each) — not one slide with Question 1 of 3. Do NOT use type scenario for a one-question situation box. Do NOT add extra checks to meet a Course Settings count. Title MUST start with "Knowledge Check:" only for scored checks.'
     : !includeKCs
     ? 'NO knowledge check slides'
     : kcMode === 'per-module'
@@ -618,7 +621,12 @@ export async function generateCourseOutline(
   // Hard whitelist — never trust the model to stay inside Course Settings interactions
   if (Array.isArray(parsedOutline.modules)) {
     if (sourceMode === 'storyboard') {
-      parsedOutline.modules = remapStoryboardScenarioModules(parsedOutline.modules as any) as any;
+      parsedOutline.modules = expandStoryboardQuizOutlineFromSource(
+        expandStoryboardMultiQuestionSlides(
+          remapStoryboardScenarioModules(parsedOutline.modules as any) as any
+        ) as any,
+        configParams.sourceContent || '',
+      ) as any;
     }
     parsedOutline.modules = coerceInteractionTypes(parsedOutline.modules, outlineInteractions) as any;
   }
@@ -780,13 +788,13 @@ export async function hydrateCourseContent(
 
   CHOICE-CARDS (type: "choice-cards"):
   - Teaching exploration, NOT a knowledge check. Narration plays. Do NOT title the slide "Knowledge Check:".
-  - Use when the spec shows 3–5 tappable tiles/cards (Cost / Service / Inventory / Risk) on a content screen with a spoken script.
+  - Use for 1–4 tappable tiles/cards on a content screen. 5+ clickable items → click-reveal instead.
+  - Two modes:
+    • "explore" (click-to-reveal): click-to-explore, [DEV] reveal callouts, "select each", visit-all. data.mode = "explore". cards: [{ id, label, body, reveal }] with a UNIQUE reveal per card. Do NOT set isCorrect. No Check.
+    • "select" (pick then Check): decision-sort / which measures apply / accepted tiles. data.mode = "select". cards: [{ id, label, body, isCorrect }]. data.feedback after Check. data.selectMode multi|single.
   - data.prompt: the on-screen prompt (one sentence).
-  - data.cards: [{ "id": "c1", "label": "Service", "body": "short phrase", "isCorrect": true }]
-  - data.feedback: short explanatory paragraph after Check (not pass/fail copy).
-  - data.selectMode: "multi" or "single" (default multi).
   - voiceOverText: the storyboard narration. Never empty.
-  - FAIL CONDITION: fewer than 3 cards -> regenerate
+  - FAIL CONDITION: fewer than 2 cards -> regenerate
 
   ACCORDION (DEPRECATED — use click-reveal instead):
   - If you would have used accordion, emit type "click-reveal" with items: [{ id, term, definition }]
@@ -939,12 +947,12 @@ export async function hydrateCourseContent(
   - flashcards: { cards: [{ front: string, back: string }] }
   - carousel-panel: { cards: [{ id: string, label: string, color: string, description: string, expandedContent: string }] }
   - click-reveal: { items: [{ id: string, term: string, definition: string }] }
-  - choice-cards: { prompt: string, selectMode?: 'multi'|'single', feedback?: string, cards: [{ id, label, body, isCorrect?: boolean }] }
+  - choice-cards: { prompt: string, mode?: 'explore'|'select', selectMode?: 'multi'|'single', feedback?: string, cards: [{ id, label, body, reveal?: string, isCorrect?: boolean }] }
   - timeline: { events: [{ id: string, year: string, title: string, content: string }] }
   - sorting: { items: [{ id: string, content: string }], correctOrder: string[] } — use for sequence/order/phases; correctOrder is item ids first→last
   - matching: { items: [{ id: string, content: string }], targets: [{ id: string, content: string }], correctAnswers: { [itemId]: targetId } } — NEVER use 'pairs'. Always include correctAnswers mapping every item id to its target id.
   - drop-targets: { items: [{ id: string, content: string, category: string }], categories: string[] } — category must match a categories[] entry, OR be "" for distractors. Require 2+ categories OR 1 category with at least one distractor. Never use for pure sequencing.
-  - quiz interactions: [{ type: 'multiple-choice', questionText: string, scenarioText?: string, options: [{ id, text, isCorrect: boolean }], feedback: string, questions?: [{ questionText, options, feedback }] }]
+  - quiz interactions: [{ type: 'multiple-choice', questionText: string, scenarioText?: string, options: [{ id, text, isCorrect: boolean }], feedback: string }]
   - jeopardy: { templateType: 'jeopardy', instructions: string, categories: [{ id, name, questions: [{ id, value: number, prompt: string, correctAnswer: string, isDailyDouble: boolean }] }] }
   - millionaire: { templateType: 'millionaire', instructions: string, questions: [{ id, difficulty: number, prompt: string, options: string[], correctAnswer: string, isSafeHaven: boolean }] }
   - diagram: { mermaidCode: string, caption?: string }  — mermaidCode must be raw Mermaid syntax, no markdown fences
@@ -1063,8 +1071,18 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     else if (isMissingData('flashcards', 'cards')) slide.type = 'content';
     else if (isMissingData('click-reveal', 'items')) slide.type = 'content';
     else if (isMissingData('choice-cards', 'cards')) slide.type = 'content';
+    else if (slide.type === 'choice-cards' && slide.data) {
+      const cards = slide.data.cards || [];
+      const mode = slide.data.mode === 'explore' || slide.data.mode === 'select'
+        ? slide.data.mode
+        : (cards.some((c: any) => c?.isCorrect === true || c?.accepted === true) ? 'select' : 'explore');
+      slide.data = { ...slide.data, mode };
+    }
     else if (slide.type === 'quiz' || slide.type === 'multiple-choice' || slide.type === 'multiple-answers' || slide.type === 'true-false') {
       const list = quizQuestionList(slide.interactions?.[0] || slide.data || slide);
+      if (sourceMode === 'storyboard' && list.length >= 2) {
+        return expandOneMultiQuestionSlide(slide);
+      }
       if (list.length >= 2) {
         slide.data = {
           ...(slide.data || {}),
@@ -1368,13 +1386,15 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     fullCourse.modules.push({ ...emptyModule, slides: cleanedSlides } as any);
   }
 
+  if (sourceMode === 'storyboard') {
+    fullCourse.modules = expandStoryboardMultiQuestionSlides(
+      remapStoryboardScenarioModules(fullCourse.modules as any) as any
+    ) as any;
+  }
   if (configParams.interactionTypes?.length) {
     const allow = sourceMode === 'storyboard'
       ? [...new Set([...configParams.interactionTypes, ...STORYBOARD_CONTENT_TYPES])]
       : configParams.interactionTypes;
-    if (sourceMode === 'storyboard') {
-      fullCourse.modules = remapStoryboardScenarioModules(fullCourse.modules as any) as any;
-    }
     fullCourse.modules = coerceInteractionTypes(fullCourse.modules as any, allow) as any;
   }
 

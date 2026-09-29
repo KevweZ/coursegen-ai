@@ -69,7 +69,7 @@ export default function CarouselPanel({ cards = [], title, theme = 'dark', onCar
       {/* Stage — expanded card grows over the dots (higher z-index) */}
       <div
         className="relative w-full flex items-start justify-center pt-6 pb-2"
-        style={{ minHeight: expanded ? 460 : 280 }}
+        style={{ minHeight: expanded ? 520 : 280 }}
       >
         {normalized.map((card, i) => {
           const pos = getPosition(i);
@@ -95,7 +95,7 @@ export default function CarouselPanel({ cards = [], title, theme = 'dark', onCar
               }`}
               style={{
                 background: cardColor,
-                minHeight: isCenter && expanded ? 320 : 180,
+                minHeight: isCenter && expanded ? 380 : 180,
                 boxShadow: isCenter && expanded ? '0 20px 50px rgba(0,0,0,0.45)' : undefined,
               }}
               onClick={() => {
@@ -145,11 +145,11 @@ export default function CarouselPanel({ cards = [], title, theme = 'dark', onCar
                       className="mt-2 border-t border-white/30 pt-4 overflow-hidden"
                     >
                       {card.imageUrl && (
-                        <div className="mb-3 rounded-xl overflow-hidden border border-white/25 bg-black/20">
+                        <div className="mb-3 rounded-xl overflow-hidden border border-white/25 bg-black/20 flex items-center justify-center px-2 py-2">
                           <img
                             src={card.imageUrl}
                             alt=""
-                            className="w-full max-h-40 object-cover"
+                            className="w-full max-h-56 object-contain object-center"
                           />
                         </div>
                       )}

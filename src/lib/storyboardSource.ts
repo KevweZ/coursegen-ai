@@ -3,6 +3,8 @@
  * for following specified screens (OST + narration) instead of redesigning.
  */
 
+import { emptyScenarioQuizKind, quizQuestionList } from './knowledgeCheckOst';
+
 export type SourceMode = 'raw' | 'storyboard';
 
 /** Enough of a typical storyboard to include screens + scripts; raw path stays smaller. */
@@ -47,19 +49,20 @@ export function storyboardSourceWindow(text: string): string {
 export function storyboardAnalyzeInstructions(): string {
   return `STORYBOARD MODE — this file is an instructional DESIGN SPECIFICATION, not source content about storyboarding.
 - The COURSE TOPIC is the subject learners will study (e.g. supply chain), NEVER "storyboarding", "eLearning development", or "how to write a storyboard".
-- Use the module/course title and listed learner objectives from the spec. Do not invent a parallel objective set.
-- If the storyboard is one module, return ONE terminal objective (the module goal) with the listed learner objectives as enablingObjectives.
+- Copy listed learner objectives VERBATIM. Do not Bloom-rewrite, paraphrase, add "Given …", change verbs, or invent a parallel set. Approved storyboard wording is the source of truth.
+- If the storyboard is one module, return ONE terminal objective (copy the listed module goal if present; otherwise the module title) with the listed learner objectives as enablingObjectives — each enabling string must match the spec exactly.
 - Skip cover, conventions, developer handoff, asset manifest, and QA checklist slides as learner modules.
 - detectedStructure should describe the specified learner screens (e.g. "8 learner screens: guided reveal, click-to-explore, tabbed process, exit check").
 - recommendedInteractions should prefer types named in the spec, mapped to NexCourse types:
-  guided reveal / click-to-explore / progressive reveal → click-reveal
+  1–4 tappable tiles / click-to-explore / [DEV] reveal callouts / visit-all / decision-sort → choice-cards
+  5 or more clickable items / long glossary of terms → click-reveal
+  guided reveal / progressive reveal of 5+ terms → click-reveal
   tabbed process / tabs → tabbed-horizontal
   hotspot explore → hotspot
   exit check / knowledge check / Keys: / pass score → quiz or multiple-answers
-  decision-sort / select tiles / 4 colored measure cards on a TEACHING screen (has narration, no pass score) → choice-cards
 - A screen titled "Scenario:" with one question is a knowledge check with a situation box, NOT a branching scenario engine.
 - Do NOT treat every screen that asks the learner to tap something as a knowledge check. Teaching explorations with narration stay content (choice-cards / click-reveal).
-- objectivesInferred should be false when the storyboard already lists learner objectives.`;
+- objectivesInferred MUST be false when the storyboard already lists learner objectives.`;
 }
 
 /** Types a storyboard may name; Course Settings whitelist does not strip these in storyboard mode. */
@@ -77,20 +80,21 @@ HARD RULES:
 - Build the course the storyboard describes. Do NOT write a course about storyboarding, authoring, SCORM, or QA.
 - Ignore cover, "course blueprint / conventions", developer handoff, asset manifest, and QA checklist screens. Those are not learner slides.
 - One NexCourse teaching/interaction slide per remaining learner screen (Screen 01, Screen 02, …). Keep that screen's title.
-- Do NOT add extra teaching slides to fill enabling coverage. Do NOT add extra Knowledge Checks beyond screens the storyboard already marks as a check / exit check / scenario quiz.
+  EXCEPTION: a screen that lists 2+ numbered knowledge-check questions (1. / 2. / 3., "QUESTION 1 OF 3", "one per screen state", or "separate slide for each question") MUST become N Knowledge Check slides — one quiz/multiple-answers slide per numbered question. Copy each stem, options, and Keys onto its own slide. Do NOT keep them on one slide. Do NOT emit "Question 1 of 3". Do NOT collapse three single-selects into one multiple-answers item.
+- Do NOT add extra teaching slides to fill enabling coverage. Do NOT add extra Knowledge Checks beyond screens the storyboard already marks as a check / exit check / scenario quiz — splitting a multi-question check into N slides is required, not "extra".
 - Do NOT generate module title, overview, or objectives slides (the player still injects chrome from Course Settings).
 - Honor the interaction named on each learner screen when NexCourse has that type (${allowed}). Do not remap hotspot → click-reveal if hotspot is available.
-  guided reveal, click-to-explore, progressive reveal → click-reveal
+  1–4 tappable tiles / click-to-explore / [DEV] Reveal brief callouts / "select each" / "continue after all visited" / decision-sort on a TEACHING screen → choice-cards (NOT click-reveal, NOT quiz)
+  5 or more clickable items / a glossary of terms → click-reveal
+  guided reveal, progressive reveal of 5+ terms → click-reveal
   tabbed process, tabs → tabbed-horizontal (or tabbed-vertical if the spec is a side tab list)
   hotspot explore → hotspot
   single-select / "which of the following" / one correct option → quiz
   select two / select all that apply on an EXIT CHECK or "Knowledge Check" / Keys: / pass score → multiple-answers
   exit check / knowledge check / "Scenario:" situation + scored question → quiz or multiple-answers using the select-one vs select-two rule above
-  decision-sort / 3–5 colored tiles the learner taps on a TEACHING screen (narration present, no Keys/pass score) → choice-cards (NOT quiz, NOT multiple-answers, do NOT title Knowledge Check)
 - NEVER use type "scenario" (branching ScenarioEngine) for a screen that is a yellow situation box plus ONE question. That is a knowledge check: situation → data.scenarioText, question → questionText, choices → options.
 - Type "scenario" is ONLY for a multi-node branching spec (decision tree with several nodes / "if the learner chooses A then…"). A title that starts with "Scenario:" is not enough.
-- A screen that lists 2+ numbered questions (1. / 2. / 3. or "three single-select questions, one per screen state") is ONE quiz slide with data.questions[] — copy each stem, A/B/C options, and Keys exactly. Do NOT invent a new wrapping question. Do NOT collapse three single-selects into one multiple-answers item.
-- Do NOT convert a teaching screen into a Knowledge Check just because the learner taps cards. Exit check / Keys / pass score = scored quiz. Narration + tiles + explanatory feedback = choice-cards.
+- Do NOT convert a teaching screen into a Knowledge Check just because the learner taps cards. Exit check / Keys / pass score = scored quiz. Narration + tiles = choice-cards.
 - Tag teaching slides with enablingIndex when an enabling is obvious; it is OK if several screens share one enabling.
 - Module count: one module unless the storyboard clearly labels multiple modules.`;
 }
@@ -107,8 +111,11 @@ These rules OVERRIDE the short-bullet rewrite and CEAP narration formula for thi
 - Interaction items (tabs, click-reveal terms, hotspots, quiz options) must come from the screen spec, including correct answers when the spec marks them.
 - Quiz / knowledge-check screens: put the situation box, carrier alert, yellow callout, or short story in data.scenarioText (plain prose, not the question). Put the actual question in questionText. Do not drop the situation.
 - A screen titled "Scenario:" (or a workplace vignette + one scored question) is quiz / multiple-answers with scenarioText. Do NOT emit type "scenario" unless the spec is a multi-node branching tree.
-- EXIT CHECK / Knowledge Check / Keys: / pass score → scored quiz. Copy each numbered question verbatim into data.questions: [{ questionText, options: [{ id, text, isCorrect }], feedback }]. Honor listed option counts (3 is fine — do not pad to 4). Mark isCorrect from Keys (1=A, 2=B, 3=B). voiceOverText MUST be "".
-- A TEACHING screen with 3–5 selectable tiles/cards and a narration script (decision-sort, "every choice shifts the balance", no pass score) → type choice-cards. data.prompt = the on-screen prompt. data.cards = [{ id, label, body, isCorrect }] one per tile. data.feedback = the explanatory feedback. voiceOverText = the storyboard narration (do NOT put narration in scenarioText). Do NOT title it Knowledge Check.
+- EXIT CHECK / Knowledge Check / Keys: / pass score → scored quiz. If the screen lists 2+ numbered questions, emit a SEPARATE quiz/multiple-answers slide for EACH question (same shared title plus (2), (3) on later slides). Copy each stem, options, and Keys verbatim onto that slide. Do NOT pack them into data.questions on one slide. Do NOT emit a "Question 1 of 3" subheader. Honor listed option counts (3 is fine — do not pad to 4). Mark isCorrect from Keys (1=A, 2=B, 3=B). voiceOverText MUST be "".
+- A TEACHING screen with 1–4 selectable tiles/cards and a narration script → type choice-cards. 5+ clickable items → click-reveal instead.
+  • Click-to-explore / [DEV] Reveal brief callouts / "select each" / "continue after all are visited" / no Keys/pass score → data.mode = "explore". data.cards = [{ id, label, body, reveal }] with a UNIQUE reveal callout per card (from the DEV note or OST, e.g. Supplier = available material). No Check button. Do NOT mark isCorrect. Do NOT reuse one shared feedback sentence as the only reveal.
+  • Decision-sort / "which outcomes could improve" / accepted tiles / Check → data.mode = "select". data.cards = [{ id, label, body, isCorrect }]. data.feedback = the explanatory paragraph after Check. data.selectMode = "multi" unless the spec is tap-one.
+  data.prompt = the on-screen prompt. voiceOverText = the storyboard narration (do NOT put narration in scenarioText). Do NOT title it Knowledge Check.
 - "Select two" / "select all that apply" on a scored check → type multiple-answers with one option per listed choice. Mark every option the spec treats as correct; if the spec is inconsistent, prefer the listed choices over inventing pair-combo options.
 - If the stem says "select two" / "select N" but the answer key marks a different number of options correct — including ALL options correct — rewrite the stem to "Select the … that …" so the count in the prompt matches the key. Do not keep a false "select two" when four answers are right.
 - Do not invent extra flashcards, tabs, hotspot pins, or quiz questions beyond what the screen lists.`;
@@ -151,4 +158,155 @@ export function remapStoryboardScenarioModules<T extends { slides?: any[] }>(mod
     ...mod,
     slides: (mod.slides || []).map(s => remapStoryboardScenarioSlide(s)),
   }));
+}
+
+const QUIZ_SLIDE_TYPES = new Set(['quiz', 'multiple-choice', 'multiple-answers', 'true-false']);
+
+function quizTypeFromQuestion(q: { options?: any[] }, fallback: string): string {
+  const correct = (q.options || []).filter((o: any) => o?.isCorrect === true || o?.correct === true).length;
+  if (correct >= 2) return 'multiple-answers';
+  if (fallback === 'multiple-answers' && correct < 2) return 'quiz';
+  return QUIZ_SLIDE_TYPES.has(fallback) ? fallback : 'quiz';
+}
+
+/**
+ * A storyboard screen with 2+ numbered questions becomes N Knowledge Check slides.
+ * Also used as a safety net when hydrate still packed them onto one slide.
+ */
+export function expandOneMultiQuestionSlide<T extends {
+  type?: string;
+  id?: string;
+  title?: string;
+  data?: any;
+  interactions?: any[];
+}>(slide: T): T[] {
+  if (!slide) return [];
+  const kind = emptyScenarioQuizKind(slide);
+  if (!QUIZ_SLIDE_TYPES.has(String(slide.type || '')) && !kind) return [slide];
+  const list = quizQuestionList(slide.interactions?.[0] || slide.data || slide);
+  if (list.length < 2) {
+    if (slide.data && Array.isArray(slide.data.questions)) {
+      const data = { ...slide.data };
+      delete data.questions;
+      return [{ ...slide, data }];
+    }
+    return [slide];
+  }
+  const baseTitle = String(slide.title || 'Knowledge Check').replace(/\s*\(\d+\)\s*$/, '').trim();
+  return list.map((q, i) => {
+    const nextType = quizTypeFromQuestion(q, String(slide.type || 'quiz'));
+    const data = {
+      ...(slide.data || {}),
+      questionText: q.questionText,
+      options: q.options,
+      feedback: q.feedback,
+      scenarioText: q.scenarioText,
+    };
+    delete data.questions;
+    return {
+      ...slide,
+      id: i === 0 ? slide.id : `${slide.id || 'kc'}-q${i + 1}`,
+      type: nextType,
+      title: i === 0 ? (slide.title || baseTitle) : `${baseTitle} (${i + 1})`,
+      data,
+      interactions: [{ type: nextType, ...data }],
+    };
+  });
+}
+
+export function expandStoryboardMultiQuestionSlides<T extends { slides?: any[] }>(modules: T[]): T[] {
+  return (modules || []).map(mod => ({
+    ...mod,
+    slides: (mod.slides || []).flatMap((s: any) => expandOneMultiQuestionSlide(s)),
+  }));
+}
+
+function titlesRoughlyMatch(a: string, b: string): boolean {
+  const norm = (s: string) => String(s || '')
+    .toLowerCase()
+    .replace(/knowledge\s*check:\s*/g, '')
+    .replace(/screen\s+0?\d+\s*[—–-]\s*/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  const na = norm(a);
+  const nb = norm(b);
+  if (!na || !nb) return false;
+  return na === nb || na.includes(nb) || nb.includes(na);
+}
+
+/** Detect storyboard screens that list 2+ numbered knowledge-check questions. */
+export function findStoryboardMultiQuestionScreens(sourceText: string): { title: string; count: number }[] {
+  const text = String(sourceText || '');
+  if (text.length < 40) return [];
+  const parts = text.split(/(?=Screen\s+0?\d+\b)/i);
+  const chunks = parts.length > 1 ? parts : [text];
+  const out: { title: string; count: number }[] = [];
+  for (const part of chunks) {
+    const looksLikeCheck = /knowledge\s*check|exit\s+check|keys\s*:|pass\s+score/i.test(part);
+    if (!looksLikeCheck) continue;
+    const titleMatch = part.match(/Screen\s+0?\d+\s*[—–-]\s*([^\n]+)/i)
+      || part.match(/Knowledge\s*Check:\s*([^\n]+)/i);
+    const title = (titleMatch?.[1] || 'Knowledge Check').trim();
+    const ofCounts = [...part.matchAll(/question\s+\d+\s+of\s+(\d+)/gi)].map(m => Number(m[1])).filter(n => n >= 2);
+    const numbered = (part.match(/(?:^|\n)\s*(?:question\s*)?[1-9]\s*[.):]/gi) || []).length;
+    const onePerState = /one\s+per\s+screen\s+state|separate\s+slide\s+for\s+each/i.test(part);
+    const count = Math.max(
+      ofCounts.length ? Math.max(...ofCounts) : 0,
+      numbered >= 2 ? numbered : 0,
+      onePerState && numbered >= 2 ? numbered : 0,
+    );
+    if (count >= 2) out.push({ title, count });
+  }
+  return out;
+}
+
+/**
+ * Outline safety net: clone a Knowledge Check slide when the storyboard screen
+ * lists 2+ numbered questions but the model still emitted one slide.
+ */
+export function expandStoryboardQuizOutlineFromSource<T extends { slides?: any[] }>(
+  modules: T[],
+  sourceText: string,
+): T[] {
+  const screens = findStoryboardMultiQuestionScreens(sourceText);
+  if (!screens.length) return modules;
+  return (modules || []).map(mod => {
+    const next: any[] = [];
+    for (const slide of mod.slides || []) {
+      const isQuiz = QUIZ_SLIDE_TYPES.has(String(slide.type || ''))
+        || /^knowledge\s*check/i.test(String(slide.title || ''));
+      const screen = isQuiz
+        ? screens.find(s => titlesRoughlyMatch(slide.title || '', s.title))
+        : undefined;
+      if (!screen || screen.count < 2) {
+        next.push(slide);
+        continue;
+      }
+      const similarInModule = (mod.slides || []).filter((x: any) =>
+        titlesRoughlyMatch(x.title || '', slide.title || '')
+        && (QUIZ_SLIDE_TYPES.has(String(x.type || '')) || /^knowledge\s*check/i.test(String(x.title || '')))
+      ).length;
+      if (similarInModule >= screen.count) {
+        next.push(slide);
+        continue;
+      }
+      const already = next.filter((x) =>
+        titlesRoughlyMatch(x.title || '', slide.title || '')
+        && (QUIZ_SLIDE_TYPES.has(String(x.type || '')) || /^knowledge\s*check/i.test(String(x.title || '')))
+      ).length;
+      if (already > 0) {
+        next.push(slide);
+        continue;
+      }
+      const baseTitle = String(slide.title || 'Knowledge Check').replace(/\s*\(\d+\)\s*$/, '').trim();
+      for (let i = 0; i < screen.count; i++) {
+        next.push({
+          ...slide,
+          id: i === 0 ? slide.id : `${slide.id || 'kc'}-q${i + 1}`,
+          title: i === 0 ? (slide.title || baseTitle) : `${baseTitle} (${i + 1})`,
+        });
+      }
+    }
+    return { ...mod, slides: next };
+  });
 }

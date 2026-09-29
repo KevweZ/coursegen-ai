@@ -177,7 +177,7 @@ import { CustomMatchingActivity } from './components/interactions/CustomMatching
 import { CustomSortingActivity } from './components/interactions/CustomSortingActivity';
 import { HotspotInteraction } from './components/interactions/HotspotInteraction';
 import ClickRevealInteraction from './components/interactions/ClickRevealInteraction';
-import ChoiceCardsInteraction from './components/interactions/ChoiceCardsInteraction';
+import ChoiceCardsInteraction, { inferChoiceCardsMode } from './components/interactions/ChoiceCardsInteraction';
 import { getRecommendedGames } from './lib/gameEngine';
 import { DUMMY_COURSE, DUMMY_EXAM_QUESTIONS } from './lib/dummyCourse';
 import { sanitizeOstText, coerceOstText } from './lib/formatTabIntroOst';
@@ -731,7 +731,7 @@ const GRID_INTERACTION_IDS = [
   'multiple-choice', 'multiple-answers', 'hotspot', 'flashcards',
   'timeline', 'sorting', 'matching', 'drop-targets', 'scenario',
   'tabbed-horizontal', 'tabbed-vertical', 'folder-explorer', 'carousel-panel',
-  'click-reveal',
+  'click-reveal', 'choice-cards',
 ];
 // Map legacy / AI-prompt IDs → visual grid IDs so the UI checkboxes stay in sync
 const PRESET_TO_GRID: Record<string, string> = {
@@ -2402,6 +2402,14 @@ export default function App() {
         return (d.cards || ix.cards || []).map((c: any, i: number) =>
           normItemId(c.id, `fc-${i}`)
         );
+      case 'choice-cards': {
+        const cards = d.cards || d.items || ix.cards || ix.items || [];
+        const mode = inferChoiceCardsMode({ ...d, cards });
+        if (mode === 'explore') {
+          return cards.map((c: any, i: number) => normItemId(c.id, `cc-${i}`));
+        }
+        return ['choice-cards-check'];
+      }
       default:
         return [];
     }
@@ -3203,7 +3211,11 @@ export default function App() {
       // Honor Course Settings objective format — do not let AI recommendation overwrite AB/ABC/ABCD choice
       const lockedFmt = (settingsOverride?.objectiveFormat ?? objectiveFormat) as 'AB' | 'ABC' | 'ABCD';
       if (result.objectives?.length) {
-        setLearningObjectives(reformatObjectivesClientSide(result.objectives, lockedFmt));
+        setLearningObjectives(
+          activeSourceMode === 'storyboard'
+            ? result.objectives
+            : reformatObjectivesClientSide(result.objectives, lockedFmt)
+        );
       }
 
       // Snapshot settings for outline/hydrate (avoid stale React state after setState)
@@ -3333,7 +3345,9 @@ export default function App() {
           courseDescription: result.summary || '',
           prompt: result.title || file.name,
           learningObjectives: result.objectives?.length
-            ? reformatObjectivesClientSide(result.objectives, lockedFmt)
+            ? (activeSourceMode === 'storyboard'
+              ? result.objectives
+              : reformatObjectivesClientSide(result.objectives, lockedFmt))
             : learningObjectives,
           objectiveFormat: lockedFmt,
           includeModuleTitleSlides: outlineIncludeModuleTitles,
@@ -3866,10 +3880,9 @@ export default function App() {
     const rawObjectives = finalCourse.learningObjectives?.length
       ? finalCourse.learningObjectives
       : learningObjectives;
-    const formattedObjectives = reformatObjectivesClientSide(
-      rawObjectives,
-      objectiveFormatSnap
-    );
+    const formattedObjectives = sourceMode === 'storyboard'
+      ? rawObjectives
+      : reformatObjectivesClientSide(rawObjectives, objectiveFormatSnap);
     setLearningObjectives(formattedObjectives);
     const stamped = applyVerticalTabPresentation({
       ...finalCourse,
@@ -7834,12 +7847,15 @@ export default function App() {
                                      />
                                    )}
                                    <ChoiceCardsInteraction
+                                     key={currentSlide.id}
                                      cards={currentSlide.data?.cards || currentSlide.data?.items || []}
                                      prompt={currentSlide.data?.prompt || ''}
                                      feedback={currentSlide.data?.feedback || ''}
                                      selectMode={currentSlide.data?.selectMode === 'single' ? 'single' : 'multi'}
+                                     mode={inferChoiceCardsMode(currentSlide.data)}
                                      theme={theme as any}
                                      onChecked={() => markInteractionExplored(currentSlide.id, 'choice-cards-check')}
+                                     onExplore={(cardId) => markInteractionExplored(currentSlide.id, cardId)}
                                    />
                                  </div>
                                )}
@@ -9647,6 +9663,23 @@ export default function App() {
                                  { id: '1', term: 'Phishing', definition: 'A social engineering attack that uses disguised emails or messages to steal credentials or install malware.' },
                                  { id: '2', term: 'Multi-factor authentication', definition: 'A security method requiring two or more verification factors — something you know, have, or are.' },
                                  { id: '3', term: 'Need-to-know principle', definition: 'Limiting access to sensitive information only to people who need it to perform their job.' },
+                               ]}
+                             />
+                           </div>
+                         )}
+                         {previewModalOption === 'Choice cards' && (
+                           <div className="w-full max-w-2xl">
+                             <ChoiceCardsInteraction
+                               theme="light"
+                               mode="select"
+                               selectMode="multi"
+                               prompt="If demand increases suddenly, which outcomes could improve—and which could become harder to manage?"
+                               feedback="Supply chain decisions work across all four measures. When demand surges, cost pressures and inventory needs typically rise."
+                               cards={[
+                                 { id: 'c1', label: 'Cost', body: 'Spend on transport, storage, labor, and materials.', isCorrect: true },
+                                 { id: 'c2', label: 'Service', body: 'Ability to meet the promise to the customer.', isCorrect: true },
+                                 { id: 'c3', label: 'Inventory', body: 'Stock held to protect availability and continuity.', isCorrect: true },
+                                 { id: 'c4', label: 'Risk', body: 'Exposure to disruption, quality, compliance, and change.', isCorrect: true },
                                ]}
                              />
                            </div>

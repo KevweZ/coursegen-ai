@@ -903,6 +903,7 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                       { id: 'folder-explorer', label: 'Folder Explorer' },
                       { id: 'carousel-panel', label: 'Carousel Panel' },
                       { id: 'click-reveal', label: 'Click & Reveal' },
+                      { id: 'choice-cards', label: 'Choice cards' },
                     ].map(({ id, label }) => {
                       const isSelected = props.interactionTypes.includes(id);
                       return (
