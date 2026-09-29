@@ -209,7 +209,7 @@ export function expandOneMultiQuestionSlide<T extends {
       ...slide,
       id: i === 0 ? slide.id : `${slide.id || 'kc'}-q${i + 1}`,
       type: nextType,
-      title: i === 0 ? (slide.title || baseTitle) : `${baseTitle} (${i + 1})`,
+      title: baseTitle,
       data,
       interactions: [{ type: nextType, ...data }],
     };
@@ -319,7 +319,7 @@ export function expandStoryboardQuizOutlineFromSource<T extends { slides?: any[]
         next.push({
           ...slide,
           id: i === 0 ? slide.id : `${slide.id || 'kc'}-q${i + 1}`,
-          title: i === 0 ? (slide.title || baseTitle) : `${baseTitle} (${i + 1})`,
+          title: baseTitle,
         });
       }
       cloned = true;
@@ -342,7 +342,8 @@ export function dedupeStoryboardModuleSlides<T extends { slides?: any[] }>(modul
         const key = questionKey(slide);
         if (key && seenQuestions.has(key)) continue;
         if (key) seenQuestions.add(key);
-        slides.push(slide);
+        const cleanedTitle = String(slide.title || '').replace(/\s*\(\d+\)\s*$/, '').trim();
+        slides.push(cleanedTitle && cleanedTitle !== slide.title ? { ...slide, title: cleanedTitle } : slide);
         continue;
       }
       if (isTakeawaySlide(slide)) {
