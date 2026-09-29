@@ -14,6 +14,7 @@ import {
   expandStoryboardMultiQuestionSlides,
   expandOneMultiQuestionSlide,
   expandStoryboardQuizOutlineFromSource,
+  dedupeStoryboardModuleSlides,
   type SourceMode,
 } from "../lib/storyboardSource";
 import { applyAlignedQuizPrompt, quizQuestionList } from "../lib/knowledgeCheckOst";
@@ -494,7 +495,7 @@ export async function generateCourseOutline(
     ? [...new Set([...uniqueQuizActivities, 'quiz', 'multiple-answers'])]
     : uniqueQuizActivities;
   const kcDirective = sourceMode === 'storyboard'
-    ? 'Only include a Knowledge Check slide if the storyboard already specifies an exit check, knowledge check, Keys/pass score, or a scored decision quiz. Teaching screens with tappable tiles and narration are choice-cards, not knowledge checks. Use quiz for one correct option; use multiple-answers when the spec says select two / select all that apply on a scored check. A screen with 2+ numbered questions MUST become N Knowledge Check slides (one question each) — not one slide with Question 1 of 3. Do NOT use type scenario for a one-question situation box. Do NOT add extra checks to meet a Course Settings count. Title MUST start with "Knowledge Check:" only for scored checks.'
+    ? 'Only include a Knowledge Check slide if the storyboard already specifies an exit check, knowledge check, Keys/pass score, or a scored decision quiz. Teaching screens with tappable tiles and narration are choice-cards, not knowledge checks. Use quiz for one correct option; use multiple-answers when the spec says select two / select all that apply on a scored check. A screen with 2+ numbered questions MUST become N Knowledge Check slides (one question each) — not one slide with Question 1 of 3. Once those N slides are in the outline, do not duplicate them. If the spec already has Key Takeaways, do not add a second summary. Do NOT use type scenario for a one-question situation box. Do NOT add extra checks to meet a Course Settings count. Title MUST start with "Knowledge Check:" only for scored checks.'
     : !includeKCs
     ? 'NO knowledge check slides'
     : kcMode === 'per-module'
@@ -971,6 +972,25 @@ export async function hydrateCourseContent(
     ? `\n\nIMPORTANT: This course was converted from an uploaded source document. Base the content on the source material below. Transform lecture-style slides into interactive, learner-centric content. Preferences: ${(configParams.conversionPreferences || []).join(', ') || 'Default'}\n\nSOURCE MATERIAL (first 4000 chars):\n${configParams.sourceContent.slice(0, 4000)}`
     : '';
 
+  // --- Helper: drop extra slides a chunk model re-emitted (keep outline count when already split) ---
+  function constrainChunkSlides(parsedSlides: any[], outlineChunk: any[]): any[] {
+    if (!Array.isArray(parsedSlides) || !outlineChunk?.length) return parsedSlides || [];
+    if (parsedSlides.length <= outlineChunk.length) return parsedSlides;
+    if (outlineChunk.length < 2) return parsedSlides;
+    const used = new Set<number>();
+    const pick = (outlineSlide: any) => {
+      const idIdx = parsedSlides.findIndex((s, i) => !used.has(i) && s?.id && s.id === outlineSlide.id);
+      if (idIdx >= 0) { used.add(idIdx); return parsedSlides[idIdx]; }
+      const want = String(outlineSlide.title || '').trim().toLowerCase();
+      const titleIdx = parsedSlides.findIndex((s, i) => !used.has(i) && String(s?.title || '').trim().toLowerCase() === want);
+      if (titleIdx >= 0) { used.add(titleIdx); return parsedSlides[titleIdx]; }
+      const next = parsedSlides.findIndex((_, i) => !used.has(i));
+      if (next >= 0) { used.add(next); return parsedSlides[next]; }
+      return outlineSlide;
+    };
+    return outlineChunk.map(pick);
+  }
+
   // --- Helper: parse and unwrap a raw API response ---
   function parseModuleChunk(rawText: string): any {
     let parsed = parseJsonSafely(rawText);
@@ -1310,10 +1330,13 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     }
 
     bumpProgress();
+    const rawSlides = sourceMode === 'storyboard'
+      ? constrainChunkSlides(parsedChunk.slides as any[], chunk)
+      : (parsedChunk.slides as any[]);
     return {
       moduleIndex,
       chunkIndex,
-      slides: (parsedChunk.slides as any[]).flatMap((s, i) => processSlide(preserveEnablingIndex(s, chunk, i))),
+      slides: rawSlides.flatMap((s, i) => processSlide(preserveEnablingIndex(s, chunk, i))),
     };
   }
 
@@ -1387,8 +1410,10 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
   }
 
   if (sourceMode === 'storyboard') {
-    fullCourse.modules = expandStoryboardMultiQuestionSlides(
-      remapStoryboardScenarioModules(fullCourse.modules as any) as any
+    fullCourse.modules = dedupeStoryboardModuleSlides(
+      expandStoryboardMultiQuestionSlides(
+        remapStoryboardScenarioModules(fullCourse.modules as any) as any
+      ) as any
     ) as any;
   }
   if (configParams.interactionTypes?.length) {

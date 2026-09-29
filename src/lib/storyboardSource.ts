@@ -96,7 +96,8 @@ HARD RULES:
 - Type "scenario" is ONLY for a multi-node branching spec (decision tree with several nodes / "if the learner chooses A then…"). A title that starts with "Scenario:" is not enough.
 - Do NOT convert a teaching screen into a Knowledge Check just because the learner taps cards. Exit check / Keys / pass score = scored quiz. Narration + tiles = choice-cards.
 - Tag teaching slides with enablingIndex when an enabling is obvious; it is OK if several screens share one enabling.
-- Module count: one module unless the storyboard clearly labels multiple modules.`;
+- Module count: one module unless the storyboard clearly labels multiple modules.
+- If the spec already has a Key Takeaways / summary screen, that is the ONE module summary. Do not add a second takeaways slide.`;
 }
 
 export function storyboardHydrateInstructions(): string {
@@ -111,7 +112,8 @@ These rules OVERRIDE the short-bullet rewrite and CEAP narration formula for thi
 - Interaction items (tabs, click-reveal terms, hotspots, quiz options) must come from the screen spec, including correct answers when the spec marks them.
 - Quiz / knowledge-check screens: put the situation box, carrier alert, yellow callout, or short story in data.scenarioText (plain prose, not the question). Put the actual question in questionText. Do not drop the situation.
 - A screen titled "Scenario:" (or a workplace vignette + one scored question) is quiz / multiple-answers with scenarioText. Do NOT emit type "scenario" unless the spec is a multi-node branching tree.
-- EXIT CHECK / Knowledge Check / Keys: / pass score → scored quiz. If the screen lists 2+ numbered questions, emit a SEPARATE quiz/multiple-answers slide for EACH question (same shared title plus (2), (3) on later slides). Copy each stem, options, and Keys verbatim onto that slide. Do NOT pack them into data.questions on one slide. Do NOT emit a "Question 1 of 3" subheader. Honor listed option counts (3 is fine — do not pad to 4). Mark isCorrect from Keys (1=A, 2=B, 3=B). voiceOverText MUST be "".
+- EXIT CHECK / Knowledge Check / Keys: / pass score → scored quiz. If the SCREEN lists 2+ numbered questions AND this chunk already contains N Knowledge Check slides, hydrate EACH existing slide with exactly ONE question (in order). Do NOT add extra quiz slides beyond the slides in this chunk. Do NOT repeat a stem that belongs to another slide. Only split into additional slides if this chunk still has a single packed Knowledge Check that contains all of the numbered questions. Honor listed option counts (3 is fine — do not pad to 4). Mark isCorrect from Keys (1=A, 2=B, 3=B). voiceOverText MUST be "".
+- Do not add a second Key Takeaways / summary slide if one is already in this chunk or earlier in the module.
 - A TEACHING screen with 1–4 selectable tiles/cards and a narration script → type choice-cards. 5+ clickable items → click-reveal instead.
   • Click-to-explore / [DEV] Reveal brief callouts / "select each" / "continue after all are visited" / no Keys/pass score → data.mode = "explore". data.cards = [{ id, label, body, reveal }] with a UNIQUE reveal callout per card (from the DEV note or OST, e.g. Supplier = available material). No Check button. Do NOT mark isCorrect. Do NOT reuse one shared feedback sentence as the only reveal.
   • Decision-sort / "which outcomes could improve" / accepted tiles / Check → data.mode = "select". data.cards = [{ id, label, body, isCorrect }]. data.feedback = the explanatory paragraph after Check. data.selectMode = "multi" unless the spec is tap-one.
@@ -248,21 +250,48 @@ export function findStoryboardMultiQuestionScreens(sourceText: string): { title:
       || part.match(/Knowledge\s*Check:\s*([^\n]+)/i);
     const title = (titleMatch?.[1] || 'Knowledge Check').trim();
     const ofCounts = [...part.matchAll(/question\s+\d+\s+of\s+(\d+)/gi)].map(m => Number(m[1])).filter(n => n >= 2);
-    const numbered = (part.match(/(?:^|\n)\s*(?:question\s*)?[1-9]\s*[.):]/gi) || []).length;
-    const onePerState = /one\s+per\s+screen\s+state|separate\s+slide\s+for\s+each/i.test(part);
+    const qHeadings = (part.match(/(?:^|\n)\s*question\s+[1-9]\b/gi) || []).length;
+    const wordCount = /\bthree\s+single-select/i.test(part) ? 3
+      : /\btwo\s+single-select/i.test(part) ? 2
+      : /\bfour\s+single-select/i.test(part) ? 4
+      : 0;
+    const stated = part.match(/(\d+)\s+(?:single-select\s+)?questions?/i);
+    const statedN = stated ? Number(stated[1]) : 0;
     const count = Math.max(
       ofCounts.length ? Math.max(...ofCounts) : 0,
-      numbered >= 2 ? numbered : 0,
-      onePerState && numbered >= 2 ? numbered : 0,
+      qHeadings,
+      wordCount,
+      statedN >= 2 && statedN <= 8 ? statedN : 0,
     );
     if (count >= 2) out.push({ title, count });
   }
   return out;
 }
 
+function isQuizishSlide(slide: { type?: string; title?: string } | null | undefined): boolean {
+  if (!slide) return false;
+  return QUIZ_SLIDE_TYPES.has(String(slide.type || ''))
+    || !!emptyScenarioQuizKind(slide)
+    || /^knowledge\s*check/i.test(String(slide.title || ''));
+}
+
+function isTakeawaySlide(slide: { type?: string; title?: string } | null | undefined): boolean {
+  if (!slide) return false;
+  return slide.type === 'key-takeaways'
+    || slide.type === 'summary'
+    || /key\s*takeaways?/i.test(String(slide.title || ''));
+}
+
+function questionKey(slide: any): string {
+  const list = quizQuestionList(slide?.interactions?.[0] || slide?.data || slide);
+  const text = String(list[0]?.questionText || slide?.data?.questionText || '').trim().toLowerCase();
+  return text.replace(/\s+/g, ' ');
+}
+
 /**
  * Outline safety net: clone a Knowledge Check slide when the storyboard screen
  * lists 2+ numbered questions but the model still emitted one slide.
+ * If the outline already has enough KC slides, do not clone (avoids 3+3 duplicates).
  */
 export function expandStoryboardQuizOutlineFromSource<T extends { slides?: any[] }>(
   modules: T[],
@@ -270,43 +299,60 @@ export function expandStoryboardQuizOutlineFromSource<T extends { slides?: any[]
 ): T[] {
   const screens = findStoryboardMultiQuestionScreens(sourceText);
   if (!screens.length) return modules;
+  const needed = Math.max(...screens.map(s => s.count), 0);
+  if (needed < 2) return modules;
   return (modules || []).map(mod => {
+    const slides = mod.slides || [];
+    const quizCount = slides.filter(isQuizishSlide).length;
+    if (quizCount !== 1) return mod;
     const next: any[] = [];
-    for (const slide of mod.slides || []) {
-      const isQuiz = QUIZ_SLIDE_TYPES.has(String(slide.type || ''))
-        || /^knowledge\s*check/i.test(String(slide.title || ''));
-      const screen = isQuiz
-        ? screens.find(s => titlesRoughlyMatch(slide.title || '', s.title))
-        : undefined;
-      if (!screen || screen.count < 2) {
+    let cloned = false;
+    for (const slide of slides) {
+      if (cloned || !isQuizishSlide(slide)) {
         next.push(slide);
         continue;
       }
-      const similarInModule = (mod.slides || []).filter((x: any) =>
-        titlesRoughlyMatch(x.title || '', slide.title || '')
-        && (QUIZ_SLIDE_TYPES.has(String(x.type || '')) || /^knowledge\s*check/i.test(String(x.title || '')))
-      ).length;
-      if (similarInModule >= screen.count) {
-        next.push(slide);
-        continue;
-      }
-      const already = next.filter((x) =>
-        titlesRoughlyMatch(x.title || '', slide.title || '')
-        && (QUIZ_SLIDE_TYPES.has(String(x.type || '')) || /^knowledge\s*check/i.test(String(x.title || '')))
-      ).length;
-      if (already > 0) {
-        next.push(slide);
-        continue;
-      }
+      const screen = screens.find(s => titlesRoughlyMatch(slide.title || '', s.title)) || screens[0];
+      const count = Math.max(screen?.count || needed, needed);
       const baseTitle = String(slide.title || 'Knowledge Check').replace(/\s*\(\d+\)\s*$/, '').trim();
-      for (let i = 0; i < screen.count; i++) {
+      for (let i = 0; i < count; i++) {
         next.push({
           ...slide,
           id: i === 0 ? slide.id : `${slide.id || 'kc'}-q${i + 1}`,
           title: i === 0 ? (slide.title || baseTitle) : `${baseTitle} (${i + 1})`,
         });
       }
+      cloned = true;
     }
     return { ...mod, slides: next };
+  });
+}
+
+/**
+ * Drop repeated knowledge-check stems and extra Key Takeaways after hydrate
+ * (chunked generation sometimes re-emits the same exit-check / summary).
+ */
+export function dedupeStoryboardModuleSlides<T extends { slides?: any[] }>(modules: T[]): T[] {
+  return (modules || []).map(mod => {
+    const seenQuestions = new Set<string>();
+    let takeawaysKept = 0;
+    const slides: any[] = [];
+    for (const slide of mod.slides || []) {
+      if (isQuizishSlide(slide)) {
+        const key = questionKey(slide);
+        if (key && seenQuestions.has(key)) continue;
+        if (key) seenQuestions.add(key);
+        slides.push(slide);
+        continue;
+      }
+      if (isTakeawaySlide(slide)) {
+        takeawaysKept += 1;
+        if (takeawaysKept > 1) continue;
+        slides.push(slide);
+        continue;
+      }
+      slides.push(slide);
+    }
+    return { ...mod, slides };
   });
 }

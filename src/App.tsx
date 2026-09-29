@@ -8490,56 +8490,148 @@ export default function App() {
                       {String(editingSlide.id) === '__course-objectives__' ? (
                         <div className="space-y-3">
                           <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">Course objectives</label>
-                          <p className="text-[11px] text-slate-400">Edit terminal and enabling objectives. Saved changes update the Course Objectives slide.</p>
+                          <p className="text-[11px] text-slate-400 leading-relaxed">
+                            Parent fields are terminal objectives; nested fields are enabling objectives. Promote an enabling item to make it its own parent without regenerating the course.
+                          </p>
                           {(Array.isArray((editingSlide as any)._objectives) ? (editingSlide as any)._objectives : learningObjectives || []).map((obj: any, oi: number) => {
                             const term = typeof obj === 'string' ? obj : (obj?.terminalObjective || '');
                             const enablers: string[] = typeof obj === 'string' ? [] : (obj?.enablingObjectives || []);
+                            const readList = () => [...(Array.isArray((editingSlideRef.current as any)?._objectives)
+                              ? (editingSlideRef.current as any)._objectives
+                              : learningObjectives || [])];
+                            const writeList = (list: any[]) => {
+                              const updated = { ...(editingSlideRef.current ?? editingSlide), _objectives: list };
+                              editingSlideRef.current = updated;
+                              setEditingSlide(updated);
+                            };
+                            const asGroup = (item: any) => typeof item === 'string'
+                              ? { terminalObjective: item, enablingObjectives: [] as string[] }
+                              : { terminalObjective: item?.terminalObjective || '', enablingObjectives: [...(item?.enablingObjectives || [])] };
                             return (
                               <div key={oi} className="rounded-xl border border-slate-700 bg-slate-950 p-3 space-y-2">
-                                <label className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">Objective {oi + 1}</label>
+                                <div className="flex items-center justify-between gap-2">
+                                  <label className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">Objective {oi + 1} (parent)</label>
+                                  <button
+                                    type="button"
+                                    onClick={() => writeList(readList().filter((_, idx) => idx !== oi))}
+                                    className="text-[10px] font-bold text-slate-500 hover:text-red-400"
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
                                 <textarea
                                   rows={2}
                                   value={term}
                                   onChange={(e) => {
-                                    const list = [...(Array.isArray((editingSlideRef.current as any)?._objectives)
-                                      ? (editingSlideRef.current as any)._objectives
-                                      : learningObjectives || [])];
+                                    const list = readList();
                                     const prev = list[oi];
                                     list[oi] = typeof prev === 'string'
                                       ? e.target.value
                                       : { ...(prev || {}), terminalObjective: e.target.value, enablingObjectives: enablers };
-                                    const updated = { ...(editingSlideRef.current ?? editingSlide), _objectives: list };
-                                    editingSlideRef.current = updated;
-                                    setEditingSlide(updated);
+                                    writeList(list);
                                   }}
                                   className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"
                                   placeholder="Terminal objective…"
                                 />
                                 {enablers.map((en, ei) => (
-                                  <input
-                                    key={ei}
-                                    value={en}
-                                    onChange={(e) => {
-                                      const list = [...(Array.isArray((editingSlideRef.current as any)?._objectives)
-                                        ? (editingSlideRef.current as any)._objectives
-                                        : learningObjectives || [])];
-                                      const prev = typeof list[oi] === 'string'
-                                        ? { terminalObjective: list[oi], enablingObjectives: [...enablers] }
-                                        : { ...(list[oi] || {}), enablingObjectives: [...enablers] };
-                                      const nextEn = [...(prev.enablingObjectives || [])];
-                                      nextEn[ei] = e.target.value;
-                                      list[oi] = { ...prev, enablingObjectives: nextEn };
-                                      const updated = { ...(editingSlideRef.current ?? editingSlide), _objectives: list };
-                                      editingSlideRef.current = updated;
-                                      setEditingSlide(updated);
-                                    }}
-                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500"
-                                    placeholder={`Enabling objective ${ei + 1}`}
-                                  />
+                                  <div key={ei} className="flex items-start gap-1.5">
+                                    <input
+                                      value={en}
+                                      onChange={(e) => {
+                                        const list = readList();
+                                        const prev = asGroup(list[oi]);
+                                        const nextEn = [...(prev.enablingObjectives || [])];
+                                        nextEn[ei] = e.target.value;
+                                        list[oi] = { ...prev, enablingObjectives: nextEn };
+                                        writeList(list);
+                                      }}
+                                      className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500"
+                                      placeholder={`Enabling objective ${ei + 1}`}
+                                    />
+                                    <button
+                                      type="button"
+                                      title="Promote to parent objective"
+                                      onClick={() => {
+                                        const list = readList();
+                                        const prev = asGroup(list[oi]);
+                                        const text = String(prev.enablingObjectives[ei] || '').trim();
+                                        const nextEn = prev.enablingObjectives.filter((_, idx) => idx !== ei);
+                                        list[oi] = { ...prev, enablingObjectives: nextEn };
+                                        if (text) {
+                                          list.splice(oi + 1, 0, { terminalObjective: text, enablingObjectives: [] });
+                                        }
+                                        writeList(list);
+                                      }}
+                                      className="shrink-0 px-1.5 py-1 text-[9px] font-bold uppercase tracking-wide text-indigo-300 hover:text-indigo-100"
+                                    >
+                                      Promote
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title="Remove enabling objective"
+                                      onClick={() => {
+                                        const list = readList();
+                                        const prev = asGroup(list[oi]);
+                                        list[oi] = { ...prev, enablingObjectives: prev.enablingObjectives.filter((_, idx) => idx !== ei) };
+                                        writeList(list);
+                                      }}
+                                      className="shrink-0 p-1 text-slate-500 hover:text-red-400"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
                                 ))}
+                                <div className="flex flex-wrap gap-2 pt-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const list = readList();
+                                      const prev = asGroup(list[oi]);
+                                      list[oi] = { ...prev, enablingObjectives: [...prev.enablingObjectives, ''] };
+                                      writeList(list);
+                                    }}
+                                    className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-indigo-300"
+                                  >
+                                    <Plus className="w-3 h-3" /> Add enabling
+                                  </button>
+                                  {enablers.some(e => String(e).trim()) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const list = readList();
+                                        const prev = asGroup(list[oi]);
+                                        const promoted = prev.enablingObjectives
+                                          .map(e => String(e).trim())
+                                          .filter(Boolean)
+                                          .map(text => ({ terminalObjective: text, enablingObjectives: [] as string[] }));
+                                        list[oi] = { ...prev, enablingObjectives: [] };
+                                        list.splice(oi + 1, 0, ...promoted);
+                                        writeList(list);
+                                      }}
+                                      className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-300 hover:text-indigo-100"
+                                    >
+                                      Promote all enablings
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                             );
                           })}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const list = [...(Array.isArray((editingSlideRef.current as any)?._objectives)
+                                ? (editingSlideRef.current as any)._objectives
+                                : learningObjectives || [])];
+                              list.push({ terminalObjective: '', enablingObjectives: [] });
+                              const updated = { ...(editingSlideRef.current ?? editingSlide), _objectives: list };
+                              editingSlideRef.current = updated;
+                              setEditingSlide(updated);
+                            }}
+                            className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-300 hover:text-indigo-100"
+                          >
+                            <Plus className="w-3.5 h-3.5" /> Add parent objective
+                          </button>
                         </div>
                       ) : (
                       <div className="space-y-2">
@@ -9482,7 +9574,21 @@ export default function App() {
                             setSyntheticAudioMap(prev => ({ ...prev, [latest.id]: latest.voiceOverUrl as string }));
                           }
                           if (latest.id === '__course-objectives__' && Array.isArray((latest as any)._objectives)) {
-                            setLearningObjectives((latest as any)._objectives);
+                            const cleaned = ((latest as any)._objectives as any[])
+                              .map((obj: any) => {
+                                if (typeof obj === 'string') {
+                                  const t = obj.trim();
+                                  return t ? t : null;
+                                }
+                                const term = String(obj?.terminalObjective || '').trim();
+                                const en = (obj?.enablingObjectives || [])
+                                  .map((e: string) => String(e || '').trim())
+                                  .filter(Boolean);
+                                if (!term && !en.length) return null;
+                                return { terminalObjective: term, enablingObjectives: en };
+                              })
+                              .filter(Boolean);
+                            setLearningObjectives(cleaned as any);
                           }
                         } else {
                           setCourse((prevCourse: any) => {
