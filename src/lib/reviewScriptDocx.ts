@@ -3,8 +3,9 @@
  * in player / LMS slide order (no screenshots, no round-trip import).
  */
 import JSZip from 'jszip';
-import { coerceOstText, isSymbolOnlyOstLine } from './formatTabIntroOst';
+import { coerceOstText, formatTabIntroOst, formatTabOstBody, isSymbolOnlyOstLine } from './formatTabIntroOst';
 import { isKnowledgeCheckSlide, slideSkipsNarration } from './enablingCoverage';
+import { tocNumberByIndex } from './playerToc';
 import { stripSlideTypePrefix } from './stripSlideTypePrefix';
 
 type AnySlide = Record<string, any>;
@@ -160,12 +161,20 @@ function nestedKind(type: string): { listKey: string; prefix: string } | null {
 }
 
 function listFor(data: any, preferred: string | null): any[] {
-  if (!data || typeof data !== 'object') return [];
-  if (preferred && Array.isArray(data[preferred]) && data[preferred].length) return data[preferred];
-  for (const key of ['tabs', 'items', 'cards', 'events', 'hotspots', 'points', 'segments', 'steps', 'pairs', 'objectives']) {
-    if (Array.isArray(data[key]) && data[key].length) return data[key];
+  if (!data || typeof data !== 'object' || !preferred) return [];
+  if (preferred === 'hotspots') {
+    const list = data.hotspots || data.points;
+    return Array.isArray(list) ? list : [];
   }
-  return [];
+  if (preferred === 'tabs') {
+    const list = data.tabs || data.items;
+    return Array.isArray(list) ? list : [];
+  }
+  if (preferred === 'cards') {
+    const list = data.cards || data.items;
+    return Array.isArray(list) ? list : [];
+  }
+  return Array.isArray(data[preferred]) ? data[preferred] : [];
 }
 
 function itemHeading(item: any, index: number, prefix: string): string {
@@ -215,6 +224,18 @@ function uniqueLines(...groups: string[][]): string[] {
 }
 
 function itemOst(item: any): string[] {
+  const body = formatTabOstBody(
+    item?.content
+    || item?.definition
+    || item?.description
+    || item?.expandedContent
+    || item?.back
+    || item?.body
+    || item?.text
+    || '',
+  );
+  const fromFormatted = htmlToLines(body);
+  if (fromFormatted.length) return fromFormatted;
   return uniqueLines(
     htmlToLines(item?.content),
     htmlToLines(item?.definition),
@@ -369,36 +390,35 @@ function ostAndNarrationBlocks(ost: OstLine[] | string[], narration: string[], s
   return blocks;
 }
 
-function inferTocRefs(slides: AnySlide[]): Record<string, string> {
-  const refs: Record<string, string> = {};
-  const skip = new Set([
-    'cover', 'player-tour', 'course-objectives', 'module-cover',
-    'exam-intro', 'mastery-exam', 'exam-results', 'closing',
-  ]);
-  let moduleNum = 0;
-  let n = 0;
-  for (const slide of slides) {
-    if (!slide) continue;
-    const type = String(slide.type || '');
-    const id = String(slide.id || '');
-    if (type === 'module-cover' || id.startsWith('__module-cover-')) {
-      const m = id.match(/__module-cover-(\d+)__/);
-      moduleNum = Number(slide._moduleNumber) || (m ? Number(m[1]) : moduleNum + 1);
-      n = 0;
-      continue;
-    }
-    if (skip.has(type)) continue;
-    const overview = id.match(/__module-overview-(\d+)__/);
-    if (overview) {
-      moduleNum = Number(overview[1]);
-      n = 0;
-    } else if (!moduleNum) {
-      moduleNum = 1;
-    }
-    n += 1;
-    if (id) refs[id] = `${moduleNum}.${n}`;
+function playerVisibleIntroOst(slide: AnySlide, type: string, data: any): OstLine[] {
+  if (type === 'tabbed-horizontal' || type === 'tabbed-vertical') {
+    return toOstLines(htmlToLines(formatTabIntroOst({
+      introContent: String(data.introContent || slide.content || ''),
+      voiceOverText: String(slide.voiceOverText || slide.narration || ''),
+      title: String(slide.title || ''),
+    })));
   }
-  return refs;
+  if (isKnowledgeCheckSlide(slide)) {
+    return toOstLines(uniqueLines(
+      htmlToLines(slide.content),
+      htmlToLines(data.introContent),
+      htmlToLines(data.prompt),
+      htmlToLines(data.question),
+      htmlToLines(data.questionText),
+      htmlToLines(data.scenarioText),
+    ));
+  }
+  if (type === 'choice-cards') {
+    return toOstLines(uniqueLines(
+      htmlToLines(data.prompt),
+      htmlToLines(data.question),
+      htmlToLines(slide.content),
+    ));
+  }
+  if (type === 'module-overview' || type === 'course-objectives') {
+    return uniqueOst(objectiveOst(slide._objectives), toOstLines(htmlToLines(slide.content)));
+  }
+  return toOstLines(htmlToLines(slide.content));
 }
 
 function playerHeading(slide: AnySlide, tocRef?: string): string {
@@ -416,11 +436,11 @@ export function buildReviewScriptModel(
   extras?: ReviewScriptExtras,
 ): ReviewSlideRow[] {
   const examQuestions = Array.isArray(extras?.examQuestions) ? extras!.examQuestions! : [];
-  const tocRefs = { ...inferTocRefs(slides), ...(extras?.tocRefs || {}) };
+  const tocByIndex = tocNumberByIndex(slides);
   let moduleLabel = '';
   const rows: ReviewSlideRow[] = [];
 
-  slides.forEach((slide) => {
+  slides.forEach((slide, slideIndex) => {
     if (!slide) return;
     const type = String(slide.type || '');
     const id = String(slide.id || '');
@@ -448,19 +468,11 @@ export function buildReviewScriptModel(
     const nested = listFor(data, kind?.listKey || null);
     const prefix = kind?.prefix || 'Item';
 
-    const introOst = toOstLines(uniqueLines(
-      htmlToLines(slide.content),
-      htmlToLines(data.introContent),
-      htmlToLines(data.prompt),
-      htmlToLines(data.question),
-      htmlToLines(data.questionText),
-      htmlToLines(data.scenarioText),
-      htmlToLines(data.stem),
-      htmlToLines(data.preamble),
-      htmlToLines(data.introduction),
-    ));
+    const introOst = playerVisibleIntroOst(slide, type, data);
     const introNarr = silent ? [] : narrationLines(slide.voiceOverText || slide.narration);
-    const ost = uniqueOst(objectiveOst(slide._objectives), introOst);
+    const ost = (type === 'module-overview' || type === 'course-objectives')
+      ? introOst
+      : uniqueOst(objectiveOst(slide._objectives), introOst);
 
     const sections: ReviewSection[] = [];
 
@@ -533,7 +545,7 @@ export function buildReviewScriptModel(
 
     const title = stripSlideTypePrefix(String(slide.title || 'Untitled slide')).trim() || 'Untitled slide';
     rows.push({
-      heading: playerHeading(slide, tocRefs[id]),
+      heading: playerHeading(slide, tocByIndex[slideIndex]),
       title,
       typeLabel: typeLabel(slide),
       moduleLabel: moduleLabel || undefined,
@@ -593,6 +605,11 @@ function wBlockLabel(label: string, style: ReviewBlock['style']): string {
 function documentXml(courseTitle: string, rows: ReviewSlideRow[]): string {
   const parts: string[] = [];
   parts.push(wP(courseTitle || 'Untitled course', 'Title'));
+  parts.push(wP(
+    `Script from the current player slides (${rows.length} screens). On-screen text and narration match Course development.`,
+    undefined,
+    true,
+  ));
 
   rows.forEach((row, index) => {
     const mod = row.moduleLabel ? ` · ${row.moduleLabel}` : '';

@@ -7,6 +7,7 @@ import { ChevronLeft, ChevronRight, BookOpen, ChevronDown, Lock, GraduationCap, 
 import { cn } from '../../lib/utils';
 import type { NavigationMode } from '../../types/course';
 import { stripSlideTypePrefix } from '../../lib/stripSlideTypePrefix';
+import { indexOfPlayerSlide, tocNumberByIndex } from '../../lib/playerToc';
 
 interface Slide { id: string; title: string; type: string; }
 interface Module { id: string; title: string; slides: Slide[]; }
@@ -85,7 +86,10 @@ export function CourseNavSidebar({
     });
   };
 
-  const getSlideGlobalIndex = (slide: Slide) => allSlides.findIndex(s => s.id === slide.id);
+  const getSlideGlobalIndex = (slide: Slide, occurrence: number) =>
+    indexOfPlayerSlide(allSlides, slide, occurrence);
+
+  const tocByIndex = tocNumberByIndex(allSlides);
 
   const isContentLocked = (idx: number): boolean => {
     if (examPhase === 'active') return true;
@@ -140,7 +144,9 @@ export function CourseNavSidebar({
     ? 'text-purple-300'
     : 'text-slate-500';
 
-  const renderList = (go: (idx: number) => void) => (
+  const renderList = (go: (idx: number) => void) => {
+    const seenIds = new Map<string, number>();
+    return (
     <div className="flex-1 overflow-y-auto py-2 custom-scrollbar">
       {allSlides.length > 0 && allSlides[0]?.type === 'cover' && (() => {
         const isActive = currentSlideIndex === 0;
@@ -210,10 +216,15 @@ export function CourseNavSidebar({
             const overviewSlide = includeModuleOverviewSlides === false
               ? undefined
               : allSlides.find(s => s.id === `__module-overview-${mi + 1}__`);
-            const slidesToShow: Slide[] = overviewSlide ? [overviewSlide, ...mod.slides] : mod.slides;
-            return slidesToShow.map((slide, si) => {
-              const globalIdx = getSlideGlobalIndex(slide);
+            const moduleSlides = (mod.slides || []).filter((s: Slide) => s && s.type !== 'game-template');
+            const slidesToShow: Slide[] = overviewSlide ? [overviewSlide, ...moduleSlides] : moduleSlides;
+            return slidesToShow.map((slide) => {
+              const id = String(slide.id || '');
+              const occurrence = seenIds.get(id) || 0;
+              if (id) seenIds.set(id, occurrence + 1);
+              const globalIdx = getSlideGlobalIndex(slide, occurrence);
               const isActive = globalIdx === currentSlideIndex;
+              const tocRef = globalIdx >= 0 ? tocByIndex[globalIdx] : undefined;
               const locked = isContentLocked(globalIdx);
               let tooltip = '';
               if (locked && examPhase === 'active') tooltip = 'Complete the quiz to return to course content';
@@ -221,9 +232,9 @@ export function CourseNavSidebar({
               else if (locked && navigationMode === 'restricted') tooltip = 'Complete previous slides first';
               return (
                 <button
-                  key={slide.id}
-                  onClick={() => !locked && go(globalIdx)}
-                  disabled={locked}
+                  key={`${id || 'slide'}-${occurrence}`}
+                  onClick={() => !locked && globalIdx >= 0 && go(globalIdx)}
+                  disabled={locked || globalIdx < 0}
                   title={locked ? tooltip : stripSlideTypePrefix(slide.title)}
                   className={cn(
                     'w-full flex items-center gap-2.5 pl-7 pr-4 py-2.5 text-left transition-all',
@@ -231,7 +242,7 @@ export function CourseNavSidebar({
                   )}
                 >
                   {tocNumbering === 'numbered'
-                    ? <span className="text-xs font-black shrink-0 w-8 text-right pr-1 opacity-70">{mi + 1}.{si + 1}</span>
+                    ? <span className="text-xs font-black shrink-0 min-w-[2.75rem] text-right pr-1 opacity-70 tabular-nums">{tocRef || `${mi + 1}`}</span>
                     : locked
                     ? <Lock className="w-3 h-3 shrink-0 opacity-50" />
                     : <span className="text-base shrink-0">{SLIDE_TYPE_ICON[slide.type] || '📄'}</span>
@@ -302,7 +313,8 @@ export function CourseNavSidebar({
         </div>
       )}
     </div>
-  );
+    );
+  };
 
   // ── Dropdown variant (mobile / max content space) ─────────────────────────
   if (variant === 'dropdown') {

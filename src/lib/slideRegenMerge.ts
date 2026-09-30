@@ -48,17 +48,20 @@ export function mergeRegenIntoSlide(existing: any, result: RegenSlideResult): an
   const existingData =
     existing?.data && typeof existing.data === 'object' ? { ...existing.data } : {};
 
+  const kept = pickKeptMedia(existingData);
   let nextData: any;
   if (result.data === undefined) {
-    nextData = pickKeptMedia(existingData);
-    if (!Object.keys(nextData).length) nextData = existing.data;
+    // Content (and similar) regen returns no data payload — drop leftover
+    // tabs/prompts/items so the player and review script don't keep the old type.
+    nextData = Object.keys(kept).length ? kept : undefined;
   } else {
-    nextData = { ...pickKeptMedia(existingData), ...existingData, ...result.data };
+    nextData = { ...kept, ...result.data };
   }
 
   const newScript = String(result.voiceOverText || '').trim();
   const oldScript = String(existing.voiceOverText || existing.narration || '').trim();
   const scriptChanged = !!newScript && newScript !== oldScript;
+  const typeChanged = !!(result.type && result.type !== existing.type);
 
   const next: any = {
     ...existing,
@@ -70,6 +73,10 @@ export function mergeRegenIntoSlide(existing: any, result: RegenSlideResult): an
     voiceOverText: newScript || existing.voiceOverText,
     narration: newScript || existing.narration,
   };
+
+  if (result.data === undefined || typeChanged) {
+    delete next.interactions;
+  }
 
   if (scriptChanged) {
     next.voiceOverUrl = undefined;

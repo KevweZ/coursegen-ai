@@ -129,13 +129,22 @@ export function insertSlidesIntoCourse(
     newModule?: { title: string; description?: string };
   },
 ): { course: any; firstId: string } | null {
-  const incoming = (slides || []).filter(Boolean).map((s: any) => ({
-    ...s,
-    id: String(s?.id || '').trim() || newCourseEntityId(),
-  }));
+  const base = course || { modules: [] };
+  const usedIds = new Set<string>();
+  for (const m of base.modules || []) {
+    for (const s of m.slides || []) {
+      const existingId = String(s?.id || '').trim();
+      if (existingId) usedIds.add(existingId);
+    }
+  }
+  const incoming = (slides || []).filter(Boolean).map((s: any) => {
+    let id = String(s?.id || '').trim();
+    if (!id || usedIds.has(id)) id = newCourseEntityId();
+    usedIds.add(id);
+    return { ...s, id };
+  });
   if (!incoming.length) return null;
   const firstId = String(incoming[0].id);
-  const base = course || { modules: [] };
 
   if (opts.placement === 'new-module' || !(base.modules || []).length) {
     const mod = {

@@ -200,6 +200,7 @@ import { FloatingImage } from './types/course';
 import { stripCourseAutoPromotedFloating, floatingMapFromCourse } from './lib/promoteSlideImages';
 import { buildReviewSnapshot, createReviewLink, fetchReviewSnapshot } from './lib/reviewLinkService';
 import { downloadReviewScriptDocx } from './lib/reviewScriptDocx';
+import { tocRefMapFirstWins } from './lib/playerToc';
 import TabbedHorizontal, { PROCESS_PANEL_DEFAULT, PROCESS_PANEL_PRESETS } from './components/interactions/TabbedContentHorizontal';
 import TabbedVertical from './components/interactions/TabbedContentVertical';
 import FolderExplorer from './components/interactions/FolderExplorer';
@@ -1630,6 +1631,8 @@ export default function App() {
   const [editDrawerOpen, setEditDrawerOpen] = useState(false);
   /** Always-current ref so Save Changes captures the latest editingSlide even after async edits */
   const editingSlideRef = useRef<any>(null);
+  /** Original module slide object so Save patches that row even if ids were duplicated. */
+  const editingSlideSourceRef = useRef<any>(null);
   const [editDrawerTab, setEditDrawerTab] = useState<'text'|'audio'|'regenerate'>('text');
   const [regenTargetType, setRegenTargetType] = useState<string>('content');
   const [regenNoInteraction, setRegenNoInteraction] = useState(false);
@@ -2643,20 +2646,7 @@ export default function App() {
   })();
 
   /** TOC-aligned slide refs (1.1 = overview when enabled, then content slides) */
-  const tocRefBySlideId = React.useMemo(() => {
-    const map = new Map<string, string>();
-    if (!course?.modules) return map;
-    course.modules.forEach((mod: any, mi: number) => {
-      let n = 1;
-      if (showModuleOverviewSlides) {
-        map.set(`__module-overview-${mi + 1}__`, `${mi + 1}.${n++}`);
-      }
-      (mod.slides || []).forEach((s: any) => {
-        if (s?.id) map.set(s.id, `${mi + 1}.${n++}`);
-      });
-    });
-    return map;
-  }, [course, showModuleOverviewSlides]);
+  const tocRefBySlideId = React.useMemo(() => tocRefMapFirstWins(allSlides), [allSlides]);
 
   const qcReportWithTocRefs = React.useMemo(() => {
     if (!qcReport) return null;
@@ -4514,6 +4504,7 @@ export default function App() {
     if (!s) return;
     const normalized = normalizeRegenSlideType(s);
     editingSlideRef.current = s;
+    editingSlideSourceRef.current = s;
     setEditingSlide(s);
     setEditDrawerOpen(true);
     setEditDrawerTab('regenerate');
@@ -4811,7 +4802,6 @@ export default function App() {
     try {
       await downloadReviewScriptDocx(course.title || 'Untitled Course', allSlides, {
         examQuestions,
-        tocRefs: Object.fromEntries(tocRefBySlideId),
       });
       showDraftMessage('Downloaded the review script (OST and narration) as a Word file.');
     } catch (e: any) {
@@ -6139,6 +6129,7 @@ export default function App() {
               if (targetSlide) {
                 const f = String(field || '').toLowerCase();
                 const openAudio = /voiceover|narration|audio/.test(f) && !slideSkipsNarration(targetSlide);
+                editingSlideSourceRef.current = targetSlide;
                 editingSlideRef.current = {
                   ...targetSlide,
                   _objectives: targetSlide.id === '__course-objectives__'
@@ -6646,6 +6637,7 @@ export default function App() {
                                   ? { ...seeded, content: sanitizeOstText(String(seeded.content || '')) }
                                   : seeded;
                                 editingSlideRef.current = cleaned;
+                                editingSlideSourceRef.current = currentSlide;
                                 setEditingSlide(cleaned);
                                 setEditDrawerOpen(true);
                                 setEditDrawerTab('text');
@@ -9726,7 +9718,7 @@ export default function App() {
                 {/* Footer */}
                 <div className="px-5 py-4 border-t border-slate-800 bg-slate-800/40 flex gap-3 flex-shrink-0">
                   <button
-                    onClick={() => { editingSlideRef.current = null; setEditingSlide(null); }}
+                    onClick={() => { editingSlideRef.current = null; editingSlideSourceRef.current = null; setEditingSlide(null); }}
                     className="flex-1 px-4 py-2.5 rounded-xl border-2 border-white/80 bg-white text-slate-900 font-bold text-sm hover:bg-slate-100 transition-all shadow-sm"
                   >
                     Cancel
@@ -9770,17 +9762,35 @@ export default function App() {
                         } else {
                           setCourse((prevCourse: any) => {
                             if (!prevCourse) return prevCourse;
-                            // Also sanitize tab/item OST so generated courses don't keep symbol-only bullets
                             const slideToSave = sanitizeInteractionOstOnSave(latest);
+                            const source = editingSlideSourceRef.current;
+                            let hits = 0;
+                            const next = {
+                              ...prevCourse,
+                              modules: prevCourse.modules.map((m: any) => ({
+                                ...m,
+                                slides: m.slides.map((s: any) => {
+                                  if (source && s === source) {
+                                    hits += 1;
+                                    return slideToSave;
+                                  }
+                                  return s;
+                                }),
+                              })),
+                            };
+                            if (hits === 1) return next;
                             return {
                               ...prevCourse,
                               modules: prevCourse.modules.map((m: any) => ({
                                 ...m,
-                                slides: m.slides.map((s: any) => s.id === slideToSave.id ? slideToSave : s)
+                                slides: m.slides.map((s: any) =>
+                                  slidesMatchId(s.id, slideToSave.id) ? slideToSave : s
+                                ),
                               })),
                             };
                           });
                         }
+                        editingSlideSourceRef.current = null;
                       }
                       setEditingSlide(null);
                     }}
