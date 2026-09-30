@@ -84,7 +84,7 @@ import {
 } from './lib/knowledgeCheckOst';
 import { slideSkipsNarration } from './lib/enablingCoverage';
 import { hasLiveNarrationUrl } from './lib/narrationAudio';
-import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft, generateMasteryExam } from './services/aiService';
+import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft, generateMasteryExam, generateInsertedContent } from './services/aiService';
 import { createScormPackage, ScormVersion } from './services/scormService';
 import { FlashcardGrid } from './components/FlashcardGrid';
 import { ScenarioEngine } from './components/interactions/ScenarioEngine';
@@ -101,6 +101,7 @@ import { OutlinePreview } from './components/builder/OutlinePreview';
 import { CourseSettingsPage } from './components/builder/CourseSettingsPage';
 import { CourseReviewPage } from './components/builder/CourseReviewPage';
 import { ConfirmDialog } from './components/builder/ConfirmDialog';
+import { AddContentModal, type AddContentForm } from './components/builder/AddContentModal';
 import { ReviewLinkModal } from './components/builder/ReviewLinkModal';
 import { EditSlideItemFields, sanitizeInteractionOstOnSave } from './components/builder/EditSlideItemFields';
 import { UploadPathModal, UploadPathChoice } from './components/builder/UploadPathModal';
@@ -148,6 +149,15 @@ import {
 } from './lib/draftMedia';
 import { clearNarrationCache, stashAudioUrl, setLiveNarrationScope } from './lib/narrationCache';
 import { mergeRegenIntoSlide, patchCourseSlideById, slidesMatchId } from './lib/slideRegenMerge';
+import {
+  countRealModuleSlides,
+  deleteSlideById,
+  insertSlidesIntoCourse,
+  isChromePlayerSlide,
+  isDeletableCourseSlide,
+  moduleIndexFromVirtualSlideId,
+  resolveInsertModuleIndex,
+} from './lib/courseSlideEdits';
 import {
   ROUTES,
   parseAppPath,
@@ -855,7 +865,7 @@ export default function App() {
   const showDraftMessage = (msg: string) => {
     setDraftSaveMessage(msg);
     if (draftMessageTimerRef.current) clearTimeout(draftMessageTimerRef.current);
-    const long = /fail|full|error|quota|sign in|cannot|can’t|not found|narration|trial|credit|audio|eligible|skipped|system slide|sync/i.test(msg);
+    const long = /fail|full|error|quota|sign in|cannot|can’t|not found|narration|trial|credit|audio|eligible|skipped|system slide|sync|generating/i.test(msg);
     draftMessageTimerRef.current = setTimeout(() => setDraftSaveMessage(null), long ? 10000 : 4500);
   };
 
@@ -1506,6 +1516,10 @@ export default function App() {
   const [lastUploadPath, setLastUploadPath] = useState<UploadPathChoice | null>(null);
   const [regeneratingSlideId, setRegeneratingSlideId] = useState<string | null>(null);
   const [showEditMenu, setShowEditMenu] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [addContentOpen, setAddContentOpen] = useState(false);
+  const [isAddingContent, setIsAddingContent] = useState(false);
+  const [pendingSlideFocusId, setPendingSlideFocusId] = useState<string | null>(null);
   /** Ref so runAnalysis (defined earlier) can call finalize after hydrate */
   const finalizeGeneratedCourseRef = useRef<
     (course: any, settingsOverride?: SavedCourseSettings | null) => Promise<void>
@@ -2052,7 +2066,13 @@ export default function App() {
 
   // ── Undo history (max 20 snapshots) ─────────────────────────────────────────
   const MAX_UNDO = 20;
-  type UndoSnapshot = { course: any; floatingImagesMap: Record<string, FloatingImage[]>; courseBg: string | null; syntheticSlideOverrides: Record<string, any>; };
+  type UndoSnapshot = {
+    course: any;
+    floatingImagesMap: Record<string, FloatingImage[]>;
+    courseBg: string | null;
+    syntheticSlideOverrides: Record<string, any>;
+    learningObjectives: (string | TerminalObjectiveGroup)[];
+  };
   const [undoHistory, setUndoHistory] = useState<UndoSnapshot[]>([]);
   // Call before any user-triggered mutation to save current state
   const pushUndo = () => {
@@ -2063,6 +2083,7 @@ export default function App() {
         floatingImagesMap: JSON.parse(JSON.stringify(floatingImagesMap)),
         courseBg,
         syntheticSlideOverrides: JSON.parse(JSON.stringify(syntheticSlideOverrides)),
+        learningObjectives: JSON.parse(JSON.stringify(learningObjectives)),
       },
     ]);
   };
@@ -2074,6 +2095,7 @@ export default function App() {
       setFloatingImagesMap(last.floatingImagesMap);
       setCourseBg(last.courseBg);
       setSyntheticSlideOverrides(last.syntheticSlideOverrides || {});
+      if (Array.isArray(last.learningObjectives)) setLearningObjectives(last.learningObjectives);
       return prev.slice(0, -1);
     });
   };
@@ -2563,6 +2585,15 @@ export default function App() {
   const currentSlide = allSlides[currentSlideIndex];
   const FULL_BLEED_TYPES = ['cover', 'title', 'module-cover', 'closing', 'key-takeaways', 'player-tour', 'course-objectives', 'module-overview', 'mastery-exam', 'exam-intro', 'exam-results'];
   const isFullBleed = FULL_BLEED_TYPES.includes(currentSlide?.type as string);
+
+  React.useEffect(() => {
+    if (!pendingSlideFocusId) return;
+    const i = allSlides.findIndex(s => slidesMatchId(s?.id, pendingSlideFocusId));
+    if (i >= 0) {
+      setCurrentSlideIndex(i);
+      setPendingSlideFocusId(null);
+    }
+  }, [allSlides, pendingSlideFocusId]);
 
   const KNOWLEDGE_CHECK_TYPES = new Set([
     'matching', 'sorting', 'drop-targets', 'quiz', 'multiple-choice',
@@ -4865,6 +4896,111 @@ export default function App() {
       console.warn('[slide regen] TTS failed', e);
       showDraftMessage('Slide updated. Audio could not be regenerated — use Regenerate audio on this slide.');
     }
+  }
+
+  const handleDeleteCurrentSlide = () => {
+    if (!course || !currentSlide || isLearnerPlayer) return;
+    if (!isDeletableCourseSlide(currentSlide)) {
+      showDraftMessage('Course chrome (title, overview, quiz) can’t be deleted. Delete a teaching slide instead.');
+      setDeleteConfirmOpen(false);
+      return;
+    }
+    if (countRealModuleSlides(course) <= 1) {
+      showDraftMessage('Keep at least one content slide. Add a replacement first if you need to replace this one.');
+      setDeleteConfirmOpen(false);
+      return;
+    }
+    const stayIndex = Math.max(0, currentSlideIndex - 1);
+    pushUndo();
+    const next = deleteSlideById(course, currentSlide.id);
+    if (!next) {
+      showDraftMessage('This slide can’t be deleted.');
+      setDeleteConfirmOpen(false);
+      return;
+    }
+    setCourse(next);
+    setCurrentSlideIndex(stayIndex);
+    setDeleteConfirmOpen(false);
+    const gone = String(currentSlide.id);
+    setFloatingImagesMap(prev => {
+      if (!prev[gone]) return prev;
+      const { [gone]: _drop, ...rest } = prev;
+      return rest;
+    });
+    showDraftMessage('Slide deleted. Use Undo to restore it.');
+  };
+
+  const handleGenerateAddedContent = async (form: AddContentForm) => {
+    if (!course || isLearnerPlayer) return;
+    const brief = form.brief.trim();
+    if (brief.length < 8) {
+      showDraftMessage('Paste the source content to teach, then generate.');
+      return;
+    }
+    setIsAddingContent(true);
+    showDraftMessage('Generating new content…');
+    try {
+      const moduleIdx = resolveInsertModuleIndex(course, currentSlide);
+      const hostModule = course.modules?.[moduleIdx];
+      const result = await generateInsertedContent({
+        courseTitle: course.title || 'Course',
+        courseDescription: course.description || courseDescription,
+        moduleTitle: hostModule?.title || `Module ${moduleIdx + 1}`,
+        existingSlideTitles: (hostModule?.slides || []).map((s: any) => String(s?.title || '')).filter(Boolean),
+        brief,
+        titleHint: form.titleHint,
+        newObjective: form.newObjective,
+        scope: form.scope,
+        slideCount: form.slideCount,
+        autoSlideCount: form.autoSlideCount,
+        allowedInteractionTypes: interactionTypes,
+      });
+      if (!result.slides.length) throw new Error('No slides were generated.');
+      pushUndo();
+      const spliced = insertSlidesIntoCourse(course, result.slides, {
+        placement: form.placement,
+        currentSlide,
+        newModule: form.placement === 'new-module'
+          ? { title: result.moduleTitle || form.titleHint || 'New module', description: result.objective || form.newObjective || '' }
+          : undefined,
+      });
+      if (!spliced) throw new Error('Could not insert the new slides.');
+      setCourse(spliced.course);
+      if (form.placement === 'new-module') {
+        const terminal = result.objective || form.newObjective || result.moduleTitle || 'New module';
+        setLearningObjectives(prev => [
+          ...prev,
+          { terminalObjective: terminal, enablingObjectives: form.newObjective ? [form.newObjective] : [] },
+        ]);
+      }
+      setPendingSlideFocusId(spliced.firstId);
+      setAddContentOpen(false);
+      const n = result.slides.length;
+      showDraftMessage(n === 1 ? 'Slide added. Use Undo if this isn’t what you wanted.' : `${n} slides added. Use Undo if this isn’t what you wanted.`);
+
+      if (voiceOverEnabled) {
+        try {
+          const { generateSlideTTS: genTTS, urlToDataUrl } = await import('./services/ttsService');
+          const toDurable = async (blobUrl: string) => {
+            try { return await urlToDataUrl(blobUrl); } catch { return blobUrl; }
+          };
+          for (const slide of result.slides) {
+            const script = String(slide.voiceOverText || '').trim();
+            if (!script || slideSkipsNarration(slide)) continue;
+            const durable = await toDurable(await genTTS(script, { voice: ttsVoice as any }));
+            void stashAudioUrl(`slide:${slide.id}`, durable);
+            handleUpdateSlideMedia(slide.id, { voiceOverUrl: durable });
+            await new Promise(r => setTimeout(r, 200));
+          }
+        } catch (e) {
+          console.warn('[add content] TTS failed', e);
+        }
+      }
+    } catch (e: any) {
+      showDraftMessage(e?.message || 'Could not generate the new content.');
+    } finally {
+      setIsAddingContent(false);
+    }
   };
 
   const finishQcApplyUi = (confirmedIds: string[], options?: { dismissRemaining?: boolean }) => {
@@ -6494,7 +6630,7 @@ export default function App() {
                       {showEditMenu && (
                         <>
                           <div className="fixed inset-0 z-[60]" onClick={() => setShowEditMenu(false)} />
-                          <div className="absolute right-0 top-full mt-1 z-[70] w-64 rounded-lg border border-slate-700 bg-slate-900 shadow-xl py-1 text-[12px]">
+                          <div className="absolute right-0 top-full mt-1 z-[70] w-72 rounded-lg border border-slate-700 bg-slate-900 shadow-xl py-1 text-[12px]">
                             <button
                               type="button"
                               onClick={() => {
@@ -6523,6 +6659,47 @@ export default function App() {
                               <span>
                                 <span className="font-semibold block">Edit Slide</span>
                                 <span className="text-slate-500 text-[10px]">Text, narration, and regenerate this slide</span>
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isAddingContent || isRegenSlideRunning}
+                              onClick={() => {
+                                setShowEditMenu(false);
+                                setAddContentOpen(true);
+                              }}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-800 text-cyan-200 disabled:opacity-40 flex items-start gap-2"
+                            >
+                              <Plus className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                              <span>
+                                <span className="font-semibold block">Add content</span>
+                                <span className="text-slate-500 text-[10px]">One slide, a few slides, or a new module</span>
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowEditMenu(false);
+                                if (!isDeletableCourseSlide(currentSlide)) {
+                                  showDraftMessage('Course chrome (title, overview, quiz) can’t be deleted. Delete a teaching slide instead.');
+                                  return;
+                                }
+                                if (countRealModuleSlides(course) <= 1) {
+                                  showDraftMessage('Keep at least one content slide. Add a replacement first if you need to replace this one.');
+                                  return;
+                                }
+                                setDeleteConfirmOpen(true);
+                              }}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-800 text-rose-200 flex items-start gap-2"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                              <span>
+                                <span className="font-semibold block">Delete this slide</span>
+                                <span className="text-slate-500 text-[10px]">
+                                  {isDeletableCourseSlide(currentSlide)
+                                    ? 'Remove from this course — Undo restores it'
+                                    : 'System slides can’t be deleted'}
+                                </span>
                               </span>
                             </button>
                             <button
@@ -9946,7 +10123,7 @@ export default function App() {
           >
             <div className={cn(
               'rounded-xl border px-4 py-3 text-sm font-medium shadow-2xl backdrop-blur-md flex items-center gap-2',
-              isSavingDraft || /saving|updating|overwriting/i.test(draftSaveMessage)
+              isSavingDraft || /saving|updating|overwriting|generating/i.test(draftSaveMessage)
                 ? 'bg-slate-900/95 border-indigo-500/40 text-indigo-100'
                 : /fail|error|cannot|can’t|quota|not found/i.test(draftSaveMessage)
                   ? 'bg-amber-950/95 border-amber-600/40 text-amber-100'
@@ -9954,7 +10131,7 @@ export default function App() {
                     ? 'bg-slate-900/95 border-slate-600 text-slate-100'
                     : 'bg-emerald-950/95 border-emerald-600/40 text-emerald-100'
             )}>
-              {(isSavingDraft || /saving|updating|overwriting/i.test(draftSaveMessage)) && (
+              {(isSavingDraft || /saving|updating|overwriting|generating/i.test(draftSaveMessage)) && (
                 <Loader2 className="w-4 h-4 shrink-0 animate-spin text-indigo-300" />
               )}
               {draftSaveMessage}
@@ -9962,6 +10139,40 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {!isLearnerPlayer && (
+        <>
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        title="Delete this slide?"
+        body={
+          currentSlide
+            ? `“${stripSlideTypePrefix(String(currentSlide.title || 'Untitled'))}” will be removed from the course. Other slides are not changed. Use Undo if you want it back.`
+            : 'This slide will be removed from the course.'
+        }
+        primaryLabel="Delete slide"
+        cancelLabel="Cancel"
+        onPrimary={handleDeleteCurrentSlide}
+        onCancel={() => setDeleteConfirmOpen(false)}
+      />
+
+      <AddContentModal
+        open={addContentOpen}
+        busy={isAddingContent}
+        currentSlideTitle={stripSlideTypePrefix(String(currentSlide?.title || ''))}
+        currentIsChrome={isChromePlayerSlide(currentSlide)}
+        afterInsertLabel={
+          moduleIndexFromVirtualSlideId(currentSlide?.id) != null
+            ? 'Start of this module'
+            : isChromePlayerSlide(currentSlide)
+              ? 'This module (existing slides stay put)'
+              : undefined
+        }
+        onClose={() => { if (!isAddingContent) setAddContentOpen(false); }}
+        onGenerate={(form) => void handleGenerateAddedContent(form)}
+      />
+        </>
+      )}
 
       <ReviewLinkModal
         open={showReviewLinkModal}

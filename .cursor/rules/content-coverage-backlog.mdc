@@ -9,7 +9,17 @@ alwaysApply: true
 
 ## Product stance (live)
 
-- **Content drives length.** Duration still matters (~15–20 min best practice, not over ~30 min); beyond ~30–40 min, split into two/three courses rather than dropping objectives. Duration warning/split is **not** in this cut.
+- **Content drives length.** Duration still matters (~15–20 min best practice, not over ~30 min); beyond ~30–40 min, split into two/three courses rather than dropping objectives.
+
+## Parked (2026-09-29 — Anthony after SME Steam Cracker review)
+
+Do **not** start unless he explicitly restarts this:
+
+- Narration word-count / WPM duration meter in Course development.
+- Auto-split of a long course into two/three curricula.
+- Thinning or dropping objectives to hit a time budget.
+
+SME length (e.g. 45–60 min from a 123-slide PPT) is a source/ID problem. Authors cut or add slides in Course development instead. Delete slide, then Add content, ship first.
 - **One module per terminal** (hard).
 - **1–2 teaching slides per enabling** (hard). One slide minimum; second slide only to chunk. Do not put two enablings on one slide. If a listed enabling is not taught, QC `coverage` error.
 - Chrome (titles, overviews, summaries, KCs, exam) still comes from Course Settings toggles.
@@ -25,4 +35,4 @@ alwaysApply: true
 ## Not in this cut
 
 - Fuller source extract (12k / 4k windows).
-- Narration word-count duration meter + split prompt.
+- Duration meter / curriculum split — parked 2026-09-29 (see above).

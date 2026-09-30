@@ -1680,3 +1680,191 @@ Return ONLY the complete updated JSON object.`;
   const raw = await executeAnthropicAI('complex', systemPrompt, userPrompt, 8192);
   return parseJsonSafely(raw);
 }
+
+export type InsertedContentScope = 'slide' | 'slides' | 'module';
+
+function freshSlideId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `slide-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function bulletsToMarkdown(raw: unknown): string {
+  if (!Array.isArray(raw)) return '';
+  return raw
+    .map((b) => String(typeof b === 'string' ? b : (b as any)?.content || (b as any)?.title || '').trim())
+    .filter(Boolean)
+    .map((b) => `- ${b.replace(/^[-*•]\s+/, '')}`)
+    .join('\n');
+}
+
+function normalizeInsertedSlide(slide: any, fallbackTitle: string): any {
+  if (!slide || typeof slide !== 'object') {
+    return {
+      id: freshSlideId(),
+      type: 'content',
+      title: fallbackTitle,
+      content: `- ${fallbackTitle}`,
+      voiceOverText: `This slide covers ${fallbackTitle}.`,
+    };
+  }
+  let type = String(slide.type || 'content').toLowerCase();
+  if (type === 'accordion') type = 'click-reveal';
+  if (type === 'multiple-choice') type = 'quiz';
+  if (type === 'multiple-answer') type = 'multiple-answers';
+  if (type === 'hotspot' || type === 'game-template' || type === 'scenario') type = 'content';
+
+  let content = String(slide.content || '').trim();
+  if (!content) content = bulletsToMarkdown(slide.bullets || slide.data?.bullets);
+  const title = String(slide.title || fallbackTitle).trim() || fallbackTitle;
+  const dataFirst = ['click-reveal', 'choice-cards', 'tabbed-horizontal', 'tabbed-vertical', 'carousel-panel', 'quiz', 'matching', 'sorting', 'drop-targets', 'multiple-answers', 'true-false'];
+  if (!content && !dataFirst.includes(type)) {
+    content = `**${title}**\n\n- Key point for this topic`;
+  }
+
+  const data = slide.data && typeof slide.data === 'object' ? { ...slide.data } : {};
+  if (type === 'carousel-panel') {
+    const cards = data.cards || data.items;
+    if (Array.isArray(cards)) {
+      data.cards = cards.map((c: any, i: number) => ({ ...c, color: coerceCarouselColor(c?.color, i) }));
+    }
+  }
+  if ((type === 'quiz' || type === 'multiple-answers' || type === 'true-false') && !data.questionText && slide.questionText) {
+    data.questionText = slide.questionText;
+    data.options = slide.options;
+    data.feedback = slide.feedback;
+    data.scenarioText = slide.scenarioText;
+  }
+  if (type === 'click-reveal' && !(Array.isArray(data.items) && data.items.length)) {
+    type = 'content';
+  }
+  if ((type === 'quiz' || type === 'multiple-answers' || type === 'true-false') && !(Array.isArray(data.options) && data.options.length)) {
+    type = 'content';
+  }
+  if (type === 'content' && !content) {
+    content = `**${title}**\n\n- Key point for this topic`;
+  }
+
+  const next: any = {
+    id: freshSlideId(),
+    type,
+    title,
+    content,
+    mediaPrompt: slide.mediaPrompt || `Professional illustration related to ${title}`,
+  };
+  if (Object.keys(data).length) next.data = data;
+  if (slide.voiceOverText || slide.narration) next.voiceOverText = slide.voiceOverText || slide.narration;
+  if (Number.isInteger(slide.enablingIndex)) next.enablingIndex = slide.enablingIndex;
+
+  if (slideSkipsNarration(next)) return stripSlideNarration(next);
+  if (!String(next.voiceOverText || '').trim()) {
+    next.voiceOverText = `In this slide we cover ${title}.`;
+  }
+  return next;
+}
+
+/**
+ * Generate only the new slides an author asked to insert. Does not rehydrate
+ * the rest of the course.
+ */
+export async function generateInsertedContent(opts: {
+  courseTitle: string;
+  courseDescription?: string;
+  moduleTitle?: string;
+  existingSlideTitles?: string[];
+  brief: string;
+  titleHint?: string;
+  newObjective?: string;
+  scope: InsertedContentScope;
+  slideCount?: number;
+  autoSlideCount?: boolean;
+  allowedInteractionTypes?: string[];
+}): Promise<{ moduleTitle?: string; objective?: string; slides: any[] }> {
+  const auto = !!opts.autoSlideCount && opts.scope !== 'slide';
+  const minSlides = opts.scope === 'slide' ? 1 : opts.scope === 'module' ? 3 : 2;
+  const maxSlides = opts.scope === 'slide' ? 1 : 8;
+  const count = opts.scope === 'slide'
+    ? 1
+    : Math.min(maxSlides, Math.max(minSlides, opts.slideCount || (opts.scope === 'module' ? 4 : 3)));
+  const allowed = (opts.allowedInteractionTypes || [])
+    .filter(t => t && t !== 'hotspot' && t !== 'game-template' && t !== 'accordion');
+  const typeList = allowed.length
+    ? allowed.join(', ')
+    : 'content, click-reveal, tabbed-horizontal, choice-cards, quiz';
+  const existing = (opts.existingSlideTitles || []).filter(Boolean).slice(0, 24);
+  const source = String(opts.brief || '').slice(0, 12000);
+  const scopeLine = opts.scope === 'slide'
+    ? 'exactly 1 slide'
+    : auto
+      ? `as many slides as the SOURCE needs (minimum ${minSlides}, maximum ${maxSlides}). One teaching idea per slide. Use an interaction when the source lists steps, options, comparisons, or checks. Do not drop source facts to hit a round number.`
+      : opts.scope === 'slides'
+        ? `exactly ${count} slides from this source`
+        : `a new module with exactly ${count} teaching slides (optional 1 knowledge check only if the source is a check/quiz)`;
+  const system = `You are an expert eLearning author inserting NEW slides into an existing course.
+The author pasted SOURCE MATERIAL to teach — facts, procedures, specs, and terms. Transform that source into learner slides. Do not treat it as a topic prompt to invent around.
+Return ONLY valid JSON. Do not rebuild or rewrite slides that already exist.`;
+  const user = `Course title: ${opts.courseTitle}
+${opts.courseDescription ? `Course description: ${opts.courseDescription.slice(0, 600)}\n` : ''}
+Current module: ${opts.moduleTitle || 'Unknown'}
+${existing.length ? `Existing slide titles in this module (do not duplicate):\n- ${existing.join('\n- ')}\n` : ''}
+Scope: ${scopeLine}
+${opts.titleHint ? `Preferred title: ${opts.titleHint}\n` : ''}
+${opts.newObjective ? `New learning objective to teach: ${opts.newObjective}\n` : ''}
+
+SOURCE TO TEACH (paste — use these facts; do not replace them with a paraphrase of the topic):
+${source}
+
+Allowed interaction types: ${typeList}
+
+Return JSON:
+{
+  "moduleTitle": "short title if this is a new module, else omit",
+  "objective": "one enabling-style sentence if a new module, else omit",
+  "slides": [
+    {
+      "type": "one of the allowed types",
+      "title": "short slide title, no numbering suffix",
+      "content": "markdown short bullets (5-8 words) for on-screen text",
+      "voiceOverText": "3-4 spoken sentences expanding the bullets from the source; empty string if this is a knowledge check",
+      "mediaPrompt": "short image prompt",
+      "data": {}
+    }
+  ]
+}
+
+Rules:
+- ${auto ? `Return between ${minSlides} and ${maxSlides} slides in slides[].` : `Return exactly ${count} slides in slides[].`}
+- Teaching slides need on-screen bullets AND voiceOverText, both grounded in the SOURCE.
+- Knowledge checks have no narration (voiceOverText "").
+- Do not include cover, module-overview, key-takeaways, or mastery-exam slides.
+- Prefer content / click-reveal / tabbed-horizontal unless the source needs a check.
+- For content slides you may use "bullets": ["..."] instead of content.
+- Pure JSON only.`;
+
+  const raw = await executeAnthropicAI('bulk', system, user, 8192);
+  const parsed = parseJsonSafely(raw);
+  const list = Array.isArray(parsed?.slides)
+    ? parsed.slides
+    : Array.isArray(parsed)
+      ? parsed
+      : parsed?.module?.slides;
+  if (!Array.isArray(list) || !list.length) {
+    throw new Error('The generator did not return any slides. Paste more of the source text and try again.');
+  }
+  const fallbackTitle = opts.titleHint || 'New slide';
+  const cap = auto ? maxSlides : count;
+  let slides = list.slice(0, cap).map((s: any, i: number) =>
+    normalizeInsertedSlide(s, cap === 1 ? fallbackTitle : `${fallbackTitle} ${i + 1}`),
+  );
+  const wrapped = coerceInteractionTypes(
+    [{ slides }],
+    allowed.length ? allowed : ['content', 'click-reveal', 'tabbed-horizontal', 'choice-cards', 'quiz'],
+  );
+  slides = wrapped[0]?.slides || slides;
+  return {
+    moduleTitle: String(parsed?.moduleTitle || opts.titleHint || '').trim() || undefined,
+    objective: String(parsed?.objective || opts.newObjective || '').trim() || undefined,
+    slides,
+  };
+}

@@ -1,0 +1,28 @@
+---
+description: Priority backlog — hand off a saved draft (NexCourse source) as a copy to another account’s View drafts.
+alwaysApply: true
+---
+
+# Draft handoff / source-file transfer (priority backlog)
+
+**Status:** queued 2026-09-29 — Anthony after Steam Cracker ownership discussion. **Do not implement** unless he explicitly restarts this.
+
+Customers (and L&D proponents who hired a contractor) will want the **editable source**, not only a SCORM zip. In NexCourse that source is the **saved draft**, not a Storyline `.story` and not the original PPT.
+
+## What to ship (when restarted)
+
+- **Copy, not co-edit.** Duplicate the draft to another signed-in account so it appears under **their** View drafts. They edit and publish independently. The sender keeps their copy unless they delete it.
+- Recipient must already have a NexCourse account (lookup by email).
+- Clone `course_drafts` row (new id, their `user_id`) and copy `draft-assets` into their storage prefix.
+- Not a review link (play-only, expires). Not Team workspace sharing (same draft, shared). Not “email the zip.”
+
+## Current security (do not weaken)
+
+- Cloud drafts are per-account (`course_drafts.user_id` + private `draft-assets/{userId}/`).
+- Other users get 403; RLS is own-row. Review links are temporary player snapshots only.
+
+## Out of scope for this item
+
+- Storing/handing over the original PPT/PDF binary (ingest only; draft JSON + media is the source).
+- Vendor lock-in via LMS-redirect SCORM. NexCourse’s point is a real zip **and** an editable draft.
+- Live co-authoring on one draft.

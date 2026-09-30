@@ -426,6 +426,20 @@ export function buildReviewScriptModel(
     const id = String(slide.id || '');
     if (id.startsWith('__module-cover-') || type === 'module-cover') {
       moduleLabel = stripSlideTypePrefix(String(slide.title || slide._moduleTitle || '')).trim();
+    } else if (
+      type === 'exam-intro' ||
+      type === 'mastery-exam' ||
+      type === 'exam-results' ||
+      type === 'closing' ||
+      type === 'cover' ||
+      type === 'player-tour' ||
+      type === 'course-objectives' ||
+      id === '__exam-intro__' ||
+      id === '__mastery-exam__' ||
+      id === '__exam-results__' ||
+      id === '__closing__'
+    ) {
+      moduleLabel = '';
     }
 
     const silent = slideSkipsNarration(slide);
