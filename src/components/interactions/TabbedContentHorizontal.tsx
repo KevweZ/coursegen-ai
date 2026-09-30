@@ -5,9 +5,11 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { markdownToHtml } from '../../lib/markdownInline';
 import { formatTabIntroOst, formatTabOstBody } from '../../lib/formatTabIntroOst';
-import { TAB_INTRO_DEFAULT_HEX, tabAccentHex, BLOCKS_WELL_DEFAULT, resolveHexColor } from '../../lib/tabAccents';
+import { TAB_INTRO_DEFAULT_HEX, tabAccentHex, BLOCKS_WELL_DEFAULT, PROCESS_PANEL_DEFAULT, resolveHexColor } from '../../lib/tabAccents';
 import { contrastTextOn } from '../../lib/colorContrast';
 import { EnlargeableImage, type InFlowPromoteInfo } from '../player/EnlargeableImage';
+
+export { PROCESS_PANEL_DEFAULT };
 
 export interface HorizontalTab {
   id: string;
@@ -47,6 +49,8 @@ interface Props {
   skin?: string;
   /** Blocks skin content-well fill. */
   wellColor?: string;
+  /** Process rail fill. */
+  railColor?: string;
   /** Process content-canvas fill (classic). Default matches click-reveal open cards. */
   panelColor?: string;
   /** When false, hide STEP 01 / STEP 02 labels (circles stay numbered). Default true. */
@@ -57,8 +61,6 @@ const INTRO_COLOR = TAB_INTRO_DEFAULT_HEX;
 const PANEL_H = 520;
 /** Light classic rail — indigo/slate, not a teal lock-in. */
 export const PROCESS_RAIL_DEFAULT = '#f1f5f9';
-/** Same fill as click-reveal light cards (`#eef2ff`) so Overview text stays black-on-pale. */
-export const PROCESS_PANEL_DEFAULT = '#eef2ff';
 export const PROCESS_PANEL_PRESETS = ['#eef2ff', '#f5f3ff', '#ecfeff', '#f8fafc', '#fff7ed'] as const;
 /** Tall enough for 36px circles + active scale + border without a scrollbar. */
 const RAIL_H = 96;

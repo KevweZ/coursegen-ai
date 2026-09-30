@@ -970,7 +970,7 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                     <div>
                       <p className="text-sm font-bold text-white">Blocks layout for vertical tabs</p>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        Colored tabs along the side, with a dark (or colored) reading area. You can still pick Classic or Blocks on one slide in Edit.
+                        White side tabs with a colored accent, and the same pale reading area as Process. You can still pick Classic or Blocks on one slide in Edit.
                       </p>
                     </div>
                   </label>

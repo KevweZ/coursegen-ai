@@ -514,7 +514,7 @@ img:not([loading]) {
   color: inherit;
 }
 
-/* Vertical tabs — Blocks skin: keep colored stacks + dark well; do not restyle as light cards. */
+/* Vertical tabs — Blocks skin: inherit ink from the well (light blue or navy). */
 .interaction-light-fix .tab-skin-blocks p,
 .interaction-light-fix .tab-skin-blocks span,
 .interaction-light-fix .tab-skin-blocks li,

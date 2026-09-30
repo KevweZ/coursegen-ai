@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { markdownToHtml, markdownToInlineHtml } from '../../lib/markdownInline';
 import { formatTabIntroOst, formatTabOstBody } from '../../lib/formatTabIntroOst';
-import { tabAccentHex, TAB_INTRO_DEFAULT_HEX, BLOCKS_WELL_DEFAULT, resolveHexColor } from '../../lib/tabAccents';
+import { tabAccentHex, TAB_INTRO_DEFAULT_HEX, PROCESS_PANEL_DEFAULT, resolveBlocksPanelBg } from '../../lib/tabAccents';
 import { contrastTextOn } from '../../lib/colorContrast';
 import { Check, ChevronRight } from 'lucide-react';
 import { EnlargeableImage, type InFlowPromoteInfo } from '../player/EnlargeableImage';
@@ -55,7 +55,7 @@ interface Props {
   onCropTabImage?: (tabId: string, dataUrl: string) => void;
   onPromoteIntroImage?: (info: InFlowPromoteInfo) => void;
   onPromoteTabImage?: (tabId: string, info: InFlowPromoteInfo) => void;
-  /** Blocks skin content-well fill. Defaults to navy. */
+  /** Blocks skin content-well fill. Light player defaults to pale indigo (`#eef2ff`). */
   wellColor?: string;
 }
 
@@ -187,6 +187,7 @@ export default function TabbedContentVertical({
         onPromoteIntroImage={onPromoteIntroImage}
         onPromoteTabImage={onPromoteTabImage}
         wellColor={wellColor}
+        isLight={isLight}
       />
     );
   }
@@ -213,10 +214,12 @@ export default function TabbedContentVertical({
               inIntro
                 ? 'border-transparent shadow-lg'
                 : isLight
-                ? 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-800'
+                ? 'bg-white text-slate-800 border-slate-200 hover:bg-slate-50'
                 : 'bg-slate-800/60 text-slate-400 border-slate-700 hover:bg-slate-700/60 hover:text-slate-200'
             )}
-            style={inIntro ? { background: introHex, boxShadow: `0 0 0 2px ${introHex}55`, color: introTitleColor } : undefined}
+            style={inIntro
+              ? { background: introHex, boxShadow: `0 0 0 2px ${introHex}55`, color: introTitleColor }
+              : (isLight ? { borderLeft: `4px solid ${introHex}` } : undefined)}
             title="Return to opening introduction"
           >
             <span className="flex-1 leading-snug" style={{ color: inIntro ? introTitleColor : undefined }}>
@@ -240,11 +243,13 @@ export default function TabbedContentVertical({
                   isActive
                     ? 'border-transparent shadow-lg'
                     : isLight
-                    ? 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-800'
+                    ? 'bg-white text-slate-800 border-slate-200 hover:bg-slate-50'
                     : 'bg-slate-800/60 text-slate-400 border-slate-700 hover:bg-slate-700/60 hover:text-slate-200',
                   isDropTarget && 'ring-2 ring-indigo-400 ring-offset-1'
                 )}
-                style={isActive ? { background: hex, boxShadow: `0 0 0 2px ${hex}55`, color: titleColor } : undefined}
+                style={isActive
+                  ? { background: hex, boxShadow: `0 0 0 2px ${hex}55`, color: titleColor }
+                  : (isLight ? { borderLeft: `4px solid ${hex}` } : undefined)}
               >
                 {tab.icon && <span className="text-base shrink-0">{tab.icon}</span>}
                 <span className="flex-1 leading-snug" style={{ color: isActive ? titleColor : undefined }} dangerouslySetInnerHTML={{ __html: markdownToInlineHtml(tab.label) }} />
@@ -258,10 +263,14 @@ export default function TabbedContentVertical({
           data-tab-drop-zone={dropZoneId || undefined}
           className={cn(
             'flex-1 min-w-0 relative rounded-2xl border transition-colors overflow-hidden',
-            isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-800/60 border-slate-700',
+            isLight ? 'border-slate-200 shadow-sm' : 'bg-slate-800/60 border-slate-700',
             panelHighlighted && 'ring-4 ring-indigo-400/80 ring-inset bg-indigo-50/40'
           )}
-          style={{ height: PANEL_H, minHeight: PANEL_H }}
+          style={{
+            height: PANEL_H,
+            minHeight: PANEL_H,
+            ...(isLight ? { background: PROCESS_PANEL_DEFAULT } : {}),
+          }}
         >
           {panelHighlighted && (
             <div className="absolute inset-x-0 top-0 z-10 px-3 py-1.5 text-center text-[11px] font-bold text-white bg-indigo-600/90 pointer-events-none">
@@ -363,9 +372,33 @@ interface BlocksSkinProps {
   onPromoteIntroImage?: (info: InFlowPromoteInfo) => void;
   onPromoteTabImage?: (tabId: string, info: InFlowPromoteInfo) => void;
   wellColor?: string;
+  isLight: boolean;
 }
 
-function blockFillStyle(hex: string, isActive: boolean, ink: string, well: string, wellInk: string): React.CSSProperties {
+function blockFillStyle(
+  hex: string,
+  isActive: boolean,
+  ink: string,
+  well: string,
+  wellInk: string,
+  isLight: boolean,
+): React.CSSProperties {
+  if (isLight) {
+    if (isActive) {
+      return {
+        background: well,
+        color: wellInk,
+        ['--tab-ink' as string]: wellInk,
+        boxShadow: `inset 5px 0 0 0 ${hex}`,
+      };
+    }
+    return {
+      background: '#ffffff',
+      color: '#0f172a',
+      ['--tab-ink' as string]: '#0f172a',
+      boxShadow: `inset 4px 0 0 0 ${hex}`,
+    };
+  }
   if (isActive) {
     return {
       background: well,
@@ -407,9 +440,14 @@ function VerticalTabsBlocksSkin({
   onPromoteIntroImage,
   onPromoteTabImage,
   wellColor,
+  isLight,
 }: BlocksSkinProps) {
-  const well = resolveHexColor(wellColor, BLOCKS_WELL_DEFAULT);
-  const wellInk = contrastTextOn(well);
+  const well = resolveBlocksPanelBg(wellColor, isLight);
+  const wellInk = isLight ? '#0f172a' : contrastTextOn(well);
+  const muted = isLight ? '#334155' : wellInk;
+  const activeAccent = inIntro
+    ? introHex
+    : tabAccentHex(activeTab || undefined, Math.max(0, activeIndex));
   const imageUrl = inIntro ? introImageUrl : activeTab?.imageUrl;
   const bodyHtml = inIntro
     ? markdownToHtml(introOst)
@@ -434,23 +472,25 @@ function VerticalTabsBlocksSkin({
       <div className="flex w-full min-h-0 overflow-hidden" style={{ height: PANEL_H, minHeight: PANEL_H }}>
         <div
           className="flex flex-col w-[168px] sm:w-[196px] shrink-0 min-h-0 overflow-y-auto custom-scrollbar"
-          style={{ maxHeight: PANEL_H, gap: 2, background: '#ffffff' }}
+          style={{ maxHeight: PANEL_H, gap: 2, background: isLight ? '#ffffff' : well }}
         >
           <button
             type="button"
             onClick={selectIntro}
             className="relative flex items-center justify-center w-full flex-1 min-h-[64px] px-3 py-2 text-center font-extrabold text-[11px] sm:text-xs leading-tight uppercase tracking-wide border-0"
-            style={blockFillStyle(introHex, inIntro, contrastTextOn(introHex), well, wellInk)}
+            style={blockFillStyle(introHex, inIntro, contrastTextOn(introHex), well, wellInk, isLight)}
             title="Return to opening introduction"
           >
-            <span className="block w-full" style={{ color: inIntro ? wellInk : contrastTextOn(introHex) }}>
+            <span className="block w-full" style={{ color: isLight ? (inIntro ? wellInk : '#0f172a') : (inIntro ? wellInk : contrastTextOn(introHex)) }}>
               Introduction
             </span>
           </button>
           {normalized.map((tab, i) => {
             const isActive = i === activeIndex;
             const hex = tabAccentHex(tab, i);
-            const idleInk = (tab.labelColor && String(tab.labelColor).trim()) || contrastTextOn(hex);
+            const idleInk = isLight
+              ? '#0f172a'
+              : ((tab.labelColor && String(tab.labelColor).trim()) || contrastTextOn(hex));
             const titleColor = isActive ? wellInk : idleInk;
             const isDropTarget = highlightTabId === tab.id;
             const seen = visited.has(tab.id);
@@ -465,7 +505,7 @@ function VerticalTabsBlocksSkin({
                   'relative flex items-center justify-center w-full flex-1 min-h-[64px] px-3 py-2 text-center font-extrabold text-[11px] sm:text-xs leading-tight uppercase tracking-wide border-0',
                   isDropTarget && 'ring-2 ring-indigo-400 ring-inset'
                 )}
-                style={blockFillStyle(hex, isActive, idleInk, well, wellInk)}
+                style={blockFillStyle(hex, isActive, idleInk, well, wellInk, isLight)}
               >
                 {seen && (
                   <Check
@@ -496,7 +536,11 @@ function VerticalTabsBlocksSkin({
               Drop here to attach image to this tab
             </div>
           )}
-          <div key={panelKey} className="flex h-full min-h-0 w-full items-start" style={{ color: wellInk }}>
+          <div
+            key={panelKey}
+            className={cn('flex h-full min-h-0 w-full items-start', isLight && 'process-canvas-light')}
+            style={{ color: wellInk }}
+          >
             <div
               ref={scrollRef}
               className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden custom-scrollbar"
@@ -516,11 +560,11 @@ function VerticalTabsBlocksSkin({
                 )}
                 <div
                   className="text-sm leading-relaxed tab-ost-body w-full"
-                  style={{ color: wellInk }}
+                  style={{ color: muted }}
                   dangerouslySetInnerHTML={{ __html: bodyHtml }}
                 />
                 {inIntro && (
-                  <p className="mt-6 text-xs font-semibold" style={{ color: introHex }}>
+                  <p className="mt-6 text-xs font-semibold" style={{ color: muted }}>
                     Select a topic tab to continue →
                   </p>
                 )}
@@ -528,15 +572,17 @@ function VerticalTabsBlocksSkin({
             </div>
             {imageUrl && (
               <div className="relative shrink-0 self-center w-[46%] max-w-[480px] pt-6 sm:pt-7 pr-6 pb-6 overflow-hidden">
-                <EnlargeableImage
-                  src={imageUrl}
-                  wrapperClassName="w-full"
-                  className="w-full h-auto max-h-[28rem] object-contain object-top bg-transparent"
-                  onLoad={resetScrollTop}
-                  onRemove={onRemoveImage}
-                  onCrop={onCropImage}
-                  onPromoteToFloat={onPromoteImage}
-                />
+                <div style={{ border: `2px solid ${activeAccent}` }}>
+                  <EnlargeableImage
+                    src={imageUrl}
+                    wrapperClassName="w-full"
+                    className="w-full h-auto max-h-[28rem] object-contain object-top bg-transparent"
+                    onLoad={resetScrollTop}
+                    onRemove={onRemoveImage}
+                    onCrop={onCropImage}
+                    onPromoteToFloat={onPromoteImage}
+                  />
+                </div>
               </div>
             )}
           </div>

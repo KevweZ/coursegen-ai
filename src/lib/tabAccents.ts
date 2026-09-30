@@ -1,3 +1,5 @@
+import { contrastTextOn } from './colorContrast';
+
 /** Shared tab accent colors for horizontal/vertical tabs and Edit Slide. */
 export const TAB_ACCENT_HEX = [
   '#6366f1',
@@ -63,6 +65,8 @@ export function resolveVerticalTabColorMode(raw: unknown): VerticalTabColorMode 
 }
 
 export const BLOCKS_WELL_DEFAULT = '#0b1220';
+/** Pale indigo reading area — same fill as Process / click-reveal light cards. */
+export const PROCESS_PANEL_DEFAULT = '#eef2ff';
 export const BLOCKS_WELL_PRESETS = [
   '#eef2ff',
   '#0b1220',
@@ -76,6 +80,14 @@ export const BLOCKS_WELL_PRESETS = [
 export function resolveHexColor(raw: unknown, fallback: string): string {
   const c = String(raw || '').trim();
   return /^#[0-9a-fA-F]{6}$/.test(c) ? c : fallback;
+}
+
+/** Light player: never paint a dark well (white type on gray). Dark player keeps navy. */
+export function resolveBlocksPanelBg(wellColor: unknown, isLight: boolean): string {
+  const fallback = isLight ? PROCESS_PANEL_DEFAULT : BLOCKS_WELL_DEFAULT;
+  const requested = resolveHexColor(wellColor, fallback);
+  if (isLight && contrastTextOn(requested) === '#ffffff') return PROCESS_PANEL_DEFAULT;
+  return requested;
 }
 
 function mapVerticalTabSlides(course: any, fn: (slide: any, moduleIndex: number) => any): any {
