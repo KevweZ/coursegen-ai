@@ -43,6 +43,93 @@ function stripEnablingIndex<T extends { enablingIndex?: unknown }>(slide: T): T 
   return rest as T;
 }
 
+const QUIZ_DATA_KEYS = [
+  'questionText', 'options', 'feedback', 'scenarioText', 'questions',
+  'correctAnswer', 'correctOrder', 'pairs', 'targets', 'categories', 'items',
+];
+
+function asTeachingContent(hydrated: OutlineSlide, outline: OutlineSlide): string {
+  const existing = String(hydrated?.content || '').trim();
+  if (existing && !/^knowledge\s*check/i.test(existing)) return existing;
+  const q = String(hydrated?.data?.questionText || hydrated?.data?.prompt || '').trim();
+  if (q) return `- ${q.replace(/\?$/, '')}`;
+  return String(outline?.content || '').trim();
+}
+
+function lockHydratedKind(hydrated: OutlineSlide, outline: OutlineSlide): OutlineSlide {
+  const base = hydrated && typeof hydrated === 'object' ? { ...hydrated } : {};
+  const outlineKc = isKnowledgeCheckSlide(outline);
+  const next: OutlineSlide = {
+    ...base,
+    id: outline.id || base.id,
+    title: outline.title || base.title,
+  };
+  if (outline.enablingIndex != null) next.enablingIndex = outline.enablingIndex;
+  else delete next.enablingIndex;
+
+  if (outlineKc) {
+    next.type = outline.type || base.type || 'quiz';
+    if (!/^knowledge\s*check/i.test(String(next.title || ''))) {
+      next.title = outline.title || `Knowledge Check: ${String(next.title || 'Practice')}`;
+    }
+    return next;
+  }
+
+  next.type = outline.type && !isKnowledgeCheckSlide(outline) ? outline.type : (isKnowledgeCheckSlide(base) ? 'content' : (base.type || 'content'));
+  if (isKnowledgeCheckSlide({ type: next.type, title: next.title })) {
+    next.type = outline.type || 'content';
+    next.title = outline.title || String(next.title || '').replace(/^knowledge\s*check:\s*/i, '');
+  }
+  if (isKnowledgeCheckSlide(base) && !isKnowledgeCheckSlide(next)) {
+    next.content = asTeachingContent(base, outline);
+    if (next.data && typeof next.data === 'object') {
+      const data = { ...next.data };
+      for (const k of QUIZ_DATA_KEYS) delete data[k];
+      next.data = Object.keys(data).length ? data : undefined;
+    }
+    delete next.interactions;
+  }
+  return next;
+}
+
+/**
+ * Hydrate must not invent extra knowledge checks or convert teaching slides
+ * into quizzes. Map the model output 1:1 onto the outline chunk.
+ */
+export function alignHydratedSlidesToOutline(
+  parsedSlides: OutlineSlide[] | null | undefined,
+  outlineChunk: OutlineSlide[] | null | undefined,
+): OutlineSlide[] {
+  const list = Array.isArray(parsedSlides) ? parsedSlides.filter(Boolean) : [];
+  const outline = Array.isArray(outlineChunk) ? outlineChunk.filter(Boolean) : [];
+  if (!outline.length) return list;
+  const used = new Set<number>();
+  const pickIndex = (outlineSlide: OutlineSlide, position: number): number => {
+    const id = String(outlineSlide?.id || '').trim();
+    if (id) {
+      const idIdx = list.findIndex((s, i) => !used.has(i) && String(s?.id || '').trim() === id);
+      if (idIdx >= 0) return idIdx;
+    }
+    const want = String(outlineSlide?.title || '').trim().toLowerCase();
+    if (want) {
+      const titleIdx = list.findIndex((s, i) => !used.has(i) && String(s?.title || '').trim().toLowerCase() === want);
+      if (titleIdx >= 0) return titleIdx;
+    }
+    const wantKc = isKnowledgeCheckSlide(outlineSlide);
+    const kindIdx = list.findIndex((s, i) => !used.has(i) && isKnowledgeCheckSlide(s) === wantKc);
+    if (kindIdx >= 0) return kindIdx;
+    if (!used.has(position) && list[position]) return position;
+    return list.findIndex((_, i) => !used.has(i));
+  };
+
+  return outline.map((o, pos) => {
+    const idx = pickIndex(o, pos);
+    if (idx < 0) return o;
+    used.add(idx);
+    return lockHydratedKind(list[idx], o);
+  });
+}
+
 /**
  * Per-module KC slots from Course Settings.
  * Total mode: even split, leftover checks go to denser modules (more teaching slides).

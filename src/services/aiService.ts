@@ -1,7 +1,7 @@
 import { CourseOutline, TerminalObjectiveGroup, ExamConfig, ExamQuestion } from "../types/course";
 import { coerceCarouselColor } from "../lib/colorContrast";
 import { ensureEnablingSlideCoverage, preserveEnablingIndex, normalizeTerminalGroups, slideSkipsNarration, stripSlideNarration } from "../lib/enablingCoverage";
-import { allocateKnowledgeCheckSlots, ensureKnowledgeCheckBudget } from "../lib/knowledgeCheckBudget";
+import { allocateKnowledgeCheckSlots, alignHydratedSlidesToOutline, ensureKnowledgeCheckBudget } from "../lib/knowledgeCheckBudget";
 import {
   STORYBOARD_SOURCE_CHARS,
   storyboardAnalyzeInstructions,
@@ -53,7 +53,7 @@ const CONTENT_INTERACTION_TYPES = new Set([
 
 const QUIZ_SLIDE_TYPES = new Set([
   'quiz', 'sorting', 'matching', 'drop-targets',
-  'multiple-choice', 'multiple-answers', 'knowledge-check',
+  'multiple-choice', 'multiple-answers', 'true-false', 'knowledge-check',
 ]);
 
 /**
@@ -769,12 +769,15 @@ export async function hydrateCourseContent(
   SLIDE TYPE RULES (STRICT -- NO EXCEPTIONS)
   ========================================
   DO NOT add, remove, or reorder ANY slides from the provided structure.
+  NEVER convert a teaching/content/interaction slide into a Knowledge Check. Knowledge checks are only the slides already typed as quiz/matching/sorting/drop-targets/true-false in this JSON.
+  NEVER insert extra Knowledge Check slides to "practice" an enabling. Course Settings already capped how many checks this module gets.
 
   QUIZ:
   - questionText MUST be a complete question sentence ending with "?"
   - Optional scenarioText: a short situation paragraph the learner reads BEFORE the question (carrier alert, workplace vignette, yellow-box story). Not the question itself. Omit when there is no situation.
   - Must have EXACTLY 4 options: 1 correct (isCorrect: true) + 3 plausible distractors. STORYBOARD EXCEPTION: copy the spec's option count (3 is valid). Do not invent extra distractors to reach 4.
-  - When the spec lists 2+ numbered questions on one screen, emit data.questions: [{ questionText, options, feedback }] — one object per numbered question, exact stems and Keys. Do not invent a different wrapping question. Do not collapse them into one multiple-answers item.
+  - When THIS slide is already a Knowledge Check and the storyboard lists 2+ numbered questions on one screen, emit data.questions: [{ questionText, options, feedback }] — one object per numbered question, exact stems and Keys. Do not invent a different wrapping question. Do not collapse them into one multiple-answers item.
+  - RAW / lecture conversion: exactly ONE question per Knowledge Check slide. Do not emit data.questions. Do not write "Question 1 of 2".
   - options[].text must be meaningful (10+ chars). NEVER: "A", "B", "True", "False" unless it's genuinely a T/F slide
   - feedback: string explaining why the correct answer is right (this is where teaching detail goes AFTER submit)
   - Slide-level content: 1 framing bullet about what is being tested. voiceOverText MUST be "" (empty). Knowledge checks have no spoken narration — same as Mastery Quiz questions. Do not give away the answer on screen.
@@ -972,23 +975,9 @@ export async function hydrateCourseContent(
     ? `\n\nIMPORTANT: This course was converted from an uploaded source document. Base the content on the source material below. Transform lecture-style slides into interactive, learner-centric content. Preferences: ${(configParams.conversionPreferences || []).join(', ') || 'Default'}\n\nSOURCE MATERIAL (first 4000 chars):\n${configParams.sourceContent.slice(0, 4000)}`
     : '';
 
-  // --- Helper: drop extra slides a chunk model re-emitted (keep outline count when already split) ---
+  // --- Helper: drop extra slides a chunk model re-emitted (keep outline count) ---
   function constrainChunkSlides(parsedSlides: any[], outlineChunk: any[]): any[] {
-    if (!Array.isArray(parsedSlides) || !outlineChunk?.length) return parsedSlides || [];
-    if (parsedSlides.length <= outlineChunk.length) return parsedSlides;
-    if (outlineChunk.length < 2) return parsedSlides;
-    const used = new Set<number>();
-    const pick = (outlineSlide: any) => {
-      const idIdx = parsedSlides.findIndex((s, i) => !used.has(i) && s?.id && s.id === outlineSlide.id);
-      if (idIdx >= 0) { used.add(idIdx); return parsedSlides[idIdx]; }
-      const want = String(outlineSlide.title || '').trim().toLowerCase();
-      const titleIdx = parsedSlides.findIndex((s, i) => !used.has(i) && String(s?.title || '').trim().toLowerCase() === want);
-      if (titleIdx >= 0) { used.add(titleIdx); return parsedSlides[titleIdx]; }
-      const next = parsedSlides.findIndex((_, i) => !used.has(i));
-      if (next >= 0) { used.add(next); return parsedSlides[next]; }
-      return outlineSlide;
-    };
-    return outlineChunk.map(pick);
+    return alignHydratedSlidesToOutline(parsedSlides, outlineChunk);
   }
 
   // --- Helper: parse and unwrap a raw API response ---
@@ -1104,14 +1093,15 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
         return expandOneMultiQuestionSlide(slide);
       }
       if (list.length >= 2) {
+        const first = list[0];
         slide.data = {
           ...(slide.data || {}),
-          questions: list,
-          questionText: list[0].questionText,
-          options: list[0].options,
-          feedback: list[0].feedback,
-          scenarioText: list[0].scenarioText,
+          questionText: first.questionText,
+          options: first.options,
+          feedback: first.feedback,
+          scenarioText: first.scenarioText,
         };
+        if (slide.data) delete slide.data.questions;
       } else if (list.length === 1) {
         if (slide.data) slide.data = applyAlignedQuizPrompt({ ...slide.data, options: list[0].options, questionText: list[0].questionText });
         if (Array.isArray(slide.interactions) && slide.interactions[0]) {
@@ -1321,18 +1311,17 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
           }
         }
         bumpProgress();
+        const aligned = constrainChunkSlides(individualResults, chunk);
         return {
           moduleIndex,
           chunkIndex,
-          slides: individualResults.flatMap((s, i) => processSlide(preserveEnablingIndex(s, chunk, i))),
+          slides: aligned.flatMap((s, i) => processSlide(preserveEnablingIndex(s, chunk, i))),
         };
       }
     }
 
     bumpProgress();
-    const rawSlides = sourceMode === 'storyboard'
-      ? constrainChunkSlides(parsedChunk.slides as any[], chunk)
-      : (parsedChunk.slides as any[]);
+    const rawSlides = constrainChunkSlides(parsedChunk.slides as any[], chunk);
     return {
       moduleIndex,
       chunkIndex,
@@ -1407,6 +1396,16 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     const cleanedSlides = hydratedSlides.filter(s => !OBJECTIVES_TITLE.test((s.title || '').trim()));
 
     fullCourse.modules.push({ ...emptyModule, slides: cleanedSlides } as any);
+  }
+
+  if (sourceMode !== 'storyboard') {
+    fullCourse.modules = ensureKnowledgeCheckBudget(fullCourse, {
+      includeKnowledgeChecks: configParams.includeKnowledgeChecks !== false && quizActivities.length > 0 && hydrateKcCount > 0,
+      knowledgeCheckMode: configParams.knowledgeCheckMode === 'total' ? 'total' : 'per-module',
+      knowledgeCheckCount: hydrateKcCount,
+      quizActivityTypes: quizActivities,
+      objectives: fullCourse.learningObjectives,
+    }).modules as any;
   }
 
   if (sourceMode === 'storyboard') {
