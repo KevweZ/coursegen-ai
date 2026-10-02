@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Check } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { markdownToHtml } from '../../lib/markdownInline';
 
 export interface ChoiceCard {
   id: string;
@@ -120,9 +121,10 @@ export default function ChoiceCardsInteraction({
   return (
     <div className="w-full space-y-5">
       {prompt && (
-        <p className={cn('text-base font-semibold leading-snug', isLight ? 'text-slate-800' : 'text-slate-100')}>
-          {prompt}
-        </p>
+        <div
+          className={cn('text-base font-semibold leading-snug', isLight ? 'text-slate-800' : 'text-slate-100')}
+          dangerouslySetInnerHTML={{ __html: markdownToHtml(prompt) }}
+        />
       )}
       <div className={cn('grid gap-3', normalized.length <= 3 ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-1 sm:grid-cols-2')}>
         {normalized.map((card, i) => {
@@ -168,7 +170,12 @@ export default function ChoiceCardsInteraction({
                 </span>
               )}
               <p className="text-xs font-black uppercase tracking-[0.16em] mb-1.5 pr-7">{card.label}</p>
-              {card.body && <p className="text-sm leading-relaxed opacity-90 pr-6">{card.body}</p>}
+              {card.body && (
+                <div
+                  className="text-sm leading-relaxed opacity-90 pr-6"
+                  dangerouslySetInnerHTML={{ __html: markdownToHtml(card.body) }}
+                />
+              )}
             </button>
           );
         })}
@@ -182,17 +189,18 @@ export default function ChoiceCardsInteraction({
           {activeCard?.label && (
             <p className="text-xs font-black uppercase tracking-widest mb-1.5 opacity-70">{activeCard.label}</p>
           )}
-          <p>{callout}</p>
+          <div dangerouslySetInnerHTML={{ __html: markdownToHtml(callout) }} />
         </div>
       )}
 
       {mode === 'explore' && allVisited && feedback ? (
-        <div className={cn(
-          'p-4 rounded-xl text-sm leading-relaxed',
-          isLight ? 'bg-indigo-50 border border-indigo-200 text-slate-800' : 'bg-indigo-950/40 border border-indigo-500/30 text-slate-100'
-        )}>
-          {feedback}
-        </div>
+        <div
+          className={cn(
+            'p-4 rounded-xl text-sm leading-relaxed',
+            isLight ? 'bg-indigo-50 border border-indigo-200 text-slate-800' : 'bg-indigo-950/40 border border-indigo-500/30 text-slate-100'
+          )}
+          dangerouslySetInnerHTML={{ __html: markdownToHtml(feedback) }}
+        />
       ) : null}
 
       {mode === 'select' && !submitted && (
@@ -209,12 +217,13 @@ export default function ChoiceCardsInteraction({
         </button>
       )}
       {mode === 'select' && submitted && feedback ? (
-        <div className={cn(
-          'p-4 rounded-xl text-sm leading-relaxed',
-          isLight ? 'bg-slate-50 border border-slate-200 text-slate-800' : 'bg-slate-800/60 border border-slate-600 text-slate-100'
-        )}>
-          {feedback}
-        </div>
+        <div
+          className={cn(
+            'p-4 rounded-xl text-sm leading-relaxed',
+            isLight ? 'bg-slate-50 border border-slate-200 text-slate-800' : 'bg-slate-800/60 border border-slate-600 text-slate-100'
+          )}
+          dangerouslySetInnerHTML={{ __html: markdownToHtml(feedback) }}
+        />
       ) : null}
     </div>
   );

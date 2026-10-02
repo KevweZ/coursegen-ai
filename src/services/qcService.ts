@@ -11,10 +11,26 @@ import { parseHeadingBulletSections, resolveClickRevealSlide } from '../lib/pars
 import { coerceCarouselColor } from '../lib/colorContrast';
 import { slideSkipsNarration, stripSlideNarration } from '../lib/enablingCoverage';
 import { applyAlignedQuizPrompt } from '../lib/knowledgeCheckOst';
+import { finalizeHydratedSlide } from '../lib/hydrateGuards';
 
 const BATCH_SIZE = 5;
 /** Always use same-origin /api/* (Cloudflare Worker → Render). Never localhost in production. */
 const API_BASE = '';
+
+function lockRegenResult(
+  slide: any,
+  result: { type: string; data?: any; content?: string; voiceOverText?: string },
+  courseTopic: string,
+): { type: string; data: any; content?: string; voiceOverText?: string } {
+  const locked = finalizeHydratedSlide({ ...slide, ...result }, courseTopic);
+  const cleaned = slideSkipsNarration(locked) ? stripSlideNarration(locked) : locked;
+  return {
+    type: cleaned.type,
+    data: cleaned.data,
+    content: cleaned.content,
+    voiceOverText: cleaned.voiceOverText,
+  };
+}
 
 // ── Types re-exported for consumers ─────────────────────────────────────────
 export type { QCIssue, QCReport, IssueSeverity, IssueType, FixAction };
@@ -467,12 +483,12 @@ ${type === 'choice-cards' ? '- This is a teaching slide, not a knowledge check. 
       ? bullets.map(b => `- ${String(b).replace(/^[-*•]\s+/, '')}`).join('\n')
       : (parsed.content || slide.content || `Key points for: ${slide.title}`);
     const content = toShortOstBullets(rawOst) || coerceOstText(rawOst);
-    return {
+    return lockRegenResult(slide, {
       type: 'content',
       data: undefined,
       content,
       voiceOverText: parsed.voiceOverText || parsed.narration || slide.voiceOverText,
-    };
+    }, courseTopic);
   }
 
   // Normalize matching pairs → items/targets if model returns pairs
@@ -553,7 +569,7 @@ ${type === 'choice-cards' ? '- This is a teaching slide, not a knowledge check. 
     const mode = parsed.mode === 'explore' || parsed.mode === 'select'
       ? parsed.mode
       : (hasAccepted ? 'select' : 'explore');
-    return {
+    return lockRegenResult(slide, {
       type,
       data: {
         prompt: parsed.prompt || '',
@@ -564,16 +580,16 @@ ${type === 'choice-cards' ? '- This is a teaching slide, not a knowledge check. 
       },
       content: parsed.content || slide.content,
       voiceOverText: parsed.voiceOverText,
-    };
+    }, courseTopic);
   }
 
   if (isKc && parsed.introContent) {
-    return {
+    return lockRegenResult(slide, {
       type,
       data: applyAlignedQuizPrompt(parsed),
       content: coerceOstText(parsed.introContent),
       voiceOverText: '',
-    };
+    }, courseTopic);
   }
 
   const out = {
@@ -582,7 +598,7 @@ ${type === 'choice-cards' ? '- This is a teaching slide, not a knowledge check. 
     content: parsed.content,
     voiceOverText: parsed.voiceOverText,
   };
-  return slideSkipsNarration(out) ? stripSlideNarration(out) : out;
+  return lockRegenResult(slide, out, courseTopic);
 }
 
 /**

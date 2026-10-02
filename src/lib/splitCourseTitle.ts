@@ -100,6 +100,51 @@ function matchLeadIn(title: string): { leadIn: string; subject: string } | null 
   return null;
 }
 
+/** Cover titles stay scannable — never a colon laundry list of topics. */
+export const MAX_COURSE_TITLE_WORDS = 8;
+
+function titleWordCount(text: string): number {
+  return String(text || '').trim().split(/\s+/).filter(Boolean).length;
+}
+
+/**
+ * Deterministic cover-title lock. Models often emit
+ * "Introduction to X: A, B, and C" — collapse to the subject, at most 8 words.
+ */
+export function shortenCourseTitle(title: string): string {
+  let t = String(title || '').replace(/\s+/g, ' ').trim();
+  if (!t) return t;
+
+  const lead = matchLeadIn(t);
+  if (lead && titleWordCount(lead.subject) >= 2) {
+    t = lead.subject.replace(/^[:\-—–]\s*/, '').trim();
+  } else if (GENERIC_COLON_LABELS.has(t.split(':')[0].trim().toLowerCase())) {
+    const after = t.slice(t.indexOf(':') + 1).trim();
+    if (titleWordCount(after) >= 2) t = after;
+  }
+
+  const colonIdx = t.indexOf(':');
+  if (colonIdx > 0) {
+    const before = t.slice(0, colonIdx).trim();
+    let after = t.slice(colonIdx + 1).trim();
+    const commaParts = after.split(',').map(s => s.trim()).filter(Boolean);
+    const laundryList = commaParts.length >= 2;
+    if (laundryList && (commaParts.length >= 3 || titleWordCount(t) > 6)) {
+      after = commaParts[0];
+      t = before && after ? `${before}: ${after}` : (before || after);
+    }
+  }
+
+  const words = t.split(/\s+/).filter(Boolean);
+  if (words.length <= MAX_COURSE_TITLE_WORDS) return t.replace(/[,:;]+\s*$/, '');
+
+  let cut = words.slice(0, MAX_COURSE_TITLE_WORDS);
+  while (cut.length > 4 && /^(and|or|of|to|the|for|with|in|on)$/i.test(cut[cut.length - 1] || '')) {
+    cut.pop();
+  }
+  return cut.join(' ').replace(/[,:;]+\s*$/, '');
+}
+
 /**
  * Split course title into bold headline + lighter subtitle.
  * Prefer lead-in → subject, then "Subject: Rest…", then em/en-dash, then a

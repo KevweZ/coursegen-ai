@@ -6,6 +6,7 @@ import {
   normalizeTerminalGroups,
   titleFromEnabling,
 } from './enablingCoverage';
+import { ensureKnowledgeCheckPayload } from './hydrateGuards';
 
 export type KnowledgeCheckMode = 'total' | 'per-module';
 
@@ -115,10 +116,10 @@ export function alignHydratedSlidesToOutline(
       const titleIdx = list.findIndex((s, i) => !used.has(i) && String(s?.title || '').trim().toLowerCase() === want);
       if (titleIdx >= 0) return titleIdx;
     }
+    if (!used.has(position) && list[position]) return position;
     const wantKc = isKnowledgeCheckSlide(outlineSlide);
     const kindIdx = list.findIndex((s, i) => !used.has(i) && isKnowledgeCheckSlide(s) === wantKc);
     if (kindIdx >= 0) return kindIdx;
-    if (!used.has(position) && list[position]) return position;
     return list.findIndex((_, i) => !used.has(i));
   };
 
@@ -201,12 +202,12 @@ function makeKnowledgeCheckSlide(
 ): OutlineSlide {
   const type = quizTypes[index % Math.max(1, quizTypes.length)] || 'quiz';
   const label = titleFromEnabling(enablingText, enablingIndex);
-  return {
+  return ensureKnowledgeCheckPayload({
     id: newSlideId(),
     type,
     title: `Knowledge Check: ${label}`,
     enablingIndex,
-  };
+  }, label);
 }
 
 /**

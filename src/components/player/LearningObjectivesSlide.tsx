@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { CheckCircle2 } from 'lucide-react';
+import { cn } from '../../lib/utils';
 
 type Theme = 'light' | 'dark' | 'unified';
 
@@ -142,7 +143,10 @@ export const LearningObjectivesSlide: React.FC<LearningObjectivesSlideProps> = (
               {/* Label + body */}
               <div className="flex flex-col justify-center min-w-0 gap-0.5">
                 {parsed.label && (
-                  <p className="font-bold text-base uppercase tracking-wide leading-snug" style={{ color: p.titleText }}>
+                  <p className={cn(
+                    'font-bold text-base tracking-wide leading-snug',
+                    parsed.label.length < 28 && !/[0-9]/.test(parsed.label) && 'uppercase',
+                  )} style={{ color: p.titleText }}>
                     {parsed.label}
                   </p>
                 )}

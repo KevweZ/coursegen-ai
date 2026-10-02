@@ -68,3 +68,29 @@ test('post-hydrate budget clusters leftover checks before the summary and caps p
   assert.equal(kcs.length, 2);
   assert.equal(next.modules[0].slides.at(-1).type, 'key-takeaways');
 });
+
+test('budget fill never inserts a knowledge check without a question payload', () => {
+  const next = ensureKnowledgeCheckBudget({
+    learningObjectives: [{ terminalObjective: 'T', enablingObjectives: ['A'] }],
+    modules: [{
+      id: 'm1',
+      title: 'Basics',
+      slides: [
+        { id: 'a', type: 'content', title: 'What Is a Polymer' },
+        { id: 'sum', type: 'key-takeaways', title: 'Module 1 Key Takeaways' },
+      ],
+    }],
+  }, {
+    includeKnowledgeChecks: true,
+    knowledgeCheckMode: 'per-module',
+    knowledgeCheckCount: 2,
+    quizActivityTypes: ['quiz'],
+    objectives: [{ terminalObjective: 'T', enablingObjectives: ['A'] }],
+  });
+  const kcs = next.modules[0].slides.filter((s: any) => String(s.title).startsWith('Knowledge Check'));
+  assert.equal(kcs.length, 2);
+  for (const kc of kcs) {
+    assert.ok(Array.isArray(kc.data?.options) && kc.data.options.length >= 2);
+    assert.ok(String(kc.data?.questionText || '').length > 8);
+  }
+});

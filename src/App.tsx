@@ -83,6 +83,7 @@ import {
   quizQuestionList,
 } from './lib/knowledgeCheckOst';
 import { slideSkipsNarration } from './lib/enablingCoverage';
+import { collapseChoiceCardsOst, normalizeKeyTakeaways } from './lib/hydrateGuards';
 import { hasLiveNarrationUrl } from './lib/narrationAudio';
 import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft, generateMasteryExam, generateInsertedContent } from './services/aiService';
 import { createScormPackage, ScormVersion } from './services/scormService';
@@ -7250,14 +7251,7 @@ export default function App() {
 
                                {/* CONTENT / KEY-TAKEAWAYS / SUMMARY */}
                                {currentSlide?.type === 'key-takeaways' && (() => {
-                                  const raw: any[] = (currentSlide as any).interactions || (currentSlide as any).data?.objectives || [];
-                                  const fromContent = (currentSlide.content || '')
-                                    .split(/\n+/)
-                                    .map((line: string) => line.replace(/^#{1,6}\s+/, '').replace(/^[-*•]\s+/, '').trim())
-                                    .filter((line: string) => line.length > 2 && !/^key\s*takeaways?/i.test(line));
-                                  const objectives = raw.length > 0
-                                    ? raw
-                                    : fromContent.map((line: string, i: number) => ({ id: String(i), label: line, content: '' }));
+                                  const objectives = normalizeKeyTakeaways(currentSlide).data?.objectives || [];
                                   const modIdx = course?.modules.findIndex((m: any) => m.slides.some((s: any) => s.id === currentSlide.id)) ?? -1;
                                   const slideModuleNumber = modIdx >= 0 ? modIdx + 1 : undefined;
                                   const isEmpty = objectives.length === 0;
@@ -8004,12 +7998,14 @@ export default function App() {
                                  );
                                })()}
 
-                               {currentSlide?.type === 'choice-cards' && (
+                               {currentSlide?.type === 'choice-cards' && (() => {
+                                 const ost = collapseChoiceCardsOst(currentSlide.content, currentSlide.data?.prompt);
+                                 return (
                                  <div className="space-y-6 w-full">
                                    <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                   {currentSlide.content && (
+                                   {ost.content && (
                                      <SmartContent
-                                       content={sanitizeContent(currentSlide.content)}
+                                       content={sanitizeContent(ost.content)}
                                        theme={theme}
                                        accentColor={slideAccentColor}
                                        className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')}
@@ -8018,7 +8014,7 @@ export default function App() {
                                    <ChoiceCardsInteraction
                                      key={currentSlide.id}
                                      cards={currentSlide.data?.cards || currentSlide.data?.items || []}
-                                     prompt={currentSlide.data?.prompt || ''}
+                                     prompt={ost.prompt}
                                      feedback={currentSlide.data?.feedback || ''}
                                      selectMode={currentSlide.data?.selectMode === 'single' ? 'single' : 'multi'}
                                      mode={inferChoiceCardsMode(currentSlide.data)}
@@ -8027,7 +8023,8 @@ export default function App() {
                                      onExplore={(cardId) => markInteractionExplored(currentSlide.id, cardId)}
                                    />
                                  </div>
-                               )}
+                                 );
+                               })()}
 
                                {/* EXAM INTRO */}
                                {currentSlide?.type === 'exam-intro' && (

@@ -1,7 +1,9 @@
 import { CourseOutline, TerminalObjectiveGroup, ExamConfig, ExamQuestion } from "../types/course";
 import { coerceCarouselColor } from "../lib/colorContrast";
-import { ensureEnablingSlideCoverage, preserveEnablingIndex, normalizeTerminalGroups, slideSkipsNarration, stripSlideNarration } from "../lib/enablingCoverage";
+import { ensureEnablingSlideCoverage, preserveEnablingIndex, normalizeTerminalGroups, slideSkipsNarration, stripSlideNarration, isKnowledgeCheckSlide } from "../lib/enablingCoverage";
 import { allocateKnowledgeCheckSlots, alignHydratedSlidesToOutline, ensureKnowledgeCheckBudget } from "../lib/knowledgeCheckBudget";
+import { finalizeHydratedSlide, teachingSlideNeedsRetry, normalizeKeyTakeaways } from "../lib/hydrateGuards";
+import { shortenCourseTitle } from "../lib/splitCourseTitle";
 import {
   STORYBOARD_SOURCE_CHARS,
   storyboardAnalyzeInstructions,
@@ -311,7 +313,7 @@ export async function analyzeUploadedFile(
      - "### HEADING" lines = section headings detected in PDF
      - "> Speaker Notes:" = presenter notes for context
      Use this structure to identify modules and map content accurately.
-  2. Generate a clean, professional course Title (concise, no raw artifact file names).
+  2. Generate a clean, professional course Title of AT MOST 8 words. Prefer the subject ("Polymers: PE and PP"), not "Introduction to …" lead-ins and not colon laundry lists ("Chemistry, Properties, and Processes").
      Never use "Storyboard", "Build Specification", or "Developer Handoff" as the course title when the file is a spec for a subject-matter course.
   3. Write a 2-4 sentence Description (what learners will learn, context, why it matters).
   4. Classify the complexity (simple vs moderate vs complex).
@@ -354,7 +356,9 @@ export async function analyzeUploadedFile(
   
   const text = await executeAnthropicAI('complex', systemInstruction, userPrompt, 4096);
   const cleanedText = extractJsonFromText(text);
-  return parseJsonSafely(text) as FileAnalysisResult;
+  const parsed = parseJsonSafely(text) as FileAnalysisResult;
+  if (parsed?.title) parsed.title = shortenCourseTitle(parsed.title);
+  return parsed;
 }
 
 export async function suggestLearningObjectives(
@@ -633,6 +637,7 @@ export async function generateCourseOutline(
   }
 
   parsedOutline.learningObjectives = objectives;
+  if (parsedOutline.title) parsedOutline.title = shortenCourseTitle(parsedOutline.title);
   if (sourceMode === 'storyboard') {
     return parsedOutline;
   }
@@ -684,7 +689,7 @@ export async function hydrateCourseContent(
       });
 
   const fullCourse: CourseOutline = {
-    title: skeleton.title,
+    title: shortenCourseTitle(skeleton.title || originalPrompt || ''),
     description: skeleton.description,
     visualTheme: skeleton.visualTheme,
     learningObjectives: skeleton.learningObjectives,
@@ -1012,9 +1017,8 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     // must NOT be treated as success, otherwise it skips every retry tier and the
     // learner sees a blank slide (Bug #7). Throwing here routes back through the
     // caller's catch block so the next fallback tier gets a chance.
-    const revealOk = parsed.type === 'click-reveal' && Array.isArray(parsed.data?.items) && parsed.data.items.length > 0;
     const voOk = slideSkipsNarration(parsed) || !!parsed.voiceOverText?.trim();
-    if ((!parsed.content?.trim() && !revealOk) || !voOk) {
+    if (teachingSlideNeedsRetry(parsed) || !voOk) {
       throw new Error(`Single slide response for "${slide.title}" has empty content or voiceOverText.`);
     }
     return preserveEnablingIndex(slideSkipsNarration(parsed) ? stripSlideNarration(parsed) : parsed, [slide], 0);
@@ -1026,34 +1030,19 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
    * falling back to real, title-derived text (never a "content unavailable" placeholder).
    */
   async function ensureSlideHasContent(slide: any, moduleTitle: string, attempts = 2): Promise<any> {
-    const takeawayEmpty = slide.type === 'key-takeaways'
-      && !(slide.data?.objectives?.length || slide.interactions?.length)
-      && !String(slide.content || '').replace(/^#{1,6}.*/gm, '').replace(/[-*•]/g, '').trim();
-    const revealOk = slide.type === 'click-reveal' && Array.isArray(slide.data?.items) && slide.data.items.length > 0;
-    const voOk = slideSkipsNarration(slide) || !!slide.voiceOverText?.trim();
-    if ((slide.content?.trim() || revealOk) && voOk && !takeawayEmpty) return slideSkipsNarration(slide) ? stripSlideNarration(slide) : slide;
+    if (!teachingSlideNeedsRetry(slide) && (slideSkipsNarration(slide) || !!slide.voiceOverText?.trim())) {
+      return slideSkipsNarration(slide) ? stripSlideNarration(slide) : slide;
+    }
     for (let i = 0; i < attempts; i++) {
       try {
         const retried = await hydrateSingleSlide(slide, moduleTitle);
-        return { ...slide, ...retried };
+        return finalizeHydratedSlide({ ...slide, ...retried }, moduleTitle);
       } catch (err: any) {
         console.warn(`[Bug#7 safety net] Retry ${i + 1}/${attempts} failed for slide "${slide.title}": ${err.message}`);
       }
     }
     console.error(`[Bug#7 safety net] All retries exhausted for slide "${slide.title}" -- using derived fallback text.`);
-    if (slideSkipsNarration(slide)) {
-      return stripSlideNarration({
-        ...slide,
-        content: slide.content?.trim() || `**${slide.title}**\n\nComplete this knowledge check for: ${moduleTitle}.`,
-        mediaPrompt: slide.mediaPrompt || `Professional illustration related to ${slide.title}`,
-      });
-    }
-    return {
-      ...slide,
-      content: slide.content?.trim() || `**${slide.title}**\n\nThis slide covers key content for module: ${moduleTitle}. Please review and edit as needed.`,
-      voiceOverText: slide.voiceOverText?.trim() || `In this slide we cover ${slide.title}, which is an important aspect of ${moduleTitle}.`,
-      mediaPrompt: slide.mediaPrompt || `Professional illustration related to ${slide.title}`,
-    };
+    return finalizeHydratedSlide(slideSkipsNarration(slide) ? stripSlideNarration(slide) : slide, moduleTitle);
   }
 
   // --- Helper: validate and normalize a parsed slide ---
@@ -1078,8 +1067,7 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     if (slide.type === 'hotspot' && !slide.data?.hotspots?.length) slide.type = 'content';
     else if (isMissingData('accordion', 'items')) slide.type = 'content';
     else if (isMissingData('flashcards', 'cards')) slide.type = 'content';
-    else if (isMissingData('click-reveal', 'items')) slide.type = 'content';
-    else if (isMissingData('choice-cards', 'cards')) slide.type = 'content';
+    // Incomplete click-reveal / choice-cards stay typed until Bug #7 retry, then finalizeHydratedSlide degrades.
     else if (slide.type === 'choice-cards' && slide.data) {
       const cards = slide.data.cards || [];
       const mode = slide.data.mode === 'explore' || slide.data.mode === 'select'
@@ -1107,7 +1095,7 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
         if (Array.isArray(slide.interactions) && slide.interactions[0]) {
           slide.interactions[0] = applyAlignedQuizPrompt({ ...slide.interactions[0], options: list[0].options });
         }
-      } else {
+      } else if (!isKnowledgeCheckSlide(slide)) {
         slide.type = 'content';
         slide.content = slide.content || `**${slide.title || 'Knowledge Check'}**\n\nReview this topic, then continue. (Interactive question options were incomplete and were converted to content.)`;
       }
@@ -1168,34 +1156,7 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     // Key-takeaways: normalize markdown bullets into data.objectives so the
     // LearningObjectivesSlide renderer never receives an empty list.
     if (slide.type === 'key-takeaways') {
-      const existing = slide.data?.objectives || slide.interactions;
-      if (!existing?.length) {
-        const lines = String(slide.content || '')
-          .split(/\n+/)
-          .map((l: string) => l.replace(/^#{1,6}\s+/, '').replace(/^[-*•]\s+/, '').trim())
-          .filter((l: string) => l.length > 2 && !/^key\s*takeaways?/i.test(l));
-        if (lines.length) {
-          slide.data = {
-            ...(slide.data || {}),
-            objectives: lines.slice(0, 6).map((label: string, i: number) => ({
-              id: String(i + 1),
-              label,
-              content: '',
-            })),
-          };
-        } else if (slide.title) {
-          // Last resort so the slide is never blank in the player
-          slide.content = slide.content?.trim() || `## Key Takeaways\n\n- Review ${slide.title}\n- Apply the core practices\n- Confirm understanding before moving on`;
-          slide.data = {
-            ...(slide.data || {}),
-            objectives: [
-              { id: '1', label: `Review ${slide.title}`, content: '' },
-              { id: '2', label: 'Apply the core practices', content: '' },
-              { id: '3', label: 'Confirm understanding before moving on', content: '' },
-            ],
-          };
-        }
-      }
+      Object.assign(slide, normalizeKeyTakeaways(slide));
     }
 
     // Density auto-splitter — skip Summary/Key-Takeaway slides entirely. Those are
@@ -1348,11 +1309,7 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     // blank (Bug #7) — retries empty slides with the same concurrency bound. ──
     const needsContent = hydratedSlides
       .map((s, i) => ({ s, i }))
-      .filter(({ s }) => {
-        const revealOk = s.type === 'click-reveal' && Array.isArray(s.data?.items) && s.data.items.length > 0;
-        const voMissing = !slideSkipsNarration(s) && !s.voiceOverText?.trim();
-        return (!s.content?.trim() && !revealOk) || voMissing;
-      });
+      .filter(({ s }) => teachingSlideNeedsRetry(s) || (!slideSkipsNarration(s) && !s.voiceOverText?.trim()));
     if (needsContent.length) {
       const fixed = await mapWithConcurrency(
         needsContent,
@@ -1420,6 +1377,17 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
       ? [...new Set([...configParams.interactionTypes, ...STORYBOARD_CONTENT_TYPES])]
       : configParams.interactionTypes;
     fullCourse.modules = coerceInteractionTypes(fullCourse.modules as any, allow) as any;
+  }
+
+  for (const mod of fullCourse.modules) {
+    const slides = [...(mod.slides || [])];
+    for (let i = 0; i < slides.length; i++) {
+      if (teachingSlideNeedsRetry(slides[i]) || (!slideSkipsNarration(slides[i]) && !String(slides[i].voiceOverText || '').trim())) {
+        slides[i] = await ensureSlideHasContent(slides[i], mod.title);
+      }
+      slides[i] = finalizeHydratedSlide(slides[i], mod.title);
+    }
+    mod.slides = slides;
   }
 
   return fullCourse;
@@ -1861,6 +1829,7 @@ Rules:
     allowed.length ? allowed : ['content', 'click-reveal', 'tabbed-horizontal', 'choice-cards', 'quiz'],
   );
   slides = wrapped[0]?.slides || slides;
+  slides = slides.map((s: any) => finalizeHydratedSlide(s, opts.moduleTitle || opts.courseTitle));
   return {
     moduleTitle: String(parsed?.moduleTitle || opts.titleHint || '').trim() || undefined,
     objective: String(parsed?.objective || opts.newObjective || '').trim() || undefined,

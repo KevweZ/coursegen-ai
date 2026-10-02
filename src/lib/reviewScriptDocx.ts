@@ -5,6 +5,7 @@
 import JSZip from 'jszip';
 import { coerceOstText, formatTabIntroOst, formatTabOstBody, isSymbolOnlyOstLine } from './formatTabIntroOst';
 import { isKnowledgeCheckSlide, slideSkipsNarration } from './enablingCoverage';
+import { collapseChoiceCardsOst } from './hydrateGuards';
 import { tocNumberByIndex } from './playerToc';
 import { stripSlideTypePrefix } from './stripSlideTypePrefix';
 
@@ -409,11 +410,8 @@ function playerVisibleIntroOst(slide: AnySlide, type: string, data: any): OstLin
     ));
   }
   if (type === 'choice-cards') {
-    return toOstLines(uniqueLines(
-      htmlToLines(data.prompt),
-      htmlToLines(data.question),
-      htmlToLines(slide.content),
-    ));
+    const ost = collapseChoiceCardsOst(slide.content, data.prompt || data.question);
+    return toOstLines(htmlToLines(ost.prompt || ost.content));
   }
   if (type === 'module-overview' || type === 'course-objectives') {
     return uniqueOst(objectiveOst(slide._objectives), toOstLines(htmlToLines(slide.content)));

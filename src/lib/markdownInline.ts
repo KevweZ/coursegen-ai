@@ -82,6 +82,11 @@ export function markdownToHtml(text: string | unknown): string {
       out.push('<br/>');
       continue;
     }
+    const heading = trimmed.match(/^(#{1,6})\s+(.+)$/);
+    if (heading) {
+      out.push(`<p style="margin:0.35rem 0;line-height:1.5;"><strong>${inlineFormat(heading[2])}</strong></p>`);
+      continue;
+    }
     out.push(`<p style="margin:0.35rem 0;line-height:1.5;">${inlineFormat(trimmed)}</p>`);
   }
 

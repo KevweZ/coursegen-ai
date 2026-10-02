@@ -1,0 +1,21 @@
+---
+description: Hydrate quality lock — titles, markdown, takeaways, KCs, blank slides, one instruction.
+alwaysApply: true
+---
+
+# Hydrate quality lock (do not regress)
+
+These were already fixed once and leaked back after unrelated hydrate/KC work. **Do not** remove or bypass the post-process in [`src/lib/hydrateGuards.ts`](src/lib/hydrateGuards.ts). Tests in `hydrateGuards.test.ts` and `knowledgeCheckBudget.test.ts` must stay green.
+
+## Invariants
+
+- **Cover title:** at most 8 words. `shortenCourseTitle` in [`src/lib/splitCourseTitle.ts`](src/lib/splitCourseTitle.ts) runs after file analysis and outline. No “Introduction to X: Chemistry, Properties, and Processes” laundry lists.
+- **Markdown glyphs:** `**bold**` and `###` never show as raw symbols. Choice-card body/reveal/prompt go through `markdownToHtml`. Plain-text surfaces use `stripMarkdownArtifacts`.
+- **One instruction** on choice-cards: `collapseChoiceCardsOst` — never both slide `content` and `data.prompt`.
+- **Key takeaways** are learner statements (`normalizeKeyTakeaways` / `toTakeawayStatement`), not spec-table rows or empty numbered cards.
+- **Knowledge checks** always have a learner payload (`quizHasLearnerPayload` / `ensureKnowledgeCheckPayload`). Never convert an incomplete quiz to a `content` slide titled “Knowledge Check” (that renders as a blank Overview).
+- **Teaching slides** are not a single thin subtitle. `teachingSlideNeedsRetry` + `finalizeHydratedSlide` fill or retry.
+
+## How to change generation
+
+Put new hydrate/QC/review behavior **behind these helpers**, then add a failing test first. Prompt-only rules will drift; the lock is the post-process.
