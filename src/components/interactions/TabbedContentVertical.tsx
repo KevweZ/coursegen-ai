@@ -145,7 +145,7 @@ export default function TabbedContentVertical({
   const introHtml = markdownToHtml(introOst);
   const split = (right: React.ReactNode) => (
     <div className="w-full flex gap-5 min-h-[28rem] flex-1 items-stretch">
-      <InteractionIntroColumn html={introHtml} cta="Select a topic to continue →" theme={theme} />
+      <InteractionIntroColumn html={introHtml} theme={theme} />
       <div className="flex-1 min-w-0 min-h-[28rem]">{right}</div>
     </div>
   );

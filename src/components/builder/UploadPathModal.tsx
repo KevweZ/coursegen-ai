@@ -1,20 +1,38 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { FileUp, Sparkles, ListChecks, X, ArrowRight, SlidersHorizontal } from 'lucide-react';
+import { FileUp, Sparkles, ListChecks, X, ArrowRight, SlidersHorizontal, Loader2, AlertTriangle } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import type { ExtractQuality } from '../../lib/extractQuality';
+import type { SourceMode } from '../../lib/storyboardSource';
 
 export type UploadPathChoice = 'quick' | 'customize';
 
 interface Props {
   fileName: string;
-  onConfirm: (choice: UploadPathChoice) => void;
+  onConfirm: (choice: UploadPathChoice, sourceMode: SourceMode) => void;
   onCancel: () => void;
-  /** Open saved Course Settings (defaults) without losing the pending upload. */
   onViewCourseSettings?: () => void;
+  extractBusy?: boolean;
+  extractError?: string | null;
+  extractQuality?: ExtractQuality | null;
+  sourceMode: SourceMode;
+  onSourceModeChange: (mode: SourceMode) => void;
 }
 
-export function UploadPathModal({ fileName, onConfirm, onCancel, onViewCourseSettings }: Props) {
+export function UploadPathModal({
+  fileName,
+  onConfirm,
+  onCancel,
+  onViewCourseSettings,
+  extractBusy = false,
+  extractError = null,
+  extractQuality = null,
+  sourceMode,
+  onSourceModeChange,
+}: Props) {
   const [choice, setChoice] = useState<UploadPathChoice>('quick');
+  const offerStoryboard = !!extractQuality?.storyboardOffered;
+  const canContinue = !extractBusy && !extractError;
 
   return (
     <div className="fixed inset-0 z-[400] flex items-center justify-center p-4">
@@ -44,7 +62,66 @@ export function UploadPathModal({ fileName, onConfirm, onCancel, onViewCourseSet
           </button>
         </div>
 
-        <div className="p-5 space-y-3">
+        <div className="p-5 space-y-3 max-h-[min(70vh,36rem)] overflow-y-auto">
+          <div className={cn(
+            'rounded-xl border px-3.5 py-3 text-sm leading-relaxed',
+            extractQuality?.imageOnly || extractQuality?.thin
+              ? 'border-amber-500/40 bg-amber-500/10 text-amber-100'
+              : 'border-slate-700 bg-slate-950 text-slate-300'
+          )}>
+            {extractBusy ? (
+              <p className="flex items-center gap-2 text-slate-300">
+                <Loader2 className="w-4 h-4 animate-spin text-purple-300" />
+                Reading the file…
+              </p>
+            ) : extractError ? (
+              <p className="flex items-start gap-2 text-red-200">
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                {extractError}
+              </p>
+            ) : (
+              <ul className="space-y-1.5">
+                {(extractQuality?.lines || ['File is ready.']).map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {offerStoryboard && !extractBusy && !extractError && (
+            <div className="space-y-2">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Storyboard</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => onSourceModeChange('storyboard')}
+                  className={cn(
+                    'text-left p-3 rounded-xl border-2 text-sm transition-all',
+                    sourceMode === 'storyboard'
+                      ? 'border-indigo-500 bg-indigo-500/10 text-indigo-100'
+                      : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700'
+                  )}
+                >
+                  <span className="font-bold text-white block">Follow storyboard</span>
+                  <span className="text-xs mt-1 block leading-relaxed">Match listed learner screens and scripts.</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSourceModeChange('raw')}
+                  className={cn(
+                    'text-left p-3 rounded-xl border-2 text-sm transition-all',
+                    sourceMode === 'raw'
+                      ? 'border-slate-400 bg-slate-800/80 text-slate-100'
+                      : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700'
+                  )}
+                >
+                  <span className="font-bold text-white block">Treat as lecture</span>
+                  <span className="text-xs mt-1 block leading-relaxed">Redesign the file into a course.</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           <p className="text-xs text-slate-400 leading-relaxed">
             Both options use your <strong className="text-slate-300">Course Settings</strong> (player, interactions, audio, and multimedia preferences).
             {onViewCourseSettings ? ' Review or edit them anytime before you continue.' : null}
@@ -118,6 +195,10 @@ export function UploadPathModal({ fileName, onConfirm, onCancel, onViewCourseSet
               View Course Settings
             </button>
           )}
+
+          <p className="text-[11px] text-slate-500 leading-relaxed">
+            PDF, Word, and PowerPoint are all accepted. A slide-per-screen PowerPoint with speaker notes is the most reliable match for a specified storyboard. Word and PDF: we follow the text we can extract — review the outline if you pick Review before build.
+          </p>
         </div>
 
         <div className="flex items-center justify-end gap-3 p-5 border-t border-slate-800 bg-slate-900/80">
@@ -130,8 +211,9 @@ export function UploadPathModal({ fileName, onConfirm, onCancel, onViewCourseSet
           </button>
           <button
             type="button"
-            onClick={() => onConfirm(choice)}
-            className="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-purple-600 hover:bg-purple-500 transition-colors flex items-center gap-2"
+            disabled={!canContinue}
+            onClick={() => onConfirm(choice, sourceMode)}
+            className="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-purple-600 hover:bg-purple-500 transition-colors flex items-center gap-2 disabled:opacity-40 disabled:hover:bg-purple-600"
           >
             Continue
             <ArrowRight className="w-4 h-4" />

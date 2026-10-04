@@ -12,6 +12,10 @@ const FAQS = [
     a: 'Make sure your file is a .pptx file (not .ppt or .odp). Files over 50MB may time out — try splitting your deck into smaller sections. PDFs and Word documents also work if you can export to those formats.',
   },
   {
+    q: 'What storyboard format works best?',
+    a: 'PDF, Word, and PowerPoint are all accepted. A PowerPoint with one learner screen per slide and narration in the notes is the most reliable match. Word and PDF storyboards: we follow the text we can extract (tables and columns are best-effort). After upload you will see a short extract status and can choose Follow storyboard or Treat as lecture. Use Review before build if you want to check the outline.',
+  },
+  {
     q: 'Course generation is stuck — how long should it take?',
     a: 'Generation typically takes 30–90 seconds depending on course length. If it\'s been over 3 minutes with no progress, refresh the page and try again. If the issue persists, submit a support ticket below.',
   },

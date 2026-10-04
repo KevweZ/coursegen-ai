@@ -46,17 +46,76 @@ export function looksLikeSectionHeader(raw: string): boolean {
   return false;
 }
 
-function collectListItems(markdown: string): string[] {
+/** Child fact under a topic: comparative lead-in or a relation (=, arrow). */
+function looksLikeSupportingBullet(raw: string): boolean {
+  const plain = itemPlain(raw);
+  if (!plain) return false;
+  if (/^(higher|lower|more|less|faster|slower|also|this|it)\b/i.test(plain)) return true;
+  if (/[=→]/.test(plain) && !looksLikeSectionHeader(raw)) return true;
+  return false;
+}
+
+function splitColonTopic(raw: string): { heading: string; lead?: string } {
+  const plain = itemPlain(raw);
+  const m = plain.match(/^(.{2,48}?):\s+(.+)$/);
+  if (m) {
+    const label = m[1].trim();
+    const rest = m[2].trim();
+    if (label.split(/\s+/).length <= 8 && rest.split(/\s+/).length >= 3) {
+      return { heading: label, lead: rest };
+    }
+  }
+  return { heading: plain };
+}
+
+/**
+ * Two-column peer lists (4–6 items) where each column lead is a topic and
+ * the rest are supporting facts. Matches Melt Flow Index-style overviews.
+ */
+function fromBalancedTopicColumns(lines: string[]): OstSectionGroup[] | null {
+  if (lines.length < 4 || lines.length > 6) return null;
+  if (lines.some(l => looksLikeSectionHeader(l) || /^#{2,4}\s+/.test(l))) return null;
+  const mid = Math.ceil(lines.length / 2);
+  const chunks = [lines.slice(0, mid), lines.slice(mid)];
+  if (chunks.some(c => c.length < 2)) return null;
+  if (!chunks.every(c => !looksLikeSupportingBullet(c[0]) && c.slice(1).every(looksLikeSupportingBullet))) {
+    return null;
+  }
+  return chunks.map(c => {
+    const split = splitColonTopic(c[0]);
+    const bullets = [
+      ...(split.lead ? [split.lead] : []),
+      ...c.slice(1).map(itemPlain),
+    ].filter(Boolean);
+    return { heading: split.heading, bullets };
+  });
+}
+
+function collectFlowLines(markdown: string): string[] {
   const raw = coerceOstText(markdown).replace(/\r\n/g, '\n');
-  if (/<li[\s>]/i.test(raw)) {
-    return [...raw.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi)]
+  if (/<h[2-4][\s>]|<li[\s>]/i.test(raw)) {
+    const chunks: string[] = [];
+    if (/<h[2-4]/i.test(raw)) {
+      const headingParts = raw.split(/(?=<h[2-4][\s>])/i);
+      for (const part of headingParts) {
+        const hm = part.match(/<h[2-4][^>]*>([\s\S]*?)<\/h[2-4]>/i);
+        if (hm) chunks.push(`### ${hm[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()}`);
+        const lis = [...part.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi)]
+          .map(m => m[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())
+          .filter(Boolean);
+        lis.forEach(t => chunks.push(`- ${t}`));
+      }
+      if (chunks.length >= 3) return chunks;
+    }
+    const fromLi = [...raw.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi)]
       .map(m => m[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())
       .filter(Boolean);
+    if (fromLi.length) return fromLi.map(t => `- ${t}`);
   }
   return raw
     .split('\n')
     .map(l => l.trim())
-    .filter(l => /^[-*•]\s+/.test(l) || /^\d+[.)]\s+/.test(l));
+    .filter(Boolean);
 }
 
 function fromHeadingSections(sections: HeadingBulletSection[]): OstSectionGroup[] {
@@ -79,25 +138,28 @@ export function parseOstSectionGroups(content: unknown): OstSectionGroup[] | nul
   const fromHeadings = fromHeadingSections(parseHeadingBulletSections(raw));
   if (fromHeadings.length >= 2) return fromHeadings;
 
-  const items = collectListItems(raw);
-  if (items.length < 3) return null;
+  const lines = collectFlowLines(raw);
+  if (lines.length < 3) return null;
 
   const groups: OstSectionGroup[] = [];
   let current: OstSectionGroup | null = null;
-  for (const item of items) {
-    if (looksLikeSectionHeader(item)) {
+  for (const line of lines) {
+    if (/^#{2,4}\s+/.test(line) || looksLikeSectionHeader(line)) {
       if (current && current.bullets.length) groups.push(current);
-      current = { heading: itemPlain(item), bullets: [] };
+      current = { heading: itemPlain(line.replace(/^#{2,4}\s+/, '')), bullets: [] };
       continue;
     }
     if (!current) continue;
-    current.bullets.push(itemPlain(item));
+    current.bullets.push(itemPlain(line));
   }
   if (current && current.bullets.length) groups.push(current);
 
-  if (groups.length < 2) return null;
-  if (groups.every(g => g.bullets.length === 0)) return null;
-  return groups.filter(g => g.bullets.length);
+  const headed = groups.filter(g => g.bullets.length);
+  if (headed.length >= 2) return headed;
+
+  const columns = fromBalancedTopicColumns(lines);
+  if (columns && columns.length >= 2) return columns;
+  return null;
 }
 
 /** Rewrite OST so parents are ### headings and children stay bullets. */

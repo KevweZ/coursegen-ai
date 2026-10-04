@@ -1,8 +1,8 @@
 import React from 'react';
-import { PROCESS_PANEL_DEFAULT } from '../../lib/tabAccents';
 
 interface Props {
   html?: string;
+  /** Shown under the intro. Omit on process/tabs — those CTAs live in the interaction canvas. */
   cta?: string;
   theme?: 'light' | 'dark' | 'unified';
 }
@@ -10,13 +10,13 @@ interface Props {
 /** Left-rail intro used by click-reveal, process, and vertical tabs. */
 export default function InteractionIntroColumn({
   html,
-  cta = 'Select each term to continue →',
+  cta,
   theme = 'light',
 }: Props) {
   const isLight = theme === 'light';
   const ink = isLight ? '#0f172a' : '#f8fafc';
   const muted = isLight ? '#334155' : '#cbd5e1';
-  const panel = isLight ? PROCESS_PANEL_DEFAULT : '#0f172a';
+  const panel = isLight ? '#ffffff' : '#0f172a';
 
   return (
     <aside
@@ -40,9 +40,11 @@ export default function InteractionIntroColumn({
             dangerouslySetInnerHTML={{ __html: html }}
           />
         ) : null}
-        <p className="mt-6 text-xs font-semibold" style={{ color: muted }}>
-          {cta}
-        </p>
+        {cta ? (
+          <p className="mt-6 text-xs font-semibold" style={{ color: muted }}>
+            {cta}
+          </p>
+        ) : null}
       </div>
     </aside>
   );

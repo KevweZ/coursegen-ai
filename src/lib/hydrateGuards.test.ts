@@ -124,6 +124,22 @@ test('blank knowledge checks keep quiz type and gain a learner payload', () => {
   assert.equal(teachingSlideNeedsRetry(next), false);
 });
 
+test('content ALL-CAPS parents become headings, not bullets', () => {
+  const next = finalizeHydratedSlide({
+    type: 'content',
+    title: 'Crystallinity in PE: Density and Branching',
+    content: `- DENSITY CONTROLS CRYSTALLINITY
+- Linear PE (HDPE): low branching to high density
+- Branched PE (LDPE): more branches to low density
+- BRANCHING REDUCES CRYSTALLINE PACKING
+- Branch points disrupt regular chain alignment
+- Comonomer branches create amorphous regions`,
+  }, 'Molecular Structure');
+  assert.match(String(next.content), /^### /m);
+  assert.doesNotMatch(String(next.content), /^- DENSITY CONTROLS/m);
+  assert.match(String(next.content), /^- Linear PE/m);
+});
+
 test('thin content slides are not left as a single overview sentence', () => {
   const next = finalizeHydratedSlide({
     type: 'content',

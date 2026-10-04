@@ -120,7 +120,8 @@ import { loadPlayerProperties, savePlayerProperties, cachePlayerProperties } fro
 import { fetchAccountPreferences, pushAccountPreferences } from './lib/accountPreferences';
 import { CourseOutline, Slide, TerminalObjectiveGroup, ExamConfig, ExamQuestion, ExamSessionState, NavigationMode } from './types/course';
 import { extractTextFromFile, extractImagesFromFile, EXTRACT_DEADLINE_MS, SourceImage } from './lib/fileProcessor';
-import { looksLikeStoryboard, storyboardSourceWindow, type SourceMode } from './lib/storyboardSource';
+import { shouldOfferStoryboardChoice, storyboardSourceWindow, type SourceMode } from './lib/storyboardSource';
+import { assessExtract, type ExtractQuality } from './lib/extractQuality';
 import { generateGameTemplate, generateStandaloneGame } from './services/aiGameService';
 import { GameContainer } from './components/game-templates/core/GameContainer';
 import { getRandomBackgroundForTheme } from './lib/backgrounds';
@@ -189,7 +190,8 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { CustomMatchingActivity } from './components/interactions/CustomMatchingActivity';
 import { CustomSortingActivity } from './components/interactions/CustomSortingActivity';
 import { HotspotInteraction } from './components/interactions/HotspotInteraction';
-import ClickRevealInteraction, { GroupedClickReveal } from './components/interactions/ClickRevealInteraction';
+import ClickRevealInteraction from './components/interactions/ClickRevealInteraction';
+import { OstSectionGroupsView } from './components/interactions/OstSectionGroupsView';
 import ChoiceCardsInteraction, { inferChoiceCardsMode } from './components/interactions/ChoiceCardsInteraction';
 import { getRecommendedGames } from './lib/gameEngine';
 import { DUMMY_COURSE, DUMMY_EXAM_QUESTIONS } from './lib/dummyCourse';
@@ -1511,6 +1513,9 @@ export default function App() {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [pendingUploadFile, setPendingUploadFile] = useState<File | null>(null);
   const [showUploadPathModal, setShowUploadPathModal] = useState(false);
+  const [extractBusy, setExtractBusy] = useState(false);
+  const [extractError, setExtractError] = useState<string | null>(null);
+  const [extractQuality, setExtractQuality] = useState<ExtractQuality | null>(null);
   const [showWelcomeTour, setShowWelcomeTour] = useState(false);
   const [showDevTour, setShowDevTour] = useState(false);
   /** defaults = profile menu; session = after customize upload; quick = one-click build */
@@ -3218,7 +3223,7 @@ export default function App() {
       const fileKey = `${file.name}:${file.size}:${file.lastModified}`;
       const decidedMode: SourceMode | undefined = resume?.sourceMode
         ?? (storyboardDecisionForFileRef.current === fileKey ? sourceMode : undefined);
-      if (looksLikeStoryboard(text, file.name) && !decidedMode) {
+      if (shouldOfferStoryboardChoice(text, file.name) && !decidedMode) {
         clearInterval(analysisTimer);
         pendingStoryboardAnalysisRef.current = { file, text, path: effectivePath, settingsOverride };
         setStoryboardConfirmOpen(true);
@@ -3435,18 +3440,32 @@ export default function App() {
       await runAnalysis(file, 'game');
       return;
     }
-    // Course Builder: choose quick vs customize before analysis
+    // Course Builder: extract first so Build now / Review can show a short status.
     setPendingUploadFile(file);
     setUploadedFile(file);
     setExtractedFileText('');
+    setExtractQuality(null);
+    setExtractError(null);
+    setExtractBusy(true);
     setSourceMode('raw');
     storyboardDecisionForFileRef.current = null;
     setStoryboardConfirmOpen(false);
     pendingStoryboardAnalysisRef.current = null;
     setShowUploadPathModal(true);
+    try {
+      const text = await extractTextFromFile(file);
+      setExtractedFileText(text);
+      const quality = assessExtract(text, file.name);
+      setExtractQuality(quality);
+      setSourceMode(quality.storyboardOffered ? 'storyboard' : 'raw');
+    } catch (err: any) {
+      setExtractError(err?.message || 'Could not read this file.');
+    } finally {
+      setExtractBusy(false);
+    }
   };
 
-  const confirmUploadPath = async (choice: UploadPathChoice) => {
+  const confirmUploadPath = async (choice: UploadPathChoice, chosenSourceMode: SourceMode = 'raw') => {
     const file = pendingUploadFile || uploadedFile;
     // Capture before clearing — defaults mode means user just reviewed/edited Course Settings mid-upload.
     const cameFromSettings = settingsMode === 'defaults';
@@ -3473,13 +3492,27 @@ export default function App() {
       settingsOverride = resolveCourseSettings(user?.id);
     }
     applySavedSettings(settingsOverride);
-    await runAnalysis(file, choice, settingsOverride);
+    setSourceMode(chosenSourceMode);
+    const fileKey = `${file.name}:${file.size}:${file.lastModified}`;
+    storyboardDecisionForFileRef.current = fileKey;
+    await runAnalysis(
+      file,
+      choice,
+      settingsOverride,
+      extractedFileText
+        ? { sourceMode: chosenSourceMode, extractedText: extractedFileText }
+        : undefined,
+    );
   };
 
   const cancelUploadPath = () => {
     setShowUploadPathModal(false);
     setPendingUploadFile(null);
     setUploadedFile(null);
+    setExtractedFileText('');
+    setExtractQuality(null);
+    setExtractError(null);
+    setExtractBusy(false);
     setSourceMode('raw');
     storyboardDecisionForFileRef.current = null;
     setStoryboardConfirmOpen(false);
@@ -7305,11 +7338,7 @@ export default function App() {
                                      compact
                                    />
                                  ) : sectionGroups ? (
-                                   <GroupedClickReveal
-                                     groups={sectionGroups}
-                                     theme={theme as any}
-                                     onItemReveal={(id) => markInteractionExplored(currentSlide.id, id)}
-                                   />
+                                   <OstSectionGroupsView groups={sectionGroups} theme={theme} />
                                  ) : (
                                    <SlideContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} hasSideImage={!!slideImg} />
                                  );
@@ -9875,6 +9904,11 @@ export default function App() {
               onConfirm={confirmUploadPath}
               onCancel={cancelUploadPath}
               onViewCourseSettings={viewCourseSettingsFromUploadPath}
+              extractBusy={extractBusy}
+              extractError={extractError}
+              extractQuality={extractQuality}
+              sourceMode={sourceMode}
+              onSourceModeChange={setSourceMode}
             />
           )}
         </AnimatePresence>

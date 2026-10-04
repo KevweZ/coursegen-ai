@@ -208,7 +208,6 @@ export default function TabbedContentHorizontal({
     <div className="w-full flex gap-5 min-h-[28rem] flex-1 items-stretch">
       <InteractionIntroColumn
         html={markdownToHtml(introOst)}
-        cta={showStepLabels ? 'Select a step to continue →' : 'Select below to continue →'}
         theme={theme}
       />
       <div className={`flex-1 min-w-0 min-h-[28rem] flex flex-col gap-2 select-none ${blocks ? 'tab-skin-blocks' : ''}`}>

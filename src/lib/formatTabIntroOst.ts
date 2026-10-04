@@ -70,20 +70,29 @@ function isInstructionOnly(text: string): boolean {
   );
 }
 
-/** Remove CTA lines entirely (including a leading bullet marker). */
-function stripCta(text: string): string {
-  return text
+/** Remove CTA lines entirely (including a leading bullet marker or HTML wrapper). */
+export function stripOstCta(text: string): string {
+  return String(text || '')
     .split(/\n/)
     .filter(line => {
       const body = line
         .replace(/^[-*•]\s+/, '')
         .replace(/^\d+[.)]\s+/, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
         .trim();
-      return !/^(select|choose)\s+a\s+tab\b/i.test(body);
+      if (!body) return true;
+      if (/^(select|choose)\s+(a\s+tab|a\s+topic|a\s+step|below|each\s+term)\b/i.test(body)) return false;
+      if (/^(select|choose)\b.{0,48}\bto continue\b/i.test(body)) return false;
+      return true;
     })
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+function stripCta(text: string): string {
+  return stripOstCta(text);
 }
 
 function alreadyBulleted(text: string): boolean {
@@ -120,14 +129,15 @@ export function sanitizeOstText(text: unknown): string {
     .map(block => {
       const lines = filterMeaningfulOstLines(block.split(/\n/));
       if (!lines.length) return '';
-      if (alreadyBulleted(block) || lines.every(l => /^[-*•]\s+|^\d+[.)]\s+/.test(l))) {
+      if (alreadyBulleted(block) || lines.every(l => /^[-*•]\s+|^\d+[.)]\s+/.test(l) || /^#{2,4}\s+/.test(l))) {
         return lines
           .map(l => {
+            if (/^#{2,4}\s+/.test(l)) return l.trim();
             if (/^[-*•]\s+/.test(l)) return `- ${l.replace(/^[-*•]\s+/, '').trim()}`;
             if (/^\d+[.)]\s+/.test(l)) return `- ${l.replace(/^\d+[.)]\s+/, '').trim()}`;
             return `- ${l}`;
           })
-          .filter(l => !isSymbolOnlyOstLine(l))
+          .filter(l => !isSymbolOnlyOstLine(l) || /^#{2,4}\s+/.test(l))
           .join('\n');
       }
       return lines.join('\n');

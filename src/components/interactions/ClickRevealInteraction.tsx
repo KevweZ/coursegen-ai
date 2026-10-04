@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { markdownToHtml } from '../../lib/markdownInline';
-import { sanitizeOstText } from '../../lib/formatTabIntroOst';
+import { sanitizeOstText, stripOstCta } from '../../lib/formatTabIntroOst';
 import type { OstSectionGroup } from '../../lib/ostSectionGroups';
 import { EnlargeableImage } from '../player/EnlargeableImage';
 import InteractionIntroColumn from './InteractionIntroColumn';
@@ -73,7 +73,7 @@ const ClickRevealInteraction: React.FC<ClickRevealProps> = ({
     [items]
   );
   const introHtml = React.useMemo(() => {
-    const ost = sanitizeOstText(introContent);
+    const ost = stripOstCta(sanitizeOstText(introContent));
     return ost ? markdownToHtml(ost) : '';
   }, [introContent]);
   const [openId, setOpenId] = useState<string | null>(null);

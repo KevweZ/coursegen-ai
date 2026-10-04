@@ -316,9 +316,24 @@ function cleanWhitespace(text) {
 }
 
 /** Minimal HTML → Markdown converter for DOCX mammoth output. */
+function tableToMarkdown(tableHtml) {
+  const strip = s => s.replace(/<[^>]+>/g, ' ').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&nbsp;/g,' ').replace(/\s+/g, ' ').trim();
+  const rows = [...String(tableHtml || '').matchAll(/<tr[\s\S]*?<\/tr>/gi)].map(m => m[0]);
+  const lines = [];
+  for (const row of rows) {
+    const cells = [...row.matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)]
+      .map(m => strip(m[1]))
+      .filter(Boolean);
+    if (cells.length) lines.push(cells.join(' — '));
+  }
+  return lines.length ? `${lines.join('\n')}\n\n` : '';
+}
+
 function htmlToMarkdown(html) {
   const stripTags = s => s.replace(/<[^>]+>/g, '').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&nbsp;/g,' ').trim();
   return html
+    .replace(/<img[\s\S]*?>/gi, '')
+    .replace(/<table[\s\S]*?<\/table>/gi, (m) => tableToMarkdown(m))
     .replace(/<h1[^>]*>([\s\S]*?)<\/h1>/gi, (_, c) => `# ${stripTags(c)}\n\n`)
     .replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, (_, c) => `## ${stripTags(c)}\n\n`)
     .replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, (_, c) => `### ${stripTags(c)}\n\n`)
@@ -330,7 +345,6 @@ function htmlToMarkdown(html) {
     .replace(/<ul[^>]*>|<ol[^>]*>/gi, '')
     .replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, (_, c) => `${stripTags(c)}\n\n`)
     .replace(/<br[^>]*\/?>/gi, '\n')
-    .replace(/<table[\s\S]*?<\/table>/gi, '[Table — see original document]\n\n')
     .replace(/<[^>]+>/g, '')
     .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
@@ -425,7 +439,11 @@ async function parsePptxToMarkdown(buffer) {
 /** Server-side DOCX parser: mammoth HTML → Markdown. */
 async function parseDocxToMarkdown(buffer) {
   const { default: mammoth } = await import('mammoth');
-  const result = await mammoth.convertToHtml({ buffer });
+  const skipImage = () => Promise.resolve({ src: '', alt: '' });
+  const result = await mammoth.convertToHtml(
+    { buffer },
+    { convertImage: mammoth.images.imgElement(skipImage) },
+  );
   const markdown = htmlToMarkdown(result.value);
   return {
     markdown,

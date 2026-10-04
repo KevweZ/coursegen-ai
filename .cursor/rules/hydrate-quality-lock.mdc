@@ -13,14 +13,16 @@ These were already fixed once and leaked back after unrelated hydrate/KC work. *
 - **Module title:** short topic label, no Bloom gerunds. `shortenModuleTitle` after outline coverage.
 - **Markdown glyphs:** `**bold**` and `###` never show as raw symbols. Choice-card body/reveal/prompt go through `markdownToHtml`. Quiz options and other plain-text surfaces use `stripMarkdownArtifacts`.
 - **Click-reveal layout:** intro/prompt left column; reveal rows on the right (`ClickRevealInteraction`). Process and vertical tabs use the same left-intro / right-interaction split (`InteractionIntroColumn`).
-- **Content section headers:** ALL-CAPS or fully-bold list items become `###` parents; child bullets sit under them (`parseOstSectionGroups`). Two groups render as unlabeled click-to-reveal columns.
+- **Intro rail is white** on light theme (`InteractionIntroColumn` panel `#ffffff`). Process / tab / click-reveal **interaction wells keep** light blue or the module color. Do not paint the preamble with `PROCESS_PANEL_DEFAULT`.
+- **Continue CTA once.** Process and tabs omit intro `cta`; `formatTabIntroOst` / `stripOstCta` drop “Select below / a topic / a tab to continue”. Empty interaction canvas keeps the prompt. Click-reveal may keep its prompt under the intro (only place).
+- **Content section headers:** ALL-CAPS, fully-bold, or topic-lead list items become `###` parents; **only children are bullets** (`parseOstSectionGroups` + `OstSectionGroupsView`). `sanitizeOstText` must keep `###` lines (never `- ### heading`). Do not restore CSS `columns-2` on a flat `ul` for these groups.
 - **Scored choice-cards:** prompt must say **correct** and **Check** (`ensureSelectChoicePrompt`).
 - **Key takeaways** are learner statements (`normalizeKeyTakeaways`), not spec-table rows or empty numbered cards.
 - **Knowledge checks** always have a learner payload and **empty** `voiceOverText` (`ensureKnowledgeCheckPayload` + `stripSlideNarration`). Never convert an incomplete quiz to a `content` slide titled “Knowledge Check”.
 - **KC count/place:** `ensureKnowledgeCheckBudget` + `alignHydratedSlidesToOutline`. Teaching slides cannot become quizzes.
 - **Enabling coverage:** one module per terminal, 1–2 teaching slides per enabling (`ensureEnablingSlideCoverage`).
 - **Teaching slides** are not a single thin subtitle (`teachingSlideNeedsRetry` + `finalizeHydratedSlide`).
-- **Tab intro** never includes “Select a tab…” (`formatTabIntroOst`).
+- **Tab intro** never includes “Select a tab / below / a topic to continue” (`formatTabIntroOst`).
 - **Review script** matches player order/OST (`reviewAlignment.test.ts`).
 
 ## How to change generation

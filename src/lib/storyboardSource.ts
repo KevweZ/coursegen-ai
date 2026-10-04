@@ -11,17 +11,22 @@ export type SourceMode = 'raw' | 'storyboard';
 export const STORYBOARD_SOURCE_CHARS = 24000;
 
 const STRONG_SIGNALS: RegExp[] = [
-  /e-?learning\s+storyboard/i,
+  /e-?learning[\s\S]{0,48}storyboard/i,
+  /production storyboard/i,
   /developer-ready\s+storyboard/i,
   /this document is a build specification/i,
+  /learner\s+screen\s+specification/i,
   /learner\s+screen\s*\/\s*on-screen\s+text/i,
-  /on-screen\s+text[\s\S]{0,80}narration\s*\/\s*script/i,
+  /on-screen\s+text[\s\S]{0,80}narration/i,
 ];
 
 const SUPPORTING_SIGNALS: RegExp[] = [
   /narration\s*\/\s*script/i,
+  /narration script/i,
+  /on-screen text/i,
   /\[DEV[:\]]/i,
   /screen\s+0?\d+\s*[—–-]/i,
+  /screen\s+\d+\s+of\s+\d+/i,
   /final ost/i,
   /build\s+\+\s+(visual|interaction|feedback)/i,
   /exact visual instruction/i,
@@ -38,7 +43,16 @@ export function looksLikeStoryboard(text: string, fileName?: string): boolean {
   if (strongHits >= 2) return true;
   if (strongHits >= 1 && supportHits >= 2) return true;
   if (nameHint && strongHits >= 1 && supportHits >= 1) return true;
+  if (nameHint && supportHits >= 2) return true;
   return false;
+}
+
+/** Offer Follow vs lecture when the file is named or headed as a storyboard, even if screen specs are unclear. */
+export function shouldOfferStoryboardChoice(text: string, fileName?: string): boolean {
+  if (looksLikeStoryboard(text, fileName)) return true;
+  if (/storyboard/i.test(String(fileName || ''))) return true;
+  const head = String(text || '').slice(0, 2500);
+  return /storyboard/i.test(head);
 }
 
 export function storyboardSourceWindow(text: string): string {

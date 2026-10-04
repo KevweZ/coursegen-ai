@@ -44,3 +44,41 @@ test('flat bold-header lists become two parent groups with child bullets', () =>
   assert.match(md, /### MANAGING POLYMER PROPERTIES/i);
   assert.doesNotMatch(md, /^- \*\*HIGH PRESSURE/m);
 });
+
+test('topic-lead two-column lists keep parents unbulleted', () => {
+  const md = `
+- Melt Flow Index (MFI): polymer flow rate at 190°C under load
+- Higher MFI = lower average molecular weight
+- Lower MFI = higher average molecular weight
+- MFI inversely correlates with chain length
+- Faster-flowing polymers have shorter chains
+`;
+  const groups = parseOstSectionGroups(md);
+  assert.ok(groups);
+  assert.equal(groups!.length, 2);
+  assert.match(groups![0].heading, /melt flow index/i);
+  assert.doesNotMatch(groups![0].heading, /^-/);
+  assert.ok(groups![0].bullets.some(b => /polymer flow rate/i.test(b)));
+  assert.ok(groups![0].bullets.some(b => /higher mfi/i.test(b)));
+  assert.match(groups![1].heading, /inversely correlates/i);
+  assert.ok(groups![1].bullets.some(b => /faster-flowing/i.test(b)));
+});
+
+test('ALL-CAPS parent lines stay headers with only children bulleted', () => {
+  const md = `
+- DENSITY CONTROLS CRYSTALLINITY
+- Linear PE (HDPE): low branching → high density → high crystallinity
+- Branched PE (LDPE): more branches → low density → low crystallinity
+- BRANCHING REDUCES CRYSTALLINE PACKING
+- Branch points disrupt regular chain alignment
+- Comonomer branches create amorphous regions
+- More branches = looser polymer structure
+`;
+  const groups = parseOstSectionGroups(md);
+  assert.ok(groups);
+  assert.equal(groups!.length, 2);
+  assert.match(groups![0].heading, /density controls crystallinity/i);
+  assert.equal(groups![0].bullets.length, 2);
+  assert.match(groups![1].heading, /branching reduces crystalline packing/i);
+  assert.doesNotMatch(groups![0].heading, /^-/);
+});
