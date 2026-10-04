@@ -83,7 +83,8 @@ import {
   quizQuestionList,
 } from './lib/knowledgeCheckOst';
 import { slideSkipsNarration } from './lib/enablingCoverage';
-import { collapseChoiceCardsOst, normalizeKeyTakeaways } from './lib/hydrateGuards';
+import { collapseChoiceCardsOst, ensureSelectChoicePrompt, normalizeKeyTakeaways } from './lib/hydrateGuards';
+import { parseOstSectionGroups } from './lib/ostSectionGroups';
 import { hasLiveNarrationUrl } from './lib/narrationAudio';
 import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft, generateMasteryExam, generateInsertedContent } from './services/aiService';
 import { createScormPackage, ScormVersion } from './services/scormService';
@@ -187,7 +188,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { CustomMatchingActivity } from './components/interactions/CustomMatchingActivity';
 import { CustomSortingActivity } from './components/interactions/CustomSortingActivity';
 import { HotspotInteraction } from './components/interactions/HotspotInteraction';
-import ClickRevealInteraction from './components/interactions/ClickRevealInteraction';
+import ClickRevealInteraction, { GroupedClickReveal } from './components/interactions/ClickRevealInteraction';
 import ChoiceCardsInteraction, { inferChoiceCardsMode } from './components/interactions/ChoiceCardsInteraction';
 import { getRecommendedGames } from './lib/gameEngine';
 import { DUMMY_COURSE, DUMMY_EXAM_QUESTIONS } from './lib/dummyCourse';
@@ -7281,6 +7282,7 @@ export default function App() {
                                  const body = (currentSlide.content || '').trim();
                                  const isEmpty = body.length < 8;
                                  const slideImg = (currentSlide as any).imageUrl || null;
+                                 const sectionGroups = !isEmpty && !slideImg ? parseOstSectionGroups(body) : null;
                                  const headerBlock = (
                                    <div className="space-y-4 w-full">
                                      <p className="text-[10px] font-black uppercase tracking-[0.25em]" style={{ color: slideAccentColor }}>
@@ -7295,6 +7297,12 @@ export default function App() {
                                      isRegenerating={regeneratingSlideId === currentSlide.id}
                                      onRegenerate={() => regenerateBlankSlide(currentSlide)}
                                      compact
+                                   />
+                                 ) : sectionGroups ? (
+                                   <GroupedClickReveal
+                                     groups={sectionGroups}
+                                     theme={theme as any}
+                                     onItemReveal={(id) => markInteractionExplored(currentSlide.id, id)}
                                    />
                                  ) : (
                                    <SlideContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} hasSideImage={!!slideImg} />
@@ -7768,9 +7776,9 @@ export default function App() {
 
 
                                {currentSlide?.type === 'tabbed-horizontal' && (
-                                 <div className="space-y-6 w-full">
+                                 <div className="flex flex-col gap-5 w-full min-h-0 flex-1">
                                    <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                   <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
+                                   <div className={cn('flex-1 min-h-0', theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                      <TabbedHorizontal
                                        tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []}
                                        theme={theme as any}
@@ -7851,9 +7859,9 @@ export default function App() {
                                  </div>
                                )}
                                {currentSlide?.type === 'tabbed-vertical' && (
-                                 <div className="space-y-6 w-full">
+                                 <div className="flex flex-col gap-5 w-full min-h-0 flex-1">
                                    <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                   <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
+                                   <div className={cn('flex-1 min-h-0', theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                      <TabbedVertical
                                        tabs={currentSlide.data?.tabs || currentSlide.data?.items || currentSlide.interactions?.[0]?.tabs || currentSlide.interactions?.[0]?.items || []}
                                        theme={theme as any}
@@ -8000,6 +8008,14 @@ export default function App() {
 
                                {currentSlide?.type === 'choice-cards' && (() => {
                                  const ost = collapseChoiceCardsOst(currentSlide.content, currentSlide.data?.prompt);
+                                 const cards = currentSlide.data?.cards || currentSlide.data?.items || [];
+                                 const mode = inferChoiceCardsMode(currentSlide.data);
+                                 const correctCount = (Array.isArray(cards) ? cards : []).filter(
+                                   (c: any) => c?.isCorrect === true || c?.accepted === true,
+                                 ).length;
+                                 const prompt = mode === 'select'
+                                   ? ensureSelectChoicePrompt(ost.prompt, correctCount)
+                                   : ost.prompt;
                                  return (
                                  <div className="space-y-6 w-full">
                                    <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
@@ -8013,11 +8029,11 @@ export default function App() {
                                    )}
                                    <ChoiceCardsInteraction
                                      key={currentSlide.id}
-                                     cards={currentSlide.data?.cards || currentSlide.data?.items || []}
-                                     prompt={ost.prompt}
+                                     cards={cards}
+                                     prompt={prompt}
                                      feedback={currentSlide.data?.feedback || ''}
                                      selectMode={currentSlide.data?.selectMode === 'single' ? 'single' : 'multi'}
-                                     mode={inferChoiceCardsMode(currentSlide.data)}
+                                     mode={mode}
                                      theme={theme as any}
                                      onChecked={() => markInteractionExplored(currentSlide.id, 'choice-cards-check')}
                                      onExplore={(cardId) => markInteractionExplored(currentSlide.id, cardId)}

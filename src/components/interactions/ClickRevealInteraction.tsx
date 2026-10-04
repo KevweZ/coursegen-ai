@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { markdownToHtml } from '../../lib/markdownInline';
 import { sanitizeOstText } from '../../lib/formatTabIntroOst';
-import { PROCESS_PANEL_DEFAULT } from '../../lib/tabAccents';
+import type { OstSectionGroup } from '../../lib/ostSectionGroups';
 import { EnlargeableImage } from '../player/EnlargeableImage';
+import InteractionIntroColumn from './InteractionIntroColumn';
 
 export interface RevealItem {
   id: string;
@@ -19,6 +20,10 @@ interface ClickRevealProps {
   /** Left-column introduction (slide content). Instruction-only lines are omitted. */
   introContent?: string;
   theme?: 'light' | 'dark' | 'unified';
+  /** split = intro left + rows right (default). rows = fields only (grouped columns). */
+  variant?: 'split' | 'rows';
+  /** Hide term titles; the row itself is "Click to reveal". */
+  hideTerms?: boolean;
   /** Authoring: remove a revealed item's image */
   onRemoveItemImage?: (itemId: string) => void;
   onCropItemImage?: (itemId: string, dataUrl: string) => void;
@@ -53,6 +58,8 @@ const ClickRevealInteraction: React.FC<ClickRevealProps> = ({
   items = [],
   introContent,
   theme = 'light',
+  variant = 'split',
+  hideTerms = false,
   onItemReveal,
   onRemoveItemImage,
   onCropItemImage,
@@ -93,9 +100,6 @@ const ClickRevealInteraction: React.FC<ClickRevealProps> = ({
     chevron: isLight ? '#94a3b8' : '#94a3b8',
     definitionText: isLight ? '#334155' : 'rgba(226,232,240,0.95)',
     progressText: isLight ? '#64748b' : '#64748b',
-    introInk: isLight ? '#0f172a' : '#f8fafc',
-    introMuted: isLight ? '#334155' : '#cbd5e1',
-    introPanel: isLight ? PROCESS_PANEL_DEFAULT : '#0f172a',
   };
 
   if (!normalized.length) return null;
@@ -110,33 +114,13 @@ const ClickRevealInteraction: React.FC<ClickRevealProps> = ({
   };
 
   return (
-    <div className="w-full flex gap-5 min-h-[28rem] flex-1 items-stretch">
-      <aside
-        className="w-[36%] max-w-[400px] min-w-[240px] shrink-0 rounded-2xl overflow-hidden"
-        style={{ background: T.introPanel }}
-      >
-        <div className="box-border h-full p-6 sm:p-7 text-left overflow-y-auto custom-scrollbar">
-          <p
-            className="text-sm font-bold uppercase tracking-[0.18em] mb-2"
-            style={{ color: T.introInk }}
-          >
-            Overview
-          </p>
-          <h3 className="font-extrabold text-lg mb-4" style={{ color: T.introInk }}>
-            Introduction
-          </h3>
-          {introHtml ? (
-            <div
-              className="text-sm leading-relaxed w-full"
-              style={{ color: T.introMuted }}
-              dangerouslySetInnerHTML={{ __html: introHtml }}
-            />
-          ) : null}
-          <p className="mt-6 text-xs font-semibold" style={{ color: T.introMuted }}>
-            {DEFAULT_PROMPT}
-          </p>
-        </div>
-      </aside>
+    <div className={variant === 'rows'
+      ? 'w-full flex flex-col space-y-2.5'
+      : 'w-full flex gap-5 min-h-[28rem] flex-1 items-stretch'}
+    >
+      {variant === 'split' ? (
+        <InteractionIntroColumn html={introHtml} cta={DEFAULT_PROMPT} theme={theme} />
+      ) : null}
 
       <div className="flex-1 min-w-0 flex flex-col space-y-2.5">
         {normalized.map((item, idx) => {
@@ -178,12 +162,13 @@ const ClickRevealInteraction: React.FC<ClickRevealProps> = ({
                 <span
                   className="flex-1 font-bold text-base leading-snug"
                   style={{ color: isOpen ? T.termTextOpen : T.termText }}
-                  dangerouslySetInnerHTML={{ __html: markdownToHtml(item.term) }}
-                />
+                >
+                  {hideTerms
+                    ? (isOpen ? 'Hide' : hasBeenRevealed ? 'Revealed' : 'Click to reveal')
+                    : <span dangerouslySetInnerHTML={{ __html: markdownToHtml(item.term) }} />}
+                </span>
 
-                {/* Status chip — the ONE place white text is used on a light
-                    background, and only because the chip's own fill is the
-                    saturated accent color (dark enough for white text) when open. */}
+                {hideTerms ? null : (
                 <span
                   className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full transition-all duration-200"
                   style={{
@@ -197,6 +182,7 @@ const ClickRevealInteraction: React.FC<ClickRevealProps> = ({
                 >
                   {isOpen ? 'Hide' : hasBeenRevealed ? 'Revealed ✓' : 'Click to reveal'}
                 </span>
+                )}
 
                 {/* Chevron */}
                 <motion.span
@@ -257,5 +243,42 @@ const ClickRevealInteraction: React.FC<ClickRevealProps> = ({
     </div>
   );
 };
+
+export function GroupedClickReveal({
+  groups,
+  theme = 'light',
+  onItemReveal,
+}: {
+  groups: OstSectionGroup[];
+  theme?: 'light' | 'dark' | 'unified';
+  onItemReveal?: (id: string) => void;
+}) {
+  const isLight = theme === 'light';
+  if (!groups.length) return null;
+  return (
+    <div className={`w-full grid gap-x-8 gap-y-6 ${groups.length >= 2 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
+      {groups.map((group, gi) => (
+        <div key={`${group.heading}-${gi}`} className="min-w-0">
+          <h3
+            className={`text-sm font-extrabold uppercase tracking-wide mb-3 ${isLight ? 'text-slate-800' : 'text-slate-100'}`}
+          >
+            {group.heading}
+          </h3>
+          <ClickRevealInteraction
+            variant="rows"
+            hideTerms
+            theme={theme}
+            items={group.bullets.map((b, bi) => ({
+              id: `g${gi}-b${bi}`,
+              term: '',
+              definition: b.startsWith('- ') ? b : `- ${b}`,
+            }))}
+            onItemReveal={onItemReveal}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default ClickRevealInteraction;

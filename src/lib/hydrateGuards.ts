@@ -10,6 +10,7 @@
 import { isKnowledgeCheckSlide, stripSlideNarration } from './enablingCoverage';
 import { coerceOstText, isSymbolOnlyOstLine, sanitizeOstText } from './formatTabIntroOst';
 import { quizQuestionList } from './knowledgeCheckOst';
+import { formatOstSectionGroups } from './ostSectionGroups';
 
 export function wordCount(text: string): number {
   return String(text || '').trim().split(/\s+/).filter(Boolean).length;
@@ -90,6 +91,34 @@ export function collapseChoiceCardsOst(
     content: '',
     prompt: stripMarkdownArtifacts(instruction).replace(/^[-*•]\s+/, '').replace(/^\d+[.)]\s+/, '').trim(),
   };
+}
+
+const NUMBER_WORDS = ['', 'one', 'two', 'three', 'four', 'five', 'six'];
+
+/**
+ * Scored (Check) choice-cards must not read like exploratory "select each".
+ * "Select the process conditions…" → "Select the correct process conditions…, then click Check."
+ */
+export function ensureSelectChoicePrompt(prompt: unknown, correctCount = 0): string {
+  let p = stripMarkdownArtifacts(prompt).replace(/\s+/g, ' ').trim();
+  const n = Math.max(0, Number(correctCount) || 0);
+  if (!p) {
+    if (n <= 1) return 'Select the correct option, then click Check.';
+    const word = NUMBER_WORDS[n] || String(n);
+    return `Select the ${word} correct options, then click Check.`;
+  }
+  if (!/\bcorrect\b/i.test(p)) {
+    p = p.replace(
+      /^(select|choose|pick)\s+(the\s+)?/i,
+      (_m, verb: string, the?: string) => `${String(verb)[0].toUpperCase()}${String(verb).slice(1).toLowerCase()} ${the || ''}correct `,
+    );
+    p = p.replace(/\s+/g, ' ').trim();
+    if (!/\bcorrect\b/i.test(p)) p = `Select the correct answers. ${p}`;
+  }
+  if (!/\bcheck\b/i.test(p)) {
+    p = p.replace(/[.?!]?\s*$/, ', then click Check.');
+  }
+  return p;
 }
 
 export function quizHasLearnerPayload(slide: any): boolean {
@@ -382,15 +411,27 @@ export function finalizeHydratedSlide(slide: any, moduleTitle = ''): any {
 
   if (next.type === 'choice-cards') {
     const collapsed = collapseChoiceCardsOst(next.content, next.data?.prompt);
+    const cards = Array.isArray(next.data?.cards) ? next.data.cards : (next.data?.items || []);
+    const correctCount = (Array.isArray(cards) ? cards : []).filter(
+      (c: any) => c?.isCorrect === true || c?.accepted === true,
+    ).length;
+    const scored = next.data?.mode === 'select' || correctCount > 0;
     next = {
       ...next,
       content: collapsed.content,
-      data: { ...(next.data || {}), prompt: collapsed.prompt },
+      data: {
+        ...(next.data || {}),
+        prompt: scored ? ensureSelectChoicePrompt(collapsed.prompt, correctCount) : collapsed.prompt,
+      },
     };
   }
 
   if (next.type === 'click-reveal' && isInstructionOnlyOst(next.content)) {
     next = { ...next, content: '' };
+  }
+
+  if ((next.type === 'content' || next.type === 'summary') && next.content) {
+    next = { ...next, content: formatOstSectionGroups(next.content) };
   }
 
   next = degradeIncompleteInteraction(next, moduleTitle);

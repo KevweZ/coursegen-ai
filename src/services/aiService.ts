@@ -816,6 +816,7 @@ export async function hydrateCourseContent(
   - Two modes:
     • "explore" (click-to-reveal): click-to-explore, [DEV] reveal callouts, "select each", visit-all. data.mode = "explore". cards: [{ id, label, body, reveal }] with a UNIQUE reveal per card. Do NOT set isCorrect. No Check.
     • "select" (pick then Check): decision-sort / which measures apply / accepted tiles. data.mode = "select". cards: [{ id, label, body, isCorrect }]. data.feedback after Check. data.selectMode multi|single.
+    • data.prompt for select mode MUST say the learner is choosing the CORRECT card(s) and then clicks Check. Example: "Select the correct process conditions, then click Check." NEVER "Select the process conditions…" (that reads as exploratory). Explore mode may use "Select each…".
   - data.prompt: the on-screen prompt (one sentence).
   - voiceOverText: the storyboard narration. Never empty.
   - FAIL CONDITION: fewer than 2 cards -> regenerate
@@ -949,6 +950,14 @@ export async function hydrateCourseContent(
     The slide title already carries visual hierarchy; partial bold mid-bullet looks noisy and
     competes with the header. Write plain bullets with no ** markers. Reserve bold for rare
     inline terms in paragraph prose only (never in list items).
+  - SECTION HEADERS: When a content slide has two themes, emit markdown ### headings (not a bold bullet).
+    Parent heading is NOT a list item. Child insight bullets sit under that heading.
+    WRONG: "- **WHAT ARE COMONOMERS?**" then more bullets in one flat list.
+    RIGHT:
+      ### What are comonomers?
+      - Unsaturated molecules co-fed with monomer
+      ### How comonomers control density
+      - More comonomer → more branches → lower density
   - Example correct: "- **Phishing**: the most common attack vector" — Example incorrect: "- **This module covered several important security practices**"
   - The APPLICATION BRIDGE ("In practice...", "This means that...", "Apply this by...") belongs in voiceOverText (narration),
     NOT copy-pasted as an on-screen bullet — keep bullets short and let narration carry the explanation and application.

@@ -8,6 +8,7 @@ import { formatTabIntroOst, formatTabOstBody } from '../../lib/formatTabIntroOst
 import { TAB_INTRO_DEFAULT_HEX, tabAccentHex, BLOCKS_WELL_DEFAULT, PROCESS_PANEL_DEFAULT, resolveHexColor } from '../../lib/tabAccents';
 import { contrastTextOn } from '../../lib/colorContrast';
 import { EnlargeableImage, type InFlowPromoteInfo } from '../player/EnlargeableImage';
+import InteractionIntroColumn from './InteractionIntroColumn';
 
 export { PROCESS_PANEL_DEFAULT };
 
@@ -147,13 +148,6 @@ export default function TabbedContentHorizontal({
     );
   }
 
-  const selectIntro = () => {
-    resetScrollTop();
-    setActiveIndex(-1);
-    onTabView?.('__intro__');
-    onTabAudio?.('__intro__');
-  };
-
   const selectTab = (i: number) => {
     resetScrollTop();
     setActiveIndex(i);
@@ -173,7 +167,7 @@ export default function TabbedContentHorizontal({
   const imageUrl = inIntro ? introImageUrl : activeTab?.imageUrl;
   const headingHtml = inIntro ? null : markdownToHtml(activeTab!.label);
   const bodyHtml = inIntro
-    ? markdownToHtml(introOst)
+    ? ''
     : markdownToHtml(formatTabOstBody(activeTab!.content) || formatTabOstBody(activeTab!.voiceOverText || ''));
   const onRemoveImage = inIntro
     ? onRemoveIntroImage
@@ -211,7 +205,13 @@ export default function TabbedContentHorizontal({
     : { background: '#e2e8f0', color: '#334155', borderColor: 'transparent' };
 
   return (
-    <div className={`w-full flex flex-col gap-2 select-none min-h-0 flex-1 ${blocks ? 'tab-skin-blocks' : ''}`}>
+    <div className="w-full flex gap-5 min-h-[28rem] flex-1 items-stretch">
+      <InteractionIntroColumn
+        html={markdownToHtml(introOst)}
+        cta={showStepLabels ? 'Select a step to continue →' : 'Select below to continue →'}
+        theme={theme}
+      />
+      <div className={`flex-1 min-w-0 min-h-[28rem] flex flex-col gap-2 select-none ${blocks ? 'tab-skin-blocks' : ''}`}>
       {title && (
         <p className={`text-sm font-bold text-center uppercase tracking-widest mb-1 shrink-0 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
           {title}
@@ -236,41 +236,38 @@ export default function TabbedContentHorizontal({
             style={{ overflowAnchor: 'none' }}
           >
             <div className="box-border w-full p-6 sm:p-7 text-left">
-              {(inIntro || showStepLabels) && (
+              {inIntro ? (
+                <p className="text-sm font-semibold" style={{ color: muted }}>
+                  {showStepLabels ? 'Select a step below to continue →' : 'Select below to continue →'}
+                </p>
+              ) : (
+                <>
+              {showStepLabels && (
                 <p
                   className="text-sm font-bold uppercase tracking-[0.18em] mb-2"
                   style={{ color: labelInk }}
                 >
-                  {inIntro ? 'Overview' : stepLabel(activeIndex + 1)}
+                  {stepLabel(activeIndex + 1)}
                 </p>
               )}
-              {inIntro ? (
-                <h3 className="font-extrabold text-lg mb-4" style={{ color: ink }}>
-                  Introduction
-                </h3>
-              ) : (
                 <h3
                   className="font-extrabold text-lg mb-4"
                   style={{ color: ink }}
                   dangerouslySetInnerHTML={{ __html: headingHtml || '' }}
                 />
-              )}
               <div
                 className="text-sm leading-relaxed tab-ost-body w-full"
                 style={{ color: muted }}
                 dangerouslySetInnerHTML={{ __html: bodyHtml }}
               />
-              {!inIntro && activeTab!.expandedContent && (
+              {activeTab!.expandedContent && (
                 <div
                   className="mt-4 pt-4 border-t text-sm leading-relaxed tab-ost-body w-full"
                   style={{ borderColor: blocks ? (ink === '#ffffff' ? 'rgba(248,250,252,0.18)' : 'rgba(15,23,42,0.16)') : (isLight ? '#e2e8f0' : '#334155'), color: muted }}
                   dangerouslySetInnerHTML={{ __html: markdownToHtml(formatTabOstBody(activeTab!.expandedContent)) }}
                 />
               )}
-              {inIntro && (
-                <p className="mt-6 text-xs font-semibold" style={{ color: muted }}>
-                  {showStepLabels ? 'Select a step below to continue →' : 'Select below to continue →'}
-                </p>
+                </>
               )}
             </div>
           </div>
@@ -299,16 +296,6 @@ export default function TabbedContentHorizontal({
         >
           <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ background: activeColor }} />
           <div className="relative z-[1] flex items-center justify-center gap-3 sm:gap-4 w-full px-5 py-4">
-            <button
-              type="button"
-              onClick={selectIntro}
-              title="Overview"
-              aria-current={inIntro ? 'true' : undefined}
-              className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-[12px] font-black border-2"
-              style={inIntro ? circleActive : circleIdle}
-            >
-              i
-            </button>
             {normalized.map((tab, i) => {
               const isActive = i === activeIndex;
               const isDone = !inIntro && i < activeIndex;
@@ -333,6 +320,7 @@ export default function TabbedContentHorizontal({
             })}
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

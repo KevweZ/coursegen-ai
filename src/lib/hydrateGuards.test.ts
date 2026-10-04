@@ -4,6 +4,7 @@ import { shortenCourseTitle, shortenModuleTitle } from './splitCourseTitle.ts';
 import { markdownToHtml } from './markdownInline.ts';
 import {
   collapseChoiceCardsOst,
+  ensureSelectChoicePrompt,
   finalizeHydratedSlide,
   normalizeKeyTakeaways,
   quizHasLearnerPayload,
@@ -56,6 +57,35 @@ test('choice-cards keep a single instruction when content and prompt overlap', (
   );
   assert.equal(three.content, '');
   assert.equal(three.prompt, 'Select each polymer to classify it as natural or synthetic.');
+});
+
+test('scored choice-card prompts name the correct answers and Check', () => {
+  const next = ensureSelectChoicePrompt(
+    'Select the process conditions and outcomes for each polymerization type.',
+    2,
+  );
+  assert.match(next, /correct/i);
+  assert.match(next, /check/i);
+  assert.doesNotMatch(next, /^Select the process conditions/i);
+  const already = ensureSelectChoicePrompt('Select the two correct options, then click Check.', 2);
+  assert.equal(already, 'Select the two correct options, then click Check.');
+
+  const scored = finalizeHydratedSlide({
+    type: 'choice-cards',
+    title: 'High-Pressure vs. Low-Pressure Processes',
+    content: '',
+    data: {
+      mode: 'select',
+      prompt: 'Select the process conditions and outcomes for each polymerization type.',
+      cards: [
+        { id: 'a', label: 'LDPE', isCorrect: true },
+        { id: 'b', label: 'HDPE', isCorrect: false },
+        { id: 'c', label: 'HDPE/PP', isCorrect: true },
+        { id: 'd', label: 'LDPE catalytic', isCorrect: false },
+      ],
+    },
+  }, 'PE Types');
+  assert.match(String(scored.data.prompt), /correct/i);
 });
 
 test('key takeaways become statements instead of spec-table rows or empty numbers', () => {

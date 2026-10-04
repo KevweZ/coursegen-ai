@@ -12,8 +12,9 @@ These were already fixed once and leaked back after unrelated hydrate/KC work. *
 - **Cover title:** at most 8 words. `shortenCourseTitle` after file analysis and outline.
 - **Module title:** short topic label, no Bloom gerunds. `shortenModuleTitle` after outline coverage.
 - **Markdown glyphs:** `**bold**` and `###` never show as raw symbols. Choice-card body/reveal/prompt go through `markdownToHtml`. Quiz options and other plain-text surfaces use `stripMarkdownArtifacts`.
-- **One instruction** on choice-cards: `collapseChoiceCardsOst`. Click-reveal intro that is only a “Select each…” line is dropped; the player shows Overview + CTA on the left and shorter reveal rows on the right (`ClickRevealInteraction`).
-- **Image prompts:** `buildGroundedVisualPrompt` — never label-only; no typeset text in the photo (`imageVisualPrompt.test.ts`).
+- **Click-reveal layout:** intro/prompt left column; reveal rows on the right (`ClickRevealInteraction`). Process and vertical tabs use the same left-intro / right-interaction split (`InteractionIntroColumn`).
+- **Content section headers:** ALL-CAPS or fully-bold list items become `###` parents; child bullets sit under them (`parseOstSectionGroups`). Two groups render as unlabeled click-to-reveal columns.
+- **Scored choice-cards:** prompt must say **correct** and **Check** (`ensureSelectChoicePrompt`).
 - **Key takeaways** are learner statements (`normalizeKeyTakeaways`), not spec-table rows or empty numbered cards.
 - **Knowledge checks** always have a learner payload and **empty** `voiceOverText` (`ensureKnowledgeCheckPayload` + `stripSlideNarration`). Never convert an incomplete quiz to a `content` slide titled “Knowledge Check”.
 - **KC count/place:** `ensureKnowledgeCheckBudget` + `alignHydratedSlidesToOutline`. Teaching slides cannot become quizzes.

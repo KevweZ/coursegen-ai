@@ -5,6 +5,7 @@ import { tabAccentHex, TAB_INTRO_DEFAULT_HEX, PROCESS_PANEL_DEFAULT, resolveBloc
 import { contrastTextOn } from '../../lib/colorContrast';
 import { Check, ChevronRight } from 'lucide-react';
 import { EnlargeableImage, type InFlowPromoteInfo } from '../player/EnlargeableImage';
+import InteractionIntroColumn from './InteractionIntroColumn';
 
 export interface VerticalTab {
   id: string;
@@ -141,6 +142,14 @@ export default function TabbedContentVertical({
 
   if (!normalized.length) return null;
 
+  const introHtml = markdownToHtml(introOst);
+  const split = (right: React.ReactNode) => (
+    <div className="w-full flex gap-5 min-h-[28rem] flex-1 items-stretch">
+      <InteractionIntroColumn html={introHtml} cta="Select a topic to continue →" theme={theme} />
+      <div className="flex-1 min-w-0 min-h-[28rem]">{right}</div>
+    </div>
+  );
+
   const selectIntro = () => {
     resetScrollTop();
     setActiveIndex(-1);
@@ -160,7 +169,7 @@ export default function TabbedContentVertical({
   };
 
   if (isBlocksSkin(skin)) {
-    return (
+    return split(
       <VerticalTabsBlocksSkin
         title={title}
         normalized={normalized}
@@ -192,7 +201,7 @@ export default function TabbedContentVertical({
     );
   }
 
-  return (
+  return split(
     <div className="w-full flex flex-col gap-3 select-none min-h-0 flex-1">
       {title && (
         <p className={cn('text-sm font-bold text-center uppercase tracking-widest mb-1 shrink-0', isLight ? 'text-slate-500' : 'text-slate-400')}>{title}</p>
@@ -206,27 +215,6 @@ export default function TabbedContentVertical({
           className="flex flex-col gap-2 w-[150px] sm:w-[170px] shrink-0 overflow-y-auto custom-scrollbar min-h-0"
           style={{ maxHeight: PANEL_H }}
         >
-          <button
-            type="button"
-            onClick={selectIntro}
-            className={cn(
-              'flex items-center gap-2 w-full text-left px-3 py-2.5 rounded-xl font-bold text-sm transition-all border',
-              inIntro
-                ? 'border-transparent shadow-lg'
-                : isLight
-                ? 'bg-white text-slate-800 border-slate-200 hover:bg-slate-50'
-                : 'bg-slate-800/60 text-slate-400 border-slate-700 hover:bg-slate-700/60 hover:text-slate-200'
-            )}
-            style={inIntro
-              ? { background: introHex, boxShadow: `0 0 0 2px ${introHex}55`, color: introTitleColor }
-              : (isLight ? { borderLeft: `4px solid ${introHex}` } : undefined)}
-            title="Return to opening introduction"
-          >
-            <span className="flex-1 leading-snug" style={{ color: inIntro ? introTitleColor : undefined }}>
-              Introduction
-            </span>
-            {inIntro && <ChevronRight className="w-4 h-4 shrink-0" />}
-          </button>
           {normalized.map((tab, i) => {
             const isActive = i === activeIndex;
             const hex = tabAccentHex(tab, i);
@@ -285,18 +273,8 @@ export default function TabbedContentVertical({
             <div key={panelKey} className="box-border w-full p-6 sm:p-8 text-left align-top">
               {inIntro ? (
                 <>
-                  <div className="flex items-center gap-2 mb-4 w-full">
-                    <div className="w-1 h-8 rounded-full" style={{ background: introHex }} />
-                    <h3 className="font-extrabold text-lg" style={{ color: introHex }}>
-                      Introduction
-                    </h3>
-                  </div>
-                  <div
-                    className={cn('text-sm leading-relaxed w-full', isLight ? 'text-slate-700' : 'text-slate-200')}
-                    dangerouslySetInnerHTML={{ __html: markdownToHtml(introOst) }}
-                  />
                   {introImageUrl && (
-                    <div className="mt-6 pt-4 border-t border-slate-200/80 w-full">
+                    <div className="w-full">
                       <EnlargeableImage
                         src={introImageUrl}
                         wrapperClassName="max-w-2xl mx-auto"
@@ -308,7 +286,7 @@ export default function TabbedContentVertical({
                       />
                     </div>
                   )}
-                  <p className="mt-6 text-xs font-semibold" style={{ color: introHex }}>
+                  <p className="text-sm font-semibold" style={{ color: isLight ? '#64748b' : '#94a3b8' }}>
                     Select a topic tab to continue →
                   </p>
                 </>
@@ -474,17 +452,6 @@ function VerticalTabsBlocksSkin({
           className="flex flex-col w-[168px] sm:w-[196px] shrink-0 min-h-0 overflow-y-auto custom-scrollbar"
           style={{ maxHeight: PANEL_H, gap: 2, background: isLight ? '#ffffff' : well }}
         >
-          <button
-            type="button"
-            onClick={selectIntro}
-            className="relative flex items-center justify-center w-full flex-1 min-h-[64px] px-3 py-2 text-center font-extrabold text-[11px] sm:text-xs leading-tight uppercase tracking-wide border-0"
-            style={blockFillStyle(introHex, inIntro, contrastTextOn(introHex), well, wellInk, isLight)}
-            title="Return to opening introduction"
-          >
-            <span className="block w-full" style={{ color: isLight ? (inIntro ? wellInk : '#0f172a') : (inIntro ? wellInk : contrastTextOn(introHex)) }}>
-              Introduction
-            </span>
-          </button>
           {normalized.map((tab, i) => {
             const isActive = i === activeIndex;
             const hex = tabAccentHex(tab, i);
@@ -548,25 +515,22 @@ function VerticalTabsBlocksSkin({
             >
               <div className="box-border w-full p-6 sm:p-7 text-left" style={{ color: wellInk }}>
                 {inIntro ? (
-                  <h3 className="font-extrabold text-lg uppercase tracking-wide mb-4" style={{ color: wellInk }}>
-                    Introduction
-                  </h3>
+                  <p className="text-sm font-semibold" style={{ color: muted }}>
+                    Select a topic tab to continue →
+                  </p>
                 ) : (
+                  <>
                   <h3
                     className="font-extrabold text-lg uppercase tracking-wide mb-4"
                     style={{ color: wellInk }}
                     dangerouslySetInnerHTML={{ __html: headingHtml || '' }}
                   />
-                )}
                 <div
                   className="text-sm leading-relaxed tab-ost-body w-full"
                   style={{ color: muted }}
                   dangerouslySetInnerHTML={{ __html: bodyHtml }}
                 />
-                {inIntro && (
-                  <p className="mt-6 text-xs font-semibold" style={{ color: muted }}>
-                    Select a topic tab to continue →
-                  </p>
+                  </>
                 )}
               </div>
             </div>
