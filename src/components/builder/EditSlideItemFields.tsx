@@ -11,10 +11,12 @@ import { inferChoiceCardsMode } from '../interactions/ChoiceCardsInteraction';
 interface Props {
   slide: any;
   onPatch: (next: any) => void;
+  getSlide?: () => any;
 }
 
-function patchData(slide: any, data: Record<string, unknown>, onPatch: (next: any) => void) {
-  onPatch({ ...slide, data: { ...(slide.data || {}), ...data } });
+function patchData(slide: any, data: Record<string, unknown>, onPatch: (next: any) => void, getSlide?: () => any) {
+  const base = getSlide?.() ?? slide;
+  onPatch({ ...base, data: { ...(base.data || {}), ...data } });
 }
 
 const fieldClass =
@@ -31,8 +33,9 @@ const QUIZ_TYPES = new Set([
   'true-false',
 ]);
 
-export function EditSlideItemFields({ slide, onPatch }: Props) {
+export function EditSlideItemFields({ slide, onPatch, getSlide }: Props) {
   const type = String(slide?.type || '');
+  const live = () => getSlide?.() ?? slide;
 
   if (type === 'timeline') {
     const events: any[] = slide.data?.events || [];
@@ -52,7 +55,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
                 onChange={(e) => {
                   const next = [...events];
                   next[i] = { ...next[i], year: e.target.value };
-                  patchData(slide, { events: next }, onPatch);
+                  patchData(live(), { events: next }, onPatch);
                 }}
                 className={fieldClass}
                 placeholder="Label (e.g. Week 1–2)"
@@ -62,7 +65,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
                 onChange={(e) => {
                   const next = [...events];
                   next[i] = { ...next[i], title: e.target.value };
-                  patchData(slide, { events: next }, onPatch);
+                  patchData(live(), { events: next }, onPatch);
                 }}
                 className={fieldClass}
                 placeholder="Milestone title"
@@ -74,7 +77,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
               onChange={(e) => {
                 const next = [...events];
                 next[i] = { ...next[i], content: e.target.value };
-                patchData(slide, { events: next }, onPatch);
+                patchData(live(), { events: next }, onPatch);
               }}
               className={areaClass}
               placeholder="Detail shown when this milestone is opened…"
@@ -100,7 +103,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
               onChange={(e) => {
                 const next = [...cards];
                 next[i] = { ...next[i], front: e.target.value };
-                patchData(slide, { cards: next }, onPatch);
+                patchData(live(), { cards: next }, onPatch);
               }}
               className={areaClass}
               placeholder={`Card ${i + 1} front`}
@@ -111,7 +114,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
               onChange={(e) => {
                 const next = [...cards];
                 next[i] = { ...next[i], back: e.target.value };
-                patchData(slide, { cards: next }, onPatch);
+                patchData(live(), { cards: next }, onPatch);
               }}
               className={areaClass}
               placeholder="Back (answer)"
@@ -137,7 +140,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
               onChange={(e) => {
                 const next = [...cards];
                 next[i] = { ...next[i], label: e.target.value, title: e.target.value };
-                patchData(slide, { [listKey]: next }, onPatch);
+                patchData(live(), { [listKey]: next }, onPatch);
               }}
               className={fieldClass}
               placeholder={`Card ${i + 1} title`}
@@ -151,7 +154,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
                   onClick={() => {
                     const next = [...cards];
                     next[i] = { ...next[i], color: preset };
-                    patchData(slide, { [listKey]: next }, onPatch);
+                    patchData(live(), { [listKey]: next }, onPatch);
                   }}
                   className={`w-5 h-5 rounded-full border-2 ${carouselCardHex(c, i).toLowerCase() === preset ? 'border-white' : 'border-transparent'}`}
                   style={{ background: preset }}
@@ -163,7 +166,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
                 onChange={(e) => {
                   const next = [...cards];
                   next[i] = { ...next[i], color: e.target.value };
-                  patchData(slide, { [listKey]: next }, onPatch);
+                  patchData(live(), { [listKey]: next }, onPatch);
                 }}
                 className="w-6 h-6 rounded cursor-pointer bg-transparent border-0 p-0"
                 title="Custom color — card text auto-contrasts"
@@ -175,7 +178,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
               onChange={(e) => {
                 const next = [...cards];
                 next[i] = { ...next[i], description: e.target.value };
-                patchData(slide, { [listKey]: next }, onPatch);
+                patchData(live(), { [listKey]: next }, onPatch);
               }}
               className={areaClass}
               placeholder="Short preview on the card"
@@ -186,7 +189,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
               onChange={(e) => {
                 const next = [...cards];
                 next[i] = { ...next[i], expandedContent: e.target.value };
-                patchData(slide, { [listKey]: next }, onPatch);
+                patchData(live(), { [listKey]: next }, onPatch);
               }}
               className={areaClass}
               placeholder="Details shown after MORE…"
@@ -211,7 +214,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
               onChange={(e) => {
                 const next = [...items];
                 next[i] = { ...next[i], title: e.target.value };
-                patchData(slide, { items: next }, onPatch);
+                patchData(live(), { items: next }, onPatch);
               }}
               className={fieldClass}
               placeholder={`Document ${i + 1} title`}
@@ -221,7 +224,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
               onChange={(e) => {
                 const next = [...items];
                 next[i] = { ...next[i], previewText: e.target.value };
-                patchData(slide, { items: next }, onPatch);
+                patchData(live(), { items: next }, onPatch);
               }}
               className={fieldClass}
               placeholder="One-line teaser"
@@ -232,7 +235,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
               onChange={(e) => {
                 const next = [...items];
                 next[i] = { ...next[i], content: e.target.value };
-                patchData(slide, { items: next }, onPatch);
+                patchData(live(), { items: next }, onPatch);
               }}
               className={areaClass}
               placeholder="Full text shown when the folder is opened…"
@@ -261,7 +264,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
               onChange={(e) => {
                 const next = [...points];
                 next[i] = { ...next[i], label: e.target.value };
-                patchData(slide, { [listKey]: next }, onPatch);
+                patchData(live(), { [listKey]: next }, onPatch);
               }}
               className={fieldClass}
               placeholder={`Pin ${i + 1} label`}
@@ -272,7 +275,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
               onChange={(e) => {
                 const next = [...points];
                 next[i] = { ...next[i], content: e.target.value };
-                patchData(slide, { [listKey]: next }, onPatch);
+                patchData(live(), { [listKey]: next }, onPatch);
               }}
               className={areaClass}
               placeholder="Text shown when this pin is opened…"
@@ -297,7 +300,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
               onChange={(e) => {
                 const next = [...items];
                 next[i] = { ...next[i], content: e.target.value };
-                patchData(slide, { items: next }, onPatch);
+                patchData(live(), { items: next }, onPatch);
               }}
               className={fieldClass}
               placeholder={`Term ${i + 1}`}
@@ -309,7 +312,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
                 const next = [...targets];
                 if (!next[i]) next[i] = { id: `t${i + 1}`, content: e.target.value };
                 else next[i] = { ...next[i], content: e.target.value };
-                patchData(slide, { targets: next }, onPatch);
+                patchData(live(), { targets: next }, onPatch);
               }}
               className={areaClass}
               placeholder="Matching definition"
@@ -333,7 +336,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
             onChange={(e) => {
               const next = [...items];
               next[i] = { ...next[i], content: e.target.value };
-              patchData(slide, { items: next }, onPatch);
+              patchData(live(), { items: next }, onPatch);
             }}
             className={fieldClass}
             placeholder={`Item ${i + 1}`}
@@ -359,7 +362,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
               onChange={(e) => {
                 const next = [...items];
                 next[i] = { ...next[i], content: e.target.value };
-                patchData(slide, { items: next }, onPatch);
+                patchData(live(), { items: next }, onPatch);
               }}
               className={areaClass}
               placeholder={`Item ${i + 1}`}
@@ -369,7 +372,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
               onChange={(e) => {
                 const next = [...items];
                 next[i] = { ...next[i], category: e.target.value };
-                patchData(slide, { items: next }, onPatch);
+                patchData(live(), { items: next }, onPatch);
               }}
               className={fieldClass}
               placeholder="Correct drop category"
@@ -392,14 +395,14 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
         <textarea
           rows={3}
           value={quizScenarioText({ data: d })}
-          onChange={(e) => patchData(slide, { scenarioText: e.target.value }, onPatch)}
+          onChange={(e) => patchData(live(), { scenarioText: e.target.value }, onPatch)}
           className={areaClass}
           placeholder="Optional situation / short story the learner reads before the question"
         />
         <textarea
           rows={2}
           value={question}
-          onChange={(e) => patchData(slide, { questionText: e.target.value }, onPatch)}
+          onChange={(e) => patchData(live(), { questionText: e.target.value }, onPatch)}
           className={areaClass}
           placeholder="Question text"
         />
@@ -417,7 +420,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
                       if (multi) return j === i ? { ...o, isCorrect: !correct, correct: !correct } : o;
                       return { ...o, isCorrect: j === i, correct: j === i };
                     });
-                    patchData(slide, { options: next }, onPatch);
+                    patchData(live(), { options: next }, onPatch);
                   }}
                   className="w-4 h-4 accent-emerald-500"
                   title={multi ? 'Mark as a correct answer' : 'Mark as the correct answer'}
@@ -428,7 +431,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
                 {!isTf && options.length > 2 && (
                   <button
                     type="button"
-                    onClick={() => patchData(slide, { options: options.filter((_, j) => j !== i) }, onPatch)}
+                    onClick={() => patchData(live(), { options: options.filter((_, j) => j !== i) }, onPatch)}
                     className="ml-auto text-[10px] font-bold text-rose-400 hover:text-rose-300"
                   >
                     Remove
@@ -441,7 +444,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
                 onChange={(e) => {
                   const next = [...options];
                   next[i] = { ...next[i], text: e.target.value };
-                  patchData(slide, { options: next }, onPatch);
+                  patchData(live(), { options: next }, onPatch);
                 }}
                 className={areaClass}
                 placeholder={`Answer ${i + 1}`}
@@ -455,7 +458,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
             type="button"
             onClick={() => {
               const id = String.fromCharCode(97 + options.length);
-              patchData(slide, {
+              patchData(live(), {
                 options: [...options, { id, text: '', isCorrect: false }],
               }, onPatch);
             }}
@@ -472,7 +475,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
         <textarea
           rows={2}
           value={coerceOstText(d.feedback)}
-          onChange={(e) => patchData(slide, { feedback: e.target.value }, onPatch)}
+          onChange={(e) => patchData(live(), { feedback: e.target.value }, onPatch)}
           className={areaClass}
           placeholder="Feedback after submit (optional)"
         />
@@ -489,7 +492,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
         <label className={labelClass}>Choice cards</label>
         <select
           value={mode}
-          onChange={(e) => patchData(slide, { mode: e.target.value }, onPatch)}
+          onChange={(e) => patchData(live(), { mode: e.target.value }, onPatch)}
           className={fieldClass}
         >
           <option value="explore">Click to reveal (visit each card)</option>
@@ -498,7 +501,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
         <textarea
           rows={2}
           value={d.prompt || ''}
-          onChange={(e) => patchData(slide, { prompt: e.target.value }, onPatch)}
+          onChange={(e) => patchData(live(), { prompt: e.target.value }, onPatch)}
           className={areaClass}
           placeholder="Prompt above the cards"
         />
@@ -508,7 +511,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
               value={card.label || ''}
               onChange={(e) => {
                 const next = cards.map((c, j) => j === i ? { ...c, label: e.target.value } : c);
-                patchData(slide, { cards: next }, onPatch);
+                patchData(live(), { cards: next }, onPatch);
               }}
               className={fieldClass}
               placeholder="Card label"
@@ -518,10 +521,10 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
               value={card.body || card.description || ''}
               onChange={(e) => {
                 const next = cards.map((c, j) => j === i ? { ...c, body: e.target.value } : c);
-                patchData(slide, { cards: next }, onPatch);
+                patchData(live(), { cards: next }, onPatch);
               }}
               className={areaClass}
-              placeholder="Short body on the card"
+              placeholder="Short teaser on the card (one line). Put Reaction conditions / Key product in the reveal."
             />
             {mode === 'explore' && (
               <textarea
@@ -529,7 +532,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
                 value={card.reveal || ''}
                 onChange={(e) => {
                   const next = cards.map((c, j) => j === i ? { ...c, reveal: e.target.value } : c);
-                  patchData(slide, { cards: next }, onPatch);
+                  patchData(live(), { cards: next }, onPatch);
                 }}
                 className={areaClass}
                 placeholder="Unique callout shown after this card is clicked"
@@ -542,7 +545,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
                   checked={!!(card.isCorrect || card.accepted)}
                   onChange={(e) => {
                     const next = cards.map((c, j) => j === i ? { ...c, isCorrect: e.target.checked } : c);
-                    patchData(slide, { cards: next }, onPatch);
+                    patchData(live(), { cards: next }, onPatch);
                   }}
                 />
                 Highlight as a correct choice after Check
@@ -553,7 +556,7 @@ export function EditSlideItemFields({ slide, onPatch }: Props) {
         <textarea
           rows={3}
           value={d.feedback || ''}
-          onChange={(e) => patchData(slide, { feedback: e.target.value }, onPatch)}
+          onChange={(e) => patchData(live(), { feedback: e.target.value }, onPatch)}
           className={areaClass}
           placeholder={mode === 'explore' ? 'Optional wrap-up after all cards are visited' : 'Explanatory feedback after Check'}
         />
@@ -595,6 +598,7 @@ export function sanitizeInteractionOstOnSave(slide: any): any {
       body: c.body != null ? clean(c.body) : c.body,
       description: c.description != null ? clean(c.description) : c.description,
       expandedContent: c.expandedContent != null ? clean(c.expandedContent) : c.expandedContent,
+      reveal: c.reveal != null ? clean(c.reveal) : c.reveal,
     }));
   }
   if (Array.isArray(d.hotspots)) {

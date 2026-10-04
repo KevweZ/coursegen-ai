@@ -820,6 +820,7 @@ export async function hydrateCourseContent(
     • "select" (pick then Check): decision-sort / which measures apply / accepted tiles. data.mode = "select". cards: [{ id, label, body, isCorrect }]. data.feedback after Check. data.selectMode multi|single.
     • data.prompt for select mode MUST say the learner is choosing the CORRECT card(s) and then clicks Check. Example: "Select the correct process conditions, then click Check." NEVER "Select the process conditions…" (that reads as exploratory). Explore mode may use "Select each…".
   - data.prompt: the on-screen prompt (one sentence).
+  - Card FACE: label (short title) plus at most ONE short teaser line in body (≤12 words). Spec facts (Reaction conditions:, Catalyst:, Key product:, Density:) go in reveal as bullets, then any paragraph. Do NOT stack four labeled rows on the tile.
   - voiceOverText: the storyboard narration. Never empty.
   - FAIL CONDITION: fewer than 2 cards -> regenerate
 

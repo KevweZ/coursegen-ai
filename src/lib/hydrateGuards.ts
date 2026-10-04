@@ -9,6 +9,7 @@
 
 import { isKnowledgeCheckSlide, stripSlideNarration } from './enablingCoverage';
 import { coerceOstText, isSymbolOnlyOstLine, sanitizeOstText } from './formatTabIntroOst';
+import { compactChoiceCardsList } from './choiceCardCopy';
 import { quizQuestionList } from './knowledgeCheckOst';
 import { formatOstSectionGroups } from './ostSectionGroups';
 
@@ -422,6 +423,7 @@ export function finalizeHydratedSlide(slide: any, moduleTitle = ''): any {
       data: {
         ...(next.data || {}),
         prompt: scored ? ensureSelectChoicePrompt(collapsed.prompt, correctCount) : collapsed.prompt,
+        cards: compactChoiceCardsList(Array.isArray(cards) ? cards : []),
       },
     };
   }

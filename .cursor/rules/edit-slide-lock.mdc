@@ -1,0 +1,22 @@
+---
+description: Edit Slide persistence lock — Classic/Blocks, colors, and field edits must write the live slide and remain visible after Save.
+alwaysApply: true
+---
+
+# Edit Slide persistence lock (do not regress)
+
+Anthony (2026-10-04): Classic vs Blocks on Process looked like a no-op after Save because the light player clamped Blocks wells back to pale indigo and forced black type. Edit fields must write `editingSlideRef`, not a stale render copy.
+
+`npm test` must stay green (`src/lib/tabAccents.test.ts`).
+
+## Invariants (code, not prompts)
+
+- **Classic vs Blocks is a real skin.** `resolveProcessCanvas` / `resolveProcessSkin` in [`src/lib/tabAccents.ts`](src/lib/tabAccents.ts). Classic = pale `PROCESS_PANEL_DEFAULT` + dark ink. Blocks = `BLOCKS_WELL_DEFAULT` (or author well) + ink from `contrastTextOn`. Do **not** remap a dark Blocks well to `#eef2ff` on the light player.
+- **Type color follows the well.** Apply `process-canvas-light` (forced `#0f172a`) only when `lightTypeLock` is true. Dark Blocks wells use white type.
+- **Save keeps `data.tabSkin`.** `sanitizeInteractionOstOnSave` must not drop `tabSkin`, `blocksWellColor`, `processPanelColor`, `processRailColor`, `showProcessStepLabels`. Player reads `currentSlide.data?.tabSkin === 'blocks'`.
+- **Patches use the live slide.** `patchTabs` / title / click-reveal items / `EditSlideItemFields` merge from `editingSlideRef.current` (or `getSlide()`). Do not spread `editingSlide.data` from a stale closure over a newer ref.
+- **Classic canvas picker does not steal Blocks.** Content-canvas swatches are Classic-only and must not set `tabSkin: 'process'` while Blocks is selected.
+
+## How to change this
+
+Change `resolveProcessCanvas` and add a failing test first. Do not “fix contrast” by forcing every light-player well back to pale indigo.

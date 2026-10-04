@@ -82,12 +82,41 @@ export function resolveHexColor(raw: unknown, fallback: string): string {
   return /^#[0-9a-fA-F]{6}$/.test(c) ? c : fallback;
 }
 
-/** Light player: never paint a dark well (white type on gray). Dark player keeps navy. */
+/**
+ * Blocks well fill. Dark navy is allowed on the light player — ink comes from
+ * contrastTextOn, not from clamping the well back to pale indigo (that made
+ * Classic and Blocks look identical after Save).
+ */
 export function resolveBlocksPanelBg(wellColor: unknown, isLight: boolean): string {
   const fallback = isLight ? PROCESS_PANEL_DEFAULT : BLOCKS_WELL_DEFAULT;
-  const requested = resolveHexColor(wellColor, fallback);
-  if (isLight && contrastTextOn(requested) === '#ffffff') return PROCESS_PANEL_DEFAULT;
-  return requested;
+  return resolveHexColor(wellColor, fallback);
+}
+
+export type ProcessCanvasTone = {
+  bg: string;
+  ink: string;
+  muted: string;
+  /** True when the well is light — CSS may lock dark type. */
+  lightTypeLock: boolean;
+};
+
+/** Classic = pale process canvas; Blocks = author well (default navy). Ink follows the fill. */
+export function resolveProcessCanvas(opts: {
+  skin?: unknown;
+  panelColor?: unknown;
+  wellColor?: unknown;
+}): ProcessCanvasTone {
+  const blocks = resolveProcessSkin(opts.skin) === 'blocks';
+  const bg = blocks
+    ? resolveHexColor(opts.wellColor, BLOCKS_WELL_DEFAULT)
+    : resolveHexColor(opts.panelColor, PROCESS_PANEL_DEFAULT);
+  const ink = contrastTextOn(bg);
+  return {
+    bg,
+    ink,
+    muted: ink === '#ffffff' ? '#cbd5e1' : '#334155',
+    lightTypeLock: ink !== '#ffffff',
+  };
 }
 
 function mapVerticalTabSlides(course: any, fn: (slide: any, moduleIndex: number) => any): any {

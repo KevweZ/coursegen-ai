@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { markdownToHtml } from '../../lib/markdownInline';
 import { formatTabIntroOst, formatTabOstBody } from '../../lib/formatTabIntroOst';
-import { TAB_INTRO_DEFAULT_HEX, tabAccentHex, BLOCKS_WELL_DEFAULT, PROCESS_PANEL_DEFAULT, resolveHexColor } from '../../lib/tabAccents';
+import { TAB_INTRO_DEFAULT_HEX, tabAccentHex, PROCESS_PANEL_DEFAULT, resolveHexColor, resolveProcessCanvas } from '../../lib/tabAccents';
 import { contrastTextOn } from '../../lib/colorContrast';
 import { EnlargeableImage, type InFlowPromoteInfo } from '../player/EnlargeableImage';
 import InteractionIntroColumn from './InteractionIntroColumn';
@@ -180,16 +180,14 @@ export default function TabbedContentHorizontal({
     : (onPromoteTabImage && activeTab?.id ? (info: InFlowPromoteInfo) => onPromoteTabImage(activeTab.id, info) : undefined);
 
   const blocks = isBlocksSkin(skin);
-  const well = resolveHexColor(wellColor, PROCESS_PANEL_DEFAULT);
-  const requested = blocks
-    ? well
-    : resolveHexColor(panelColor, PROCESS_PANEL_DEFAULT);
-  // Light player: never use a dark well (that was gray canvas + white type).
-  const panelBg = isLight
-    ? (contrastTextOn(requested) === '#ffffff' ? PROCESS_PANEL_DEFAULT : requested)
-    : (blocks ? resolveHexColor(wellColor, BLOCKS_WELL_DEFAULT) : '#0f172a');
-  const ink = isLight ? '#0f172a' : '#f8fafc';
-  const muted = isLight ? '#334155' : '#cbd5e1';
+  const canvas = resolveProcessCanvas({
+    skin: blocks ? 'blocks' : 'process',
+    panelColor,
+    wellColor,
+  });
+  const panelBg = canvas.bg;
+  const ink = canvas.ink;
+  const muted = canvas.muted;
   const labelInk = ink;
   const rail = resolveHexColor(railColor, PROCESS_RAIL_DEFAULT);
   const railInk = contrastTextOn(rail);
@@ -228,7 +226,7 @@ export default function TabbedContentHorizontal({
           </div>
         )}
 
-        <div key={panelKey} className="flex flex-1 min-h-0 w-full items-start overflow-hidden process-canvas-light">
+        <div key={panelKey} className={`flex flex-1 min-h-0 w-full items-start overflow-hidden ${canvas.lightTypeLock ? 'process-canvas-light' : ''}`}>
           <div
             ref={scrollRef}
             className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden custom-scrollbar"
@@ -262,7 +260,7 @@ export default function TabbedContentHorizontal({
               {activeTab!.expandedContent && (
                 <div
                   className="mt-4 pt-4 border-t text-sm leading-relaxed tab-ost-body w-full"
-                  style={{ borderColor: blocks ? (ink === '#ffffff' ? 'rgba(248,250,252,0.18)' : 'rgba(15,23,42,0.16)') : (isLight ? '#e2e8f0' : '#334155'), color: muted }}
+                  style={{ borderColor: ink === '#ffffff' ? 'rgba(248,250,252,0.18)' : 'rgba(15,23,42,0.16)', color: muted }}
                   dangerouslySetInnerHTML={{ __html: markdownToHtml(formatTabOstBody(activeTab!.expandedContent)) }}
                 />
               )}

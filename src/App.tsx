@@ -8699,7 +8699,11 @@ export default function App() {
                         <input
                           type="text"
                           value={editingSlide.title || ''}
-                          onChange={(e) => setEditingSlide({ ...editingSlide, title: e.target.value })}
+                          onChange={(e) => {
+                            const updated = { ...(editingSlideRef.current ?? editingSlide), title: e.target.value };
+                            editingSlideRef.current = updated;
+                            setEditingSlide(updated);
+                          }}
                           className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-indigo-500 outline-none transition-all font-bold text-sm"
                           placeholder="Slide title..."
                         />
@@ -8896,9 +8900,10 @@ export default function App() {
                           ? (editingSlide.data?.introColor || tabs[0]?.color || TAB_ACCENT_HEX[0])
                           : (tabs[0]?.color || TAB_ACCENT_HEX[0]);
                         const patchTabs = (nextTabs: any[], extraData?: Record<string, unknown>) => {
+                          const base = editingSlideRef.current ?? editingSlide;
                           const updated = {
-                            ...(editingSlideRef.current ?? editingSlide),
-                            data: { ...(editingSlide.data || {}), [listKey]: nextTabs, ...extraData },
+                            ...base,
+                            data: { ...(base.data || {}), [listKey]: nextTabs, ...extraData },
                           };
                           editingSlideRef.current = updated;
                           setEditingSlide(updated);
@@ -8956,6 +8961,7 @@ export default function App() {
                           </div>
                         );
                         const tabSkin = editingSlide.data?.tabSkin === 'blocks' ? 'blocks' : 'default';
+                        const isBlocksSkin = tabSkin === 'blocks';
                         return (
                           <div className="space-y-3 pt-1">
                             <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">
@@ -8972,7 +8978,7 @@ export default function App() {
                                     onClick={() => patchTabs(tabs, { tabSkin: editingSlide.type === 'tabbed-horizontal' ? 'process' : 'default' })}
                                     className={cn(
                                       'px-3 py-2 rounded-lg border text-xs font-bold transition-all',
-                                      tabSkin === 'default'
+                                      tabSkin !== 'blocks'
                                         ? 'border-indigo-400 bg-indigo-500/15 text-indigo-200'
                                         : 'border-slate-700 bg-slate-900 text-slate-400 hover:border-slate-500'
                                     )}
@@ -8997,7 +9003,7 @@ export default function App() {
                                     ? 'Classic uses the pale blue Click & Reveal canvas with black text, and a light step bar (indigo numbered circles). Blocks is a darker reading area. Same interaction — switch back anytime.'
                                     : 'Classic is the current rounded tabs. Blocks uses a dark (or colored) reading area beside the tabs. Same interaction — switch back anytime.'}
                                 </p>
-                                {editingSlide.type === 'tabbed-horizontal' && (
+                                {editingSlide.type === 'tabbed-horizontal' && !isBlocksSkin && (
                                   <div className="space-y-2 pt-1">
                                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Content canvas</p>
                                     <div className="flex items-center gap-2 flex-wrap">
@@ -9243,11 +9249,12 @@ export default function App() {
                                 <input
                                   value={it.term || it.label || ''}
                                   onChange={(e) => {
-                                    const next = [...items];
+                                    const base = editingSlideRef.current ?? editingSlide;
+                                    const next = [...(base.data?.items || items)];
                                     next[ii] = { ...next[ii], term: e.target.value, label: e.target.value };
                                     const updated = {
-                                      ...(editingSlideRef.current ?? editingSlide),
-                                      data: { ...(editingSlide.data || {}), items: next },
+                                      ...base,
+                                      data: { ...(base.data || {}), items: next },
                                     };
                                     editingSlideRef.current = updated;
                                     setEditingSlide(updated);
@@ -9259,11 +9266,12 @@ export default function App() {
                                   rows={3}
                                   value={it.definition || it.content || ''}
                                   onChange={(e) => {
-                                    const next = [...items];
+                                    const base = editingSlideRef.current ?? editingSlide;
+                                    const next = [...(base.data?.items || items)];
                                     next[ii] = { ...next[ii], definition: e.target.value, content: e.target.value };
                                     const updated = {
-                                      ...(editingSlideRef.current ?? editingSlide),
-                                      data: { ...(editingSlide.data || {}), items: next },
+                                      ...base,
+                                      data: { ...(base.data || {}), items: next },
                                     };
                                     editingSlideRef.current = updated;
                                     setEditingSlide(updated);
@@ -9278,9 +9286,16 @@ export default function App() {
                       })()}
                       <EditSlideItemFields
                         slide={editingSlide}
+                        getSlide={() => editingSlideRef.current ?? editingSlide}
                         onPatch={(updated) => {
-                          editingSlideRef.current = updated;
-                          setEditingSlide(updated);
+                          const prev = editingSlideRef.current ?? editingSlide;
+                          const merged = {
+                            ...prev,
+                            ...updated,
+                            data: { ...(prev?.data || {}), ...(updated?.data || {}) },
+                          };
+                          editingSlideRef.current = merged;
+                          setEditingSlide(merged);
                         }}
                       />
                     </>

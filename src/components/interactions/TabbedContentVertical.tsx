@@ -421,8 +421,8 @@ function VerticalTabsBlocksSkin({
   isLight,
 }: BlocksSkinProps) {
   const well = resolveBlocksPanelBg(wellColor, isLight);
-  const wellInk = isLight ? '#0f172a' : contrastTextOn(well);
-  const muted = isLight ? '#334155' : wellInk;
+  const wellInk = contrastTextOn(well);
+  const muted = wellInk === '#ffffff' ? '#cbd5e1' : '#334155';
   const activeAccent = inIntro
     ? introHex
     : tabAccentHex(activeTab || undefined, Math.max(0, activeIndex));
@@ -505,7 +505,7 @@ function VerticalTabsBlocksSkin({
           )}
           <div
             key={panelKey}
-            className={cn('flex h-full min-h-0 w-full items-start', isLight && 'process-canvas-light')}
+            className={cn('flex h-full min-h-0 w-full items-start', wellInk !== '#ffffff' && 'process-canvas-light')}
             style={{ color: wellInk }}
           >
             <div

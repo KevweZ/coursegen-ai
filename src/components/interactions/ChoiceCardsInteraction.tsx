@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Check } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { markdownToHtml } from '../../lib/markdownInline';
+import { compactChoiceCardCopy } from '../../lib/choiceCardCopy';
 
 export interface ChoiceCard {
   id: string;
@@ -76,7 +77,7 @@ export default function ChoiceCardsInteraction({
   onChecked,
   onExplore,
 }: Props) {
-  const normalized = (cards || []).map((c, i) => ({
+  const normalized = (cards || []).map((c, i) => compactChoiceCardCopy({
     ...c,
     id: (c?.id != null && String(c.id).trim()) ? String(c.id) : `cc-${i}`,
   }));
@@ -126,7 +127,10 @@ export default function ChoiceCardsInteraction({
           dangerouslySetInnerHTML={{ __html: markdownToHtml(prompt) }}
         />
       )}
-      <div className={cn('grid gap-3', normalized.length <= 3 ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-1 sm:grid-cols-2')}>
+      <div className={cn(
+        'grid gap-3',
+        normalized.length <= 2 ? 'grid-cols-1 sm:grid-cols-2' : normalized.length === 3 ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-1 sm:grid-cols-2'
+      )}>
         {normalized.map((card, i) => {
           const tone = PASTELS[i % PASTELS.length];
           const on = mode === 'explore' ? activeId === card.id : selected.has(card.id);

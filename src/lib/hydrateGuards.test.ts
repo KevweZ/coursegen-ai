@@ -88,6 +88,30 @@ test('scored choice-card prompts name the correct answers and Check', () => {
   assert.match(String(scored.data.prompt), /correct/i);
 });
 
+test('choice-card spec rows hydrate into reveal, not the tile face', () => {
+  const next = finalizeHydratedSlide({
+    type: 'choice-cards',
+    title: 'High-Pressure vs. Low-Pressure Polymerization Routes',
+    data: {
+      mode: 'explore',
+      prompt: 'Select each process route to explore its conditions.',
+      cards: [{
+        id: 'hp',
+        label: 'High-pressure radical route (LDPE)',
+        body: `Reaction conditions: 1000–3000 bar, 150–300 °C
+Catalyst/initiator: Organic peroxide or oxygen
+Polymer structure: Long-chain branching
+Key product: Low-density polyethylene (LDPE)`,
+        reveal: 'High pressure forces ethylene monomers close together.',
+      }],
+    },
+  }, 'Polymerization Chemistry');
+  const card = next.data.cards[0];
+  assert.doesNotMatch(String(card.body || ''), /Reaction conditions/);
+  assert.match(String(card.reveal), /Reaction conditions/);
+  assert.match(String(card.reveal), /High pressure forces/);
+});
+
 test('key takeaways become statements instead of spec-table rows or empty numbers', () => {
   const slide = normalizeKeyTakeaways({
     type: 'key-takeaways',
