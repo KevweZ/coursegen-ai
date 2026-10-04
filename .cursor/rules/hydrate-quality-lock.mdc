@@ -18,7 +18,7 @@ These were already fixed once and leaked back after unrelated hydrate/KC work. *
 - **Content section headers:** ALL-CAPS, fully-bold, or topic-lead list items become `###` parents; **only children are bullets** (`parseOstSectionGroups` + `OstSectionGroupsView`). `sanitizeOstText` must keep `###` lines (never `- ### heading`). Do not restore CSS `columns-2` on a flat `ul` for these groups.
 - **Scored choice-cards:** prompt must say **correct** and **Check** (`ensureSelectChoicePrompt`).
 - **Choice-card faces stay short.** Spec-table rows (`Reaction conditions:`, `Key product:`) move to `reveal` via `compactChoiceCardCopy`. Player applies it at render so existing drafts fix without regenerate. Do not stack four labeled facts on the tile.
-- **Key takeaways** are learner statements (`normalizeKeyTakeaways`), not spec-table rows or empty numbered cards.
+- **Key takeaways** are 2–4 module-level points, each a **1–3 sentence summary** (`normalizeKeyTakeaways` + `isRichTakeaway`). Do not apply the 5–8 word teaching-bullet rule. Do not emit ALL-CAPS topic titles or Bloom gerunds as the only on-screen text. Hydrate retries thin title-only takeaways (`teachingSlideNeedsRetry`).
 - **Knowledge checks** always have a learner payload and **empty** `voiceOverText` (`ensureKnowledgeCheckPayload` + `stripSlideNarration`). Never convert an incomplete quiz to a `content` slide titled “Knowledge Check”.
 - **KC count/place:** `ensureKnowledgeCheckBudget` + `alignHydratedSlidesToOutline`. Teaching slides cannot become quizzes.
 - **Enabling coverage:** one module per terminal, 1–2 teaching slides per enabling (`ensureEnablingSlideCoverage`).

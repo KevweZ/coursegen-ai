@@ -11,6 +11,7 @@ import {
   stripMarkdownArtifacts,
   teachingSlideNeedsRetry,
   toTakeawayStatement,
+  isRichTakeaway,
 } from './hydrateGuards.ts';
 import { alignHydratedSlidesToOutline } from './knowledgeCheckBudget.ts';
 
@@ -134,6 +135,72 @@ test('spec-row takeaway helper writes a sentence', () => {
   assert.match(
     toTakeawayStatement('LDPE: 0.910-0.940 g/cm³, melts ~105-115 °C'),
     /LDPE is 0\.910/,
+  );
+});
+
+test('key takeaways retry when they are 5-8 word titles instead of sentences', () => {
+  assert.equal(isRichTakeaway('CATALYST ROLE'), false);
+  assert.equal(isRichTakeaway('Three Steps of Radical Polymerization'), false);
+  assert.equal(
+    isRichTakeaway('Free-radical polymerization builds PE chains in three steps, and how those steps are controlled decides branching and grade.'),
+    true,
+  );
+  const thin = teachingSlideNeedsRetry({
+    type: 'key-takeaways',
+    title: 'Module Summary: Polymerization Chemistry',
+    data: {
+      objectives: [
+        { id: '1', label: 'CATALYST ROLE' },
+        { id: '2', label: 'Three Steps of Radical Polymerization' },
+        { id: '3', label: 'High-Pressure vs. Low-Pressure Routes' },
+        { id: '4', label: 'Comonomers and Density Control' },
+      ],
+    },
+  });
+  assert.equal(thin, true);
+  const rich = teachingSlideNeedsRetry({
+    type: 'key-takeaways',
+    title: 'Module Summary: Polymerization Chemistry',
+    data: {
+      objectives: [
+        {
+          id: '1',
+          label: 'Catalysts decide which PE or PP grade you get by controlling how chains grow and how much they branch.',
+        },
+        {
+          id: '2',
+          label: 'Free-radical polymerization builds chains in initiation, propagation, and termination. Those three steps set molecular weight and branching.',
+        },
+      ],
+    },
+  });
+  assert.equal(rich, false);
+});
+
+test('key takeaways keep 2-4 points and retry Bloom gerund titles', () => {
+  const slide = normalizeKeyTakeaways({
+    type: 'key-takeaways',
+    title: 'Module Summary',
+    data: {
+      objectives: Array.from({ length: 6 }, (_, i) => ({
+        id: String(i + 1),
+        label: `Catalysts decide grade ${i + 1} by controlling how polymer chains grow and how much they branch in the reactor.`,
+      })),
+    },
+  });
+  assert.equal(slide.data.objectives.length, 4);
+  assert.equal(
+    teachingSlideNeedsRetry({
+      type: 'key-takeaways',
+      data: {
+        objectives: [
+          { id: '1', label: 'Distinguish how branching affects density and flexibility' },
+          { id: '2', label: 'Select polyethylene grades based on application needs' },
+          { id: '3', label: 'Connect molecular structure to processing and performance' },
+        ],
+      },
+    }),
+    true,
   );
 });
 

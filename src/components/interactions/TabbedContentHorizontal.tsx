@@ -217,8 +217,13 @@ export default function TabbedContentHorizontal({
 
       <div
         data-tab-drop-zone={dropZoneId || undefined}
-        className={`relative overflow-hidden flex flex-col ${panelHighlighted ? 'ring-4 ring-indigo-400/80 ring-inset' : ''}`}
-        style={{ height: PANEL_H, minHeight: PANEL_H, background: panelBg }}
+        className={`relative overflow-hidden flex flex-col rounded-2xl border shadow-sm ${panelHighlighted ? 'ring-4 ring-indigo-400/80 ring-inset' : ''}`}
+        style={{
+          height: PANEL_H,
+          minHeight: PANEL_H,
+          background: panelBg,
+          borderColor: canvas.lightTypeLock ? '#e2e8f0' : 'rgba(255,255,255,0.16)',
+        }}
       >
         {panelHighlighted && (
           <div className="absolute inset-x-0 top-0 z-10 px-3 py-1.5 text-center text-[11px] font-bold text-white bg-indigo-600/90 pointer-events-none">

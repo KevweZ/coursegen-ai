@@ -1,7 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { CheckCircle2 } from 'lucide-react';
-import { cn } from '../../lib/utils';
 
 type Theme = 'light' | 'dark' | 'unified';
 
@@ -46,24 +45,6 @@ const PANELS: Record<Theme, {
 };
 
 const ACCENT = '#818cf8';
-
-/**
- * Strip markdown artefacts and split "Label — Body" into parts.
- */
-function parseObjectiveText(raw: string): { label: string; content: string } {
-  let text = raw
-    .replace(/^#{1,6}\s+/, '')
-    .replace(/\*\*(.*?)\*\*/g, '$1')
-    .replace(/__(.*?)__/g, '$1')
-    .replace(/^[✅☑✓•\-]\s*/u, '')
-    .trim();
-
-  const parts = text.split(/\s[—\-]\s/);
-  if (parts.length >= 2) {
-    return { label: parts[0].trim(), content: parts.slice(1).join(' — ').trim() };
-  }
-  return { label: text, content: '' };
-}
 
 // ── Component ──────────────────────────────────────────────────────────────────
 export const LearningObjectivesSlide: React.FC<LearningObjectivesSlideProps> = ({
@@ -119,9 +100,10 @@ export const LearningObjectivesSlide: React.FC<LearningObjectivesSlideProps> = (
         {objectives.map((obj, i) => {
           const rawLabel   = obj.label || obj.title || '';
           const rawContent = obj.content || obj.description || '';
-          const parsed = rawLabel
-            ? { label: parseObjectiveText(rawLabel).label, content: rawContent }
-            : parseObjectiveText(rawContent);
+          const heading = rawLabel && rawContent && rawContent !== rawLabel && rawLabel.trim().split(/\s+/).length <= 10
+            ? rawLabel.trim()
+            : '';
+          const statement = (rawContent && rawContent !== rawLabel ? rawContent : rawLabel).trim();
 
           return (
             <motion.div
@@ -132,7 +114,6 @@ export const LearningObjectivesSlide: React.FC<LearningObjectivesSlideProps> = (
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.32, delay: i * 0.08 + 0.15 }}
             >
-              {/* Numbered circle */}
               <span
                 className="shrink-0 w-11 h-11 rounded-full flex items-center justify-center font-black text-base"
                 style={{ backgroundColor: `${accent}22`, color: accent }}
@@ -140,21 +121,17 @@ export const LearningObjectivesSlide: React.FC<LearningObjectivesSlideProps> = (
                 {i + 1}
               </span>
 
-              {/* Label + body */}
-              <div className="flex flex-col justify-center min-w-0 gap-0.5">
-                {parsed.label && (
-                  <p className={cn(
-                    'font-bold text-base tracking-wide leading-snug',
-                    parsed.label.length < 28 && !/[0-9]/.test(parsed.label) && 'uppercase',
-                  )} style={{ color: p.titleText }}>
-                    {parsed.label}
+              <div className="flex flex-col justify-center min-w-0 gap-1">
+                {heading ? (
+                  <p className="font-bold text-base tracking-wide leading-snug" style={{ color: p.titleText }}>
+                    {heading}
                   </p>
-                )}
-                {parsed.content && (
-                  <p className="text-base leading-relaxed" style={{ color: p.labelText }}>
-                    {parsed.content}
+                ) : null}
+                {statement ? (
+                  <p className="text-base leading-relaxed" style={{ color: heading ? p.labelText : p.titleText }}>
+                    {statement}
                   </p>
-                )}
+                ) : null}
               </div>
             </motion.div>
           );

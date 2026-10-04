@@ -723,13 +723,12 @@ export async function hydrateCourseContent(
   - NARRATION (voiceOverText) = where the real teaching happens. It expands on each bullet in natural spoken language,
     gives context/examples/application — but it must NEVER just re-read the bullets verbatim or restate them one by one.
     It should feel like a person explaining the big picture, not narrating a list.
-  - EXCEPTION (full sentences/paragraphs ARE appropriate): scenario/branching narrative text the learner must read closely,
-    direct quotes or excerpts from a source document, or a screenshot/image caption that needs a complete sentence for
-    context. Outside those cases, default to short bullets everywhere — content slides, summaries, key takeaways,
-    accordion items, tabs, flashcards, click-reveal definitions, etc.
-  - MODULE SUMMARY / KEY TAKEAWAYS SPECIFICALLY: never write one bullet per topic taught in the module. Instead select
-    ONLY the 4-6 most important, highest-value takeaways across the WHOLE module. The narration should give a big-picture
-    synthesis of why these matter together — ideally ending on a short, memorable line — NOT a recap of every slide.
+  - EXCEPTION (full sentences/paragraphs ARE appropriate): key-takeaways / module summaries (see below), scenario/branching
+    narrative text the learner must read closely, direct quotes or excerpts from a source document, or a screenshot/image
+    caption that needs a complete sentence for context. Do NOT apply the 5–8 word bullet rule to key-takeaways.
+  - MODULE SUMMARY / KEY TAKEAWAYS: 2–4 major points for the WHOLE module (not one row per slide). Each point is a 1–3
+    sentence summary the learner can read on screen — a complete thought, not a 5–8 word phrase or Bloom gerund.
+    Narration synthesizes why those points matter together. NEVER recap every slide title as a takeaway.
   - PROCESS / VERTICAL TABS (tabbed-horizontal / tabbed-vertical) — STRICT: each step or tab's on-screen content must be SHORT BULLETS
     (3–5 bullets, 5–8 words each). Put explanations in voiceOverText and (when present) each tab's voiceOverText field.
     Never put a thick paragraph inside a tab panel.
@@ -756,8 +755,8 @@ export async function hydrateCourseContent(
      A — APPLICATION (1 sentence): "In practice, this means [specific action or behavior the learner should adopt]."
      P — PREVIEW/CONNECT (1 sentence): "As we explore this further, [bridge to next concept or upcoming interaction]."
      Total: 3–4 natural spoken sentences. NEVER re-read slide bullets verbatim.
-  7. CONCISENESS: Each content field <= 5-6 short bullets (5-8 words each) OR <= 2 short sentences for the rare cases that
-     call for prose (see Global Principle exceptions). Use markdown (**, ###, >) for visual hierarchy.
+  7. CONCISENESS: Teaching slides (content, tabs, click-reveal, choice-cards) use <= 5-6 short bullets (5-8 words each)
+     OR <= 2 short sentences when prose is required. KEY-TAKEAWAYS are the exception: 2–4 points, each 1–3 full sentences.
   8. NO WALLS OF TEXT: If content exceeds 6 lines, break it with ### headers and subgroups.
   9. NO COLON-PIPE DIVIDERS: Never write "IDENTIFY: |" or any "KEYWORD: |" pattern. Use "**Identify:**" or a heading instead.
   10. NO EMPTY BOLD: Never write "** **" or "**  **". Only bold meaningful text.
@@ -934,22 +933,20 @@ export async function hydrateCourseContent(
 
   CONTENT / KEY-TAKEAWAYS / SUMMARY:
   - Do NOT embed full-slide images. Use mediaPrompt to describe what image should appear (no text in the image).
-  - content must use ### headers, bullet lists, or callout blocks -- NOT bare paragraphs.
-  - BULLET BREVITY (see Global Principle above): each bullet is a SHORT PHRASE, 5-8 words. NOT a complete explanatory
-    sentence — the narration explains, the bullet just labels. MAXIMUM 5-6 bullets per slide.
+  - Teaching CONTENT slides must use ### headers, bullet lists, or callout blocks -- NOT bare paragraphs.
+  - BULLET BREVITY applies to CONTENT / tabs / click-reveal / choice-card faces ONLY: each bullet is a SHORT PHRASE, 5-8 words.
+    NOT a complete explanatory sentence — the narration explains, the bullet just labels. MAXIMUM 5-6 bullets per teaching slide.
     WRONG (too long/explanatory): "- Phishing attacks use deceptive emails to trick employees into revealing login credentials"
     RIGHT (short phrase): "- **Phishing**: deceptive emails targeting login credentials"
-    WRONG: "- Effective risk management requires identifying, assessing, and mitigating potential threats before they occur"
-    RIGHT: "- **Risk management**: identify, assess, mitigate threats early"
-  - SUMMARY SLIDES: pick ONLY the 4-6 most important takeaways from the WHOLE module — never one bullet per topic/slide
-    covered. MAXIMUM 6 short bullets (5-8 words), PAST TENSE: "- Explored the three phishing types", "- Defined escalation steps"
-  - KEY-TAKEAWAY SLIDES (type: "key-takeaways"): REQUIRED fields — content (markdown bullets) AND data.objectives
-    array with 4-6 items [{ id, label, content }]. NEVER leave data.objectives empty or omit it.
-    MAXIMUM 5-6 short bullets (5-8 words each), each an ACTION-VERB phrase, not a full sentence:
-    "- Spot suspicious email patterns early"
-    "- Report incidents to IT within 24 hours"
-    Example data: { "objectives": [{ "id": "1", "label": "Spot phishing cues early", "content": "" }] }
-  - BOLD USAGE: Do NOT bold words inside bullet lists on content/summary/key-takeaway slides.
+    This 5–8 word rule does NOT apply to key-takeaways.
+  - KEY-TAKEAWAY SLIDES (type: "key-takeaways"): REQUIRED fields — content (markdown) AND data.objectives
+    array with 2–4 items [{ id, label, content }]. NEVER leave data.objectives empty or omit it.
+    Each item is a KEY POINT from the module: put a 1–3 sentence summary in label (or label + content).
+    Do NOT write 5–8 word fragments, ALL-CAPS topic titles, or Bloom gerunds ("Distinguish how…", "Select polyethylene grades…").
+    WRONG: "CATALYST ROLE" / "Three Steps of Radical Polymerization"
+    RIGHT: "Free-radical polymerization builds PE chains in three steps — initiation, propagation, and termination — and the way those steps are controlled decides branching and grade."
+    Pick 2–4 highest-value points for the WHOLE module, not one row per teaching slide.
+  - BOLD USAGE: Do NOT bold words inside bullet lists on content slides.
     The slide title already carries visual hierarchy; partial bold mid-bullet looks noisy and
     competes with the header. Write plain bullets with no ** markers. Reserve bold for rare
     inline terms in paragraph prose only (never in list items).
@@ -1187,9 +1184,8 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     }
 
     // Density auto-splitter — skip Summary/Key-Takeaway slides entirely. Those are
-    // now capped to 5-6 short bullets by the system prompt, so they should never
-    // need splitting; splitting a short bullet list produced uneven, near-empty
-    // "Part 2" slides in practice.
+    // 2–4 sentence summaries, not dense teaching lists, so they should never
+    // need splitting.
     const isSummaryOrTakeaway = /summary|key\s*takeaway/i.test(slide.title || '');
     if (slide.type === 'content' && !isSummaryOrTakeaway && slide.content?.length > 800) {
       const paragraphs = slide.content.split('\n\n');

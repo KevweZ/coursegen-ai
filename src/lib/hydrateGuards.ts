@@ -270,7 +270,11 @@ export function teachingSlideNeedsRetry(slide: any): boolean {
   if (type === 'key-takeaways' || type === 'summary') {
     const objs = slide.data?.objectives || slide.interactions;
     const fromContent = takeawayLinesFromContent(slide.content);
-    return !((Array.isArray(objs) && objs.filter(isUsableTakeaway).length >= 2) || fromContent.length >= 2);
+    const richFromObjs = Array.isArray(objs)
+      ? objs.map(takeawayStatementText).filter(isRichTakeaway)
+      : [];
+    const richFromContent = fromContent.filter(isRichTakeaway);
+    return richFromObjs.length < 2 && richFromContent.length < 2;
   }
   if (type === 'content' || type === 'diagram') {
     const mermaid = String(slide.data?.mermaidCode || '').trim();
@@ -278,6 +282,20 @@ export function teachingSlideNeedsRetry(slide: any): boolean {
     return isThinTeachingContent(slide.content);
   }
   return false;
+}
+
+function takeawayStatementText(obj: any): string {
+  const label = stripMarkdownArtifacts(obj?.label || obj?.title || '').trim();
+  const body = stripMarkdownArtifacts(obj?.content || obj?.description || '').trim();
+  if (body && label && body !== label) return `${label}. ${body}`.replace(/\.\s+\./g, '.');
+  return (body || label).trim();
+}
+
+export function isRichTakeaway(text: unknown): boolean {
+  const t = stripMarkdownArtifacts(text).replace(/^[-*•]\s+/, '').trim();
+  if (!t) return false;
+  if (/[.!?]/.test(t) && wordCount(t) >= 8) return true;
+  return wordCount(t) >= 12;
 }
 
 function takeawayLinesFromContent(content: unknown): string[] {
@@ -361,7 +379,7 @@ export function normalizeKeyTakeaways(slide: any): any {
 
   next.data = {
     ...(next.data || {}),
-    objectives: objectives.slice(0, 6).map((o, i) => ({
+    objectives: objectives.slice(0, 4).map((o, i) => ({
       id: o.id || String(i + 1),
       label: o.label,
       content: o.content || '',
