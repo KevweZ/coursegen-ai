@@ -278,7 +278,7 @@ Use Previous and Next in the player bar, or click the seekbar to jump to any sli
           id: 'slide-click-reveal',
           type: 'click-reveal',
           title: 'Click & Reveal — Key Terms',
-          content: 'Click each term to reveal its definition.',
+          content: '- Terms sit on the left as a short overview\n- Open each item for the definition\n- Player chrome already tells the learner to select',
           narration: 'Click each term to reveal its definition.',
           voiceOverText: 'Click each term to reveal its definition.',
           data: {

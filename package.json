@@ -13,7 +13,8 @@
     "build:player": "node generate_backgrounds.cjs && node scripts/build-player.mjs",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "tsx --test src/lib/hydrateGuards.test.ts src/lib/knowledgeCheckBudget.test.ts src/lib/reviewAlignment.test.ts src/lib/enablingCoverage.test.ts src/lib/formatTabIntroOst.test.ts src/lib/imageVisualPrompt.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

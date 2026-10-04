@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { markdownToHtml } from '../../lib/markdownInline';
+import { sanitizeOstText } from '../../lib/formatTabIntroOst';
+import { PROCESS_PANEL_DEFAULT } from '../../lib/tabAccents';
 import { EnlargeableImage } from '../player/EnlargeableImage';
 
 export interface RevealItem {
@@ -14,6 +16,8 @@ export interface RevealItem {
 interface ClickRevealProps {
   items?: RevealItem[];
   title?: string;
+  /** Left-column introduction (slide content). Instruction-only lines are omitted. */
+  introContent?: string;
   theme?: 'light' | 'dark' | 'unified';
   /** Authoring: remove a revealed item's image */
   onRemoveItemImage?: (itemId: string) => void;
@@ -43,7 +47,17 @@ const CARD_COLORS_DARK = [
   { border: '#ec4899', bg: 'rgba(236,72,153,0.12)', glow: 'rgba(236,72,153,0.3)' },
 ];
 
-const ClickRevealInteraction: React.FC<ClickRevealProps> = ({ items = [], theme = 'light', onItemReveal, onRemoveItemImage, onCropItemImage, onPromoteItemImage }) => {
+const DEFAULT_PROMPT = 'Select each term to continue →';
+
+const ClickRevealInteraction: React.FC<ClickRevealProps> = ({
+  items = [],
+  introContent,
+  theme = 'light',
+  onItemReveal,
+  onRemoveItemImage,
+  onCropItemImage,
+  onPromoteItemImage,
+}) => {
   const normalized = React.useMemo(
     () => (items || []).map((it, i) => ({
       ...it,
@@ -51,6 +65,10 @@ const ClickRevealInteraction: React.FC<ClickRevealProps> = ({ items = [], theme 
     })),
     [items]
   );
+  const introHtml = React.useMemo(() => {
+    const ost = sanitizeOstText(introContent);
+    return ost ? markdownToHtml(ost) : '';
+  }, [introContent]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set());
 
@@ -64,7 +82,7 @@ const ClickRevealInteraction: React.FC<ClickRevealProps> = ({ items = [], theme 
   const isLight = theme === 'light';
   const T = {
     idleBorder: isLight ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.12)',
-    idleBg: isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.03)',
+    idleBg: isLight ? 'rgba(255,255,255,0.72)' : 'rgba(255,255,255,0.03)',
     dot: isLight ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.25)',
     termText: isLight ? '#0f172a' : 'rgba(255,255,255,0.8)',
     termTextOpen: isLight ? '#0f172a' : '#ffffff',
@@ -75,6 +93,9 @@ const ClickRevealInteraction: React.FC<ClickRevealProps> = ({ items = [], theme 
     chevron: isLight ? '#94a3b8' : '#94a3b8',
     definitionText: isLight ? '#334155' : 'rgba(226,232,240,0.95)',
     progressText: isLight ? '#64748b' : '#64748b',
+    introInk: isLight ? '#0f172a' : '#f8fafc',
+    introMuted: isLight ? '#334155' : '#cbd5e1',
+    introPanel: isLight ? PROCESS_PANEL_DEFAULT : '#0f172a',
   };
 
   if (!normalized.length) return null;
@@ -89,121 +110,150 @@ const ClickRevealInteraction: React.FC<ClickRevealProps> = ({ items = [], theme 
   };
 
   return (
-    <div className="w-full space-y-2.5">
-      {normalized.map((item, idx) => {
-        const palette = isLight ? CARD_COLORS : CARD_COLORS_DARK;
-        const color = palette[idx % palette.length];
-        const isOpen = openId === item.id;
-        const hasBeenRevealed = revealedIds.has(item.id);
-
-        return (
-          <motion.div
-            key={item.id || `reveal-${idx}`}
-            layout
-            initial={false}
-            className="rounded-xl overflow-hidden"
-            style={{
-              border: `1.5px solid ${isOpen ? color.border : T.idleBorder}`,
-              background: isOpen ? color.bg : T.idleBg,
-              boxShadow: isOpen ? `0 0 20px ${color.glow}` : 'none',
-              transition: 'border-color 0.2s, background 0.2s, box-shadow 0.2s',
-            }}
+    <div className="w-full flex gap-5 min-h-[28rem] flex-1 items-stretch">
+      <aside
+        className="w-[36%] max-w-[400px] min-w-[240px] shrink-0 rounded-2xl overflow-hidden"
+        style={{ background: T.introPanel }}
+      >
+        <div className="box-border h-full p-6 sm:p-7 text-left overflow-y-auto custom-scrollbar">
+          <p
+            className="text-sm font-bold uppercase tracking-[0.18em] mb-2"
+            style={{ color: T.introInk }}
           >
-            {/* Term row — always visible, clickable */}
-            <button
-              onClick={() => handleToggle(item.id)}
-              className="w-full flex items-center gap-4 px-5 py-4 text-left"
-              aria-expanded={isOpen}
+            Overview
+          </p>
+          <h3 className="font-extrabold text-lg mb-4" style={{ color: T.introInk }}>
+            Introduction
+          </h3>
+          {introHtml ? (
+            <div
+              className="text-sm leading-relaxed w-full"
+              style={{ color: T.introMuted }}
+              dangerouslySetInnerHTML={{ __html: introHtml }}
+            />
+          ) : null}
+          <p className="mt-6 text-xs font-semibold" style={{ color: T.introMuted }}>
+            {DEFAULT_PROMPT}
+          </p>
+        </div>
+      </aside>
+
+      <div className="flex-1 min-w-0 flex flex-col space-y-2.5">
+        {normalized.map((item, idx) => {
+          const palette = isLight ? CARD_COLORS : CARD_COLORS_DARK;
+          const color = palette[idx % palette.length];
+          const isOpen = openId === item.id;
+          const hasBeenRevealed = revealedIds.has(item.id);
+
+          return (
+            <motion.div
+              key={item.id || `reveal-${idx}`}
+              layout
+              initial={false}
+              className="rounded-xl overflow-hidden"
+              style={{
+                border: `1.5px solid ${isOpen ? color.border : T.idleBorder}`,
+                background: isOpen ? color.bg : T.idleBg,
+                boxShadow: isOpen ? `0 0 20px ${color.glow}` : 'none',
+                transition: 'border-color 0.2s, background 0.2s, box-shadow 0.2s',
+              }}
             >
-              {/* Color dot */}
-              <span
-                className="w-2.5 h-2.5 rounded-full shrink-0 transition-all duration-200"
-                style={{
-                  backgroundColor: isOpen ? color.border : T.dot,
-                  boxShadow: isOpen ? `0 0 8px ${color.border}` : 'none',
-                }}
-              />
-
-              {/* Term text — always dark/near-black in light theme so it never
-                  disappears against the light card background, open or closed. */}
-              <span
-                className="flex-1 font-bold text-base leading-snug"
-                style={{ color: isOpen ? T.termTextOpen : T.termText }}
-                dangerouslySetInnerHTML={{ __html: markdownToHtml(item.term) }}
-              />
-
-              {/* Status chip — the ONE place white text is used on a light
-                  background, and only because the chip's own fill is the
-                  saturated accent color (dark enough for white text) when open. */}
-              <span
-                className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full transition-all duration-200"
-                style={{
-                  background: hasBeenRevealed
-                    ? isOpen ? color.border : T.chipRevealedBg
-                    : T.chipIdleBg,
-                  color: hasBeenRevealed
-                    ? isOpen ? '#fff' : T.chipRevealedText
-                    : T.chipIdleText,
-                }}
+              {/* Term row — always visible, clickable */}
+              <button
+                onClick={() => handleToggle(item.id)}
+                className="w-full flex items-center gap-4 px-5 py-4 text-left"
+                aria-expanded={isOpen}
               >
-                {isOpen ? 'Hide' : hasBeenRevealed ? 'Revealed ✓' : 'Click to reveal'}
-              </span>
+                {/* Color dot */}
+                <span
+                  className="w-2.5 h-2.5 rounded-full shrink-0 transition-all duration-200"
+                  style={{
+                    backgroundColor: isOpen ? color.border : T.dot,
+                    boxShadow: isOpen ? `0 0 8px ${color.border}` : 'none',
+                  }}
+                />
 
-              {/* Chevron */}
-              <motion.span
-                animate={{ rotate: isOpen ? 180 : 0 }}
-                transition={{ duration: 0.2 }}
-                className="shrink-0 text-sm"
-                style={{ color: T.chevron }}
-              >
-                ▾
-              </motion.span>
-            </button>
+                {/* Term text — always dark/near-black in light theme so it never
+                    disappears against the light card background, open or closed. */}
+                <span
+                  className="flex-1 font-bold text-base leading-snug"
+                  style={{ color: isOpen ? T.termTextOpen : T.termText }}
+                  dangerouslySetInnerHTML={{ __html: markdownToHtml(item.term) }}
+                />
 
-            {/* Definition — revealed on click */}
-            <AnimatePresence initial={false}>
-              {isOpen && (
-                <motion.div
-                  key="def"
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.25, ease: 'easeInOut' }}
-                  style={{ overflow: 'hidden' }}
+                {/* Status chip — the ONE place white text is used on a light
+                    background, and only because the chip's own fill is the
+                    saturated accent color (dark enough for white text) when open. */}
+                <span
+                  className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full transition-all duration-200"
+                  style={{
+                    background: hasBeenRevealed
+                      ? isOpen ? color.border : T.chipRevealedBg
+                      : T.chipIdleBg,
+                    color: hasBeenRevealed
+                      ? isOpen ? '#fff' : T.chipRevealedText
+                      : T.chipIdleText,
+                  }}
                 >
-                  <div
-                    className="px-5 pb-5 pt-1 text-sm leading-relaxed"
-                    style={{
-                      color: T.definitionText,
-                      borderTop: `1px solid ${color.border}44`,
-                    }}
-                    dangerouslySetInnerHTML={{ __html: markdownToHtml(item.definition) }}
-                  />
-                  {item.imageUrl && (
-                    <div className="px-5 pb-5">
-                      <EnlargeableImage
-                        src={item.imageUrl}
-                        wrapperClassName="max-w-xl"
-                        className="max-h-80 bg-transparent"
-                        onRemove={onRemoveItemImage ? () => onRemoveItemImage(item.id) : undefined}
-                        onCrop={onCropItemImage ? (url) => onCropItemImage(item.id, url) : undefined}
-                        onPromoteToFloat={onPromoteItemImage ? (info) => onPromoteItemImage(item.id, info) : undefined}
-                      />
-                    </div>
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.div>
-        );
-      })}
+                  {isOpen ? 'Hide' : hasBeenRevealed ? 'Revealed ✓' : 'Click to reveal'}
+                </span>
 
-      {/* Progress indicator */}
-      {normalized.length > 1 && (
-        <p className="text-xs text-right pt-1" style={{ color: T.progressText }}>
-          {revealedIds.size}/{normalized.length} revealed
-        </p>
-      )}
+                {/* Chevron */}
+                <motion.span
+                  animate={{ rotate: isOpen ? 180 : 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="shrink-0 text-sm"
+                  style={{ color: T.chevron }}
+                >
+                  ▾
+                </motion.span>
+              </button>
+
+              {/* Definition — revealed on click */}
+              <AnimatePresence initial={false}>
+                {isOpen && (
+                  <motion.div
+                    key="def"
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.25, ease: 'easeInOut' }}
+                    style={{ overflow: 'hidden' }}
+                  >
+                    <div
+                      className="px-5 pb-5 pt-1 text-sm leading-relaxed"
+                      style={{
+                        color: T.definitionText,
+                        borderTop: `1px solid ${color.border}44`,
+                      }}
+                      dangerouslySetInnerHTML={{ __html: markdownToHtml(item.definition) }}
+                    />
+                    {item.imageUrl && (
+                      <div className="px-5 pb-5">
+                        <EnlargeableImage
+                          src={item.imageUrl}
+                          wrapperClassName="w-full max-w-md"
+                          className="max-h-56 bg-transparent"
+                          onRemove={onRemoveItemImage ? () => onRemoveItemImage(item.id) : undefined}
+                          onCrop={onCropItemImage ? (url) => onCropItemImage(item.id, url) : undefined}
+                          onPromoteToFloat={onPromoteItemImage ? (info) => onPromoteItemImage(item.id, info) : undefined}
+                        />
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          );
+        })}
+
+        {/* Progress indicator */}
+        {normalized.length > 1 && (
+          <p className="text-xs text-right pt-1" style={{ color: T.progressText }}>
+            {revealedIds.size}/{normalized.length} revealed
+          </p>
+        )}
+      </div>
     </div>
   );
 };

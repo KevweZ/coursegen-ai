@@ -1,0 +1,28 @@
+---
+description: Locked HDMI / desktop player scale-to-fit — do not change unless the user explicitly restarts this work.
+alwaysApply: true
+---
+
+# Player scale lock (shipped, do not regress)
+
+Anthony signed off on this layout on 2026-09-04: the course player stays visible and **scale-to-fits 16:9/4:3 on any monitor (HDMI included)** without bouncing, shrinking away, or going blank.
+
+**Do not** edit scale/layout in [`src/hooks/useScaleToFit.ts`](src/hooks/useScaleToFit.ts) or the preview stage in [`src/App.tsx`](src/App.tsx) (`measureScaleToFit`, `useScaleTransform`, `scaler.outerStyle` / `frameStyle`, the empty measure overlay, the in-flow centering host) unless the user **explicitly** asks to change player scaling.
+
+Image extract, QC, TTS, generate-speed, and other work must not retune player size.
+
+## Required structure
+
+- Measure an **empty** `absolute inset-0` overlay (not the player).
+- Keep a **full-size in-flow** centering host (`flex-1` / `w-full h-full`) so the stage cannot collapse to a blank screen.
+- Scale the 1280×720 (or 4:3) frame with `transform: scale` from top-left; no CSS transition on width/height/transform.
+- Phones and desktop 16:9/4:3 both use this. `'full'` skips it. Desktop “Mobile” bezel is separate chrome.
+- Never toggle flex-fill vs transform from measured `scale`. Never multiply scale by 0.99 against a child-sized host.
+
+## Known failure modes (do not reintroduce)
+
+- Flex-fill only on desktop → HDMI shows a small frame and empty space.
+- Measuring the scaled player / shrink-wrapping parent → canvas animates to nothing.
+- `absolute inset-0` as the only player host (no in-flow filler) → blank white stage, TOC still visible.
+- CSS `cqw`/`cqh` letterbox instead of JS scale-to-fit → HDMI scale-up gone.
+- `transition-all` on the frame → diagonal bounce loop.

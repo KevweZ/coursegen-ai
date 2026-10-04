@@ -478,7 +478,7 @@ app.post('/api/parse-document',
 
 // ─── 5c. Image Generation Endpoint ──────────────────────────────────────────
 const IMAGE_NO_TEXT_RULE =
-  'HARD RULE: The image must contain absolutely no text of any kind — no titles, captions, letters, numbers, words, labels, signs with writing, logos, watermarks, UI chrome, or typography. If an object would normally have writing (boxes, trucks, screens, posters, packaging), show that surface blank. Visuals only.';
+  'HARD RULE: The image must contain absolutely no text of any kind — no titles, captions, letters, numbers, words, labels, signs with writing, logos, watermarks, UI chrome, or typography. If an object would normally have writing (boxes, trucks, screens, posters, bags, bottles, packaging, machine displays), show that surface completely blank. Do not stamp the topic name onto the photo. Visuals only.';
 
 function withImageNoTextRule(prompt) {
   const p = String(prompt || '').trim();
@@ -585,8 +585,63 @@ async function generateImageViaOpenRouter(prompt, model) {
   return imageDataUrl;
 }
 
+async function reviewGeneratedImage(imageDataUrl, intended) {
+  const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? '';
+  if (!OPENROUTER_API_KEY || !imageDataUrl || !String(intended || '').trim()) {
+    return { skip: true };
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20000);
+  try {
+    const orResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://nexcourse.ai',
+        'X-Title': 'NexCourse AI',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [{
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: `You QA an eLearning photograph.\nIntended subject:\n${String(intended).slice(0, 600)}\n\nReturn ONLY JSON: {"hasVisibleText":boolean,"offTopic":boolean,"reason":string}\n- hasVisibleText true if any readable letters, numbers, captions, labels, or logos appear.\n- offTopic true if the photo shows the everyday English/acronym meaning instead of the technical meaning (astronaut for EVA plastic, firing someone for polymer termination, handshake for chemical initiation, infographic of the title, etc.).\nKeep reason under 12 words.`,
+            },
+            { type: 'image_url', image_url: { url: imageDataUrl } },
+          ],
+        }],
+        max_tokens: 200,
+      }),
+      signal: controller.signal,
+    });
+    if (!orResponse.ok) {
+      const errText = await orResponse.text().catch(() => orResponse.statusText);
+      throw new Error(`review ${orResponse.status}: ${errText.slice(0, 160)}`);
+    }
+    const data = await orResponse.json();
+    const raw = String(data?.choices?.[0]?.message?.content || '')
+      .replace(/```json|```/g, '')
+      .trim();
+    const parsed = JSON.parse(raw);
+    return {
+      hasVisibleText: !!parsed.hasVisibleText,
+      offTopic: !!parsed.offTopic,
+      reason: String(parsed.reason || '').slice(0, 160),
+    };
+  } catch (err) {
+    console.warn('[ImageGen] review skipped:', err.message || err);
+    return { skip: true };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 app.post('/api/generate-image', imageRateLimit, async (req, res) => {
-  const { prompt, model = 'google/gemini-3.1-flash-image-preview' } = req.body ?? {};
+  const { prompt, model = 'google/gemini-3.1-flash-image-preview', intended } = req.body ?? {};
   if (!prompt?.trim()) {
     return res.status(400).json({ error: 'Missing required field: prompt' });
   }
@@ -599,27 +654,46 @@ app.post('/api/generate-image', imageRateLimit, async (req, res) => {
     });
   }
 
-  try {
+  const generateOnce = async (p) => {
     let imageDataUrl = null;
     let provider = '';
-
-    // Prefer OpenRouter (Gemini Flash Image) when configured; else DALL·E via OpenAI
     if (hasOpenRouter) {
       try {
-        imageDataUrl = await generateImageViaOpenRouter(prompt, model);
+        imageDataUrl = await generateImageViaOpenRouter(p, model);
         provider = 'openrouter';
       } catch (err) {
         console.warn('[ImageGen] OpenRouter failed, trying OpenAI fallback:', err.message);
       }
     }
-
     if (!imageDataUrl && hasOpenAI) {
-      imageDataUrl = await generateImageViaOpenAI(prompt);
+      imageDataUrl = await generateImageViaOpenAI(p);
       provider = 'openai-dall-e-3';
     }
+    return { imageDataUrl, provider };
+  };
+
+  try {
+    let { imageDataUrl, provider } = await generateOnce(prompt);
 
     if (!imageDataUrl) {
       return res.status(502).json({ error: 'No image returned from AI model.' });
+    }
+
+    const qa = await reviewGeneratedImage(imageDataUrl, intended);
+    if (!qa.skip && (qa.hasVisibleText || qa.offTopic)) {
+      console.warn(`[ImageGen] QA reject (${qa.hasVisibleText ? 'text' : 'off-topic'}): ${qa.reason}`);
+      const retryPrompt =
+        `${prompt}\n\nPREVIOUS ATTEMPT REJECTED: ${qa.reason}. ` +
+        `Generate a different wordless photograph of the technical subject. No letters. No everyday-English puns on the label.`;
+      try {
+        const retry = await generateOnce(retryPrompt);
+        if (retry.imageDataUrl) {
+          imageDataUrl = retry.imageDataUrl;
+          provider = retry.provider || provider;
+        }
+      } catch (err) {
+        console.warn('[ImageGen] QA retry failed, keeping first image:', err.message);
+      }
     }
 
     console.log(`[ImageGen] ✓ via ${provider} — prompt: "${prompt.slice(0, 60)}..."`);

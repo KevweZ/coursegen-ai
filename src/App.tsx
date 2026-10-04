@@ -7957,11 +7957,11 @@ export default function App() {
                                {currentSlide?.type === 'click-reveal' && (() => {
                                  const cr = resolveClickRevealSlide(currentSlide);
                                  return (
-                                   <div className="space-y-6 w-full">
+                                   <div className="flex flex-col gap-5 w-full min-h-0 flex-1">
                                      <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                     {cr.content && <SmartContent content={sanitizeContent(cr.content)} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />}
                                      <ClickRevealInteraction
                                        items={cr.items}
+                                       introContent={cr.content}
                                        theme={theme as any}
                                        onItemReveal={(id) => markInteractionExplored(currentSlide.id, id)}
                                        onRemoveItemImage={!isLearnerPlayer ? (itemId) => {
@@ -9946,9 +9946,10 @@ export default function App() {
                            </div>
                          )}
                          {previewModalOption === 'Click & Reveal' && (
-                           <div className="w-full max-w-2xl">
+                           <div className="w-full max-w-5xl">
                              <ClickRevealInteraction
                                theme="light"
+                               introContent={"- Small molecules become repeating units\n- Comonomers tune density and toughness\n- Catalysts start and steer the reaction"}
                                items={[
                                  { id: '1', term: 'Phishing', definition: 'A social engineering attack that uses disguised emails or messages to steal credentials or install malware.' },
                                  { id: '2', term: 'Multi-factor authentication', definition: 'A security method requiring two or more verification factors — something you know, have, or are.' },

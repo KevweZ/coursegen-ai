@@ -5,17 +5,16 @@
  * (OpenRouter → Gemini Flash Image Preview).
  */
 
+import {
+  IMAGE_NO_TEXT_RULE,
+  buildGroundedVisualPrompt,
+  withImageNoTextRule,
+  type VisualPromptInput,
+} from '../lib/imageVisualPrompt';
+
 const DEFAULT_IMAGE_MODEL = 'google/gemini-3.1-flash-image-preview';
 
-/** Appended to every image prompt. Models often typeset titles if the prompt names them. */
-export const IMAGE_NO_TEXT_RULE =
-  'HARD RULE: The image must contain absolutely no text of any kind — no titles, captions, letters, numbers, words, labels, signs with writing, logos, watermarks, UI chrome, or typography. If an object would normally have writing (boxes, trucks, screens, posters, packaging), show that surface blank. Visuals only.';
-
-function withNoTextRule(prompt: string): string {
-  const p = String(prompt || '').trim();
-  if (/HARD RULE: The image must contain absolutely no text/i.test(p)) return p;
-  return `${p}\n\n${IMAGE_NO_TEXT_RULE}`;
-}
+export { IMAGE_NO_TEXT_RULE };
 
 /** Soft-pace between image API calls (was 1.2–2.0s sequential). */
 const IMAGE_PACE_MS = 400;
@@ -313,37 +312,25 @@ function pickRelevantSourceImage(
   return pool[bestIdx];
 }
 
-function buildModuleBannerPrompt(moduleTitle: string, courseTitle: string): string {
-  const subject = [moduleTitle, courseTitle].filter(Boolean).join(' — ').slice(0, 180);
-  return (
-    `Professional eLearning module banner photograph. Subject: ${subject}. ` +
-    `Style: Clean modern corporate illustration, wide landscape (16:9 aspect ratio). ` +
-    `Abstract conceptual visuals that evoke the subject matter. ` +
-    `Muted professional gradient background (blues, teals, or slate purples). ` +
-    `Sophisticated minimalist design with subtle geometric or abstract elements. ` +
-    `No human faces, no logos, no charts. Do not typeset the module or course name.`
-  );
+function groundedCall(input: VisualPromptInput): Promise<string> {
+  const { prompt, intended } = buildGroundedVisualPrompt(input);
+  return callImageEndpoint(prompt, DEFAULT_IMAGE_MODEL, intended);
 }
 
-function buildCourseCoverPrompt(courseTitle: string, description?: string): string {
-  // Do not pass the course title as something to "title" the picture — image
-  // models will paint those words onto the photo (often cropped / misspelled).
-  const topic = (description?.trim() || courseTitle || 'professional workplace').slice(0, 220);
-  return (
-    `Photorealistic educational cover photograph of this subject: ${topic}. ` +
-    `Show the real-world workplace, equipment, or setting so a learner instantly recognizes the topic. ` +
-    `Examples of the kind of visual (do not copy these words into the image): cars for automotive; HVAC units for HVAC; pumps and piping for pump courses; electrical panels for electrical safety. ` +
-    `Composition: wide 16:9 landscape, the subject fills most of the frame, professional lighting, clean modern look. ` +
-    `No people faces. Do not write a course title or any other words on the image.`
-  );
-}
-
-async function callImageEndpoint(prompt: string, model = DEFAULT_IMAGE_MODEL): Promise<string> {
+async function callImageEndpoint(
+  prompt: string,
+  model = DEFAULT_IMAGE_MODEL,
+  intended?: string,
+): Promise<string> {
   const execute = async () => {
     const response = await fetch('/api/generate-image', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: withNoTextRule(prompt), model }),
+      body: JSON.stringify({
+        prompt: withImageNoTextRule(prompt),
+        model,
+        ...(intended?.trim() ? { intended: intended.trim() } : {}),
+      }),
     });
 
     if (!response.ok) {
@@ -376,7 +363,11 @@ export async function generateCourseCoverImage(
   courseTitle: string,
   description?: string
 ): Promise<string> {
-  return callImageEndpoint(buildCourseCoverPrompt(courseTitle || 'Course', description));
+  return groundedCall({
+    courseTitle: courseTitle || 'Course',
+    panelLabel: description?.trim() || courseTitle || 'professional workplace',
+    panelBody: description?.trim() || '',
+  });
 }
 
 /**
@@ -400,8 +391,12 @@ export async function generateModuleImages(
 
   await mapWithConcurrency(targets, IMAGE_GEN_CONCURRENCY, async ({ module, titleSlide }) => {
     try {
-      const prompt = buildModuleBannerPrompt(module.title, course.title ?? '');
-      const imageDataUrl = await callImageEndpoint(prompt);
+      const imageDataUrl = await groundedCall({
+        courseTitle: course.title ?? '',
+        moduleTitle: module.title,
+        panelLabel: module.title,
+        panelBody: course.description || course.title || '',
+      });
       onImageReady(titleSlide.id, imageDataUrl);
       console.log(`[ImageService] ✓ Image ready for module: "${module.title}"`);
     } catch (err) {
@@ -581,8 +576,8 @@ export async function enrichHotspotAndCarouselImages(
   };
 
   type AiJob =
-    | { kind: 'hotspot'; mi: number; si: number; prompt: string }
-    | { kind: 'carousel'; mi: number; si: number; cardIndex: number; prompt: string };
+    | { kind: 'hotspot'; mi: number; si: number; prompt: string; intended: string }
+    | { kind: 'carousel'; mi: number; si: number; cardIndex: number; prompt: string; intended: string };
 
   const modules = course.modules.map((m: any) => ({
     ...m,
@@ -607,13 +602,20 @@ export async function enrichHotspotAndCarouselImages(
               data: { ...(slide.data || {}), imageUrl: url },
             };
           } else if (opts.generateAi) {
+            const grounded = buildGroundedVisualPrompt({
+              courseTitle: course.title,
+              moduleTitle: m.title,
+              slideTitle: slide.title,
+              panelLabel: slide.title,
+              panelBody: buildSlidePanelText(slide),
+              mediaPrompt: slide.mediaPrompt,
+            });
             aiJobs.push({
               kind: 'hotspot',
               mi,
               si,
-              prompt:
-                `Unlabeled educational diagram-style illustration of: ${slide.title}. ` +
-                `Clean technical cutaway or schematic, light background, high quality, 16:9. No labels, callouts, or lettering.`,
+              prompt: grounded.prompt,
+              intended: grounded.intended,
             });
           }
         }
@@ -627,13 +629,21 @@ export async function enrichHotspotAndCarouselImages(
             const url = nextSrc(buildItemPanelText(slide, c));
             if (url) return { ...c, imageUrl: url };
             if (opts.generateAi) {
+              const grounded = buildGroundedVisualPrompt({
+                courseTitle: course.title,
+                moduleTitle: m.title,
+                slideTitle: slide.title,
+                panelLabel: c.label || c.title || 'topic',
+                panelBody: c.description || c.expandedContent || c.content || '',
+                mediaPrompt: slide.mediaPrompt,
+              });
               aiJobs.push({
                 kind: 'carousel',
                 mi,
                 si,
                 cardIndex,
-                prompt:
-                  `Simple educational illustration of: ${c.label || c.title || 'topic'}. Soft colors, no lettering.`,
+                prompt: grounded.prompt,
+                intended: grounded.intended,
               });
             }
             return c;
@@ -717,7 +727,7 @@ export async function enrichHotspotAndCarouselImages(
     await mapWithConcurrency(aiJobs, IMAGE_GEN_CONCURRENCY, async (job) => {
       let url: string | null = null;
       try {
-        url = await callImageEndpoint(job.prompt);
+        url = await callImageEndpoint(job.prompt, DEFAULT_IMAGE_MODEL, job.intended);
       } catch (e) {
         console.warn('[ImageService] Hotspot/carousel AI image failed:', e);
       }
@@ -810,15 +820,6 @@ export function topicBenefitsFromVisual(label: string, content?: string): boolea
   return false;
 }
 
-function buildSlideVisualPrompt(_courseTitle: string, _slideTitle: string, subject: string): string {
-  return (
-    `Simple clear educational photo or illustration of: ${subject}. ` +
-    `Show the real-world subject so a learner recognizes it instantly. ` +
-    `Wide landscape composition, clean professional look, soft background. ` +
-    `Do not typeset titles, captions, or labels — the player already shows the words.`
-  );
-}
-
 const MAX_CONTENT_AI_IMAGES = 14;
 
 /**
@@ -834,7 +835,18 @@ export async function generateContentSlideImages(
 ): Promise<ContentImageGenResult> {
   if (!course?.modules?.length) return { course, jobsAttempted: 0 };
 
-  type Job = { kind: 'slide' | 'tab' | 'intro'; mi: number; si: number; tabIndex?: number; subject: string; slideTitle: string };
+  type Job = {
+    kind: 'slide' | 'tab' | 'intro';
+    mi: number;
+    si: number;
+    tabIndex?: number;
+    subject: string;
+    slideTitle: string;
+    moduleTitle: string;
+    panelLabel: string;
+    panelBody: string;
+    mediaPrompt?: string;
+  };
   const jobs: Job[] = [];
   const introJobs: Job[] = [];
 
@@ -845,7 +857,17 @@ export async function generateContentSlideImages(
       if (s.type === 'content' || s.type === 'summary' || s.type === 'key-takeaways') {
         if (s.imageUrl || s.coverImage) return;
         if (!topicBenefitsFromVisual(s.title || '', s.content || '')) return;
-        jobs.push({ kind: 'slide', mi, si, subject: s.title || 'course topic', slideTitle: s.title || '' });
+        jobs.push({
+          kind: 'slide',
+          mi,
+          si,
+          subject: s.title || 'course topic',
+          slideTitle: s.title || '',
+          moduleTitle: m.title || '',
+          panelLabel: s.title || 'course topic',
+          panelBody: s.content || s.voiceOverText || '',
+          mediaPrompt: s.mediaPrompt,
+        });
         return;
       }
 
@@ -861,6 +883,10 @@ export async function generateContentSlideImages(
               si,
               subject: s.title || 'course topic',
               slideTitle: s.title || '',
+              moduleTitle: m.title || '',
+              panelLabel: s.title || 'course topic',
+              panelBody: introBody,
+              mediaPrompt: s.mediaPrompt,
             });
           }
         }
@@ -869,17 +895,22 @@ export async function generateContentSlideImages(
           if (tab?.imageUrl) return;
           const label = tab?.label || tab?.title || `Tab ${tabIndex + 1}`;
           // Generic labels like "Introduction" still qualify via slide title + tab body
-          const body = `${tab?.content || ''} ${s.title || ''}`;
+          const body = `${tab?.content || ''} ${tab?.voiceOverText || ''} ${s.title || ''}`;
           if (!topicBenefitsFromVisual(label, body) && !topicBenefitsFromVisual(s.title || '', tab?.content || '')) return;
+          const panelLabel = /^(introduction|overview|summary)$/i.test(String(label).trim())
+            ? (s.title || label)
+            : label;
           jobs.push({
             kind: 'tab',
             mi,
             si,
             tabIndex,
-            subject: /^(introduction|overview|summary)$/i.test(String(label).trim())
-              ? (s.title || label)
-              : label,
+            subject: panelLabel,
             slideTitle: s.title || label,
+            moduleTitle: m.title || '',
+            panelLabel,
+            panelBody: tab?.content || tab?.voiceOverText || s.content || '',
+            mediaPrompt: tab?.mediaPrompt || s.mediaPrompt,
           });
         });
         return;
@@ -900,6 +931,10 @@ export async function generateContentSlideImages(
             tabIndex,
             subject: label,
             slideTitle: s.title || label,
+            moduleTitle: m.title || '',
+            panelLabel: label,
+            panelBody: body,
+            mediaPrompt: item?.mediaPrompt || s.mediaPrompt,
           });
         });
       }
@@ -925,9 +960,14 @@ export async function generateContentSlideImages(
   await mapWithConcurrency(selected, IMAGE_GEN_CONCURRENCY, async (job) => {
     let url: string | null = null;
     try {
-      url = await callImageEndpoint(
-        buildSlideVisualPrompt(course.title || 'Course', job.slideTitle, job.subject)
-      );
+      url = await groundedCall({
+        courseTitle: course.title || 'Course',
+        moduleTitle: job.moduleTitle,
+        slideTitle: job.slideTitle,
+        panelLabel: job.panelLabel,
+        panelBody: job.panelBody,
+        mediaPrompt: job.mediaPrompt,
+      });
     } catch (err) {
       console.warn(`[ImageService] Content visual failed for "${job.subject}":`, err);
     }

@@ -1,0 +1,24 @@
+---
+description: Image visual lock — grounded prompts, no typeset text, no homonym scenes.
+alwaysApply: true
+---
+
+# Image visual lock (do not regress)
+
+Polymer screenshots (EVA astronaut, job-firing “Termination”, handshake “Initiation”, typeset titles on photos) happened because prompts used the **short tab label only**. Do not go back to that. `npm test` must stay green (`src/lib/imageVisualPrompt.test.ts`).
+
+## Invariants (code, not prompts)
+
+- **Grounded subject:** every AI image goes through `buildGroundedVisualPrompt` in [`src/lib/imageVisualPrompt.ts`](src/lib/imageVisualPrompt.ts). Pass course title, module title, slide title, panel label, **panel body**, and `mediaPrompt`. Never prompt with the label alone (`EVA`, `Termination`, `Initiation`, `Monomer`).
+- **Homonyms:** resolve technical meaning in this course’s domain. EVA = ethylene-vinyl acetate resin, not an astronaut. Termination = radical chain ending, not a firing. Initiation = free-radical attack, not a handshake.
+- **No text in the picture:** `IMAGE_NO_TEXT_RULE` / `withImageNoTextRule` on every `/api/generate-image` call. Blank packaging, bottles, screens, signs. The player already shows titles.
+- **Vision QA:** [`server.js`](server.js) `POST /api/generate-image` reviews the result (`hasVisibleText` / `offTopic`) and retries once. Client sends `intended` from the grounded builder. Skip review on failure; do not drop the first image.
+- **Generic mediaPrompt** like `Professional illustration related to …` is ignored; use panel body instead.
+
+## Click & Reveal canvas
+
+Intro / prompt on the **left**; reveal rows on the **right**, not a full-width stack. [`src/components/interactions/ClickRevealInteraction.tsx`](src/components/interactions/ClickRevealInteraction.tsx). Do not restore stacked full-width fields that leave empty space after reveal.
+
+## How to change this
+
+Change the helpers and add a failing test first. Prompt-only “no text / be thoughtful” instructions will drift.

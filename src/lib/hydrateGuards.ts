@@ -7,7 +7,7 @@
  * after unrelated hydrate/QC/review changes.
  */
 
-import { isKnowledgeCheckSlide } from './enablingCoverage';
+import { isKnowledgeCheckSlide, stripSlideNarration } from './enablingCoverage';
 import { coerceOstText, isSymbolOnlyOstLine, sanitizeOstText } from './formatTabIntroOst';
 import { quizQuestionList } from './knowledgeCheckOst';
 
@@ -64,6 +64,12 @@ function isInstructionLine(line: string): boolean {
     .replace(/^\d+[.)]\s+/, '')
     .trim();
   return /^(select|choose|click|tap|explore|visit each|classify)\b/i.test(body);
+}
+
+export function isInstructionOnlyOst(content: unknown): boolean {
+  const raw = sanitizeOstText(content);
+  const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+  return lines.length > 0 && lines.every(isInstructionLine);
 }
 
 /**
@@ -383,6 +389,10 @@ export function finalizeHydratedSlide(slide: any, moduleTitle = ''): any {
     };
   }
 
+  if (next.type === 'click-reveal' && isInstructionOnlyOst(next.content)) {
+    next = { ...next, content: '' };
+  }
+
   next = degradeIncompleteInteraction(next, moduleTitle);
   next = normalizeKeyTakeaways(next);
   next = ensureKnowledgeCheckPayload(next, moduleTitle);
@@ -391,7 +401,9 @@ export function finalizeHydratedSlide(slide: any, moduleTitle = ''): any {
     next = { ...next, content: fallbackTeachingContent(next.title, moduleTitle) };
   }
 
-  if (!isKnowledgeCheckSlide(next) && !String(next.voiceOverText || '').trim()) {
+  if (isKnowledgeCheckSlide(next)) {
+    next = stripSlideNarration(next);
+  } else if (!String(next.voiceOverText || '').trim()) {
     next.voiceOverText = `In this slide we cover ${next.title || 'this topic'}, which is an important aspect of ${moduleTitle || 'the course'}.`;
   }
 
@@ -399,5 +411,50 @@ export function finalizeHydratedSlide(slide: any, moduleTitle = ''): any {
     next.content = sanitizeOstText(next.content);
   }
 
+  next = sanitizePlainTextSurfaces(next);
   return next;
+}
+
+function mapPlain(value: unknown): unknown {
+  if (typeof value === 'string') return stripMarkdownArtifacts(value);
+  return value;
+}
+
+function sanitizePlainTextSurfaces(slide: any): any {
+  const data = slide?.data;
+  if (!data || typeof data !== 'object') return slide;
+  const nextData = { ...data };
+
+  if (Array.isArray(nextData.options)) {
+    nextData.options = nextData.options.map((opt: any) => {
+      if (!opt || typeof opt !== 'object') return opt;
+      return { ...opt, text: mapPlain(opt.text), label: mapPlain(opt.label) };
+    });
+  }
+  if (typeof nextData.questionText === 'string') {
+    nextData.questionText = stripMarkdownArtifacts(nextData.questionText);
+  }
+  if (Array.isArray(nextData.items)) {
+    nextData.items = nextData.items.map((it: any) => {
+      if (!it || typeof it !== 'object') return it;
+      const keepMarkdown = slide.type === 'click-reveal' || slide.type === 'choice-cards';
+      if (keepMarkdown) {
+        return { ...it, term: typeof it.term === 'string' ? stripMarkdownArtifacts(it.term) : it.term };
+      }
+      return {
+        ...it,
+        content: mapPlain(it.content),
+        text: mapPlain(it.text),
+        label: mapPlain(it.label),
+        term: mapPlain(it.term),
+      };
+    });
+  }
+  if (Array.isArray(nextData.targets)) {
+    nextData.targets = nextData.targets.map((it: any) => {
+      if (!it || typeof it !== 'object') return it;
+      return { ...it, content: mapPlain(it.content), text: mapPlain(it.text) };
+    });
+  }
+  return { ...slide, data: nextData };
 }

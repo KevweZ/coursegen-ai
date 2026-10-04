@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { shortenCourseTitle } from './splitCourseTitle.ts';
+import { shortenCourseTitle, shortenModuleTitle } from './splitCourseTitle.ts';
 import { markdownToHtml } from './markdownInline.ts';
 import {
   collapseChoiceCardsOst,
@@ -20,6 +20,15 @@ test('cover titles drop Introduction-to laundry lists and stay at most 8 words',
   assert.equal(next, 'Polymers: PE and PP Chemistry');
   assert.ok(next.split(/\s+/).length <= 8);
   assert.equal(shortenCourseTitle('Steam Cracker Technology'), 'Steam Cracker Technology');
+});
+
+test('module titles drop Bloom gerunds and stay short topic labels', () => {
+  const next = shortenModuleTitle(
+    'Tracing the Sequential Stages of the Steam Cracking Process',
+  );
+  assert.doesNotMatch(next, /^Tracing/i);
+  assert.ok(next.split(/\s+/).length <= 6);
+  assert.equal(shortenModuleTitle('PE and PP Types'), 'PE and PP Types');
 });
 
 test('markdown artifacts are stripped for plain-text surfaces and rendered for HTML', () => {
@@ -119,4 +128,37 @@ test('hydrate alignment prefers outline position over a stray empty extra KC', (
   assert.equal(aligned[1].id, 'k1');
   assert.equal(aligned[1].type, 'quiz');
   assert.equal(quizHasLearnerPayload(aligned[1]), true);
+});
+
+test('knowledge checks have no spoken narration after finalize', () => {
+  const next = finalizeHydratedSlide({
+    type: 'quiz',
+    title: 'Knowledge Check: Polymer Basics',
+    content: 'Check density trends',
+    voiceOverText: 'The correct answer is HDPE because it is denser.',
+    data: {
+      questionText: 'Which PE grade is densest?',
+      options: [
+        { id: 'a', text: '**HDPE**', isCorrect: true },
+        { id: 'b', text: 'LDPE', isCorrect: false },
+      ],
+    },
+  }, 'PE Grades');
+  assert.equal(next.voiceOverText, '');
+  assert.equal(next.data.options[0].text, 'HDPE');
+});
+
+test('click-reveal instruction-only OST is dropped so items are the only on-screen text', () => {
+  const next = finalizeHydratedSlide({
+    type: 'click-reveal',
+    title: 'PE Grades',
+    content: 'Select each grade to explore density and melting point.',
+    data: {
+      items: [
+        { id: 'i1', term: 'LDPE', definition: '- Low density\n- Flexible film' },
+        { id: 'i2', term: 'HDPE', definition: '- High density\n- Rigid bottles' },
+      ],
+    },
+  }, 'PE and PP Types');
+  assert.equal(String(next.content || '').trim(), '');
 });

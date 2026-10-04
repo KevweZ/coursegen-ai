@@ -3,7 +3,7 @@ import { coerceCarouselColor } from "../lib/colorContrast";
 import { ensureEnablingSlideCoverage, preserveEnablingIndex, normalizeTerminalGroups, slideSkipsNarration, stripSlideNarration, isKnowledgeCheckSlide } from "../lib/enablingCoverage";
 import { allocateKnowledgeCheckSlots, alignHydratedSlidesToOutline, ensureKnowledgeCheckBudget } from "../lib/knowledgeCheckBudget";
 import { finalizeHydratedSlide, teachingSlideNeedsRetry, normalizeKeyTakeaways } from "../lib/hydrateGuards";
-import { shortenCourseTitle } from "../lib/splitCourseTitle";
+import { shortenCourseTitle, shortenModuleTitle } from "../lib/splitCourseTitle";
 import {
   STORYBOARD_SOURCE_CHARS,
   storyboardAnalyzeInstructions,
@@ -642,6 +642,12 @@ export async function generateCourseOutline(
     return parsedOutline;
   }
   const withCoverage = ensureEnablingSlideCoverage(parsedOutline, objectives);
+  if (Array.isArray(withCoverage.modules)) {
+    withCoverage.modules = withCoverage.modules.map(mod => ({
+      ...mod,
+      title: shortenModuleTitle(mod.title || ''),
+    }));
+  }
   return ensureKnowledgeCheckBudget(withCoverage, {
     includeKnowledgeChecks: includeKCs,
     knowledgeCheckMode: kcMode,
@@ -771,6 +777,15 @@ export async function hydrateCourseContent(
       the on-screen content field still starts directly with its short bullet list, not a full orientation sentence.
 
   ========================================
+  IMAGE PROMPTS (mediaPrompt) — TECHNICAL MEANING, NO TEXT
+  ========================================
+  mediaPrompt describes a photograph with NO text, letters, numbers, captions, or labels in the picture.
+  Interpret short labels using THIS COURSE'S DOMAIN, never the everyday English or pop-culture meaning.
+  Wrong: "Termination" as a job firing; "EVA" as an astronaut; "Initiation" as a handshake.
+  Right: polymer-chain termination; ethylene-vinyl acetate plastic; free-radical initiation.
+  Prefer materials, equipment, or a lab/plant setting. Do not describe office drama or staged people unless the lesson is about people skills.
+
+  ========================================
   SLIDE TYPE RULES (STRICT -- NO EXCEPTIONS)
   ========================================
   DO NOT add, remove, or reorder ANY slides from the provided structure.
@@ -786,7 +801,7 @@ export async function hydrateCourseContent(
   - options[].text must be meaningful (10+ chars). NEVER: "A", "B", "True", "False" unless it's genuinely a T/F slide
   - feedback: string explaining why the correct answer is right (this is where teaching detail goes AFTER submit)
   - Slide-level content: 1 framing bullet about what is being tested. voiceOverText MUST be "" (empty). Knowledge checks have no spoken narration — same as Mastery Quiz questions. Do not give away the answer on screen.
-  - mediaPrompt describes a photograph with NO text, letters, or labels in the image.
+  - mediaPrompt describes a photograph with NO text, letters, or labels in the image. Use the technical meaning of any short label (polymer termination, not a job firing).
 
   MULTIPLE-ANSWERS:
   - Same schema as QUIZ plus scenarioText when a situation exists.
@@ -886,7 +901,7 @@ export async function hydrateCourseContent(
   - Each item: { "id": "r1", "term": "Section heading (2-6 words)", "definition": "- short bullet\\n- short bullet\\n- short bullet" }
   - term: the clickable label only (NO markdown asterisks)
   - definition: the REVEALED on-screen text — SHORT BULLETS only (3–5 bullets, 5–8 words each). These ARE the scannable points. NEVER put 1–3 explanatory sentences in definition — that belongs in voiceOverText.
-  - Slide-level "content" must NOT repeat the same bullets as the items. Leave content empty, or use at most 1 framing line such as "Select each topic to reveal the key points." The player already shows the clickable terms.
+  - Slide-level "content" is the LEFT-COLUMN INTRODUCTION (same job as a process-step intro): 3–5 SHORT overview bullets (5–8 words) that frame the set of terms. Do NOT repeat each item's reveal bullets. Do NOT use a "Select each…" instruction as the entire intro — the player already shows that CTA.
   - voiceOverText: spoken teaching that expands the bullets (2–5 sentences). Do not re-read every bullet.
   - FAIL CONDITION: fewer than 3 items, paragraph-only definitions, or slide content that duplicates every item -> regenerate
 

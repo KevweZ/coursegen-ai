@@ -5,17 +5,23 @@ alwaysApply: true
 
 # Hydrate quality lock (do not regress)
 
-These were already fixed once and leaked back after unrelated hydrate/KC work. **Do not** remove or bypass the post-process in [`src/lib/hydrateGuards.ts`](src/lib/hydrateGuards.ts). Tests in `hydrateGuards.test.ts` and `knowledgeCheckBudget.test.ts` must stay green.
+These were already fixed once and leaked back after unrelated hydrate/KC work. **Do not** remove or bypass the post-process. `npm test` must stay green.
 
-## Invariants
+## Invariants (code, not prompts)
 
-- **Cover title:** at most 8 words. `shortenCourseTitle` in [`src/lib/splitCourseTitle.ts`](src/lib/splitCourseTitle.ts) runs after file analysis and outline. No “Introduction to X: Chemistry, Properties, and Processes” laundry lists.
-- **Markdown glyphs:** `**bold**` and `###` never show as raw symbols. Choice-card body/reveal/prompt go through `markdownToHtml`. Plain-text surfaces use `stripMarkdownArtifacts`.
-- **One instruction** on choice-cards: `collapseChoiceCardsOst` — never both slide `content` and `data.prompt`.
-- **Key takeaways** are learner statements (`normalizeKeyTakeaways` / `toTakeawayStatement`), not spec-table rows or empty numbered cards.
-- **Knowledge checks** always have a learner payload (`quizHasLearnerPayload` / `ensureKnowledgeCheckPayload`). Never convert an incomplete quiz to a `content` slide titled “Knowledge Check” (that renders as a blank Overview).
-- **Teaching slides** are not a single thin subtitle. `teachingSlideNeedsRetry` + `finalizeHydratedSlide` fill or retry.
+- **Cover title:** at most 8 words. `shortenCourseTitle` after file analysis and outline.
+- **Module title:** short topic label, no Bloom gerunds. `shortenModuleTitle` after outline coverage.
+- **Markdown glyphs:** `**bold**` and `###` never show as raw symbols. Choice-card body/reveal/prompt go through `markdownToHtml`. Quiz options and other plain-text surfaces use `stripMarkdownArtifacts`.
+- **One instruction** on choice-cards: `collapseChoiceCardsOst`. Click-reveal intro that is only a “Select each…” line is dropped; the player shows Overview + CTA on the left and shorter reveal rows on the right (`ClickRevealInteraction`).
+- **Image prompts:** `buildGroundedVisualPrompt` — never label-only; no typeset text in the photo (`imageVisualPrompt.test.ts`).
+- **Key takeaways** are learner statements (`normalizeKeyTakeaways`), not spec-table rows or empty numbered cards.
+- **Knowledge checks** always have a learner payload and **empty** `voiceOverText` (`ensureKnowledgeCheckPayload` + `stripSlideNarration`). Never convert an incomplete quiz to a `content` slide titled “Knowledge Check”.
+- **KC count/place:** `ensureKnowledgeCheckBudget` + `alignHydratedSlidesToOutline`. Teaching slides cannot become quizzes.
+- **Enabling coverage:** one module per terminal, 1–2 teaching slides per enabling (`ensureEnablingSlideCoverage`).
+- **Teaching slides** are not a single thin subtitle (`teachingSlideNeedsRetry` + `finalizeHydratedSlide`).
+- **Tab intro** never includes “Select a tab…” (`formatTabIntroOst`).
+- **Review script** matches player order/OST (`reviewAlignment.test.ts`).
 
 ## How to change generation
 
-Put new hydrate/QC/review behavior **behind these helpers**, then add a failing test first. Prompt-only rules will drift; the lock is the post-process.
+Put new hydrate/QC/review behavior **behind these helpers**, then add a failing test first. Prompt-only rules will drift; the lock is the post-process plus `npm test`.

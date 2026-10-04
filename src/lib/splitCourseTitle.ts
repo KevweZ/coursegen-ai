@@ -145,6 +145,31 @@ export function shortenCourseTitle(title: string): string {
   return cut.join(' ').replace(/[,:;]+\s*$/, '');
 }
 
+export const MAX_MODULE_TITLE_WORDS = 6;
+
+const MODULE_GERUNDS =
+  /^(Identifying|Tracing|Distinguishing|Recognizing|Mapping|Understanding|Positioning|Selecting|Protecting|Explaining|Describing|Comparing|Classifying|Analyzing|Evaluating|Applying)\s+/i;
+
+/**
+ * Module TOC labels stay short topic names — not Bloom sentences.
+ */
+export function shortenModuleTitle(title: string): string {
+  let t = String(title || '').replace(/\s+/g, ' ').trim();
+  if (!t) return t;
+  t = t.replace(/^module\s+\d+\s*[:.—–-]?\s*/i, '');
+  t = t.replace(/^chapter\s+\d+\s*[:.—–-]?\s*/i, '');
+  t = t.replace(MODULE_GERUNDS, '');
+  t = t.replace(/^(the|a|an)\s+/i, '');
+  const words = t.split(/\s+/).filter(Boolean);
+  if (!words.length) return String(title || '').replace(/\s+/g, ' ').trim();
+  if (words.length <= MAX_MODULE_TITLE_WORDS) return words.join(' ').replace(/[,:;]+\s*$/, '');
+  let cut = words.slice(0, MAX_MODULE_TITLE_WORDS);
+  while (cut.length > 3 && /^(and|or|of|to|the|for|with|in|on)$/i.test(cut[cut.length - 1] || '')) {
+    cut.pop();
+  }
+  return cut.join(' ');
+}
+
 /**
  * Split course title into bold headline + lighter subtitle.
  * Prefer lead-in → subject, then "Subject: Rest…", then em/en-dash, then a
