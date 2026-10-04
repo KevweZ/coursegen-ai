@@ -34,7 +34,6 @@ const PICKABLE_CONTENT_TYPES = [
   'hotspot',
   'flashcards',
   'timeline',
-  'scenario',
   'tabbed-horizontal',
   'tabbed-vertical',
   'folder-explorer',

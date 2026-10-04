@@ -1,6 +1,7 @@
 import { ExamConfig, NavigationMode } from '../types/course';
 import { normalizeImageMode, type CourseImageMode } from '../services/imageService';
 import { pushAccountPreferences } from './accountPreferences';
+import { stripParkedInteractionTypes } from './parkedInteractions';
 import {
   BLOCKS_WELL_DEFAULT,
   resolveHexColor,
@@ -104,6 +105,7 @@ function cloneDefaults(): SavedCourseSettings {
 function normalizeSaved(parsed: SavedCourseSettings): SavedCourseSettings {
   return {
     ...parsed,
+    interactionTypes: stripParkedInteractionTypes(parsed.interactionTypes),
     imageMode: normalizeImageMode(parsed.imageMode),
     verticalTabSkin: resolveVerticalTabSkin(parsed.verticalTabSkin),
     verticalTabColorMode: resolveVerticalTabColorMode(parsed.verticalTabColorMode),
@@ -135,13 +137,17 @@ export function resolveCourseSettings(userId?: string | null): SavedCourseSettin
 }
 
 export function saveCourseSettings(settings: SavedCourseSettings, userId?: string | null): void {
+  const next = {
+    ...settings,
+    interactionTypes: stripParkedInteractionTypes(settings.interactionTypes),
+  };
   try {
-    localStorage.setItem(storageKey(userId), JSON.stringify(settings));
+    localStorage.setItem(storageKey(userId), JSON.stringify(next));
   } catch (e) {
     console.warn('[courseSettingsStorage] Failed to save settings', e);
   }
   if (userId) {
-    void pushAccountPreferences({ courseSettings: settings }).then(r => {
+    void pushAccountPreferences({ courseSettings: next }).then(r => {
       if (!r.ok) console.warn('[courseSettingsStorage] Cloud sync failed:', r.error);
     });
   }
@@ -149,8 +155,12 @@ export function saveCourseSettings(settings: SavedCourseSettings, userId?: strin
 
 /** Apply settings from the account cloud without re-pushing. */
 export function cacheCourseSettings(settings: SavedCourseSettings, userId?: string | null): void {
+  const next = {
+    ...settings,
+    interactionTypes: stripParkedInteractionTypes(settings.interactionTypes),
+  };
   try {
-    localStorage.setItem(storageKey(userId), JSON.stringify(settings));
+    localStorage.setItem(storageKey(userId), JSON.stringify(next));
   } catch (e) {
     console.warn('[courseSettingsStorage] Failed to cache settings', e);
   }
@@ -159,3 +169,5 @@ export function cacheCourseSettings(settings: SavedCourseSettings, userId?: stri
 export function collectCourseSettings(state: SavedCourseSettings): SavedCourseSettings {
   return { ...state };
 }
+
+export { PARKED_INTERACTION_TYPES, stripParkedInteractionTypes } from './parkedInteractions';

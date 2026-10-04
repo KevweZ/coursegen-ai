@@ -472,7 +472,8 @@ export async function generateCourseOutline(
   // Games temporarily disabled at product level — ignore any passed IDs
   const gameIds: string[] = [];
   const QUIZ_ONLY = new Set(['sorting', 'matching', 'drop-targets', 'multiple-choice', 'multiple-answers', 'quiz', 'mc', 'ma', 'tf']);
-  const contentInteractions = (configParams.interactionTypes || []).filter(t => !QUIZ_ONLY.has(t));
+  // Scenario parked like Game Modes — never whitelist a branching sim this version
+  const contentInteractions = (configParams.interactionTypes || []).filter(t => !QUIZ_ONLY.has(t) && t !== 'scenario');
   const quizActivities = (Array.isArray(configParams.quizActivityTypes)
     ? configParams.quizActivityTypes
     : ['sorting', 'matching', 'drop-targets']
@@ -684,6 +685,7 @@ export async function hydrateCourseContent(
   )];
   const sourceMode: SourceMode = configParams.sourceMode === 'storyboard' ? 'storyboard' : 'raw';
   const hydrateKcCount = Math.max(0, Math.floor(configParams.knowledgeCheckCount ?? 2));
+  const hydrateInteractions = (configParams.interactionTypes || []).filter(t => t !== 'scenario');
   const skeleton = sourceMode === 'storyboard'
     ? outlineDraft
     : ensureKnowledgeCheckBudget(outlineDraft, {
@@ -1346,7 +1348,8 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     }
 
     // ── Post-pass: generate scenario data for scenario-type slides ─────────────
-    if (configParams.scenarioConfig) {
+    // Scenario parked like Game Modes — keep the generator, do not call it this version
+    if (false && configParams.scenarioConfig) {
       for (const slide of hydratedSlides) {
         if (slide.type === 'scenario' && !slide.data?.nodes) {
           try {
@@ -1396,10 +1399,10 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
       ) as any
     ) as any;
   }
-  if (configParams.interactionTypes?.length) {
+  if (hydrateInteractions.length) {
     const allow = sourceMode === 'storyboard'
-      ? [...new Set([...configParams.interactionTypes, ...STORYBOARD_CONTENT_TYPES])]
-      : configParams.interactionTypes;
+      ? [...new Set([...hydrateInteractions, ...STORYBOARD_CONTENT_TYPES])]
+      : hydrateInteractions;
     fullCourse.modules = coerceInteractionTypes(fullCourse.modules as any, allow) as any;
   }
 

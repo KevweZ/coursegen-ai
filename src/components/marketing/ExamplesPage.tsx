@@ -390,7 +390,7 @@ function MultiImageEditorPreview() {
   );
 }
 // ── Slide definitions ─────────────────────────────────────────────────────────
-const SLIDES = [
+const ALL_SLIDES = [
   {
     id: 'click-reveal',
     label: 'Click & Reveal',
@@ -447,6 +447,9 @@ const SLIDES = [
     description: 'Drag, resize, and crop multiple images on the same slide.',
   },
 ];
+
+// Scenario parked like Game Modes — keep the preview in ALL_SLIDES, hide it this version.
+const SLIDES = ALL_SLIDES.filter(s => s.id !== 'branching');
 
 // ── Main Component ────────────────────────────────────────────────────────────
 interface Props {

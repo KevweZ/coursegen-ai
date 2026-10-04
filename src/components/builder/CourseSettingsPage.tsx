@@ -179,6 +179,7 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
     { id: 'design', label: 'Design', icon: <Layers className="w-3.5 h-3.5" />, hidden: !showDesign },
   ];
   // Game Modes tab intentionally hidden (generation unreliable); keep games UI code below for future re-enable.
+  // Scenario is parked the same way (chip + Decision Simulation Setup hidden; engine kept).
   const tabs = allTabs.filter(t => !t.hidden && t.id !== 'games');
 
   const [activeTab, setActiveTab] = useState<SettingsTab>(showTopic ? 'topic' : 'objectives');
@@ -897,7 +898,7 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                       { id: 'hotspot', label: 'Hotspot' },
                       { id: 'flashcards', label: 'Flashcards' },
                       { id: 'timeline', label: 'Timeline' },
-                      { id: 'scenario', label: 'Scenario' },
+                      // Scenario parked like Game Modes — keep ScenarioBuilderPanel below for later re-enable.
                       { id: 'tabbed-horizontal', label: 'Process' },
                       { id: 'tabbed-vertical', label: 'Tabs (Vertical)' },
                       { id: 'folder-explorer', label: 'Folder Explorer' },
@@ -930,7 +931,7 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                 </div>
               </div>
 
-              {props.interactionTypes.includes('scenario') && (
+              {false && props.interactionTypes.includes('scenario') && (
                 <ScenarioBuilderPanel config={props.scenarioConfig} onChange={props.setScenarioConfig} />
               )}
 

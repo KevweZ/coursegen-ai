@@ -68,7 +68,7 @@ export function storyboardAnalyzeInstructions(): string {
 /** Types a storyboard may name; Course Settings whitelist does not strip these in storyboard mode. */
 export const STORYBOARD_CONTENT_TYPES = [
   'content', 'diagram', 'key-takeaways',
-  'flashcards', 'timeline', 'hotspot', 'scenario',
+  'flashcards', 'timeline', 'hotspot',
   'tabbed-horizontal', 'tabbed-vertical', 'folder-explorer',
   'carousel-panel', 'click-reveal', 'choice-cards',
 ];
@@ -92,8 +92,8 @@ HARD RULES:
   single-select / "which of the following" / one correct option → quiz
   select two / select all that apply on an EXIT CHECK or "Knowledge Check" / Keys: / pass score → multiple-answers
   exit check / knowledge check / "Scenario:" situation + scored question → quiz or multiple-answers using the select-one vs select-two rule above
-- NEVER use type "scenario" (branching ScenarioEngine) for a screen that is a yellow situation box plus ONE question. That is a knowledge check: situation → data.scenarioText, question → questionText, choices → options.
-- Type "scenario" is ONLY for a multi-node branching spec (decision tree with several nodes / "if the learner chooses A then…"). A title that starts with "Scenario:" is not enough.
+- NEVER use type "scenario" (branching ScenarioEngine). A yellow situation box plus ONE question is a knowledge check: situation → data.scenarioText, question → questionText, choices → options.
+- Branching decision trees (type "scenario") are parked this version. If the spec is a multi-node tree, use choice-cards or quiz instead. A title that starts with "Scenario:" is not enough.
 - Do NOT convert a teaching screen into a Knowledge Check just because the learner taps cards. Exit check / Keys / pass score = scored quiz. Narration + tiles = choice-cards.
 - Tag teaching slides with enablingIndex when an enabling is obvious; it is OK if several screens share one enabling.
 - Module count: one module unless the storyboard clearly labels multiple modules.
@@ -111,7 +111,7 @@ These rules OVERRIDE the short-bullet rewrite and CEAP narration formula for thi
 - Visual direction / "use exactly SC-01-….jpg" is NOT implemented in this cut — do not mention missing assets on the slide.
 - Interaction items (tabs, click-reveal terms, hotspots, quiz options) must come from the screen spec, including correct answers when the spec marks them.
 - Quiz / knowledge-check screens: put the situation box, carrier alert, yellow callout, or short story in data.scenarioText (plain prose, not the question). Put the actual question in questionText. Do not drop the situation.
-- A screen titled "Scenario:" (or a workplace vignette + one scored question) is quiz / multiple-answers with scenarioText. Do NOT emit type "scenario" unless the spec is a multi-node branching tree.
+- A screen titled "Scenario:" (or a workplace vignette + one scored question) is quiz / multiple-answers with scenarioText. Do NOT emit type "scenario" (branching engine is parked this version).
 - EXIT CHECK / Knowledge Check / Keys: / pass score → scored quiz. If the SCREEN lists 2+ numbered questions AND this chunk already contains N Knowledge Check slides, hydrate EACH existing slide with exactly ONE question (in order). Do NOT add extra quiz slides beyond the slides in this chunk. Do NOT repeat a stem that belongs to another slide. Only split into additional slides if this chunk still has a single packed Knowledge Check that contains all of the numbered questions. Honor listed option counts (3 is fine — do not pad to 4). Mark isCorrect from Keys (1=A, 2=B, 3=B). voiceOverText MUST be "".
 - Do not add a second Key Takeaways / summary slide if one is already in this chunk or earlier in the module.
 - A TEACHING screen with 1–4 selectable tiles/cards and a narration script → type choice-cards. 5+ clickable items → click-reveal instead.

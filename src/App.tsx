@@ -113,6 +113,7 @@ import {
   resolveCourseSettings,
   saveCourseSettings,
   cacheCourseSettings,
+  stripParkedInteractionTypes,
   SavedCourseSettings,
 } from './lib/courseSettingsStorage';
 import { loadPlayerProperties, savePlayerProperties, cachePlayerProperties } from './lib/playerPropertiesStorage';
@@ -742,7 +743,7 @@ const KnowledgeCheckFraming = ({
 // ─── Grid interaction IDs (must match the interactive-elements grid in the UI) ──
 const GRID_INTERACTION_IDS = [
   'multiple-choice', 'multiple-answers', 'hotspot', 'flashcards',
-  'timeline', 'sorting', 'matching', 'drop-targets', 'scenario',
+  'timeline', 'sorting', 'matching', 'drop-targets',
   'tabbed-horizontal', 'tabbed-vertical', 'folder-explorer', 'carousel-panel',
   'click-reveal', 'choice-cards',
 ];
@@ -3002,7 +3003,9 @@ export default function App() {
     // Assessment types moved to Assessments tab — strip from interactive elements.
     // Accordion is folded into click-reveal (same progressive-disclosure UX).
     const QUIZ_ONLY = new Set(['multiple-choice', 'multiple-answers', 'sorting', 'matching', 'drop-targets']);
-    setInteractionTypes(mapToGridIds((saved.interactionTypes || []).filter(t => !QUIZ_ONLY.has(t))));
+    setInteractionTypes(stripParkedInteractionTypes(
+      mapToGridIds((saved.interactionTypes || []).filter(t => !QUIZ_ONLY.has(t)))
+    ));
     setGameTemplateIds([]); // Games temporarily disabled
     setVoiceOverEnabled(saved.voiceOverEnabled);
     setTtsVoice(saved.ttsVoice);
@@ -3032,7 +3035,7 @@ export default function App() {
     examConfig,
     navigationMode,
     requireInteractionsComplete,
-    interactionTypes,
+    interactionTypes: stripParkedInteractionTypes(interactionTypes),
     gameTemplateIds: [], // Games temporarily disabled — do not persist selections
     voiceOverEnabled,
     ttsVoice,
@@ -3142,9 +3145,9 @@ export default function App() {
   const buildOutlineFromCurrentSettings = async (): Promise<CourseOutlineDraft> => {
     // Quiz activity types must NOT be merged into content interactionTypes —
     // they only appear as Knowledge Check slides (see aiService outline prompt).
-    const contentInteractions = (interactionTypes || []).filter(
+    const contentInteractions = stripParkedInteractionTypes((interactionTypes || []).filter(
       t => !['sorting', 'matching', 'drop-targets', 'multiple-choice', 'multiple-answers', 'quiz'].includes(t)
-    );
+    ));
     return generateCourseOutline(
       prompt,
       learningObjectives,
@@ -3243,8 +3246,10 @@ export default function App() {
 
       // Snapshot settings for outline/hydrate (avoid stale React state after setState)
       let outlineCourseType: 'quick' | 'standard' | 'comprehensive' = settingsOverride?.preset ?? preset;
-      let outlineInteractions = (settingsOverride?.interactionTypes ?? interactionTypes).filter(
-        t => !['sorting', 'matching', 'drop-targets', 'multiple-choice', 'multiple-answers', 'quiz'].includes(t)
+      let outlineInteractions = stripParkedInteractionTypes(
+        (settingsOverride?.interactionTypes ?? interactionTypes).filter(
+          t => !['sorting', 'matching', 'drop-targets', 'multiple-choice', 'multiple-answers', 'quiz'].includes(t)
+        )
       );
       let outlineIncludeModuleTitles = settingsOverride?.includeModuleTitleSlides ?? includeModuleTitleSlides;
       let outlineIncludeModuleOverviews = settingsOverride?.includeModuleOverviewSlides ?? includeModuleOverviewSlides;
@@ -3295,7 +3300,8 @@ export default function App() {
             result.title || file.name,
             {
               courseType: outlineCourseType,
-              scenarioConfig: outlineInteractions.includes('scenario') ? scenarioConfig : undefined,
+              // Scenario parked like Game Modes — never request a branching sim this version
+              scenarioConfig: undefined,
               interactionTypes: outlineInteractions,
               includeKnowledgeChecks: true,
               knowledgeCheckMode: outlineExamCfg.knowledgeCheckMode || 'per-module',
@@ -3805,9 +3811,9 @@ export default function App() {
     setIsGenerating(true);
     setProgress(15);
     try {
-      const contentInteractions = (interactionTypes || []).filter(
+      const contentInteractions = stripParkedInteractionTypes((interactionTypes || []).filter(
         t => !['sorting', 'matching', 'drop-targets', 'multiple-choice', 'multiple-answers', 'quiz'].includes(t)
-      );
+      ));
       const draft = await generateCourseOutline(
         prompt, 
         learningObjectives, 
@@ -3842,7 +3848,7 @@ export default function App() {
           prompt,
           {
             courseType: settingsSnap.preset,
-            scenarioConfig: contentInteractions.includes('scenario') ? scenarioConfig : undefined,
+            scenarioConfig: undefined,
             interactionTypes: contentInteractions,
             includeKnowledgeChecks: true,
             knowledgeCheckMode: settingsSnap.examConfig.knowledgeCheckMode || 'per-module',
@@ -4675,15 +4681,15 @@ export default function App() {
     try {
       // Snapshot live Course Settings so multimedia / VO aren't stale vs React batching.
       const settingsSnap = collectCurrentSettings();
-      const contentInteractions = (settingsSnap.interactionTypes || []).filter(
+      const contentInteractions = stripParkedInteractionTypes((settingsSnap.interactionTypes || []).filter(
         t => !['sorting', 'matching', 'drop-targets', 'multiple-choice', 'multiple-answers', 'quiz'].includes(t)
-      );
+      ));
       const finalCourse = await hydrateCourseContent(
         outlineDraft!,
         prompt,
         {
           courseType: settingsSnap.preset,
-          scenarioConfig: contentInteractions.includes('scenario') ? scenarioConfig : undefined,
+          scenarioConfig: undefined,
           interactionTypes: contentInteractions,
           includeKnowledgeChecks: true,
           knowledgeCheckMode: settingsSnap.examConfig.knowledgeCheckMode || 'per-module',

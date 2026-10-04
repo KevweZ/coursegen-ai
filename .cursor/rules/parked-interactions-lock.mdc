@@ -1,0 +1,25 @@
+---
+description: Parked interactions lock — Scenario and Game Modes stay hidden this version; engines stay in the codebase.
+alwaysApply: true
+---
+
+# Parked interactions lock (do not regress)
+
+Anthony parked **Scenario** (2026-10-04) the same way as **Game Modes**: hide author-facing picks this version; keep the engines for later.
+
+`npm test` must stay green (`src/lib/parkedInteractions.test.ts`).
+
+## Invariants (code, not comments)
+
+- **Scenario is not an author pick.** It must not appear in Course Settings interaction chips, the Course structure type dropdown, or the marketing examples carousel.
+- **Do not persist it.** `stripParkedInteractionTypes` in [`src/lib/parkedInteractions.ts`](src/lib/parkedInteractions.ts) removes `scenario` on load, save, and cache. `PARKED_INTERACTION_TYPES` includes `scenario`.
+- **Do not generate it.** Outline/hydrate must not whitelist `scenario` or call `generateScenarioData`. Storyboard remap still converts a one-question "Scenario:" screen to a quiz with `scenarioText`.
+- **Keep the engine.** `ScenarioEngine`, `types/scenario.ts`, `ScenarioBuilderPanel`, and player rendering of existing `type: 'scenario'` slides stay in the repo.
+
+## Game Modes (already parked)
+
+Same pattern: Games tab filtered out; `gameTemplateIds: []`; outline strips `game-template`. Do not re-enable either pick unless Anthony explicitly restarts it.
+
+## How to change this
+
+Change `PARKED_INTERACTION_TYPES` / the picker lists and add a failing test first. Do not put Scenario back on the Course Settings grid "just to try it."
