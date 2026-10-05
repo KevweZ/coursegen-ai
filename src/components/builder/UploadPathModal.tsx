@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { FileUp, Sparkles, ListChecks, X, ArrowRight, SlidersHorizontal, Loader2, AlertTriangle } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import type { ExtractQuality } from '../../lib/extractQuality';
+import { extractBusyCopy, type ExtractQuality } from '../../lib/extractQuality';
 import type { SourceMode } from '../../lib/storyboardSource';
 
 export type UploadPathChoice = 'quick' | 'customize';
@@ -33,6 +33,7 @@ export function UploadPathModal({
   const [choice, setChoice] = useState<UploadPathChoice>('quick');
   const offerStoryboard = !!extractQuality?.storyboardOffered;
   const canContinue = !extractBusy && !extractError;
+  const busyCopy = extractBusyCopy(fileName);
 
   return (
     <div className="fixed inset-0 z-[400] flex items-center justify-center p-4">
@@ -49,7 +50,9 @@ export function UploadPathModal({
               <FileUp className="w-5 h-5 text-purple-300" />
             </div>
             <div className="min-w-0">
-              <h3 className="text-lg font-bold text-white">How would you like to build?</h3>
+              <h3 className="text-lg font-bold text-white">
+                {extractBusy ? 'Reading your file' : 'How would you like to build?'}
+              </h3>
               <p className="text-sm text-slate-400 mt-0.5 truncate" title={fileName}>{fileName}</p>
             </div>
           </div>
@@ -63,18 +66,25 @@ export function UploadPathModal({
         </div>
 
         <div className="p-5 space-y-3 max-h-[min(70vh,36rem)] overflow-y-auto">
+          {extractBusy ? (
+            <div className="rounded-xl border border-purple-500/30 bg-slate-950 px-4 py-5 text-sm leading-relaxed">
+              <p className="flex items-center gap-2 font-bold text-white">
+                <Loader2 className="w-4 h-4 animate-spin text-purple-300 shrink-0" />
+                {busyCopy.heading}
+              </p>
+              <p className="mt-2 text-slate-300">{busyCopy.detail}</p>
+            </div>
+          ) : (
+            <>
           <div className={cn(
             'rounded-xl border px-3.5 py-3 text-sm leading-relaxed',
-            extractQuality?.imageOnly || extractQuality?.thin
+            extractError
+              ? 'border-red-500/40 bg-red-500/10 text-red-100'
+              : extractQuality?.imageOnly || extractQuality?.thin
               ? 'border-amber-500/40 bg-amber-500/10 text-amber-100'
               : 'border-slate-700 bg-slate-950 text-slate-300'
           )}>
-            {extractBusy ? (
-              <p className="flex items-center gap-2 text-slate-300">
-                <Loader2 className="w-4 h-4 animate-spin text-purple-300" />
-                Reading the file…
-              </p>
-            ) : extractError ? (
+            {extractError ? (
               <p className="flex items-start gap-2 text-red-200">
                 <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
                 {extractError}
@@ -88,7 +98,7 @@ export function UploadPathModal({
             )}
           </div>
 
-          {offerStoryboard && !extractBusy && !extractError && (
+          {offerStoryboard && !extractError && (
             <div className="space-y-2">
               <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Storyboard</p>
               <div className="grid grid-cols-2 gap-2">
@@ -122,16 +132,12 @@ export function UploadPathModal({
             </div>
           )}
 
-          <p className="text-xs text-slate-400 leading-relaxed">
-            Both options use your <strong className="text-slate-300">Course Settings</strong> (player, interactions, audio, and multimedia preferences).
-            {onViewCourseSettings ? ' Review or edit them anytime before you continue.' : null}
-          </p>
-
           <button
             type="button"
             onClick={() => setChoice('quick')}
+            disabled={!!extractError}
             className={cn(
-              'w-full text-left p-4 rounded-xl border-2 transition-all',
+              'w-full text-left p-4 rounded-xl border-2 transition-all disabled:opacity-50',
               choice === 'quick'
                 ? 'border-purple-500 bg-purple-500/10'
                 : 'border-slate-800 bg-slate-950 hover:border-slate-700'
@@ -150,7 +156,7 @@ export function UploadPathModal({
                   <span className="font-bold text-white">Build now</span>
                 </div>
                 <p className="text-sm text-slate-400 mt-1 leading-relaxed">
-                  Analyze the document and generate the course without stopping. Uses your saved Course Settings.
+                  Analyze the document and generate the course without stopping.
                 </p>
               </div>
             </div>
@@ -159,8 +165,9 @@ export function UploadPathModal({
           <button
             type="button"
             onClick={() => setChoice('customize')}
+            disabled={!!extractError}
             className={cn(
-              'w-full text-left p-4 rounded-xl border-2 transition-all',
+              'w-full text-left p-4 rounded-xl border-2 transition-all disabled:opacity-50',
               choice === 'customize'
                 ? 'border-indigo-500 bg-indigo-500/10'
                 : 'border-slate-800 bg-slate-950 hover:border-slate-700'
@@ -185,6 +192,11 @@ export function UploadPathModal({
             </div>
           </button>
 
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Build now and Review before build both use your saved <strong className="text-slate-300">Course Settings</strong> (player, interactions, audio, and multimedia).
+            {onViewCourseSettings ? ' You can review or edit those anytime before you continue.' : null}
+          </p>
+
           {onViewCourseSettings && (
             <button
               type="button"
@@ -199,6 +211,8 @@ export function UploadPathModal({
           <p className="text-[11px] text-slate-500 leading-relaxed">
             PDF, Word, and PowerPoint are all accepted. A slide-per-screen PowerPoint with speaker notes is the most reliable match for a specified storyboard. Word and PDF: we follow the text we can extract — review the outline if you pick Review before build.
           </p>
+            </>
+          )}
         </div>
 
         <div className="flex items-center justify-end gap-3 p-5 border-t border-slate-800 bg-slate-900/80">
@@ -215,8 +229,17 @@ export function UploadPathModal({
             onClick={() => onConfirm(choice, sourceMode)}
             className="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-purple-600 hover:bg-purple-500 transition-colors flex items-center gap-2 disabled:opacity-40 disabled:hover:bg-purple-600"
           >
-            Continue
-            <ArrowRight className="w-4 h-4" />
+            {extractBusy ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Reading file…
+              </>
+            ) : (
+              <>
+                Continue
+                <ArrowRight className="w-4 h-4" />
+              </>
+            )}
           </button>
         </div>
       </motion.div>

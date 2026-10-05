@@ -19,6 +19,16 @@ export function fileExtension(fileName?: string): string {
   return String(fileName || '').split('.').pop()?.toLowerCase() || '';
 }
 
+/** Copy shown while extract is still running — Continue stays locked until this finishes. */
+export function extractBusyCopy(fileName?: string): { heading: string; detail: string } {
+  const name = String(fileName || '').trim();
+  return {
+    heading: name ? `Reading ${name}` : 'Reading your file',
+    detail:
+      'Pulling the text so we can check how much source we have and whether this looks like a storyboard. Build now and Review before build unlock when that finishes — usually a few seconds.',
+  };
+}
+
 /** Post-extract status lines shown before Build now / Review. */
 export function assessExtract(text: string, fileName?: string): ExtractQuality {
   const src = String(text || '').trim();

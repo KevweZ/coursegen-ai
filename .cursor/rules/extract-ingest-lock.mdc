@@ -10,7 +10,8 @@ Anthony signed off (2026-10-04): NexCourse accepts customer Word/PDF/PPT as real
 ## Invariants (code, not prompts)
 
 - **Offer Follow vs lecture** when the filename or opening text contains “storyboard” (`shouldOfferStoryboardChoice` in [`src/lib/storyboardSource.ts`](src/lib/storyboardSource.ts)). Do not wait for a perfect screen-per-slide spec.
-- **Extract first.** [`UploadPathModal`](src/components/builder/UploadPathModal.tsx) opens after extract and shows a short status before Build now / Review. Continue stays disabled while extracting.
+- **Extract first.** [`UploadPathModal`](src/components/builder/UploadPathModal.tsx) may open while reading; the busy view (`extractBusyCopy`) names the file and says we are pulling text (length + storyboard check). Path cards stay hidden until extract finishes. Continue stays disabled and reads “Reading file…”. Do not skip the status to “speed up” upload.
+- **Build now / Review copy.** After extract, name both paths when mentioning Course Settings. Do not say “both options” above the cards.
 - **Thin / image-only** (`assessExtract` in [`src/lib/extractQuality.ts`](src/lib/extractQuality.ts)): warn, do not block. Image-only is under ~80 words; thin is under ~250.
 - **Help/FAQ, not a blocker.** Help widget + homepage file-types FAQ: PPT+notes is most reliable; Word/PDF follow extractable text. Do not refuse Word/PDF.
 - **Word tables stay text.** `tableToMarkdown` in [`server.js`](server.js) flattens tables. Do not replace them with `[Table — see original document]`.
