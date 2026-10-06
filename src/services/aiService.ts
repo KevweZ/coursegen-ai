@@ -539,7 +539,7 @@ export async function generateCourseOutline(
      Map them like this:
      - flashcards, timeline, hotspot, scenario, tabbed-horizontal, tabbed-vertical, folder-explorer, carousel-panel, click-reveal -> use the exact string as the slide 'type'
      - Do NOT use type "accordion" — use "click-reveal" instead (same progressive-disclosure pattern)
-     - tabbed-horizontal is the Process interaction (numbered stepper). Use it for ordered procedures the learner walks through step by step.
+     - tabbed-horizontal is the Process interaction (numbered stepper, 3–4 steps only). 5+ related topics use tabbed-vertical.
      - For BRANCHING process flows, decision trees, or Mermaid diagrams: use type: "diagram"
      - Plain teaching slides: type: "content"
      CRITICAL — QUIZ-ONLY TYPES: Never use sorting, matching, drop-targets, multiple-choice, or multiple-answers as regular content slides. Those belong ONLY under Knowledge Checks (see #4).
@@ -732,6 +732,7 @@ export async function hydrateCourseContent(
   - PROCESS / VERTICAL TABS (tabbed-horizontal / tabbed-vertical) — STRICT: each step or tab's on-screen content must be SHORT BULLETS
     (3–5 bullets, 5–8 words each). Put explanations in voiceOverText and (when present) each tab's voiceOverText field.
     Never put a thick paragraph inside a tab panel.
+    Process (tabbed-horizontal) has 3–4 steps. 5+ topics must be tabbed-vertical.
 
   ========================================
   ISD BEST PRACTICES (MANDATORY)
@@ -795,6 +796,7 @@ export async function hydrateCourseContent(
 
   QUIZ:
   - questionText MUST be a complete question sentence ending with "?"
+  - Test the CONTENT (definition, cause, condition, outcome). NEVER ask whether a topic "is a core idea in this module", "is covered in this module", "appears in this course", or similar meta / course-structure questions. Options must not be "not part of this module" / "none of these ideas appear".
   - Optional scenarioText: a short situation paragraph the learner reads BEFORE the question (carrier alert, workplace vignette, yellow-box story). Not the question itself. Omit when there is no situation.
   - Must have EXACTLY 4 options: 1 correct (isCorrect: true) + 3 plausible distractors. STORYBOARD EXCEPTION: copy the spec's option count (3 is valid). Do not invent extra distractors to reach 4.
   - When THIS slide is already a Knowledge Check and the storyboard lists 2+ numbered questions on one screen, emit data.questions: [{ questionText, options, feedback }] — one object per numbered question, exact stems and Keys. Do not invent a different wrapping question. Do not collapse them into one multiple-answers item.
@@ -869,17 +871,18 @@ export async function hydrateCourseContent(
 
   PROCESS (type: "tabbed-horizontal"):
   - This is a numbered process stepper, NOT a row of topic tabs. Learners click step circles in order.
-  - data.tabs: array of 3-6 sequential STEP objects (ordered left to right)
+  - data.tabs: array of 3-4 sequential STEP objects (ordered left to right). NEVER 5 or more — that is tabbed-vertical.
   - Each step: { "id": "t1", "label": "Short step name (2-5 words)", "color": "#4f46e5", "content": "- Short bullet\\n- Another point", "voiceOverText": "2-4 spoken sentences elaborating this step" }
   - Labels are STEP NAMES (Identify the hazard, Isolate energy), never generic "Tab 1" / "Overview" / "Topic 2".
   - On-screen step content MUST be SHORT BULLETS only (3–5 bullets, 5–8 words each). Put explanations in voiceOverText. NEVER empty or symbol-only bullets (e.g. "-" alone).
   - Slide-level "content" is the OVERVIEW on-screen text shown before any step is selected. Format like steps: 3–5 SHORT BULLETS (5–10 words each) capturing the main points of the slide-level voiceOverText. Do NOT use only a click instruction as the entire intro. Do NOT add a "Select a step…" bullet — the player UI already shows that CTA. NEVER emit an empty bullet or a bullet whose only content is punctuation/symbols.
   - Slide-level voiceOverText narrates that overview (2–5 spoken sentences).
   - Color must be a valid hex color. Steps may share one color (teal/process accent) or vary slightly.
-  - FAIL CONDITION: fewer than 3 steps, or missing content -> regenerate
+  - FAIL CONDITION: fewer than 3 steps, more than 4 steps, or missing content -> regenerate as tabbed-vertical when there are 5+ items
 
   TABBED-VERTICAL (type: "tabbed-vertical"):
-  - data.tabs: array of 2-6 tab objects
+  - Use for 5+ related topics (or any non-sequential topic set). Process (tabbed-horizontal) is only 3–4 ordered steps.
+  - data.tabs: array of 2-8 tab objects
   - Each tab: { "id": "t1", "label": "Topic Name", "content": "- Bullet one\\n- Bullet two", "voiceOverText": "2-4 spoken sentences for this tab" }
   - On-screen tab content: SHORT BULLETS (3–5, 5–8 words). Narration goes in voiceOverText per tab. NEVER empty or symbol-only bullets.
   - Slide-level "content" is the INTRODUCTION OST (same rules as tabbed-horizontal): 3–5 short topic bullets aligned with slide voiceOverText — never CTA-only, and do not include a "Select a tab…" bullet (player UI adds it).
@@ -1515,6 +1518,7 @@ RULES:
 4. ${config.questionMode === 'per-module' ? `Generate exactly ${config.questionCount} questions per module.` : `Distribute ${totalNeeded} questions evenly across ${course.modules.length} modules.`}
 5. Prefer questions that each test a different enabling objective. Only write a second question on the same enabling after every enabling in that module already has one.
 6. Each question must have a 1-sentence explanation.
+7. Test the CONTENT. NEVER ask whether a topic is a core idea in this module, is covered in this module, or appears in the course.
 OUTPUT: Return ONLY valid JSON: { "questions": [{ "id": "q1", "type": "mc", "question": "...", "options": [...], "correctAnswer": 0, "explanation": "...", "moduleIndex": 0 }] }`;
 
   const objectivesJson = JSON.stringify(course.learningObjectives ?? []);

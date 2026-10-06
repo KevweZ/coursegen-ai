@@ -1,7 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { assessExtract, extractBusyCopy } from './extractQuality.ts';
-import { looksLikeStoryboard, shouldOfferStoryboardChoice } from './storyboardSource.ts';
+import { looksLikeStoryboard, shouldOfferStoryboardChoice, defaultSourceModeFromFileName } from './storyboardSource.ts';
+
+test('filename storyboard defaults source mode without waiting for extract', () => {
+  assert.equal(defaultSourceModeFromFileName('Supply_Chain_Storyboard.docx'), 'storyboard');
+  assert.equal(defaultSourceModeFromFileName('polymers.pptx'), 'raw');
+});
 
 test('filename or heading storyboard always offers Follow vs lecture', () => {
   assert.equal(shouldOfferStoryboardChoice('short', 'Supply_Chain_Storyboard.docx'), true);
@@ -26,11 +31,11 @@ asset manifest
   assert.equal(looksLikeStoryboard(text, 'Supply_Chain_Fundamentals_eLearning_Storyboard_Word.docx'), true);
 });
 
-test('busy extract copy names the file and says Continue is waiting', () => {
+test('busy extract copy names the file', () => {
   const copy = extractBusyCopy('Polymers Course.pptx');
   assert.match(copy.heading, /Polymers Course\.pptx/);
-  assert.match(copy.detail, /Build now and Review before build/i);
   assert.match(copy.detail, /storyboard/i);
+  assert.doesNotMatch(copy.detail, /unlock|Continue stays/i);
 });
 
 test('thin and image-only extracts get a warning line', () => {

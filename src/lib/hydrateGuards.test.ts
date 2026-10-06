@@ -12,6 +12,9 @@ import {
   teachingSlideNeedsRetry,
   toTakeawayStatement,
   isRichTakeaway,
+  isMetaKnowledgeCheckText,
+  knowledgeCheckHasMetaStem,
+  remapOversizedProcessToTabs,
 } from './hydrateGuards.ts';
 import { alignHydratedSlidesToOutline } from './knowledgeCheckBudget.ts';
 
@@ -298,4 +301,50 @@ test('click-reveal instruction-only OST is dropped so items are the only on-scre
     },
   }, 'PE and PP Types');
   assert.equal(String(next.content || '').trim(), '');
+});
+
+test('meta knowledge-check stems are banned and rewritten', () => {
+  assert.equal(isMetaKnowledgeCheckText('Initiation is a core idea in this module.'), true);
+  assert.equal(isMetaKnowledgeCheckText('Which PE grade is densest?'), false);
+  const meta = {
+    type: 'true-false',
+    title: 'Knowledge Check: Initiation',
+    data: {
+      questionText: 'Initiation is a core idea in this module.',
+      options: [
+        { id: 't', text: 'True', isCorrect: true },
+        { id: 'f', text: 'False', isCorrect: false },
+      ],
+    },
+  };
+  assert.equal(knowledgeCheckHasMetaStem(meta), true);
+  assert.equal(teachingSlideNeedsRetry(meta), true);
+  const next = finalizeHydratedSlide(meta, 'Polymerization Chemistry');
+  assert.equal(knowledgeCheckHasMetaStem(next), false);
+  assert.doesNotMatch(String(next.data.questionText), /core idea in this module/i);
+  assert.doesNotMatch(JSON.stringify(next.data.options), /not part of this module|none of these ideas appear/i);
+  assert.equal(teachingSlideNeedsRetry(next), false);
+});
+
+test('process slides with 5+ steps remap to vertical tabs', () => {
+  const four = remapOversizedProcessToTabs({
+    type: 'tabbed-horizontal',
+    data: { tabs: [{ id: '1' }, { id: '2' }, { id: '3' }, { id: '4' }] },
+  });
+  assert.equal(four.type, 'tabbed-horizontal');
+  const seven = finalizeHydratedSlide({
+    type: 'tabbed-horizontal',
+    title: 'Polymerization Steps',
+    content: '- Ordered process\n- Walk through each step\n- Keep the sequence',
+    voiceOverText: 'Walk through each polymerization stage in order.',
+    data: {
+      tabs: Array.from({ length: 7 }, (_, i) => ({
+        id: `t${i + 1}`,
+        label: `Step ${i + 1}`,
+        content: '- Point one here\n- Point two here\n- Point three here',
+      })),
+    },
+  }, 'Polymerization Chemistry');
+  assert.equal(seven.type, 'tabbed-vertical');
+  assert.equal(seven.data.tabs.length, 7);
 });

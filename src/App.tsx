@@ -121,7 +121,7 @@ import { loadPlayerProperties, savePlayerProperties, cachePlayerProperties } fro
 import { fetchAccountPreferences, pushAccountPreferences } from './lib/accountPreferences';
 import { CourseOutline, Slide, TerminalObjectiveGroup, ExamConfig, ExamQuestion, ExamSessionState, NavigationMode } from './types/course';
 import { extractTextFromFile, extractImagesFromFile, EXTRACT_DEADLINE_MS, SourceImage } from './lib/fileProcessor';
-import { shouldOfferStoryboardChoice, storyboardSourceWindow, type SourceMode } from './lib/storyboardSource';
+import { shouldOfferStoryboardChoice, storyboardSourceWindow, defaultSourceModeFromFileName, type SourceMode } from './lib/storyboardSource';
 import { assessExtract, type ExtractQuality } from './lib/extractQuality';
 import { reformatObjectiveGroups } from './lib/objectiveFormat';
 import { generateGameTemplate, generateStandaloneGame } from './services/aiGameService';
@@ -222,6 +222,7 @@ import { LandscapePhoneFrame } from './components/player/LandscapePhoneFrame';
 import { RichTextEditor } from './components/player/RichTextEditor';
 import { useTTSGeneration } from './hooks/useTTSGeneration';
 import { TTSProgressToast } from './components/TTSProgressToast';
+import { ImageProgressToast, type ImageGenProgress } from './components/ImageProgressToast';
 import { ExamIntroSlide } from './components/player/ExamIntroSlide';
 import { MasteryExamSlide } from './components/player/MasteryExamSlide';
 import { ExamResultsSlide } from './components/player/ExamResultsSlide';
@@ -1541,6 +1542,20 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isHydrating, setIsHydrating] = useState(false);
   const [isGeneratingImages, setIsGeneratingImages] = useState(false);
+  const [imageProgress, setImageProgress] = useState<ImageGenProgress>({
+    isRunning: false,
+    isDone: false,
+    current: 0,
+    total: 0,
+    error: null,
+  });
+  const clearImageProgress = () => setImageProgress({
+    isRunning: false,
+    isDone: false,
+    current: 0,
+    total: 0,
+    error: null,
+  });
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [isRunningQC, setIsRunningQC] = useState(false);
   const [qcPhase, setQcPhase] = useState<'structural' | 'ai' | 'done' | null>(null);
@@ -3192,7 +3207,7 @@ export default function App() {
     file: File,
     path?: UploadPathChoice | 'game',
     settingsOverride?: SavedCourseSettings | null,
-    resume?: { sourceMode: SourceMode; extractedText: string }
+    resume?: { sourceMode: SourceMode; extractedText?: string }
   ) => {
     clearColdStartCountdown();
     // Leave /upload immediately so welcome tour cannot remount on the progress screen
@@ -3207,8 +3222,15 @@ export default function App() {
       setProgress(prev => prev < 80 ? Math.min(80, prev + 5) : prev);
     }, 500);
     try {
-      const text = resume?.extractedText ?? await extractTextFromFile(file);
+      const text = (typeof resume?.extractedText === 'string' && resume.extractedText.trim())
+        ? resume.extractedText
+        : await extractTextFromFile(file);
       setExtractedFileText(text);
+      const quality = assessExtract(text, file.name);
+      setExtractQuality(quality);
+      if (quality.imageOnly || quality.thin) {
+        showDraftMessage(quality.lines[0]);
+      }
 
       const effectivePath = path ?? (buildMode === 'game' ? 'game' : undefined);
 
@@ -3442,29 +3464,18 @@ export default function App() {
       await runAnalysis(file, 'game');
       return;
     }
-    // Course Builder: extract first so Build now / Review can show a short status.
+    // Course Builder: choose Build now / Review immediately; extract after Continue.
     setPendingUploadFile(file);
     setUploadedFile(file);
     setExtractedFileText('');
     setExtractQuality(null);
     setExtractError(null);
-    setExtractBusy(true);
-    setSourceMode('raw');
+    setExtractBusy(false);
+    setSourceMode(defaultSourceModeFromFileName(file.name));
     storyboardDecisionForFileRef.current = null;
     setStoryboardConfirmOpen(false);
     pendingStoryboardAnalysisRef.current = null;
     setShowUploadPathModal(true);
-    try {
-      const text = await extractTextFromFile(file);
-      setExtractedFileText(text);
-      const quality = assessExtract(text, file.name);
-      setExtractQuality(quality);
-      setSourceMode(quality.storyboardOffered ? 'storyboard' : 'raw');
-    } catch (err: any) {
-      setExtractError(err?.message || 'Could not read this file.');
-    } finally {
-      setExtractBusy(false);
-    }
   };
 
   const confirmUploadPath = async (choice: UploadPathChoice, chosenSourceMode: SourceMode = 'raw') => {
@@ -3501,9 +3512,7 @@ export default function App() {
       file,
       choice,
       settingsOverride,
-      extractedFileText
-        ? { sourceMode: chosenSourceMode, extractedText: extractedFileText }
-        : undefined,
+      { sourceMode: chosenSourceMode, extractedText: extractedFileText || undefined },
     );
   };
 
@@ -4319,6 +4328,7 @@ export default function App() {
         if (runImagery) {
           try {
             showDraftMessage('Generating content visuals…');
+            setImageProgress({ isRunning: false, isDone: false, current: 0, total: 0, error: null });
             const { enrichHotspotAndCarouselImages } = await import('./services/imageService');
             let next = await enrichHotspotAndCarouselImages(working, imgs, {
               generateAi: wantsAi || wantsHotspotBackdrop,
@@ -4332,15 +4342,30 @@ export default function App() {
 
             if (wantsAi) {
               next = await generateContentSlideImages(next, (done, total) => {
-                if (done === total) showDraftMessage(`Content visuals ready (${total}) ✓`);
+                if (!stillActive()) return;
+                setImageProgress({
+                  isRunning: done < total,
+                  isDone: done >= total && total > 0,
+                  current: done,
+                  total,
+                  error: null,
+                });
               }).then(r => r.course);
               if (coverUrl) next = { ...next, coverImage: coverUrl };
               next = seedFloatingFromCourse(next) || next;
               if (!stillActive()) return;
               commitCourse(next);
             }
-          } catch (err) {
+          } catch (err: any) {
             console.warn('[ImageService] Background imagery failed:', err);
+            if (stillActive()) {
+              setImageProgress(prev => ({
+                ...prev,
+                isRunning: false,
+                isDone: prev.total > 0,
+                error: err?.message || 'Image generation failed',
+              }));
+            }
           } finally {
             if (stillActive()) setIsGeneratingImages(false);
           }
@@ -4620,6 +4645,7 @@ export default function App() {
     if (!course?.modules) return;
     setShowEditMenu(false);
     setIsGeneratingImages(true);
+    setImageProgress({ isRunning: false, isDone: false, current: 0, total: 0, error: null });
     showDraftMessage('Generating AI images for slides without visuals…');
     try {
       const { generateContentSlideImages, generateCourseCoverImage } = await import('./services/imageService');
@@ -4639,7 +4665,13 @@ export default function App() {
         }
       }
       const { course: withImages, jobsAttempted } = await generateContentSlideImages(working, (done, total) => {
-        showDraftMessage(`Generating AI images… ${done}/${total}`);
+        setImageProgress({
+          isRunning: done < total,
+          isDone: done >= total && total > 0,
+          current: done,
+          total,
+          error: null,
+        });
       });
       working = stripCourseAutoPromotedFloating(withImages);
       setFloatingImagesMap(floatingMapFromCourse(working));
@@ -4661,6 +4693,12 @@ export default function App() {
       }
     } catch (err: any) {
       console.error('[Images] Regen failed:', err);
+      setImageProgress(prev => ({
+        ...prev,
+        isRunning: false,
+        isDone: prev.total > 0,
+        error: err?.message || 'Failed to regenerate AI images.',
+      }));
       showDraftMessage(err?.message || 'Failed to regenerate AI images.');
     } finally {
       setIsGeneratingImages(false);
@@ -9900,9 +9938,6 @@ export default function App() {
               onConfirm={confirmUploadPath}
               onCancel={cancelUploadPath}
               onViewCourseSettings={viewCourseSettingsFromUploadPath}
-              extractBusy={extractBusy}
-              extractError={extractError}
-              extractQuality={extractQuality}
               sourceMode={sourceMode}
               onSourceModeChange={setSourceMode}
             />
@@ -9924,12 +9959,24 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {/* Media progress — bottom-center; visible during preview while TTS runs */}
-        <TTSProgressToast
-          progress={ttsProgress}
-          onDismiss={clearTTSProgress}
-          onRetry={() => void retryMissingNarration()}
-        />
+        {/* Media progress — bottom-center; stack visuals above audio */}
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[9999] flex flex-col-reverse gap-3 items-stretch pointer-events-none w-[min(20rem,calc(100vw-2rem))]">
+          <div className="pointer-events-auto">
+            <TTSProgressToast
+              layout="inline"
+              progress={ttsProgress}
+              onDismiss={clearTTSProgress}
+              onRetry={() => void retryMissingNarration()}
+            />
+          </div>
+          <div className="pointer-events-auto">
+            <ImageProgressToast
+              layout="inline"
+              progress={imageProgress}
+              onDismiss={clearImageProgress}
+            />
+          </div>
+        </div>
 
         {/* Interaction Preview Modal */}
 

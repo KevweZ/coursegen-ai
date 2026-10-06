@@ -24,14 +24,11 @@ export default function InteractionIntroColumn({
       style={{ background: panel }}
     >
       <div className="box-border h-full p-6 sm:p-7 text-left overflow-y-auto custom-scrollbar">
-        <p
-          className="text-sm font-bold uppercase tracking-[0.18em] mb-2"
+        <h3
+          className="font-extrabold text-lg mb-4"
           style={{ color: ink }}
         >
           Overview
-        </p>
-        <h3 className="font-extrabold text-lg mb-4" style={{ color: ink }}>
-          Introduction
         </h3>
         {html ? (
           <div

@@ -943,7 +943,11 @@ export async function generateContentSlideImages(
 
   // Intro panels before content tabs / slides so opening narration is not left text-only
   const selected = [...introJobs, ...jobs].slice(0, MAX_CONTENT_AI_IMAGES);
-  if (!selected.length) return { course, jobsAttempted: 0 };
+  if (!selected.length) {
+    onProgress?.(0, 0);
+    return { course, jobsAttempted: 0 };
+  }
+  onProgress?.(0, selected.length);
 
   // Deep-clone modules we will mutate
   const modules = course.modules.map((m: any) => ({

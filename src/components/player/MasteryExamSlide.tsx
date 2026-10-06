@@ -48,25 +48,16 @@ const QuestionCard: React.FC<{
     return 'default';
   };
 
-  const stateClasses: Record<string, string> = {
-    correct: 'border-emerald-500 bg-emerald-50 text-emerald-800',
-    wrong:   'border-red-500 bg-red-50 text-red-800',
-    default: 'border-slate-200 bg-slate-50 text-slate-800 hover:border-slate-300 hover:bg-slate-100',
-  };
-
   return (
-    <div className="space-y-4">
+    <div className="space-y-5 w-full">
       {!compactHeader && (
         <>
-          <div className="flex items-center justify-between text-xs text-slate-500 font-bold">
-            <span>Question {idx + 1} of {total}</span>
-            <span className="text-slate-600">
-              {q.type === 'mc' ? 'Multiple Choice' : q.type === 'ma' ? 'Multiple Answer — select all that apply' : 'True / False'}
-            </span>
-          </div>
+          <p className="text-xs font-bold uppercase tracking-wider text-indigo-600">
+            Question {idx + 1} of {total}
+          </p>
           <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
             <div
-              className="h-full bg-slate-700 rounded-full transition-all duration-500"
+              className="h-full bg-indigo-600 rounded-full transition-all duration-500"
               style={{ width: `${((idx + 1) / total) * 100}%` }}
             />
           </div>
@@ -74,20 +65,24 @@ const QuestionCard: React.FC<{
       )}
 
       {compactHeader && (
-        <div className="flex items-center justify-between text-xs text-slate-500 font-bold">
-          <span>Question {idx + 1}</span>
-          <span className="text-slate-600">
-            {q.type === 'mc' ? 'Multiple Choice' : q.type === 'ma' ? 'Multiple Answer' : 'True / False'}
-          </span>
-        </div>
+        <p className="text-xs font-bold uppercase tracking-wider text-indigo-600">
+          Question {idx + 1} of {total}
+        </p>
       )}
 
-      <p className="text-slate-900 text-base font-bold leading-snug">{q.question}</p>
+      <p className="font-bold text-base leading-snug text-slate-800">{q.question}</p>
 
-      <div className="space-y-2">
+      <div className="space-y-3 w-full max-w-4xl">
         {(q.options || []).map((opt, oIdx) => {
           const state = optionState(oIdx);
           const isSelected = Array.isArray(answer) ? answer.includes(oIdx) : answer === oIdx;
+          let bg = 'bg-white border-gray-200 text-gray-800 hover:border-indigo-400';
+          if (submitted) {
+            if (state === 'correct') bg = 'bg-emerald-50 border-emerald-400 text-emerald-900';
+            else if (state === 'wrong') bg = 'bg-red-50 border-red-400 text-red-900';
+          } else if (isSelected) {
+            bg = 'bg-indigo-50 border-indigo-400 text-indigo-900';
+          }
           return (
             <button
               key={oIdx}
@@ -104,21 +99,22 @@ const QuestionCard: React.FC<{
                   onAnswer(oIdx);
                 }
               }}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all ${
-                submitted ? stateClasses[state] : isSelected
-                  ? 'border-slate-700 bg-slate-100 text-slate-900'
-                  : stateClasses['default']
-              }`}
+              className={`w-full flex items-start gap-3 p-4 rounded-xl border-2 text-left transition-all font-medium ${bg}`}
             >
-              <span className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 text-xs font-black ${
-                submitted && state === 'correct' ? 'border-emerald-500 bg-emerald-500 text-white'
-                : submitted && state === 'wrong' ? 'border-red-500 bg-red-500 text-white'
-                : isSelected ? 'border-slate-700 bg-slate-900 text-white'
-                : 'border-slate-300 text-slate-500'
+              <div className={`w-5 h-5 rounded-full border-2 shrink-0 mt-0.5 flex items-center justify-center ${
+                submitted && state === 'correct' ? 'border-emerald-500 bg-emerald-500'
+                : submitted && state === 'wrong' ? 'border-red-500 bg-red-500'
+                : isSelected ? 'border-indigo-500 bg-indigo-500' : 'border-gray-300'
               }`}>
-                {submitted && state === 'correct' ? '✓' : submitted && state === 'wrong' ? '✗' : String.fromCharCode(65 + oIdx)}
-              </span>
-              <span className="text-base leading-snug">{opt}</span>
+                {submitted && state === 'correct' ? (
+                  <span className="text-white text-[10px] font-black">✓</span>
+                ) : submitted && state === 'wrong' ? (
+                  <span className="text-white text-[10px] font-black">✗</span>
+                ) : isSelected ? (
+                  <div className="w-2 h-2 bg-white rounded-full" />
+                ) : null}
+              </div>
+              <span className="flex-1 leading-snug text-base">{opt}</span>
             </button>
           );
         })}
@@ -232,17 +228,24 @@ export const MasteryExamSlide: React.FC<Props> = ({
         <div className="flex-1 min-h-0 flex overflow-hidden">
           {/* Only this column scrolls — overview stays locked on the right */}
           <div ref={scrollRootRef} className="flex-1 min-w-0 min-h-0 overflow-y-auto p-4 sm:p-6 pb-8">
-            <div className="max-w-3xl mx-auto space-y-6">
-              <div className="text-center space-y-1 mb-2">
-                <h2 className="text-2xl font-extrabold text-slate-900">Mastery Quiz</h2>
-                <p className="text-sm text-slate-500">{answeredCount} of {questions.length} answered</p>
+            <div className="space-y-5 w-full">
+              <div className="space-y-2">
+                <p className="text-xs font-bold uppercase tracking-wider text-indigo-600">
+                  {answeredCount} of {questions.length} answered
+                </p>
+                <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-indigo-600 rounded-full transition-all duration-500"
+                    style={{ width: `${(answeredCount / Math.max(1, questions.length)) * 100}%` }}
+                  />
+                </div>
               </div>
               {questions.map((q, idx) => (
                 <div
                   key={q.id}
                   id={`exam-q-${q.id}`}
                   ref={(node) => { questionRefs.current[q.id] = node; }}
-                  className="bg-slate-50 border border-slate-200 rounded-2xl p-5 sm:p-6 scroll-mt-4"
+                  className="scroll-mt-4"
                 >
                   <QuestionCard
                     q={q}
@@ -317,7 +320,7 @@ export const MasteryExamSlide: React.FC<Props> = ({
   return (
     <div className="h-full flex flex-col bg-white">
       <div className="flex-1 overflow-y-auto p-6">
-        <div className="max-w-4xl mx-auto">
+        <div className="space-y-5 w-full">
           <AnimatePresence mode="wait">
             <motion.div
               key={currentQuestionIdx}

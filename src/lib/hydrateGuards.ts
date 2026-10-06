@@ -137,41 +137,76 @@ export function quizHasLearnerPayload(slide: any): boolean {
   return quizQuestionList(slide.interactions?.[0] || slide.data || slide).length > 0;
 }
 
+const META_KC_RE =
+  /\b(?:is|as)\s+a\s+(?:core|key)\s+(?:idea|topic|concept)\s+in\s+this\s+module\b|\bcore\s+idea\s+in\s+this\s+module\b|\bkey\s+idea\s+covered\s+in\b|\bcovered\s+in\s+(?:this|the)\s+module\b|\bnot\s+part\s+of\s+this\s+module\b|\bnone\s+of\s+these\s+ideas\s+appear\b|\bappears?\s+in\s+(?:this|the)\s+(?:module|course)\b|\bunrelated\s+fact\s+from\s+outside\b/i;
+
+/** Ban course-structure KCs ("is this a core idea in this module"). */
+export function isMetaKnowledgeCheckText(text: unknown): boolean {
+  return META_KC_RE.test(String(text || ''));
+}
+
+export function knowledgeCheckHasMetaStem(slide: any): boolean {
+  if (!isKnowledgeCheckSlide(slide)) return false;
+  const questions = quizQuestionList(slide.interactions?.[0] || slide.data || slide);
+  return questions.some((q) => {
+    const stem = String(q.questionText || '');
+    const opts = (q.options || []).map((o: any) => (typeof o === 'string' ? o : o?.text || o?.label || ''));
+    return isMetaKnowledgeCheckText([stem, ...opts].join('\n'));
+  });
+}
+
+/** Process (tabbed-horizontal) is 3–4 steps; 5+ remap to vertical tabs. */
+export const PROCESS_STEP_MAX = 4;
+
+export function remapOversizedProcessToTabs(slide: any): any {
+  if (!slide || slide.type !== 'tabbed-horizontal') return slide;
+  const tabs = slide.data?.tabs || slide.data?.items;
+  if (!Array.isArray(tabs) || tabs.length < PROCESS_STEP_MAX + 1) return slide;
+  return { ...slide, type: 'tabbed-vertical' };
+}
+
 export function fallbackKnowledgeCheckData(title: string, moduleTitle = ''): Record<string, unknown> {
   const topic = String(title || 'this topic').replace(/^knowledge\s*check:\s*/i, '').trim() || 'this topic';
   const context = moduleTitle || topic;
   return {
-    questionText: `Which statement best matches ${topic}?`,
+    questionText: `Which statement about ${topic} is most accurate?`,
     options: [
-      { id: 'a', text: `A key idea covered in ${topic}`, isCorrect: true },
-      { id: 'b', text: `An unrelated fact from outside ${context}`, isCorrect: false },
-      { id: 'c', text: 'A step that is not part of this module', isCorrect: false },
-      { id: 'd', text: 'None of these ideas appear in the course', isCorrect: false },
+      { id: 'a', text: `The primary role or definition of ${topic} in ${context}`, isCorrect: true },
+      { id: 'b', text: `A common mix-up with a different process than ${topic}`, isCorrect: false },
+      { id: 'c', text: `A condition that does not apply to ${topic}`, isCorrect: false },
+      { id: 'd', text: `A result that ${topic} never produces`, isCorrect: false },
     ],
-    feedback: `Review ${topic} in this module, then continue.`,
+    feedback: `Review ${topic} in ${context}, then continue.`,
   };
 }
 
 export function ensureKnowledgeCheckPayload(slide: any, moduleTitle = ''): any {
   if (!isKnowledgeCheckSlide(slide)) return slide;
-  if (quizHasLearnerPayload(slide)) return slide;
+  if (quizHasLearnerPayload(slide) && !knowledgeCheckHasMetaStem(slide)) return slide;
 
   const topic = String(slide.title || 'this topic').replace(/^knowledge\s*check:\s*/i, '').trim() || 'this topic';
   const type = String(slide.type || 'quiz');
   const framing = String(slide.content || '').trim() || `Check your understanding of ${topic}.`;
 
+  if (quizHasLearnerPayload(slide) && knowledgeCheckHasMetaStem(slide)) {
+    return {
+      ...slide,
+      type: type === 'true-false' ? 'quiz' : type,
+      content: framing,
+      data: {
+        ...(slide.data && typeof slide.data === 'object' ? slide.data : {}),
+        ...fallbackKnowledgeCheckData(slide.title || topic, moduleTitle),
+      },
+    };
+  }
+
   if (type === 'true-false') {
     return {
       ...slide,
-      type: 'true-false',
+      type: 'quiz',
       content: framing,
       data: {
-        questionText: `${topic} is a core idea in this module.`,
-        options: [
-          { id: 't', text: 'True', isCorrect: true },
-          { id: 'f', text: 'False', isCorrect: false },
-        ],
-        feedback: `Review ${topic} in this module, then continue.`,
+        ...fallbackKnowledgeCheckData(slide.title || topic, moduleTitle),
       },
     };
   }
@@ -260,7 +295,9 @@ function interactionHasItems(slide: any, key: 'cards' | 'items' | 'tabs', min: n
 
 export function teachingSlideNeedsRetry(slide: any): boolean {
   if (!slide) return true;
-  if (isKnowledgeCheckSlide(slide)) return !quizHasLearnerPayload(slide);
+  if (isKnowledgeCheckSlide(slide)) {
+    return !quizHasLearnerPayload(slide) || knowledgeCheckHasMetaStem(slide);
+  }
   const type = String(slide.type || 'content');
   if (type === 'choice-cards') return !interactionHasItems(slide, 'cards', 2);
   if (type === 'click-reveal') return !interactionHasItems(slide, 'items', 2);
@@ -426,7 +463,7 @@ function degradeIncompleteInteraction(slide: any, moduleTitle: string): any {
  */
 export function finalizeHydratedSlide(slide: any, moduleTitle = ''): any {
   if (!slide || typeof slide !== 'object') return slide;
-  let next = { ...slide };
+  let next = remapOversizedProcessToTabs({ ...slide });
 
   if (next.type === 'choice-cards') {
     const collapsed = collapseChoiceCardsOst(next.content, next.data?.prompt);

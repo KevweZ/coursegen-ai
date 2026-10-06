@@ -7,6 +7,11 @@ import { emptyScenarioQuizKind, quizQuestionList } from './knowledgeCheckOst';
 
 export type SourceMode = 'raw' | 'storyboard';
 
+/** Immediate upload default — do not wait for extract to pick Storyboard vs Content file. */
+export function defaultSourceModeFromFileName(fileName?: string): SourceMode {
+  return /storyboard/i.test(String(fileName || '')) ? 'storyboard' : 'raw';
+}
+
 /** Enough of a typical storyboard to include screens + scripts; raw path stays smaller. */
 export const STORYBOARD_SOURCE_CHARS = 24000;
 

@@ -1,25 +1,34 @@
 /**
- * TTSProgressToast.tsx
- * Non-blocking floating toast that shows TTS generation progress.
- * Bottom-center so it does not cover player Next/Prev controls.
+ * ImageProgressToast.tsx
+ * Non-blocking floating toast that shows AI image generation progress,
+ * matching the audio (TTS) progress bar so authors can see remaining wait.
  */
 
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2, XCircle, X, Loader2 } from 'lucide-react';
-import { TTSProgress } from '../hooks/useTTSGeneration';
+
+export interface ImageGenProgress {
+  isRunning: boolean;
+  isDone: boolean;
+  current: number;
+  total: number;
+  error: string | null;
+}
 
 interface Props {
-  progress: TTSProgress;
-  /** Clears completed toast UI only — must not cancel an in-flight TTS job. */
+  progress: ImageGenProgress;
+  /** Clears completed toast UI only — must not cancel in-flight image jobs. */
   onDismiss?: () => void;
-  /** Resume missing clips after a lost job or partial failure. */
-  onRetry?: () => void;
-  /** When true, parent owns position (stack with image toast). */
+  /** When true, parent owns position (stack with audio toast). */
   layout?: 'fixed' | 'inline';
 }
 
-export const TTSProgressToast: React.FC<Props> = ({ progress, onDismiss, onRetry, layout = 'fixed' }) => {
+export const ImageProgressToast: React.FC<Props> = ({
+  progress,
+  onDismiss,
+  layout = 'fixed',
+}) => {
   const [visible, setVisible] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -29,14 +38,13 @@ export const TTSProgressToast: React.FC<Props> = ({ progress, onDismiss, onRetry
       timerRef.current = null;
     }
 
-    if (progress.isRunning) {
+    if (progress.isRunning && progress.total > 0) {
       setVisible(true);
       return;
     }
 
-    if (progress.isDone) {
+    if (progress.isDone && progress.total > 0) {
       setVisible(true);
-      // Keep failures on screen until the user dismisses — quick fails were easy to miss.
       if (progress.error) return;
       timerRef.current = setTimeout(() => {
         setVisible(false);
@@ -51,7 +59,7 @@ export const TTSProgressToast: React.FC<Props> = ({ progress, onDismiss, onRetry
         timerRef.current = null;
       }
     };
-  }, [progress.isRunning, progress.isDone, progress.error, onDismiss]);
+  }, [progress.isRunning, progress.isDone, progress.error, progress.total, onDismiss]);
 
   const handleDismiss = () => {
     if (timerRef.current) {
@@ -62,8 +70,8 @@ export const TTSProgressToast: React.FC<Props> = ({ progress, onDismiss, onRetry
     onDismiss?.();
   };
 
-  const pct = progress.totalSlides > 0
-    ? Math.round((progress.currentSlide / progress.totalSlides) * 100)
+  const pct = progress.total > 0
+    ? Math.round((progress.current / progress.total) * 100)
     : 0;
 
   return (
@@ -85,7 +93,7 @@ export const TTSProgressToast: React.FC<Props> = ({ progress, onDismiss, onRetry
                   ? 'bg-emerald-500'
                   : progress.error
                   ? 'bg-red-500'
-                  : 'bg-indigo-500'
+                  : 'bg-purple-500'
               }`}
               animate={{ width: `${progress.isDone ? 100 : pct}%` }}
               transition={{ duration: 0.4, ease: 'easeOut' }}
@@ -99,50 +107,38 @@ export const TTSProgressToast: React.FC<Props> = ({ progress, onDismiss, onRetry
                   ? 'bg-emerald-500/20'
                   : progress.error
                   ? 'bg-red-500/20'
-                  : 'bg-indigo-500/20'
+                  : 'bg-purple-500/20'
               }`}>
                 {progress.isDone && !progress.error ? (
                   <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                 ) : progress.error && !progress.isRunning ? (
                   <XCircle className="w-4 h-4 text-red-400" />
                 ) : (
-                  <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
+                  <Loader2 className="w-4 h-4 text-purple-400 animate-spin" />
                 )}
               </div>
 
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-white leading-tight">
                   {progress.isDone && !progress.isRunning
-                    ? (progress.error && progress.currentSlide === 0
-                        ? 'Audio generation failed'
-                        : progress.error
-                          ? 'Audio generation finished with errors'
-                          : progress.currentSlide === 0 && progress.skipped > 0
-                            ? 'No new narration generated'
-                            : 'Audio generation complete')
-                    : 'Generating narration audio'}
+                    ? (progress.error
+                        ? (progress.current === 0 ? 'Image generation failed' : 'Image generation finished with errors')
+                        : 'Course visuals ready')
+                    : 'Generating course visuals'}
                 </p>
                 {progress.isRunning && (
                   <p className="text-xs text-slate-400 mt-0.5 truncate">
-                    Slide {progress.currentSlide} of {progress.totalSlides}
-                    {progress.currentSlideTitle ? ` — ${progress.currentSlideTitle}` : ''}
+                    Image {Math.min(progress.current + (progress.current < progress.total ? 1 : 0), progress.total)} of {progress.total}
                   </p>
                 )}
                 {progress.isDone && !progress.isRunning && (
                   <p className={`text-xs mt-0.5 ${progress.error ? 'text-amber-300' : 'text-emerald-400'}`}>
-                    {progress.currentSlide > 0
-                      ? `${progress.currentSlide} clip${progress.currentSlide !== 1 ? 's' : ''} ready`
-                      : progress.error
-                        ? progress.error
-                        : 'No new clips generated'}
+                    {progress.current > 0
+                      ? `${progress.current} visual${progress.current !== 1 ? 's' : ''} ready`
+                      : progress.error || 'No new visuals generated'}
                   </p>
                 )}
-                {progress.isDone && !progress.isRunning && progress.skipped > 0 && !progress.error && (
-                  <p className="text-xs text-amber-300 mt-0.5">
-                    {progress.skipped} teaching slide{progress.skipped !== 1 ? 's' : ''} had no narration script
-                  </p>
-                )}
-                {progress.error && progress.currentSlide > 0 && (
+                {progress.error && progress.current > 0 && (
                   <p className="text-xs text-red-400 mt-0.5 leading-relaxed">
                     {progress.error}
                   </p>
@@ -160,18 +156,9 @@ export const TTSProgressToast: React.FC<Props> = ({ progress, onDismiss, onRetry
 
             {progress.isRunning && (
               <div className="mt-3 flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                <span>Narration</span>
-                <span className="text-indigo-400">{pct}%</span>
+                <span>Visuals</span>
+                <span className="text-purple-400">{pct}%</span>
               </div>
-            )}
-            {progress.isDone && !progress.isRunning && progress.error && onRetry && (
-              <button
-                type="button"
-                onClick={() => onRetry()}
-                className="mt-3 w-full px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold"
-              >
-                Retry remaining audio
-              </button>
             )}
           </div>
         </motion.div>

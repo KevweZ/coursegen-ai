@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { FileUp, Sparkles, ListChecks, X, ArrowRight, SlidersHorizontal, Loader2, AlertTriangle } from 'lucide-react';
+import { FileUp, Sparkles, ListChecks, X, ArrowRight, SlidersHorizontal, FileText, LayoutList } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { extractBusyCopy, type ExtractQuality } from '../../lib/extractQuality';
 import type { SourceMode } from '../../lib/storyboardSource';
 
 export type UploadPathChoice = 'quick' | 'customize';
@@ -12,9 +11,6 @@ interface Props {
   onConfirm: (choice: UploadPathChoice, sourceMode: SourceMode) => void;
   onCancel: () => void;
   onViewCourseSettings?: () => void;
-  extractBusy?: boolean;
-  extractError?: string | null;
-  extractQuality?: ExtractQuality | null;
   sourceMode: SourceMode;
   onSourceModeChange: (mode: SourceMode) => void;
 }
@@ -24,16 +20,10 @@ export function UploadPathModal({
   onConfirm,
   onCancel,
   onViewCourseSettings,
-  extractBusy = false,
-  extractError = null,
-  extractQuality = null,
   sourceMode,
   onSourceModeChange,
 }: Props) {
   const [choice, setChoice] = useState<UploadPathChoice>('quick');
-  const offerStoryboard = !!extractQuality?.storyboardOffered;
-  const canContinue = !extractBusy && !extractError;
-  const busyCopy = extractBusyCopy(fileName);
 
   return (
     <div className="fixed inset-0 z-[400] flex items-center justify-center p-4">
@@ -50,9 +40,7 @@ export function UploadPathModal({
               <FileUp className="w-5 h-5 text-purple-300" />
             </div>
             <div className="min-w-0">
-              <h3 className="text-lg font-bold text-white">
-                {extractBusy ? 'Reading your file' : 'How would you like to build?'}
-              </h3>
+              <h3 className="text-lg font-bold text-white">How would you like to build?</h3>
               <p className="text-sm text-slate-400 mt-0.5 truncate" title={fileName}>{fileName}</p>
             </div>
           </div>
@@ -66,78 +54,49 @@ export function UploadPathModal({
         </div>
 
         <div className="p-5 space-y-3 max-h-[min(70vh,36rem)] overflow-y-auto">
-          {extractBusy ? (
-            <div className="rounded-xl border border-purple-500/30 bg-slate-950 px-4 py-5 text-sm leading-relaxed">
-              <p className="flex items-center gap-2 font-bold text-white">
-                <Loader2 className="w-4 h-4 animate-spin text-purple-300 shrink-0" />
-                {busyCopy.heading}
-              </p>
-              <p className="mt-2 text-slate-300">{busyCopy.detail}</p>
+          <div className="space-y-2">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">File type</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => onSourceModeChange('storyboard')}
+                className={cn(
+                  'text-left p-3 rounded-xl border-2 text-sm transition-all',
+                  sourceMode === 'storyboard'
+                    ? 'border-indigo-500 bg-indigo-500/10 text-indigo-100'
+                    : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700'
+                )}
+              >
+                <span className="flex items-center gap-1.5 font-bold text-white">
+                  <LayoutList className="w-3.5 h-3.5 text-indigo-300" />
+                  Storyboard
+                </span>
+                <span className="text-xs mt-1 block leading-relaxed">Match listed learner screens and scripts.</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onSourceModeChange('raw')}
+                className={cn(
+                  'text-left p-3 rounded-xl border-2 text-sm transition-all',
+                  sourceMode === 'raw'
+                    ? 'border-slate-400 bg-slate-800/80 text-slate-100'
+                    : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700'
+                )}
+              >
+                <span className="flex items-center gap-1.5 font-bold text-white">
+                  <FileText className="w-3.5 h-3.5 text-slate-300" />
+                  Content file
+                </span>
+                <span className="text-xs mt-1 block leading-relaxed">Redesign the file into a course.</span>
+              </button>
             </div>
-          ) : (
-            <>
-          <div className={cn(
-            'rounded-xl border px-3.5 py-3 text-sm leading-relaxed',
-            extractError
-              ? 'border-red-500/40 bg-red-500/10 text-red-100'
-              : extractQuality?.imageOnly || extractQuality?.thin
-              ? 'border-amber-500/40 bg-amber-500/10 text-amber-100'
-              : 'border-slate-700 bg-slate-950 text-slate-300'
-          )}>
-            {extractError ? (
-              <p className="flex items-start gap-2 text-red-200">
-                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-                {extractError}
-              </p>
-            ) : (
-              <ul className="space-y-1.5">
-                {(extractQuality?.lines || ['File is ready.']).map((line) => (
-                  <li key={line}>{line}</li>
-                ))}
-              </ul>
-            )}
           </div>
-
-          {offerStoryboard && !extractError && (
-            <div className="space-y-2">
-              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Storyboard</p>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => onSourceModeChange('storyboard')}
-                  className={cn(
-                    'text-left p-3 rounded-xl border-2 text-sm transition-all',
-                    sourceMode === 'storyboard'
-                      ? 'border-indigo-500 bg-indigo-500/10 text-indigo-100'
-                      : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700'
-                  )}
-                >
-                  <span className="font-bold text-white block">Follow storyboard</span>
-                  <span className="text-xs mt-1 block leading-relaxed">Match listed learner screens and scripts.</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onSourceModeChange('raw')}
-                  className={cn(
-                    'text-left p-3 rounded-xl border-2 text-sm transition-all',
-                    sourceMode === 'raw'
-                      ? 'border-slate-400 bg-slate-800/80 text-slate-100'
-                      : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700'
-                  )}
-                >
-                  <span className="font-bold text-white block">Treat as lecture</span>
-                  <span className="text-xs mt-1 block leading-relaxed">Redesign the file into a course.</span>
-                </button>
-              </div>
-            </div>
-          )}
 
           <button
             type="button"
             onClick={() => setChoice('quick')}
-            disabled={!!extractError}
             className={cn(
-              'w-full text-left p-4 rounded-xl border-2 transition-all disabled:opacity-50',
+              'w-full text-left p-4 rounded-xl border-2 transition-all',
               choice === 'quick'
                 ? 'border-purple-500 bg-purple-500/10'
                 : 'border-slate-800 bg-slate-950 hover:border-slate-700'
@@ -165,9 +124,8 @@ export function UploadPathModal({
           <button
             type="button"
             onClick={() => setChoice('customize')}
-            disabled={!!extractError}
             className={cn(
-              'w-full text-left p-4 rounded-xl border-2 transition-all disabled:opacity-50',
+              'w-full text-left p-4 rounded-xl border-2 transition-all',
               choice === 'customize'
                 ? 'border-indigo-500 bg-indigo-500/10'
                 : 'border-slate-800 bg-slate-950 hover:border-slate-700'
@@ -211,8 +169,6 @@ export function UploadPathModal({
           <p className="text-[11px] text-slate-500 leading-relaxed">
             PDF, Word, and PowerPoint are all accepted. A slide-per-screen PowerPoint with speaker notes is the most reliable match for a specified storyboard. Word and PDF: we follow the text we can extract — review the outline if you pick Review before build.
           </p>
-            </>
-          )}
         </div>
 
         <div className="flex items-center justify-end gap-3 p-5 border-t border-slate-800 bg-slate-900/80">
@@ -225,21 +181,11 @@ export function UploadPathModal({
           </button>
           <button
             type="button"
-            disabled={!canContinue}
             onClick={() => onConfirm(choice, sourceMode)}
-            className="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-purple-600 hover:bg-purple-500 transition-colors flex items-center gap-2 disabled:opacity-40 disabled:hover:bg-purple-600"
+            className="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-purple-600 hover:bg-purple-500 transition-colors flex items-center gap-2"
           >
-            {extractBusy ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Reading file…
-              </>
-            ) : (
-              <>
-                Continue
-                <ArrowRight className="w-4 h-4" />
-              </>
-            )}
+            Continue
+            <ArrowRight className="w-4 h-4" />
           </button>
         </div>
       </motion.div>
