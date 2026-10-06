@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Image visual lock (do not regress)
 
-Polymer screenshots (EVA astronaut, job-firing “Termination”, handshake “Initiation”, typeset titles on photos) happened because prompts used the **short tab label only**. Do not go back to that. `npm test` must stay green (`src/lib/imageVisualPrompt.test.ts`).
+Polymer screenshots (EVA astronaut, job-firing “Termination”, handshake “Initiation”, typeset titles on photos) happened because prompts used the **short tab label only**. Do not go back to that. `npm test` must stay green (`src/lib/imageVisualPrompt.test.ts`, `src/lib/contentImageJobs.test.ts`).
 
 ## Invariants (code, not prompts)
 
@@ -18,6 +18,14 @@ Polymer screenshots (EVA astronaut, job-firing “Termination”, handshake “I
 ## Click & Reveal canvas
 
 Intro / prompt on the **left**; reveal rows on the **right**, not a full-width stack. [`src/components/interactions/ClickRevealInteraction.tsx`](src/components/interactions/ClickRevealInteraction.tsx). Do not restore stacked full-width fields that leave empty space after reveal.
+
+## Authoring AI images (do not regress)
+
+- **In-flow by default.** Generated tab/content images stay `imageUrl` / `introImageUrl` in the column. Do **not** auto-promote with `fi-ai-` / `fi-promo-` (overlays tab titles). `stripCourseAutoPromotedFloating` stays.
+- **Crop / move / resize like uploads:** authoring chrome on [`EnlargeableImage`](src/components/player/EnlargeableImage.tsx) (Crop + Move) lifts into [`FloatingImageCanvas`](src/components/FloatingImageCanvas.tsx) with id `fi-${Date.now()}`. Uploads still go straight to the float canvas.
+- **Edit → Generate AI images** fills remaining empty slots only (`collectContentImageJobs`, cap `MAX_CONTENT_AI_IMAGES` = 14). Skips quizzes/objectives and slides that already have `imageUrl` or a slide-level float.
+- **Edit → Generate AI image for this slide** passes `{ slideId }` — that slide’s empty slots only. Never a course-wide refill.
+- **Images only.** `applyContentImageUrl` writes `imageUrl` / `introImageUrl` / tab `imageUrl`. It must not rewrite OST, voice-over, interaction type, tab labels, or tab copy.
 
 ## How to change this
 

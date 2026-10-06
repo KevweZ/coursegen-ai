@@ -11,6 +11,17 @@ import {
   withImageNoTextRule,
   type VisualPromptInput,
 } from '../lib/imageVisualPrompt';
+import {
+  applyContentImageUrl,
+  collectContentImageJobs,
+} from '../lib/contentImageJobs';
+
+export {
+  MAX_CONTENT_AI_IMAGES,
+  applyContentImageUrl,
+  collectContentImageJobs,
+  topicBenefitsFromVisual,
+} from '../lib/contentImageJobs';
 
 const DEFAULT_IMAGE_MODEL = 'google/gemini-3.1-flash-image-preview';
 
@@ -783,166 +794,28 @@ export function applyCoverImageToCourse(
   };
 }
 
-/** Skip AI imagery on assessment / structural slides. */
-const AI_CONTENT_SKIP_TYPES = new Set([
-  'title', 'cover', 'module-cover', 'module-overview', 'course-objectives',
-  'learning-objectives', 'objectives', 'player-tour', 'knowledge-check', 'quiz',
-  'multiple-choice', 'multiple-answers', 'true-false', 'mastery-exam', 'exam-intro',
-  'exam-results', 'closing', 'scenario', 'game-template', 'matching', 'sorting',
-  'drop-targets',
-]);
-
-/**
- * Heuristic: only spend an AI image when the topic can be shown as a concrete visual
- * (signs, equipment, zones, vehicles…) — skip pure ideas / calculations / policy prose.
- */
-export function topicBenefitsFromVisual(label: string, content?: string): boolean {
-  const text = `${label || ''} ${content || ''}`.replace(/<[^>]+>/g, ' ').trim();
-  if (text.length < 2) return false;
-  const lower = text.toLowerCase();
-
-  if (/\b(calculat|equation|formula|algebra|percentage|budget|policy language|terms and conditions|learning objective)\b/i.test(lower)
-    && !/\b(sign|signal|vehicle|equipment|machine|zone|highway|school|traffic|pump|hvac|valve)\b/i.test(lower)) {
-    return false;
-  }
-
-  // Strong concrete visual cues (incl. industrial / process-plant SME decks)
-  if (/\b(sign|signal|stop|yield|light|traffic|vehicle|car|truck|bus|highway|school zone|residential|equipment|pump|valve|hvac|duct|motor|engine|pipe|panel|meter|gauge|tool|device|machine|intersection|crosswalk|lane|brake|steering|airbag|helmet|ppe|furnace|cracker|olefin|ethylene|reactor|distill|refinery|pipeline|compressor|tower|column|exchanger|catalyst|feedstock|vessel|tank|flare|steam|heat|process|schematic|diagram|plant|unit)\b/i.test(lower)) {
-    return true;
-  }
-
-  // Short concrete tab/slide labels (e.g. "Red Signs", "School Zones")
-  const words = (label || '').trim().split(/\s+/).filter(Boolean);
-  if (words.length > 0 && words.length <= 4 && !/^(how|why|what|when|overview|introduction|summary|tips|notes)\b/i.test(label)) {
-    return true;
-  }
-
-  return false;
-}
-
-const MAX_CONTENT_AI_IMAGES = 14;
-
 /**
  * Generate AI images for content slides and tab panels when they benefit from a visual.
  * Skips quizzes, knowledge checks, objectives/overview, and slides that already have an image.
  * Prefer leaving source-extracted imageUrl untouched.
+ * Does not rewrite OST, voice-over, interaction type, or tab copy — only image URL fields.
+ *
+ * Course-wide (Edit → Generate AI images): remaining empty slots, cap MAX_CONTENT_AI_IMAGES.
+ * `{ slideId }` (this slide only): empty slots on that slide, bypass visual heuristic, smaller cap.
  */
 export type ContentImageGenResult = { course: any; jobsAttempted: number };
 
 export async function generateContentSlideImages(
   course: any,
-  onProgress?: (done: number, total: number) => void
+  onProgress?: (done: number, total: number) => void,
+  opts?: { slideId?: string },
 ): Promise<ContentImageGenResult> {
   if (!course?.modules?.length) return { course, jobsAttempted: 0 };
 
-  type Job = {
-    kind: 'slide' | 'tab' | 'intro';
-    mi: number;
-    si: number;
-    tabIndex?: number;
-    subject: string;
-    slideTitle: string;
-    moduleTitle: string;
-    panelLabel: string;
-    panelBody: string;
-    mediaPrompt?: string;
-  };
-  const jobs: Job[] = [];
-  const introJobs: Job[] = [];
-
-  course.modules.forEach((m: any, mi: number) => {
-    (m.slides || []).forEach((s: any, si: number) => {
-      if (AI_CONTENT_SKIP_TYPES.has(s.type)) return;
-
-      if (s.type === 'content' || s.type === 'summary' || s.type === 'key-takeaways') {
-        if (s.imageUrl || s.coverImage) return;
-        if (!topicBenefitsFromVisual(s.title || '', s.content || '')) return;
-        jobs.push({
-          kind: 'slide',
-          mi,
-          si,
-          subject: s.title || 'course topic',
-          slideTitle: s.title || '',
-          moduleTitle: m.title || '',
-          panelLabel: s.title || 'course topic',
-          panelBody: s.content || s.voiceOverText || '',
-          mediaPrompt: s.mediaPrompt,
-        });
-        return;
-      }
-
-      if (s.type === 'tabbed-horizontal' || s.type === 'tabbed-vertical') {
-        const tabs = s.data?.tabs || s.data?.items || [];
-        // Intro panel first — prioritize within MAX_CONTENT_AI_IMAGES budget
-        if (!s.data?.introImageUrl) {
-          const introBody = s.content || s.data?.introContent || s.voiceOverText || s.narration || '';
-          if (topicBenefitsFromVisual(s.title || '', introBody)) {
-            introJobs.push({
-              kind: 'intro',
-              mi,
-              si,
-              subject: s.title || 'course topic',
-              slideTitle: s.title || '',
-              moduleTitle: m.title || '',
-              panelLabel: s.title || 'course topic',
-              panelBody: introBody,
-              mediaPrompt: s.mediaPrompt,
-            });
-          }
-        }
-        if (!Array.isArray(tabs)) return;
-        tabs.forEach((tab: any, tabIndex: number) => {
-          if (tab?.imageUrl) return;
-          const label = tab?.label || tab?.title || `Tab ${tabIndex + 1}`;
-          // Generic labels like "Introduction" still qualify via slide title + tab body
-          const body = `${tab?.content || ''} ${tab?.voiceOverText || ''} ${s.title || ''}`;
-          if (!topicBenefitsFromVisual(label, body) && !topicBenefitsFromVisual(s.title || '', tab?.content || '')) return;
-          const panelLabel = /^(introduction|overview|summary)$/i.test(String(label).trim())
-            ? (s.title || label)
-            : label;
-          jobs.push({
-            kind: 'tab',
-            mi,
-            si,
-            tabIndex,
-            subject: panelLabel,
-            slideTitle: s.title || label,
-            moduleTitle: m.title || '',
-            panelLabel,
-            panelBody: tab?.content || tab?.voiceOverText || s.content || '',
-            mediaPrompt: tab?.mediaPrompt || s.mediaPrompt,
-          });
-        });
-        return;
-      }
-
-      if (s.type === 'click-reveal' || s.type === 'accordion') {
-        const items = s.data?.items || [];
-        if (!Array.isArray(items)) return;
-        items.forEach((item: any, tabIndex: number) => {
-          if (item?.imageUrl) return;
-          const label = item?.title || item?.label || item?.term || `Item ${tabIndex + 1}`;
-          const body = item?.content || item?.definition || '';
-          if (!topicBenefitsFromVisual(label, body)) return;
-          jobs.push({
-            kind: 'tab',
-            mi,
-            si,
-            tabIndex,
-            subject: label,
-            slideTitle: s.title || label,
-            moduleTitle: m.title || '',
-            panelLabel: label,
-            panelBody: body,
-            mediaPrompt: item?.mediaPrompt || s.mediaPrompt,
-          });
-        });
-      }
-    });
+  const selected = collectContentImageJobs(course, {
+    slideId: opts?.slideId,
+    skipBenefitHeuristic: !!opts?.slideId,
   });
-
-  // Intro panels before content tabs / slides so opening narration is not left text-only
-  const selected = [...introJobs, ...jobs].slice(0, MAX_CONTENT_AI_IMAGES);
   if (!selected.length) {
     onProgress?.(0, 0);
     return { course, jobsAttempted: 0 };
@@ -979,35 +852,7 @@ export async function generateContentSlideImages(
     if (url) {
       await withLock(() => {
         const slide = modules[job.mi].slides[job.si];
-        if (job.kind === 'slide') {
-          modules[job.mi].slides[job.si] = { ...slide, imageUrl: url };
-        } else if (job.kind === 'intro') {
-          modules[job.mi].slides[job.si] = {
-            ...slide,
-            data: { ...(slide.data || {}), introImageUrl: url },
-          };
-        } else if (typeof job.tabIndex === 'number') {
-          if (slide.type === 'tabbed-horizontal' || slide.type === 'tabbed-vertical') {
-            const key = slide.data?.tabs ? 'tabs' : 'items';
-            const list = [...(slide.data?.[key] || [])];
-            if (list[job.tabIndex]) {
-              list[job.tabIndex] = { ...list[job.tabIndex], imageUrl: url };
-              modules[job.mi].slides[job.si] = {
-                ...slide,
-                data: { ...(slide.data || {}), [key]: list },
-              };
-            }
-          } else if (slide.type === 'click-reveal' || slide.type === 'accordion') {
-            const list = [...(slide.data?.items || [])];
-            if (list[job.tabIndex]) {
-              list[job.tabIndex] = { ...list[job.tabIndex], imageUrl: url };
-              modules[job.mi].slides[job.si] = {
-                ...slide,
-                data: { ...(slide.data || {}), items: list },
-              };
-            }
-          }
-        }
+        modules[job.mi].slides[job.si] = applyContentImageUrl(slide, job, url);
         console.log(`[ImageService] ✓ Content visual for "${job.subject}"`);
       });
     }

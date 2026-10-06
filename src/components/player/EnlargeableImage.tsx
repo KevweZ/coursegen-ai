@@ -119,11 +119,8 @@ export const EnlargeableImage: React.FC<EnlargeableImageProps> = ({
         />
         {authoring && (
           <div
-            className={cn(
-              'absolute top-2 right-2 z-[2] flex items-center gap-1',
-              'opacity-0 group-hover/enlarge:opacity-100 transition-opacity',
-              'focus-within:opacity-100'
-            )}
+            className="absolute top-2 right-2 z-[2] flex items-center gap-1"
+            data-ai-image-edit="toolbar"
           >
             {onCrop && (
               <button
@@ -134,15 +131,16 @@ export const EnlargeableImage: React.FC<EnlargeableImageProps> = ({
                   e.stopPropagation();
                   setCropOpen(true);
                 }}
-                className="flex items-center justify-center w-7 h-7 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+                className="flex items-center gap-1 h-7 px-2 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
               >
-                <Crop className="w-3.5 h-3.5" />
+                <Crop className="w-3.5 h-3.5 shrink-0" />
+                <span className="text-[10px] font-semibold pr-0.5">Crop</span>
               </button>
             )}
             {onPromoteToFloat && (
               <button
                 type="button"
-                title="Move and resize"
+                title="Move and resize — place the image on the slide like an upload"
                 aria-label="Move and resize"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -150,9 +148,10 @@ export const EnlargeableImage: React.FC<EnlargeableImageProps> = ({
                   if (!el) return;
                   onPromoteToFloat({ src, ...measurePromoteRect(el) });
                 }}
-                className="flex items-center justify-center w-7 h-7 rounded-full bg-sky-600 hover:bg-sky-500 text-white shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+                className="flex items-center gap-1 h-7 px-2 rounded-full bg-sky-600 hover:bg-sky-500 text-white shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
               >
-                <Move className="w-3.5 h-3.5" />
+                <Move className="w-3.5 h-3.5 shrink-0" />
+                <span className="text-[10px] font-semibold pr-0.5">Move</span>
               </button>
             )}
             {onRemove && (

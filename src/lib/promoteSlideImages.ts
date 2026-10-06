@@ -3,7 +3,8 @@
  * (correct layout inside panels). Only author-uploaded floatingMedia is seeded.
  *
  * Also strips auto-promoted floating overlays from a prior beta build that
- * broke tab layout by floating images over titles.
+ * broke tab layout by floating images over titles. Author "Move and resize"
+ * uses `fi-${Date.now()}` (kept). Do not restore `fi-ai-` auto-promote.
  */
 import type { FloatingImage } from '../types/course';
 

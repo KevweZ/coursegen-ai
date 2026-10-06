@@ -206,6 +206,7 @@ import { TrialInvitePanel } from './components/TrialInvitePanel';
 
 import { FloatingImage } from './types/course';
 import { stripCourseAutoPromotedFloating, floatingMapFromCourse } from './lib/promoteSlideImages';
+import { slideTypeSkipsAiContentImages } from './lib/contentImageJobs';
 import { buildReviewSnapshot, createReviewLink, fetchReviewSnapshot } from './lib/reviewLinkService';
 import { downloadReviewScriptDocx } from './lib/reviewScriptDocx';
 import { tocRefMapFirstWins } from './lib/playerToc';
@@ -4644,18 +4645,30 @@ export default function App() {
     showDraftMessage('Slide images cleared. Save the draft when ready.');
   };
 
-  /** Re-run AI content slide images for slides that lack imageUrl. */
-  const regenerateAiImages = async () => {
+  /** Fill remaining empty content visuals (course-wide, ~14 cap) or this slide only. Never rewrites OST/tabs. */
+  const runAiContentImages = async (opts?: { slideId?: string }) => {
     if (!course?.modules) return;
+    const thisSlideOnly = !!opts?.slideId;
+    if (thisSlideOnly && slideTypeSkipsAiContentImages(currentSlide?.type)) {
+      setShowEditMenu(false);
+      showDraftMessage(
+        'This slide type does not get AI images (quizzes, objectives, covers). Use Upload Image, or Generate AI images to fill remaining content slides.'
+      );
+      return;
+    }
     setShowEditMenu(false);
     setIsGeneratingImages(true);
     setImageProgress({ isRunning: false, isDone: false, current: 0, total: 0, error: null });
-    showDraftMessage('Generating AI images for slides without visuals…');
+    showDraftMessage(
+      thisSlideOnly
+        ? 'Generating AI image for this slide…'
+        : 'Generating AI images for slides without visuals…'
+    );
     try {
       const { generateContentSlideImages, generateCourseCoverImage } = await import('./services/imageService');
       let working: any = course;
       let coverMade = false;
-      if (!working.coverImage) {
+      if (!thisSlideOnly && !working.coverImage) {
         try {
           const cover = await generateCourseCoverImage(working.title || 'Course', working.description || '');
           if (cover) {
@@ -4668,21 +4681,27 @@ export default function App() {
           console.warn('[Images] Cover regen failed', e);
         }
       }
-      const { course: withImages, jobsAttempted } = await generateContentSlideImages(working, (done, total) => {
-        setImageProgress({
-          isRunning: done < total,
-          isDone: done >= total && total > 0,
-          current: done,
-          total,
-          error: null,
-        });
-      });
+      const { course: withImages, jobsAttempted } = await generateContentSlideImages(
+        working,
+        (done, total) => {
+          setImageProgress({
+            isRunning: done < total,
+            isDone: done >= total && total > 0,
+            current: done,
+            total,
+            error: null,
+          });
+        },
+        thisSlideOnly ? { slideId: opts!.slideId } : undefined,
+      );
       working = stripCourseAutoPromotedFloating(withImages);
       setFloatingImagesMap(floatingMapFromCourse(working));
       setCourse(working);
       if (!coverMade && jobsAttempted === 0) {
         showDraftMessage(
-          'No eligible slides for AI images. Objectives, overviews, and quizzes are skipped — only content/tabs that still need visuals are filled. Use Upload Image for a specific slide.'
+          thisSlideOnly
+            ? 'This slide already has an image, or it is not a content/tab slide. Remove the photo first to generate a new one. Crop and Move still work on the current image.'
+            : 'No eligible slides for AI images. Objectives, overviews, and quizzes are skipped — only content/tabs that still need visuals are filled. Use Upload Image for a specific slide.'
         );
       } else {
         const parts = [
@@ -4691,7 +4710,7 @@ export default function App() {
         ].filter(Boolean);
         showDraftMessage(
           parts.length
-            ? `AI images updated (${parts.join(', ')}). Save the draft to keep them.`
+            ? `AI images updated (${parts.join(', ')}). Text and interactions were not changed. Save the draft to keep them.`
             : 'AI images updated. Save the draft to keep them.'
         );
       }
@@ -4707,6 +4726,12 @@ export default function App() {
     } finally {
       setIsGeneratingImages(false);
     }
+  };
+
+  const regenerateAiImages = () => void runAiContentImages();
+  const regenerateAiImagesForCurrentSlide = () => {
+    if (!currentSlide?.id) return;
+    void runAiContentImages({ slideId: currentSlide.id });
   };
 
   const hydrateCourse = async () => {
@@ -6778,7 +6803,19 @@ export default function App() {
                               <ImageIcon className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                               <span>
                                 <span className="font-semibold block">Generate AI images</span>
-                                <span className="text-slate-500 text-[10px]">Fill slides that don’t have an image yet</span>
+                                <span className="text-slate-500 text-[10px]">Fill slides that don’t have an image yet (about 14). Does not change text or interactions.</span>
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isGeneratingImages || !currentSlide?.id}
+                              onClick={() => void regenerateAiImagesForCurrentSlide()}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-800 text-violet-200 disabled:opacity-40 flex items-start gap-2"
+                            >
+                              <ImageIcon className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                              <span>
+                                <span className="font-semibold block">Generate AI image for this slide</span>
+                                <span className="text-slate-500 text-[10px]">Visuals for the slide you’re viewing only</span>
                               </span>
                             </button>
                             <button
