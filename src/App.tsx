@@ -2375,10 +2375,10 @@ export default function App() {
         const qs = (Array.isArray(snapshot.examQuestions) && snapshot.examQuestions)
           || (Array.isArray(shell?.examQuestions) && shell.examQuestions)
           || [];
-        const cfg = snapshot.examConfig && typeof snapshot.examConfig === 'object'
+        const examCfgForSanitize = snapshot.examConfig && typeof snapshot.examConfig === 'object'
           ? { ...examConfig, ...snapshot.examConfig }
           : examConfig;
-        setExamQuestions(sanitizeMasteryExamQuestions(qs, shell, cfg));
+        setExamQuestions(sanitizeMasteryExamQuestions(qs, shell, examCfgForSanitize));
         if (snapshot.examConfig && typeof snapshot.examConfig === 'object') {
           setExamConfig(prev => ({ ...prev, ...snapshot.examConfig }));
         }
