@@ -307,37 +307,43 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
               )}
             </div>
           </div>
+        </div>
 
-          {/* Overhead tabs */}
-          <div className="flex gap-1 overflow-x-auto border-b border-slate-800 pb-px scrollbar-thin">
+          {/* Overhead tabs + panel — one bordered region so the active tab owns the content */}
+          <div className="rounded-2xl border-2 border-indigo-500/45 overflow-hidden bg-slate-950/40 shadow-[inset_0_1px_0_rgba(129,140,248,0.12)]">
+            <div className="flex gap-0 overflow-x-auto bg-slate-950/90 scrollbar-thin">
             {tabs.map(tab => (
               <button
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
-                  'flex items-center gap-1.5 whitespace-nowrap border-b-2 transition-all font-bold',
+                  'flex items-center gap-1.5 whitespace-nowrap border-b-[3px] transition-all font-bold',
                   compactMobile ? 'px-2.5 py-2 text-[11px]' : 'px-3.5 py-2.5 text-sm',
                   activeTab === tab.id
-                    ? 'border-indigo-500 text-white'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                    ? 'border-indigo-400 text-white bg-indigo-500/15'
+                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/80'
                 )}
               >
                 {tab.icon}
                 {tab.label}
               </button>
             ))}
-          </div>
-        </div>
+            </div>
+            <div className="px-4 pt-3 pb-1 border-b border-indigo-500/20 bg-indigo-500/5">
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-indigo-300">
+                Viewing {tabs.find(t => t.id === activeTab)?.label || 'settings'}
+              </p>
+            </div>
 
         {error && (
-          <div className="p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl flex items-center gap-3">
+          <div className="m-4 p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl flex items-center gap-3">
             <AlertCircle className="w-5 h-5 shrink-0" />
             <span className="text-sm font-bold">{error}</span>
           </div>
         )}
 
-        <div className="space-y-6">
+        <div className="space-y-6 p-4 sm:p-5">
           {activeTab === 'topic' && showTopic && (
             <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-6 flex flex-col shadow-xl">
               <div className="flex items-center gap-3 mb-6 border-b border-slate-800 pb-4">
@@ -1420,6 +1426,7 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
             </div>
           )}
         </div>
+          </div>
       </div>
     </div>
   );

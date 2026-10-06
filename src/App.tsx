@@ -87,6 +87,7 @@ import { collapseChoiceCardsOst, ensureSelectChoicePrompt, normalizeKeyTakeaways
 import { parseOstSectionGroups } from './lib/ostSectionGroups';
 import { hasLiveNarrationUrl } from './lib/narrationAudio';
 import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft, generateMasteryExam, generateInsertedContent } from './services/aiService';
+import { sanitizeMasteryExamQuestions } from './lib/masteryExam';
 import { createScormPackage, ScormVersion } from './services/scormService';
 import { FlashcardGrid } from './components/FlashcardGrid';
 import { ScenarioEngine } from './components/interactions/ScenarioEngine';
@@ -1185,7 +1186,7 @@ export default function App() {
         ? (snapshot as any).examQuestions
         : null);
     if (Array.isArray(restoredExamQs) && restoredExamQs.length) {
-      setExamQuestions(restoredExamQs);
+      setExamQuestions(sanitizeMasteryExamQuestions(restoredExamQs, applied.course, examConfig));
       setExamError(null);
     } else {
       setExamQuestions([]);
@@ -2374,7 +2375,10 @@ export default function App() {
         const qs = (Array.isArray(snapshot.examQuestions) && snapshot.examQuestions)
           || (Array.isArray(shell?.examQuestions) && shell.examQuestions)
           || [];
-        setExamQuestions(qs);
+        const cfg = snapshot.examConfig && typeof snapshot.examConfig === 'object'
+          ? { ...examConfig, ...snapshot.examConfig }
+          : examConfig;
+        setExamQuestions(sanitizeMasteryExamQuestions(qs, shell, cfg));
         if (snapshot.examConfig && typeof snapshot.examConfig === 'object') {
           setExamConfig(prev => ({ ...prev, ...snapshot.examConfig }));
         }
@@ -8119,11 +8123,15 @@ export default function App() {
                                      }
 
                                      // Prefer questions already built at course finalize / draft load
-                                     let questions = examQuestions;
+                                     let questions = sanitizeMasteryExamQuestions(examQuestions, course, examConfig);
                                      if ((!questions || questions.length === 0) && examGenPromiseRef.current) {
                                        setIsGeneratingExam(true);
                                        try {
-                                         questions = await examGenPromiseRef.current;
+                                         questions = sanitizeMasteryExamQuestions(
+                                           await examGenPromiseRef.current,
+                                           course,
+                                           examConfig,
+                                         );
                                        } finally {
                                          setIsGeneratingExam(false);
                                          examGenPromiseRef.current = null;
@@ -8151,6 +8159,9 @@ export default function App() {
                                        } finally {
                                          setIsGeneratingExam(false);
                                        }
+                                     } else if (questions !== examQuestions) {
+                                       setExamQuestions(questions);
+                                       setCourse(prev => prev ? { ...prev, examQuestions: questions } : prev);
                                      }
 
                                      setExamSession({

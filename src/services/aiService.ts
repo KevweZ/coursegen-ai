@@ -3,6 +3,7 @@ import { coerceCarouselColor } from "../lib/colorContrast";
 import { ensureEnablingSlideCoverage, preserveEnablingIndex, normalizeTerminalGroups, slideSkipsNarration, stripSlideNarration, isKnowledgeCheckSlide } from "../lib/enablingCoverage";
 import { allocateKnowledgeCheckSlots, alignHydratedSlidesToOutline, ensureKnowledgeCheckBudget } from "../lib/knowledgeCheckBudget";
 import { finalizeHydratedSlide, teachingSlideNeedsRetry, normalizeKeyTakeaways } from "../lib/hydrateGuards";
+import { sanitizeMasteryExamQuestions, examQuestionIsMeta } from "../lib/masteryExam";
 import { shortenCourseTitle, shortenModuleTitle } from "../lib/splitCourseTitle";
 import {
   STORYBOARD_SOURCE_CHARS,
@@ -1422,54 +1423,20 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
 
 // --- Mastery Quiz Generator ---
 
-function generateFallbackQuestions(course, config) {
-  var questions = [];
-  var qIdx = 0;
-  var modules = (course && course.modules) ? course.modules : [];
-  var types = (config && config.questionTypes && config.questionTypes.length)
-    ? config.questionTypes.filter(function (t) { return t === 'mc' || t === 'ma' || t === 'tf'; })
-    : ['mc', 'ma', 'tf'];
-  if (!types.length) types = ['mc', 'ma', 'tf'];
-  var totalNeeded = config.questionMode === 'total'
-    ? (config.questionCount || 5)
-    : (config.questionCount || 2) * Math.max(modules.length, 1);
-  var questionsPerModule = Math.ceil(totalNeeded / Math.max(modules.length, 1));
-
-  if (!modules.length) {
-    for (var n = 0; n < totalNeeded; n++) {
-      questions.push({
-        id: 'q-' + (n + 1),
-        type: 'mc',
-        question: '[Draft] What is a key learning point from this course?',
-        options: ['A core concept from the course', 'An unrelated topic', 'A concept from another domain', 'None of the above'],
-        correctAnswer: 0,
-        explanation: 'Draft placeholder generated when course content was unavailable.',
-        moduleIndex: 0,
-      });
-    }
-    return questions;
-  }
-
-  for (var mIdx = 0; mIdx < modules.length; mIdx++) {
-    var mod = modules[mIdx];
-    var slides = (mod && mod.slides && mod.slides.length) ? mod.slides : [{ title: mod.title || ('Module ' + (mIdx + 1)) }];
-    var moduleQ = config.questionMode === 'total'
-      ? (mIdx === modules.length - 1 ? totalNeeded - questions.length : questionsPerModule)
-      : (config.questionCount || 2);
-    for (var i = 0; i < moduleQ && questions.length < totalNeeded; i++) {
-      var slide = slides[i % slides.length] || { title: 'Topic ' + (i + 1) };
-      var type = types[qIdx % types.length];
-      qIdx++;
-      if (type === 'tf') {
-        questions.push({ id: 'q-' + (questions.length + 1), type: 'tf', question: '[Draft] "' + (slide.title || 'This topic') + '" is a key topic in this course.', options: ['True', 'False'], correctAnswer: 0, explanation: '"' + (slide.title || 'This topic') + '" is covered in Module ' + (mIdx + 1) + '.', moduleIndex: mIdx });
-      } else if (type === 'ma') {
-        questions.push({ id: 'q-' + (questions.length + 1), type: 'ma', question: '[Draft] Which are discussed in "' + (mod.title || 'this module') + '"? (Select all that apply)', options: [slides[0]?.title || 'Topic A', slides[1]?.title || 'Topic B', 'An unrelated concept', slides[2]?.title || 'Topic C'], correctAnswer: [0, 1, 3], explanation: 'Draft question — replace with AI content when available.', moduleIndex: mIdx });
-      } else {
-        questions.push({ id: 'q-' + (questions.length + 1), type: 'mc', question: '[Draft] What is the primary focus of "' + (slide.title || 'this topic') + '"?', options: [slide.title || 'Core topic', 'An unrelated topic', 'A concept from another module', 'None of the above'], correctAnswer: 0, explanation: 'Draft placeholder. Real questions are AI-generated from course content.', moduleIndex: mIdx });
-      }
-    }
-  }
-  return questions;
+async function requestMasteryExamPayload(
+  systemInstruction: string,
+  userPrompt: string,
+  timeoutMs: number,
+): Promise<ExamQuestion[] | null> {
+  const text = await Promise.race([
+    executeAnthropicAI('complex', systemInstruction, userPrompt, 8192),
+    new Promise<string>((_, reject) =>
+      setTimeout(() => reject(new Error(`Quiz generation timed out after ${Math.round(timeoutMs / 1000)}s`)), timeoutMs)
+    ),
+  ]);
+  const parsed = parseJsonSafely(text);
+  if (!parsed?.questions || !Array.isArray(parsed.questions) || parsed.questions.length === 0) return null;
+  return parsed.questions as ExamQuestion[];
 }
 
 export async function generateMasteryExam(
@@ -1490,15 +1457,11 @@ export async function generateMasteryExam(
     const slideSummaries = mod.slides
       .filter(s => !['title','intro','outro','exam-intro','mastery-exam','exam-results'].includes(s.type))
       .map(s => {
-        // Prefer on-screen content, then narration, then a compact dump of
-        // interaction payloads (quiz options, accordion items, etc.) so the
-        // quiz generator always has enough substance from source-converted
-        // courses where the content field can be very short.
-        const body = (s.content || s.voiceOverText || s.narration || '').slice(0, 220);
+        const body = (s.content || s.voiceOverText || s.narration || '').slice(0, 400);
         const dataHint = s.data
-          ? ` | data: ${JSON.stringify(s.data).slice(0, 180)}`
+          ? ` | data: ${JSON.stringify(s.data).slice(0, 360)}`
           : s.interactions?.length
-          ? ` | interactions: ${JSON.stringify(s.interactions).slice(0, 180)}`
+          ? ` | interactions: ${JSON.stringify(s.interactions).slice(0, 360)}`
           : '';
         return `  - [${s.type}] ${s.title}: ${body}${dataHint}`;
       })
@@ -1518,34 +1481,36 @@ RULES:
 4. ${config.questionMode === 'per-module' ? `Generate exactly ${config.questionCount} questions per module.` : `Distribute ${totalNeeded} questions evenly across ${course.modules.length} modules.`}
 5. Prefer questions that each test a different enabling objective. Only write a second question on the same enabling after every enabling in that module already has one.
 6. Each question must have a 1-sentence explanation.
-7. Test the CONTENT. NEVER ask whether a topic is a core idea in this module, is covered in this module, or appears in the course.
+7. Test a TECHNICAL FACT (cause, property, condition, sequence, outcome). NEVER ask whether a topic is a core idea / key topic / covered / discussed in this module or course. NEVER prefix questions with [Draft]. NEVER use options like "An unrelated topic", "A concept from another module", "None of the above", or "A core concept from the course".
 OUTPUT: Return ONLY valid JSON: { "questions": [{ "id": "q1", "type": "mc", "question": "...", "options": [...], "correctAnswer": 0, "explanation": "...", "moduleIndex": 0 }] }`;
 
   const objectivesJson = JSON.stringify(course.learningObjectives ?? []);
   const userPrompt = `Course: "${course.title ?? 'Untitled Course'}"
 Objectives: ${(objectivesJson || '[]').slice(0, 400)}
 Content:
-${(courseSummary || '').slice(0, 8000)}
+${(courseSummary || '').slice(0, 10000)}
 Generate ${totalNeeded} questions.`;
 
+  let raw: ExamQuestion[] | null = null;
   try {
-    // Cap wait time so "Begin Mastery Quiz" never appears frozen if the AI
-    // proxy hangs — fall through to content-derived fallback questions.
-    const text = await Promise.race([
-      executeAnthropicAI('complex', systemInstruction, userPrompt, 8192),
-      new Promise<string>((_, reject) =>
-        setTimeout(() => reject(new Error('Quiz generation timed out after 45s')), 45000)
-      ),
-    ]);
-    const parsed = parseJsonSafely(text);
-    if (parsed?.questions && Array.isArray(parsed.questions) && parsed.questions.length > 0) {
-      return (parsed.questions as ExamQuestion[]).slice(0, totalNeeded);
+    raw = await requestMasteryExamPayload(systemInstruction, userPrompt, 90000);
+    const metaShare = raw?.length
+      ? raw.filter(q => examQuestionIsMeta(q)).length / raw.length
+      : 1;
+    if (!raw?.length || metaShare > 0.4) {
+      console.warn('[generateMasteryExam] Retrying — empty or meta-heavy first pass');
+      raw = await requestMasteryExamPayload(
+        `${systemInstruction}\nRETRY: previous output was course-structure slop. Write only technical items.`,
+        userPrompt,
+        90000,
+      );
     }
-    return generateFallbackQuestions(course as any, examConfigForGen);
   } catch (err) {
-    console.warn('[generateMasteryExam] Falling back to draft questions:', err);
-    return generateFallbackQuestions(course as any, examConfigForGen);
+    console.warn('[generateMasteryExam] AI pass failed, using content-grounded questions:', err);
+    raw = null;
   }
+
+  return sanitizeMasteryExamQuestions(raw, course, examConfigForGen);
 }
 
 // ── Scenario Generation ───────────────────────────────────────────────────────

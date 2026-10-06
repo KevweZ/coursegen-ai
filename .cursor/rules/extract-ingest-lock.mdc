@@ -11,7 +11,7 @@ Anthony reversed the extract-first wait (2026-10-06): show Build now / Review im
 
 ## Invariants (code, not prompts)
 
-- **Offer Storyboard vs Content file** on the upload chooser immediately (`defaultSourceModeFromFileName` + `shouldOfferStoryboardChoice` in [`src/lib/storyboardSource.ts`](src/lib/storyboardSource.ts)). Filename containing “storyboard” defaults to Storyboard; do not wait for extract. Do not wait for a perfect screen-per-slide spec.
+- **Offer Storyboard vs Content file** on the upload chooser immediately (`defaultSourceModeFromFileName` + `shouldOfferStoryboardChoice` in [`src/lib/storyboardSource.ts`](src/lib/storyboardSource.ts)). Filename containing “storyboard” defaults to Storyboard; do not wait for extract. Do not wait for a perfect screen-per-slide spec. **Content file is the left card; Storyboard is the right card.**
 - **Build now / Review immediately.** [`UploadPathModal`](src/components/builder/UploadPathModal.tsx) shows path cards and Continue as soon as the file is chosen. Do not hide the cards behind extract. Extract runs in `runAnalysis` after Continue.
 - **Build now / Review copy.** Name both paths when mentioning Course Settings. Do not say “both options” above the cards.
 - **Thin / image-only** (`assessExtract` in [`src/lib/extractQuality.ts`](src/lib/extractQuality.ts)): warn, do not block. Image-only is under ~80 words; thin is under ~250. Warn after extract (analysis), not by locking Continue.

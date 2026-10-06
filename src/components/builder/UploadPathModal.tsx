@@ -59,22 +59,6 @@ export function UploadPathModal({
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={() => onSourceModeChange('storyboard')}
-                className={cn(
-                  'text-left p-3 rounded-xl border-2 text-sm transition-all',
-                  sourceMode === 'storyboard'
-                    ? 'border-indigo-500 bg-indigo-500/10 text-indigo-100'
-                    : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700'
-                )}
-              >
-                <span className="flex items-center gap-1.5 font-bold text-white">
-                  <LayoutList className="w-3.5 h-3.5 text-indigo-300" />
-                  Storyboard
-                </span>
-                <span className="text-xs mt-1 block leading-relaxed">Match listed learner screens and scripts.</span>
-              </button>
-              <button
-                type="button"
                 onClick={() => onSourceModeChange('raw')}
                 className={cn(
                   'text-left p-3 rounded-xl border-2 text-sm transition-all',
@@ -88,6 +72,22 @@ export function UploadPathModal({
                   Content file
                 </span>
                 <span className="text-xs mt-1 block leading-relaxed">Redesign the file into a course.</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onSourceModeChange('storyboard')}
+                className={cn(
+                  'text-left p-3 rounded-xl border-2 text-sm transition-all',
+                  sourceMode === 'storyboard'
+                    ? 'border-indigo-500 bg-indigo-500/10 text-indigo-100'
+                    : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700'
+                )}
+              >
+                <span className="flex items-center gap-1.5 font-bold text-white">
+                  <LayoutList className="w-3.5 h-3.5 text-indigo-300" />
+                  Storyboard
+                </span>
+                <span className="text-xs mt-1 block leading-relaxed">Match listed learner screens and scripts.</span>
               </button>
             </div>
           </div>

@@ -14,7 +14,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "test": "tsx --test src/lib/hydrateGuards.test.ts src/lib/knowledgeCheckBudget.test.ts src/lib/reviewAlignment.test.ts src/lib/enablingCoverage.test.ts src/lib/formatTabIntroOst.test.ts src/lib/imageVisualPrompt.test.ts src/lib/ostSectionGroups.test.ts src/lib/parkedInteractions.test.ts src/lib/extractQuality.test.ts src/lib/choiceCardCopy.test.ts src/lib/tabAccents.test.ts src/lib/objectiveFormat.test.ts src/lib/ttsErrors.test.ts src/lib/slideBackdrop.test.ts"
+    "test": "tsx --test src/lib/hydrateGuards.test.ts src/lib/knowledgeCheckBudget.test.ts src/lib/reviewAlignment.test.ts src/lib/enablingCoverage.test.ts src/lib/formatTabIntroOst.test.ts src/lib/imageVisualPrompt.test.ts src/lib/ostSectionGroups.test.ts src/lib/parkedInteractions.test.ts src/lib/extractQuality.test.ts src/lib/choiceCardCopy.test.ts src/lib/tabAccents.test.ts src/lib/objectiveFormat.test.ts src/lib/ttsErrors.test.ts src/lib/slideBackdrop.test.ts src/lib/masteryExam.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

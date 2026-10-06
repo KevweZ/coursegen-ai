@@ -138,7 +138,7 @@ export function quizHasLearnerPayload(slide: any): boolean {
 }
 
 const META_KC_RE =
-  /\b(?:is|as)\s+a\s+(?:core|key)\s+(?:idea|topic|concept)\s+in\s+this\s+module\b|\bcore\s+idea\s+in\s+this\s+module\b|\bkey\s+idea\s+covered\s+in\b|\bcovered\s+in\s+(?:this|the)\s+module\b|\bnot\s+part\s+of\s+this\s+module\b|\bnone\s+of\s+these\s+ideas\s+appear\b|\bappears?\s+in\s+(?:this|the)\s+(?:module|course)\b|\bunrelated\s+fact\s+from\s+outside\b/i;
+  /\[draft\]|\b(?:is|as)\s+a\s+(?:core|key)\s+(?:idea|topic|concept)\s+in\s+this\s+(?:module|course)\b|\bcore\s+idea\s+in\s+this\s+module\b|\bkey\s+(?:idea|topic)\s+in\s+this\s+(?:module|course)\b|\bkey\s+idea\s+covered\s+in\b|\bcovered\s+in\s+(?:this|the)\s+(?:module|course)\b|\bnot\s+part\s+of\s+this\s+module\b|\bnone\s+of\s+these\s+ideas\s+appear\b|\bappears?\s+in\s+(?:this|the)\s+(?:module|course)\b|\bunrelated\s+fact\s+from\s+outside\b|\ban unrelated topic\b|\ba concept from another (?:module|domain)\b|\bprimary focus of\s*["“']|\bwhich are discussed in\b|\bkey learning point from this course\b/i;
 
 /** Ban course-structure KCs ("is this a core idea in this module"). */
 export function isMetaKnowledgeCheckText(text: unknown): boolean {
