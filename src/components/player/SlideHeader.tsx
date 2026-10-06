@@ -10,6 +10,8 @@ interface SlideHeaderProps {
   className?: string;
   /** Module accent color — renders a gradient underline below the title when provided. */
   accentColor?: string;
+  /** Knowledge checks / quizzes use option-sized type so title, stem, and answers match. */
+  size?: 'default' | 'compact';
 }
 
 /**
@@ -22,7 +24,7 @@ interface SlideHeaderProps {
  * The underline always sits directly below the title so the visual hierarchy
  * is identical across ALL slide types: type label → title → underline → content.
  */
-export const SlideHeader: React.FC<SlideHeaderProps> = ({ title, theme, className, accentColor }) => {
+export const SlideHeader: React.FC<SlideHeaderProps> = ({ title, theme, className, accentColor, size = 'default' }) => {
   const colorClass =
     theme === 'light'
       ? 'text-slate-900'
@@ -34,7 +36,9 @@ export const SlideHeader: React.FC<SlideHeaderProps> = ({ title, theme, classNam
     <div className={cn('mb-6', className)}>
       <h2
         className={cn(
-          'font-extrabold text-3xl leading-tight tracking-tight mb-1.5 slide-title-balanced',
+          size === 'compact'
+            ? 'font-extrabold text-xl leading-snug tracking-tight mb-1.5 slide-title-balanced'
+            : 'font-extrabold text-3xl leading-tight tracking-tight mb-1.5 slide-title-balanced',
           colorClass
         )}
       >

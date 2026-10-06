@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, Target, CheckCircle2 } from 'lucide-react';
 import type { TerminalObjectiveGroup } from '../../types/course';
+import { repairDanglingObjectiveTail } from '../../lib/objectiveFormat';
 
 type Theme = 'light' | 'dark' | 'unified';
 
@@ -11,9 +12,18 @@ interface Props {
   moduleNumber?: number;
 }
 
+function tidy(text: string): string {
+  const next = repairDanglingObjectiveTail(text);
+  if (!next) return text;
+  return /[.!?]$/.test(next) ? next : `${next}.`;
+}
+
 function normalize(obj: string | TerminalObjectiveGroup): TerminalObjectiveGroup {
-  if (typeof obj === 'string') return { terminalObjective: obj, enablingObjectives: [] };
-  return { terminalObjective: obj.terminalObjective, enablingObjectives: obj.enablingObjectives || [] };
+  if (typeof obj === 'string') return { terminalObjective: tidy(obj), enablingObjectives: [] };
+  return {
+    terminalObjective: tidy(obj.terminalObjective),
+    enablingObjectives: (obj.enablingObjectives || []).map(tidy),
+  };
 }
 
 const ACCENT_COLORS = ['#4f46e5', '#0891b2', '#16a34a', '#d97706', '#9333ea', '#e11d48', '#0d9488'];

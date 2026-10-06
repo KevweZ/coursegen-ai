@@ -13,9 +13,11 @@ interface Props {
   progress: TTSProgress;
   /** Clears completed toast UI only — must not cancel an in-flight TTS job. */
   onDismiss?: () => void;
+  /** Resume missing clips after a lost job or partial failure. */
+  onRetry?: () => void;
 }
 
-export const TTSProgressToast: React.FC<Props> = ({ progress, onDismiss }) => {
+export const TTSProgressToast: React.FC<Props> = ({ progress, onDismiss, onRetry }) => {
   const [visible, setVisible] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -139,7 +141,7 @@ export const TTSProgressToast: React.FC<Props> = ({ progress, onDismiss }) => {
                   </p>
                 )}
                 {progress.error && progress.currentSlide > 0 && (
-                  <p className="text-xs text-red-400 mt-0.5 line-clamp-2">
+                  <p className="text-xs text-red-400 mt-0.5 leading-relaxed">
                     {progress.error}
                   </p>
                 )}
@@ -159,6 +161,15 @@ export const TTSProgressToast: React.FC<Props> = ({ progress, onDismiss }) => {
                 <span>Narration</span>
                 <span className="text-indigo-400">{pct}%</span>
               </div>
+            )}
+            {progress.isDone && !progress.isRunning && progress.error && onRetry && (
+              <button
+                type="button"
+                onClick={() => onRetry()}
+                className="mt-3 w-full px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold"
+              >
+                Retry remaining audio
+              </button>
             )}
           </div>
         </motion.div>

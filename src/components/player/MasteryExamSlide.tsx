@@ -82,7 +82,7 @@ const QuestionCard: React.FC<{
         </div>
       )}
 
-      <p className="text-slate-900 text-lg font-bold leading-snug">{q.question}</p>
+      <p className="text-slate-900 text-base font-bold leading-snug">{q.question}</p>
 
       <div className="space-y-2">
         {(q.options || []).map((opt, oIdx) => {
@@ -118,7 +118,7 @@ const QuestionCard: React.FC<{
               }`}>
                 {submitted && state === 'correct' ? '✓' : submitted && state === 'wrong' ? '✗' : String.fromCharCode(65 + oIdx)}
               </span>
-              <span className="text-sm">{opt}</span>
+              <span className="text-base leading-snug">{opt}</span>
             </button>
           );
         })}

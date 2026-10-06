@@ -190,11 +190,24 @@ export async function runFullQC(
   // AI scan is best-effort — structural report is always returned even if AI fails
   let aiScanFailed = false;
   try {
+    const batches: any[][] = [];
     for (let i = 0; i < allSlides.length; i += BATCH_SIZE) {
-      const batch = allSlides.slice(i, i + BATCH_SIZE);
-      const batchIssues = await scanBatch(batch);
-      rawAIIssues.push(...batchIssues);
+      batches.push(allSlides.slice(i, i + BATCH_SIZE));
     }
+    const QC_SCAN_CONCURRENCY = 3;
+    const workers = Math.min(QC_SCAN_CONCURRENCY, batches.length);
+    let cursor = 0;
+    const runWorker = async () => {
+      while (cursor < batches.length) {
+        const idx = cursor++;
+        const batchIssues = await scanBatch(batches[idx]).catch((err) => {
+          console.warn('[QC] Batch scan failed:', err);
+          return [] as RawAIIssue[];
+        });
+        rawAIIssues.push(...batchIssues);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.max(workers, 0) }, () => runWorker()));
   } catch {
     aiScanFailed = true;
     console.warn('[QC] AI scan unavailable — returning structural results only.');

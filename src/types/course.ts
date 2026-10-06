@@ -99,6 +99,10 @@ export interface Slide {
   imagePlaceholder?: boolean;
   /** AI-generated banner image data URL for title/cover slides */
   coverImage?: string;
+  /** Optional full-bleed photo behind the slide canvas */
+  backgroundImage?: string;
+  /** Dark overlay so on-screen text and interaction wells stay readable */
+  backgroundDim?: boolean;
   voiceOverText?: string;
   voiceOverUrl?: string;
   interactions?: Interaction[];

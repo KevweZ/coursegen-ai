@@ -91,7 +91,7 @@ function parseProxyError(status: number, raw: string): TTSRequestError {
 export function isTransientTtsNetworkError(err: unknown): boolean {
   if (err instanceof TTSRequestError) {
     if (TTS_FATAL_CODES.has(err.code)) return false;
-    if (err.code === 'TTS_NETWORK' || err.code === 'COLD_START') return true;
+    if (err.code === 'TTS_NETWORK' || err.code === 'COLD_START' || err.code === 'TTS_JOB_NOT_FOUND') return true;
     // Real proxy/gateway responses (not app-level job failures, which use 4xx/500).
     if (err.status === 502 || err.status === 503 || err.status === 504) return true;
   }
@@ -103,7 +103,8 @@ export function isTransientTtsNetworkError(err: unknown): boolean {
     msg.includes('network request failed') ||
     msg.includes('warming up') ||
     msg.includes('cold_start') ||
-    msg.includes('api proxy error')
+    msg.includes('api proxy error') ||
+    msg.includes('narration job not found')
   );
 }
 
@@ -162,6 +163,8 @@ export function formatTtsErrorForUser(err: unknown): string {
       case 'TTS_NETWORK':
       case 'COLD_START':
         return err.message || 'Narration server connection dropped. Retry — finished slides are kept and only missing audio is regenerated.';
+      case 'TTS_JOB_NOT_FOUND':
+        return 'The narration job was lost (the server restarted or the job expired). Finished clips are kept — Retry to generate the rest, or use Edit → Regenerate all narration.';
       default:
         return err.message;
     }

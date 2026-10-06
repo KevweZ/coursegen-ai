@@ -107,6 +107,7 @@ import { AddContentModal, type AddContentForm } from './components/builder/AddCo
 import { ReviewLinkModal } from './components/builder/ReviewLinkModal';
 import { EditSlideItemFields, sanitizeInteractionOstOnSave } from './components/builder/EditSlideItemFields';
 import { UploadPathModal, UploadPathChoice } from './components/builder/UploadPathModal';
+import { SlideBackdropMenu } from './components/builder/SlideBackdropMenu';
 import { PlayerPropertiesModal, PlayerConfig, defaultPlayerConfig } from './components/builder/PlayerPropertiesModal';
 import {
   DEFAULT_COURSE_SETTINGS,
@@ -122,6 +123,7 @@ import { CourseOutline, Slide, TerminalObjectiveGroup, ExamConfig, ExamQuestion,
 import { extractTextFromFile, extractImagesFromFile, EXTRACT_DEADLINE_MS, SourceImage } from './lib/fileProcessor';
 import { shouldOfferStoryboardChoice, storyboardSourceWindow, type SourceMode } from './lib/storyboardSource';
 import { assessExtract, type ExtractQuality } from './lib/extractQuality';
+import { reformatObjectiveGroups } from './lib/objectiveFormat';
 import { generateGameTemplate, generateStandaloneGame } from './services/aiGameService';
 import { GameContainer } from './components/game-templates/core/GameContainer';
 import { getRandomBackgroundForTheme } from './lib/backgrounds';
@@ -3608,100 +3610,10 @@ export default function App() {
     await hydrateCourse();
   };
 
-/**
-   * Client-side objective reformatter.
-   * Extracts the core "verb + outcome" from any AB/ABC/ABCD formatted string,
-   * then re-wraps it cleanly in the target format.
-   *
-   * Strip order:  Given[condition],  →  The learner will  →  trailing .  →  trailing degree clause  →  trailing .
-   * Reapply:       AB / ABC / ABCD wrappers
-   */
   const reformatObjectivesClientSide = (
     objectives: (string | TerminalObjectiveGroup)[],
-    fmt: string
-  ): TerminalObjectiveGroup[] => {
-
-    const applyFormat = (raw: string): string => {
-      let s = raw.trim();
-
-      // ── 1. Capture + strip "Given [condition], " ──────────────────────────
-      // Preserve the original condition so ABC→ABCD doesn't lose specificity
-      let condition = ''; // will be derived from verb if no existing Given
-      const givenMatch = s.match(/^Given\s+([^,]+),\s+/i);
-      if (givenMatch) {
-        condition = givenMatch[1].trim();
-        s = s.slice(givenMatch[0].length).trim();
-      }
-
-      // ── 2. Strip "The learner will " / "the learner will " ────────────────
-      s = s.replace(/^[Tt]he learner will\s+/i, '').trim();
-
-      // ── 3. Strip trailing period ──────────────────────────────────────────
-      s = s.replace(/\.+$/, '').trim();
-
-      // ── 4. Strip trailing degree / standard clause ────────────────────────
-      s = s.replace(/\s+(?:to\s+\S|with\s+\S).+$/i, '').trim();
-
-      // ── 5. Strip any trailing period that snuck through ───────────────────
-      s = s.replace(/\.+$/, '').trim();
-
-      // ── 6. Derive condition from verb when none was present ───────────────
-      if (!condition) {
-        // Extract the first word (the Bloom's verb) from the core action
-        const verb = s.split(/\s+/)[0]?.toLowerCase() ?? '';
-        const verbConditionMap: Record<string, string> = {
-          // Remembering
-          recall:     'a list of key terms',
-          identify:   'a scenario',
-          define:     'a glossary of terms',
-          list:       'course content',
-          name:       'a labeled diagram',
-          recognize:  'practical examples',
-          state:      'course content',
-          label:      'a diagram or model',
-          match:      'matching items',
-          outline:    'course content',
-          retrieve:   'course content',
-          locate:     'a resource or document',
-          // Understanding
-          describe:   'a written scenario',
-          explain:    'a case study',
-          summarize:  'a written report',
-          classify:   'a set of examples',
-          compare:    'two or more examples',
-          contrast:   'two or more examples',
-          interpret:  'a data set or report',
-          paraphrase: 'a written passage',
-          categorize: 'a set of items',
-          distinguish: 'common challenges',
-          illustrate: 'practical examples',
-        };
-        condition = verbConditionMap[verb] ?? 'relevant examples';
-      }
-
-      // ── 6. Re-apply the selected format ──────────────────────────────────
-      switch (fmt) {
-        case 'AB':
-          return `The learner will ${s}.`;
-        case 'ABC':
-          return `Given ${condition}, the learner will ${s}.`;
-        case 'ABCD':
-          return `Given ${condition}, the learner will ${s} with at least 80% accuracy.`;
-        default:
-          return `The learner will ${s}.`;
-      }
-    };
-
-    return objectives.map(obj => {
-      if (typeof obj === 'string') {
-        return { terminalObjective: applyFormat(obj), enablingObjectives: [] };
-      }
-      return {
-        terminalObjective: applyFormat(obj.terminalObjective),
-        enablingObjectives: (obj.enablingObjectives || []).map(applyFormat),
-      };
-    });
-  };
+    fmt: string,
+  ): TerminalObjectiveGroup[] => reformatObjectiveGroups(objectives, fmt);
 
 
 
@@ -4005,8 +3917,10 @@ export default function App() {
       const examCfg = examConfigSnap;
       examGenPromiseRef.current = generateMasteryExam(stamped, examCfg)
         .then((questions) => {
+          setIsGeneratingExam(false);
           if (questions?.length) {
             setExamQuestions(questions);
+            setCourse(prev => prev ? { ...prev, examQuestions: questions } : prev);
             return questions;
           }
           setExamError('No quiz questions could be generated. You can retry from the Mastery Quiz intro.');
@@ -4015,6 +3929,7 @@ export default function App() {
         .catch((err: any) => {
           console.error('[Mastery Quiz] Pre-generation failed:', err);
           setExamError(err?.message || 'Quiz generation failed.');
+          setIsGeneratingExam(false);
           return [] as ExamQuestion[];
         });
     } else {
@@ -4095,6 +4010,8 @@ export default function App() {
               ...s,
               coverImage: s.coverImage || src.coverImage,
               imageUrl: s.imageUrl || src.imageUrl,
+              backgroundImage: s.backgroundImage || src.backgroundImage,
+              backgroundDim: s.backgroundDim ?? src.backgroundDim,
               floatingMedia: (s.floatingMedia?.length ? s.floatingMedia : src.floatingMedia) || s.floatingMedia,
               data: mergedData,
             };
@@ -4142,6 +4059,8 @@ export default function App() {
               ...s,
               voiceOverUrl: s.voiceOverUrl || p.voiceOverUrl,
               audioUrl: s.audioUrl || p.audioUrl,
+              backgroundImage: s.backgroundImage || p.backgroundImage,
+              backgroundDim: s.backgroundDim ?? p.backgroundDim,
               data,
             };
           }),
@@ -4373,6 +4292,30 @@ export default function App() {
     // ── Content visuals + QC + exam (after preview) ───────────────────
     void (async () => {
       try {
+        const qcTask = (async () => {
+          setIsRunningQC(true);
+          setQcPhase('structural');
+          showDraftMessage('Running quality check…');
+          return runFullQC(working, voiceSnapshot, (phase) => {
+            if (stillActive()) setQcPhase(phase);
+          });
+        })();
+        // Surface QC as soon as the scan finishes — do not keep the Quality
+        // button spinning for the rest of image generation.
+        void qcTask
+          .then((report) => {
+            if (!stillActive()) return;
+            setQcReport(report);
+            showDraftMessage('Quality check ready ✓');
+          })
+          .catch(() => { /* non-fatal */ })
+          .finally(() => {
+            if (stillActive()) {
+              setIsRunningQC(false);
+              setQcPhase(null);
+            }
+          });
+
         if (runImagery) {
           try {
             showDraftMessage('Generating content visuals…');
@@ -4406,14 +4349,8 @@ export default function App() {
         if (!stillActive()) return;
 
         try {
-          setIsRunningQC(true);
-          setQcPhase('structural');
-          showDraftMessage('Running quality check…');
-          const report = await runFullQC(working, voiceSnapshot, (phase) => {
-            if (stillActive()) setQcPhase(phase);
-          });
+          const report = await qcTask;
           if (!stillActive()) return;
-          setQcReport(report);
           if (report.issues.some(i => i.autoFixable)) {
             const { course: fixedCourse } = autoFixCourse(working, report);
             const merged = mergeImageryInto(fixedCourse, working, coverUrl);
@@ -4421,14 +4358,8 @@ export default function App() {
             if (!stillActive()) return;
             commitCourse(seeded);
           }
-          showDraftMessage('Quality check ready ✓');
         } catch {
           // QC failure is non-fatal
-        } finally {
-          if (stillActive()) {
-            setIsRunningQC(false);
-            setQcPhase(null);
-          }
         }
 
         if (!stillActive()) return;
@@ -4452,7 +4383,10 @@ export default function App() {
           try {
             const qs = await examGenPromiseRef.current;
             if (qs?.length && stillActive()) {
-              commitCourse({ ...working, examQuestions: qs });
+              setExamQuestions(qs);
+              setCourse(prev => prev ? { ...prev, examQuestions: qs } : prev);
+              setOriginalCourse(prev => prev ? { ...prev, examQuestions: qs } : prev);
+              working = { ...working, examQuestions: qs };
             }
           } catch (e) {
             console.warn('[Mastery Quiz] Await pre-generation failed:', e);
@@ -4611,6 +4545,31 @@ export default function App() {
       console.error('[TTS] Regenerate all failed:', err);
       const { formatTtsErrorForUser } = await import('./services/ttsService');
       showDraftMessage(formatTtsErrorForUser(err) || 'Failed to regenerate narration.');
+    }
+  };
+
+  const retryMissingNarration = async () => {
+    if (!course?.modules) return;
+    if (ttsProgress.isRunning) {
+      showDraftMessage('Narration is already generating…');
+      return;
+    }
+    showDraftMessage('Retrying remaining narration…');
+    try {
+      const syntheticJobs = collectSyntheticNarrationJobs(allSlides).map(j => ({
+        ...j,
+        title: j.id,
+      }));
+      await generateTTS(course, setCourse, ttsVoice, undefined, {
+        onlyMissing: true,
+        synthetic: syntheticJobs,
+        setSyntheticAudioMap,
+      });
+      showDraftMessage('Remaining narration queued. Save the draft to keep audio.');
+    } catch (err: any) {
+      console.error('[TTS] Retry remaining failed:', err);
+      const { formatTtsErrorForUser } = await import('./services/ttsService');
+      showDraftMessage(formatTtsErrorForUser(err) || 'Failed to retry narration.');
     }
   };
 
@@ -6830,6 +6789,17 @@ export default function App() {
                       />
                     </label>
 
+                    {!isLearnerPlayer && (
+                      <SlideBackdropMenu
+                        course={course}
+                        slideId={currentSlide?.id}
+                        onApply={(next) => {
+                          pushUndo();
+                          setCourse(next);
+                        }}
+                      />
+                    )}
+
                     {sourceImages.length > 0 && currentSlide?.id && (
                       <button
                         type="button"
@@ -7177,7 +7147,7 @@ export default function App() {
                         animate={{ opacity: 1 }}
                         transition={{ duration: 0.18 }}
                         className={cn(
-                          "w-full min-h-0",
+                          "w-full min-h-0 relative",
                           isFullBleed
                             ? "absolute inset-0 overflow-hidden"
                             : cn(
@@ -7185,16 +7155,26 @@ export default function App() {
                                 isPhoneViewport
                                   ? 'px-4 pb-6 pt-4'
                                   : 'px-8 md:px-12 pb-4 pt-8 md:pt-12',
-                                theme === 'light' ? 'bg-white text-slate-900' : theme === 'unified' ? 'bg-indigo-950 text-slate-100' : 'bg-slate-900 text-white'
+                                currentSlide?.backgroundImage
+                                  ? 'bg-transparent'
+                                  : theme === 'light' ? 'bg-white text-slate-900' : theme === 'unified' ? 'bg-indigo-950 text-slate-100' : 'bg-slate-900 text-white'
                               )
                         )}
+                        style={currentSlide?.backgroundImage ? {
+                          backgroundImage: `url(${currentSlide.backgroundImage})`,
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center',
+                        } : undefined}
                       >
+                        {!!currentSlide?.backgroundImage && currentSlide?.backgroundDim !== false && (
+                          <div className="absolute inset-0 bg-slate-950/50 pointer-events-none z-0" />
+                        )}
                         {!isFullBleed && (
                           <div className="w-[120%] h-[120%] absolute -top-[10%] -left-[10%] pointer-events-none opacity-[0.03] mix-blend-overlay"></div>
                         )}
                         <div className={cn(
                           isFullBleed
-                            ? "w-full h-full"
+                            ? "relative z-10 w-full h-full"
                             : "relative z-10 w-full flex flex-col min-h-full"
                         )}>
                           <div className={cn(
@@ -7448,7 +7428,7 @@ export default function App() {
                                  const scenario = currentQ.scenarioText || quizScenarioText(quiz) || quizScenarioText(currentSlide);
                                  return (
                                    <div className="space-y-5 w-full">
-                                     <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
+                                     <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} size="compact" />
                                      {questions.length > 1 && (
                                        <p className={cn('text-xs font-bold uppercase tracking-wider', theme === 'light' ? 'text-indigo-600' : 'text-indigo-400')}>
                                          Question {qIndex + 1} of {questions.length}
@@ -7456,13 +7436,13 @@ export default function App() {
                                      )}
                                      {scenario && (
                                        <div className={cn(
-                                         'p-4 rounded-xl border text-sm leading-relaxed',
+                                         'p-4 rounded-xl border text-base leading-relaxed',
                                          theme === 'light' ? 'bg-amber-50 border-amber-200 text-slate-800' : 'bg-amber-500/10 border-amber-500/30 text-slate-100'
                                        )}>
                                          {scenario}
                                        </div>
                                      )}
-                                     <p className={cn('font-bold text-xl lg:text-2xl leading-snug', theme === 'light' ? 'text-slate-800' : 'text-slate-100')}>{currentQ.questionText}</p>
+                                     <p className={cn('font-bold text-base leading-snug', theme === 'light' ? 'text-slate-800' : 'text-slate-100')}>{currentQ.questionText}</p>
                                      <div className="space-y-3 w-full max-w-4xl">
                                        {currentQ.options.map((opt: any, i: number) => {
                                          const label = opt.text || opt.label || opt;
@@ -7535,16 +7515,16 @@ export default function App() {
                                  const isAllCorrect = maState.submitted && maState.selected.length === correctIndices.length && maState.selected.every((i: number) => correctIndices.includes(i));
                                  return (
                                    <div className="space-y-5 w-full">
-                                     <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
+                                     <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} size="compact" />
                                      {(quizScenarioText(quiz) || quizScenarioText(currentSlide)) && (
                                        <div className={cn(
-                                         'p-4 rounded-xl border text-sm leading-relaxed',
+                                         'p-4 rounded-xl border text-base leading-relaxed',
                                          theme === 'light' ? 'bg-amber-50 border-amber-200 text-slate-800' : 'bg-amber-500/10 border-amber-500/30 text-slate-100'
                                        )}>
                                          {quizScenarioText(quiz) || quizScenarioText(currentSlide)}
                                        </div>
                                      )}
-                                     <p className={cn('font-bold text-lg', theme === 'light' ? 'text-slate-800' : 'text-slate-100')}>{alignQuizSelectPrompt(quiz.questionText || quiz.prompt || quiz.question, quiz.options)}</p>
+                                     <p className={cn('font-bold text-base leading-snug', theme === 'light' ? 'text-slate-800' : 'text-slate-100')}>{alignQuizSelectPrompt(quiz.questionText || quiz.prompt || quiz.question, quiz.options)}</p>
                                      <p className={cn('text-xs font-bold uppercase tracking-wider', theme === 'light' ? 'text-indigo-600' : 'text-indigo-400')}>Select all correct answers</p>
                                      <div className="space-y-2.5 w-full">
                                        {quiz.options.map((opt: any, i: number) => {
@@ -7572,7 +7552,7 @@ export default function App() {
                                              <div className={cn('w-5 h-5 rounded border-2 shrink-0 mt-0.5 flex items-center justify-center', isSelected ? 'border-indigo-500 bg-indigo-500' : 'border-gray-300')}>
                                                {isSelected && <div className="w-2.5 h-2.5 bg-white" style={{clipPath:'polygon(20% 50%, 0% 70%, 40% 100%, 100% 20%, 80% 0%, 40% 60%)'}} />}
                                              </div>
-                                             <span className="flex-1 leading-snug text-sm">{label}</span>
+                                             <span className="flex-1 leading-snug text-base">{label}</span>
                                              {maState.submitted && isCorrect && <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />}
                                            </button>
                                          );
@@ -7640,7 +7620,7 @@ export default function App() {
                                   if (!matchingProps.items.length || !matchingProps.targets.length) {
                                     return (
                                       <div className="space-y-6 w-full">
-                                        <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
+                                        <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} size="compact" />
                                         <EmptySlideRegenerate
                                           title={currentSlide.title}
                                           isRegenerating={regeneratingSlideId === currentSlide.id || isRegenSlideRunning}
@@ -7665,7 +7645,7 @@ export default function App() {
                                   }
                                   return (
                                     <div className="space-y-6 w-full">
-                                      <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
+                                      <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} size="compact" />
                                       <KnowledgeCheckFraming content={currentSlide.content} theme={theme} accentColor={slideAccentColor} />
                                                                              <CustomMatchingActivity
                                         items={matchingProps.items || []}
@@ -7728,7 +7708,7 @@ export default function App() {
 
                                {currentSlide?.type === 'sorting' && (
                                   <div className="space-y-6 w-full">
-                                     <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
+                                     <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} size="compact" />
                                      <KnowledgeCheckFraming content={currentSlide.content} instruction={SORTING_REORDER_HINT} theme={theme} accentColor={slideAccentColor} />
                                      <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                         <CustomSortingActivity items={(currentSlide.data || currentSlide.interactions?.[0] || {}).items || []} correctOrder={(currentSlide.data || currentSlide.interactions?.[0] || {}).correctOrder || []} theme={theme} onChecked={() => markKcChecked(currentSlide.id)} />
@@ -8152,14 +8132,7 @@ export default function App() {
 
                                {/* MASTERY EXAM QUESTIONS */}
                                {currentSlide?.type === 'mastery-exam' && (
-                                 isGeneratingExam ? (
-                                   // Still generating — show progress spinner
-                                   <div className="flex flex-col items-center justify-center gap-4 h-full">
-                                     <Loader2 className="w-10 h-10 animate-spin text-indigo-400" />
-                                     <p className="text-slate-300 font-semibold">Generating quiz questions…</p>
-                                     <p className="text-slate-500 text-sm">This may take up to 30 seconds</p>
-                                   </div>
-                                 ) : examPhase === 'active' && (examSession.questions.length > 0 || examQuestions.length > 0) ? (
+                                 examPhase === 'active' && (examSession.questions.length > 0 || examQuestions.length > 0) ? (
                                    <div className="w-full h-full min-h-0">
                                    <MasteryExamSlide
                                      questions={examSession.questions.length > 0 ? examSession.questions : examQuestions}
@@ -8177,9 +8150,17 @@ export default function App() {
                                    />
                                    </div>
                                  ) : examPhase === 'idle' ? (
-                                   // Landed on mastery-exam slide without going through intro — redirect back
                                    <div className="flex flex-col items-center justify-center gap-4 h-full">
-                                     <p className="text-slate-400 text-sm">Please start the quiz from the intro screen.</p>
+                                     <p className="text-slate-700 font-semibold">
+                                       {isGeneratingExam && examQuestions.length === 0
+                                         ? 'Quiz questions are still being prepared.'
+                                         : 'Start the quiz from the Mastery Quiz intro.'}
+                                     </p>
+                                     <p className="text-slate-500 text-sm text-center max-w-md">
+                                       {isGeneratingExam && examQuestions.length === 0
+                                         ? 'Return to the intro — Begin Quiz unlocks when the bank is ready. You should not wait on this slide.'
+                                         : 'Use the intro screen to begin. Questions are generated with the course, not when you open this page.'}
+                                     </p>
                                      <button onClick={() => setCurrentSlideIndex(examIntroIndex)}
                                        className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold transition-all">
                                        Go to Quiz Intro
@@ -9947,6 +9928,7 @@ export default function App() {
         <TTSProgressToast
           progress={ttsProgress}
           onDismiss={clearTTSProgress}
+          onRetry={() => void retryMissingNarration()}
         />
 
         {/* Interaction Preview Modal */}
