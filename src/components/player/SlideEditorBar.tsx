@@ -80,15 +80,15 @@ export function SlideEditorBar({
         Reset Layout
       </button>
 
-      {/* Upload Image */}
+      {/* Upload Media */}
       <label className={base} htmlFor="editor-img-upload" id="editor-btn-upload-image">
         <Upload className="w-3.5 h-3.5 text-emerald-400" />
-        Upload Image
+        Upload Media
         <input
           ref={imgInputRef}
           id="editor-img-upload"
           type="file"
-          accept="image/*"
+          accept="image/*,video/*"
           multiple
           className="hidden"
           onChange={e => {

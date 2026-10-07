@@ -215,6 +215,28 @@ export default function TabbedContentVertical({
           className="flex flex-col gap-2 w-[150px] sm:w-[170px] shrink-0 overflow-y-auto custom-scrollbar min-h-0"
           style={{ maxHeight: PANEL_H }}
         >
+          <button
+            type="button"
+            data-tab-drop-zone="__intro__"
+            onClick={selectIntro}
+            aria-label="Introduction"
+            aria-current={inIntro ? 'true' : undefined}
+            className={cn(
+              'flex items-center gap-2 w-full text-left px-3 py-2.5 rounded-xl font-bold text-sm transition-all border',
+              inIntro
+                ? 'border-transparent shadow-lg'
+                : isLight
+                ? 'bg-white text-slate-800 border-slate-200 hover:bg-slate-50'
+                : 'bg-slate-800/60 text-slate-400 border-slate-700 hover:bg-slate-700/60 hover:text-slate-200',
+              highlightTabId === '__intro__' && 'ring-2 ring-indigo-400 ring-offset-1'
+            )}
+            style={inIntro
+              ? { background: introHex, boxShadow: `0 0 0 2px ${introHex}55`, color: introTitleColor }
+              : (isLight ? { borderLeft: `4px solid ${introHex}` } : undefined)}
+          >
+            <span className="flex-1 leading-snug" style={{ color: inIntro ? introTitleColor : undefined }}>Introduction</span>
+            {inIntro && <ChevronRight className="w-4 h-4 shrink-0" />}
+          </button>
           {normalized.map((tab, i) => {
             const isActive = i === activeIndex;
             const hex = tabAccentHex(tab, i);
@@ -452,6 +474,22 @@ function VerticalTabsBlocksSkin({
           className="flex flex-col w-[168px] sm:w-[196px] shrink-0 min-h-0 overflow-y-auto custom-scrollbar"
           style={{ maxHeight: PANEL_H, gap: 2, background: isLight ? '#ffffff' : well }}
         >
+          <button
+            type="button"
+            data-tab-drop-zone="__intro__"
+            onClick={selectIntro}
+            aria-label="Introduction"
+            aria-current={inIntro ? 'true' : undefined}
+            className={cn(
+              'relative flex items-center justify-center w-full flex-1 min-h-[64px] px-3 py-2 text-center font-extrabold text-[11px] sm:text-xs leading-tight uppercase tracking-wide border-0',
+              highlightTabId === '__intro__' && 'ring-2 ring-indigo-400 ring-inset'
+            )}
+            style={blockFillStyle(introHex, inIntro, introHex, well, wellInk, isLight)}
+          >
+            <span className="block w-full px-2" style={{ color: inIntro ? wellInk : (isLight ? '#0f172a' : contrastTextOn(introHex)) }}>
+              Introduction
+            </span>
+          </button>
           {normalized.map((tab, i) => {
             const isActive = i === activeIndex;
             const hex = tabAccentHex(tab, i);

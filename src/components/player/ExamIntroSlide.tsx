@@ -18,6 +18,8 @@ interface Props {
   moduleCount?: number;
   /** Generated quiz length — preferred over the settings formula when present */
   actualQuestionCount?: number;
+  /** When set, Begin stays disabled (hub: finish every module first). */
+  lockedReason?: string | null;
 }
 
 const typeLabelMap: Record<string, string> = {
@@ -35,6 +37,7 @@ export const ExamIntroSlide: React.FC<Props> = ({
   errorMessage = null,
   moduleCount = 0,
   actualQuestionCount = 0,
+  lockedReason = null,
 }) => {
   const totalQuestions = resolveMasteryQuizQuestionCount(
     examConfig,
@@ -115,8 +118,8 @@ export const ExamIntroSlide: React.FC<Props> = ({
           type="button"
           whileHover={isGenerating && !questionsReady ? undefined : { scale: 1.02 }}
           whileTap={isGenerating && !questionsReady ? undefined : { scale: 0.98 }}
-          onClick={() => { if (!(isGenerating && !questionsReady)) onBegin(); }}
-          disabled={isGenerating && !questionsReady}
+          onClick={() => { if (!lockedReason && !(isGenerating && !questionsReady)) onBegin(); }}
+          disabled={!!lockedReason || (isGenerating && !questionsReady)}
           className="w-full py-4 bg-slate-900 hover:bg-slate-800 disabled:opacity-70 disabled:cursor-wait text-white font-extrabold text-lg rounded-2xl transition-colors shadow-lg shadow-slate-900/20 flex items-center justify-center gap-3"
         >
           {isGenerating && !questionsReady ? (
@@ -131,6 +134,9 @@ export const ExamIntroSlide: React.FC<Props> = ({
             </>
           )}
         </motion.button>
+        {lockedReason && (
+          <p className="text-center text-xs text-amber-700 font-semibold">{lockedReason}</p>
+        )}
         {questionsReady && (
           <p className="text-center text-xs text-emerald-600 font-semibold">Quiz ready — questions were prepared with your course.</p>
         )}

@@ -148,6 +148,13 @@ export default function TabbedContentHorizontal({
     );
   }
 
+  const selectIntro = () => {
+    resetScrollTop();
+    setActiveIndex(-1);
+    onTabView?.('__intro__');
+    onTabAudio?.('__intro__');
+  };
+
   const selectTab = (i: number) => {
     resetScrollTop();
     setActiveIndex(i);
@@ -298,6 +305,20 @@ export default function TabbedContentHorizontal({
         >
           <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ background: activeColor }} />
           <div className="relative z-[1] flex items-center justify-center gap-3 sm:gap-4 w-full px-5 py-4">
+            <button
+              type="button"
+              data-tab-drop-zone="__intro__"
+              onClick={selectIntro}
+              title="Introduction"
+              aria-label="Introduction"
+              aria-current={inIntro ? 'true' : undefined}
+              className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-[15px] font-black italic border-2 ${
+                highlightTabId === '__intro__' ? 'ring-2 ring-indigo-400 ring-offset-2' : ''
+              }`}
+              style={inIntro ? circleActive : circleIdle}
+            >
+              i
+            </button>
             {normalized.map((tab, i) => {
               const isActive = i === activeIndex;
               const isDone = !inIntro && i < activeIndex;

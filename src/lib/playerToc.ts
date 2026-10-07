@@ -9,6 +9,7 @@ export const TOC_UNNUMBERED_TYPES = new Set([
   'cover',
   'player-tour',
   'course-objectives',
+  'hub-menu',
   'module-cover',
   'exam-intro',
   'mastery-exam',
@@ -23,7 +24,7 @@ export function isTocNumberedSlide(slide: TocSlide): boolean {
   const type = String(slide.type || '');
   if (TOC_UNNUMBERED_TYPES.has(type)) return false;
   const id = String(slide.id || '');
-  if (id === '__cover__' || id === '__player-tour__' || id === '__course-objectives__') return false;
+  if (id === '__cover__' || id === '__player-tour__' || id === '__course-objectives__' || id === '__hub-menu__') return false;
   if (id === '__exam-intro__' || id === '__mastery-exam__' || id === '__exam-results__' || id === '__closing__') return false;
   if (id.startsWith('__module-cover-')) return false;
   return true;

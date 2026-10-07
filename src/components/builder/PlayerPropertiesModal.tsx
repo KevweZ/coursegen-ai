@@ -37,6 +37,8 @@ export interface PlayerConfig {
   playerResolution: '16:9' | '4:3' | 'full';
   navigationMode: NavigationMode;
   examPresentationMode: ExamPresentationMode;
+  /** Question map on the Mastery Quiz. Default on. */
+  showQuestionMap: boolean;
   /** 'module' = per-module color from palette; 'global' = single user-picked color */
   accentMode: 'module' | 'global';
   /** Hex color used when accentMode === 'global' */
@@ -65,6 +67,7 @@ export const defaultPlayerConfig: PlayerConfig = {
   playerResolution: '16:9',
   navigationMode: 'free',
   examPresentationMode: 'one-at-a-time',
+  showQuestionMap: true,
   accentMode: 'module',
   globalAccentColor: '#4f46e5',
 };
@@ -503,6 +506,7 @@ export function PlayerPropertiesModal({
                 { mode: 'free' as NavigationMode,       label: 'Free Roam',   desc: 'Navigate to any slide at any time' },
                 { mode: 'linear' as NavigationMode,     label: 'Linear',      desc: 'Next button only — no menu skipping' },
                 { mode: 'restricted' as NavigationMode, label: 'Restricted',  desc: 'Next to advance; menu allows revisiting viewed slides only' },
+                { mode: 'hub' as NavigationMode,        label: 'Main Menu',   desc: 'Modules open from a menu; last slide of a module returns to the menu. Quiz unlocks after every module is complete.' },
               ]).map(({ mode, label, desc }) => (
                 <button
                   key={mode}
@@ -554,6 +558,16 @@ export function PlayerPropertiesModal({
                 <AlertTriangle className="w-3 h-3 shrink-0"/>
                 Changing presentation mode will prompt a regeneration confirmation.
               </p>
+              <label className="flex items-center justify-between cursor-pointer pt-2">
+                <div>
+                  <p className="text-sm font-bold text-slate-200">Question map</p>
+                  <p className="text-[10px] text-slate-500">Numbered card on the Mastery Quiz. No regenerate required.</p>
+                </div>
+                <Toggle
+                  checked={local.showQuestionMap !== false}
+                  onChange={() => update({ showQuestionMap: local.showQuestionMap === false })}
+                />
+              </label>
             </div>
             </>
   );

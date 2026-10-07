@@ -723,6 +723,18 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                     </div>
                     <label className="flex items-center justify-between cursor-pointer">
                       <div>
+                        <p className="text-sm font-bold text-slate-300">Question map</p>
+                        <p className="text-xs text-slate-600">Numbered card so learners can jump between quiz questions. Default on for both presentation modes. Knowledge Checks stay as they are.</p>
+                      </div>
+                      <div
+                        onClick={() => props.setExamConfig(c => ({ ...c, showQuestionMap: c.showQuestionMap === false }))}
+                        className={`w-12 h-6 rounded-full relative cursor-pointer ${props.examConfig.showQuestionMap !== false ? 'bg-purple-500' : 'bg-slate-700'}`}
+                      >
+                        <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${props.examConfig.showQuestionMap !== false ? 'translate-x-6' : ''}`} />
+                      </div>
+                    </label>
+                    <label className="flex items-center justify-between cursor-pointer">
+                      <div>
                         <p className="text-sm font-bold text-slate-300">Allow Retake on Fail</p>
                         <p className="text-xs text-slate-600">Disabled = learner must restart full course</p>
                       </div>
@@ -840,6 +852,7 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                   { mode: 'free' as NavigationMode, label: 'Free Roam', desc: 'Click any slide at any time' },
                   { mode: 'linear' as NavigationMode, label: 'Linear', desc: 'Next button only - no menu skipping' },
                   { mode: 'restricted' as NavigationMode, label: 'Restricted', desc: 'Next to advance; revisit viewed slides via menu' },
+                  { mode: 'hub' as NavigationMode, label: 'Main Menu', desc: 'Modules open from a menu; last slide of a module returns to the menu. Quiz unlocks after every module is complete.' },
                 ]).map(({ mode: m, label, desc }) => (
                   <button
                     key={m}
@@ -857,7 +870,7 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
               </div>
 
               {(() => {
-                const gated = props.navigationMode === 'linear' || props.navigationMode === 'restricted';
+                const gated = props.navigationMode === 'linear' || props.navigationMode === 'restricted' || props.navigationMode === 'hub';
                 return (
                   <label
                     className={`mt-4 flex items-start gap-3 rounded-xl border px-4 py-3 transition-all ${
@@ -876,7 +889,7 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                     <div>
                       <p className="text-sm font-bold text-slate-200">Require interactions before Next</p>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        When Linear or Restricted is selected, prevent learners from advancing until every interactive element on the current slide has been opened or completed.
+                        When Linear, Restricted, or Main Menu is selected, prevent learners from advancing until every interactive element on the current slide has been opened or completed. Slides already left via Next stay unrestricted on return.
                       </p>
                     </div>
                   </label>

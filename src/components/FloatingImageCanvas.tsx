@@ -3,9 +3,10 @@
  * Full feature set: drag (interact.js), resize (corner handles), delete, and crop modal.
  */
 import interact from 'interactjs';
-import { Trash2, Crop, X, Check, PanelRight } from 'lucide-react';
+import { Trash2, Crop, X, Check, PanelRight, Scissors } from 'lucide-react';
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { FloatingImage } from '../types/course';
+import { isFloatingVideo } from '../lib/floatingMedia';
 
 interface Props {
   images: FloatingImage[];
@@ -18,6 +19,8 @@ interface Props {
   activeTabId?: string | null;
   /** Called while dragging so parent can highlight tab drop zones */
   onDragOverTab?: (tabId: string | null) => void;
+  /** Pause course narration when a floating video starts. */
+  onMediaPlay?: () => void;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -319,6 +322,132 @@ function stageLimits(stage: HTMLElement | null) {
   return { sw, sh, maxW: Math.max(120, sw - 24), maxH: Math.max(120, sh - 24) };
 }
 
+function FloatingVideo({
+  img,
+  onPlay,
+}: {
+  img: FloatingImage;
+  onPlay?: () => void;
+}) {
+  const ref = useRef<HTMLVideoElement>(null);
+  const start = Number.isFinite(img.clipStart) ? Math.max(0, Number(img.clipStart)) : 0;
+  const end = Number.isFinite(img.clipEnd) ? Number(img.clipEnd) : null;
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const onLoaded = () => {
+      if (start > 0 && el.currentTime < start) el.currentTime = start;
+    };
+    const onTime = () => {
+      if (end != null && end > start && el.currentTime >= end) {
+        el.pause();
+        el.currentTime = end;
+      }
+    };
+    const onStarted = () => onPlay?.();
+    el.addEventListener('loadedmetadata', onLoaded);
+    el.addEventListener('timeupdate', onTime);
+    el.addEventListener('play', onStarted);
+    return () => {
+      el.removeEventListener('loadedmetadata', onLoaded);
+      el.removeEventListener('timeupdate', onTime);
+      el.removeEventListener('play', onStarted);
+    };
+  }, [start, end, img.url, onPlay]);
+
+  return (
+    <video
+      ref={ref}
+      src={img.url}
+      controls
+      playsInline
+      preload="metadata"
+      className="w-full h-full object-contain bg-black pointer-events-auto"
+    />
+  );
+}
+
+function VideoTrimModal({
+  img,
+  onClose,
+  onSave,
+}: {
+  img: FloatingImage;
+  onClose: () => void;
+  onSave: (clipStart: number, clipEnd: number) => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [duration, setDuration] = useState(Math.max(0.1, Number(img.clipEnd) || 0));
+  const [start, setStart] = useState(Math.max(0, Number(img.clipStart) || 0));
+  const [end, setEnd] = useState(Number(img.clipEnd) || 0);
+
+  return (
+    <div className="fixed inset-0 z-[280] bg-black/60 flex items-center justify-center p-4" data-floating-crop-modal>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-extrabold text-slate-900">Trim video</h3>
+          <button type="button" onClick={onClose} className="p-1 rounded-lg text-slate-500 hover:bg-slate-100">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <video
+          ref={videoRef}
+          src={img.url}
+          controls
+          playsInline
+          className="w-full rounded-lg bg-black max-h-56"
+          onLoadedMetadata={(e) => {
+            const d = (e.target as HTMLVideoElement).duration || 0;
+            setDuration(d);
+            if (!end || end > d) setEnd(d);
+          }}
+        />
+        <label className="block text-xs font-bold text-slate-600">
+          Start {start.toFixed(1)}s
+          <input
+            type="range"
+            min={0}
+            max={Math.max(0.1, duration)}
+            step={0.1}
+            value={start}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              setStart(Math.min(v, end - 0.1));
+              if (videoRef.current) videoRef.current.currentTime = v;
+            }}
+            className="w-full"
+          />
+        </label>
+        <label className="block text-xs font-bold text-slate-600">
+          End {end.toFixed(1)}s
+          <input
+            type="range"
+            min={0}
+            max={Math.max(0.1, duration)}
+            step={0.1}
+            value={end}
+            onChange={(e) => setEnd(Math.max(Number(e.target.value), start + 0.1))}
+            className="w-full"
+          />
+        </label>
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl border text-sm font-bold text-slate-600">
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => onSave(start, end)}
+            className="px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-bold flex items-center gap-1.5"
+          >
+            <Check className="w-4 h-4" /> Save trim
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────
 // FloatingImageCanvas
 // ─────────────────────────────────────────────────────────────
@@ -330,12 +459,14 @@ export function FloatingImageCanvas({
   onPinBack,
   activeTabId = null,
   onDragOverTab,
+  onMediaPlay,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const latestImages = useRef(images);
   const latestOnChange = useRef(onChange);
   const latestHover = useRef(onDragOverTab);
   const [cropTarget, setCropTarget] = useState<FloatingImage | null>(null);
+  const [trimTarget, setTrimTarget] = useState<FloatingImage | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const visibleImages = images.filter(img => {
@@ -375,7 +506,7 @@ export function FloatingImageCanvas({
     const interactable = interact('.floating-image').draggable({
       inertia: false,
       autoScroll: false,
-      ignoreFrom: 'button, .float-handle',
+      ignoreFrom: 'button, .float-handle, video',
       listeners: {
         start(event) {
           const id = (event.target as HTMLElement).getAttribute('data-id');
@@ -517,6 +648,7 @@ export function FloatingImageCanvas({
       <div className="absolute inset-0 z-20 pointer-events-none" ref={containerRef} data-float-stage>
         {visibleImages.map(img => {
           const isSelected = isAuthoring && selectedId === img.id;
+          const video = isFloatingVideo(img);
           return (
             <div
               key={img.id}
@@ -527,8 +659,8 @@ export function FloatingImageCanvas({
                 if (isAuthoring) setSelectedId(img.id);
               }}
               className={`floating-image absolute overflow-visible rounded-lg ${
-                isAuthoring ? 'pointer-events-auto cursor-move' : 'pointer-events-none'
-              } ${isSelected ? 'ring-2 ring-indigo-500 z-30' : ''}`}
+                isAuthoring || video ? 'pointer-events-auto' : 'pointer-events-none'
+              } ${isAuthoring ? 'cursor-move' : ''} ${isSelected ? 'ring-2 ring-indigo-500 z-30' : ''}`}
               style={{
                 width: `${Math.max(64, img.width || 320)}px`,
                 height: `${Math.max(64, img.height || 240)}px`,
@@ -538,12 +670,17 @@ export function FloatingImageCanvas({
               }}
               title={
                 isAuthoring
-                  ? (img.tabId
+                  ? (video
+                    ? 'Video — drag the frame to move, corners to resize, Trim to shorten'
+                    : (img.tabId
                     ? `Tab image — drag to move, corners to resize`
-                    : 'Click to select · Drag to move · Crop / delete when selected')
+                    : 'Click to select · Drag to move · Crop / delete when selected'))
                   : undefined
               }
             >
+              {video ? (
+                <FloatingVideo img={img} onPlay={onMediaPlay} />
+              ) : (
               <img
                 src={img.url}
                 alt="Floating layout"
@@ -554,6 +691,7 @@ export function FloatingImageCanvas({
                 draggable={false}
                 onDragStart={e => e.preventDefault()}
               />
+              )}
 
               {isSelected && img.tabId && (
                 <span className="absolute -top-2 left-2 px-1.5 py-0.5 rounded bg-indigo-600 text-white text-[9px] font-bold shadow">
@@ -563,7 +701,7 @@ export function FloatingImageCanvas({
 
               {isSelected && (
                 <div className="absolute top-1 right-1 flex gap-1 z-50">
-                  {onPinBack && (
+                  {onPinBack && !video && (
                     <button
                       onClick={e => { e.stopPropagation(); onPinBack(img); setSelectedId(null); }}
                       className="bg-sky-600 hover:bg-sky-500 text-white rounded-full p-1.5 shadow cursor-pointer"
@@ -572,6 +710,15 @@ export function FloatingImageCanvas({
                       <PanelRight className="w-3.5 h-3.5" />
                     </button>
                   )}
+                  {video ? (
+                    <button
+                      onClick={e => { e.stopPropagation(); setTrimTarget(img); }}
+                      className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-full p-1.5 shadow cursor-pointer"
+                      title="Trim video"
+                    >
+                      <Scissors className="w-3.5 h-3.5" />
+                    </button>
+                  ) : (
                   <button
                     onClick={e => { e.stopPropagation(); setCropTarget(img); }}
                     className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-full p-1.5 shadow cursor-pointer"
@@ -579,10 +726,11 @@ export function FloatingImageCanvas({
                   >
                     <Crop className="w-3.5 h-3.5" />
                   </button>
+                  )}
                   <button
                     onClick={e => { e.stopPropagation(); onRemove(img.id); setSelectedId(null); }}
                     className="bg-red-500 hover:bg-red-400 text-white rounded-full p-1.5 shadow cursor-pointer"
-                    title="Remove image"
+                    title={video ? 'Remove video' : 'Remove image'}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -616,6 +764,18 @@ export function FloatingImageCanvas({
             }}
           />
         </div>
+      )}
+      {trimTarget && (
+        <VideoTrimModal
+          img={trimTarget}
+          onClose={() => setTrimTarget(null)}
+          onSave={(clipStart, clipEnd) => {
+            onChange(images.map(img =>
+              img.id === trimTarget.id ? { ...img, clipStart, clipEnd, kind: 'video' } : img
+            ));
+            setTrimTarget(null);
+          }}
+        />
       )}
     </>
   );

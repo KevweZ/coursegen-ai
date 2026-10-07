@@ -11,7 +11,7 @@ export const AI_CONTENT_SKIP_TYPES = new Set([
   'title', 'cover', 'module-cover', 'module-overview', 'course-objectives',
   'learning-objectives', 'objectives', 'player-tour', 'knowledge-check', 'quiz',
   'multiple-choice', 'multiple-answers', 'true-false', 'mastery-exam', 'exam-intro',
-  'exam-results', 'closing', 'scenario', 'game-template', 'matching', 'sorting',
+  'exam-results', 'closing', 'hub-menu', 'scenario', 'game-template', 'matching', 'sorting',
   'drop-targets',
 ]);
 

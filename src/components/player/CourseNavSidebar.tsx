@@ -39,6 +39,8 @@ interface Props {
   qcResolvedSlideIds?: Set<string>;
   /** When false, never prepend synthetic Module Overview rows */
   includeModuleOverviewSlides?: boolean;
+  /** When set, TOC lock state follows the player (hub quiz lock, completed modules, etc.). */
+  canNavigateTo?: (index: number) => boolean;
 }
 
 const SLIDE_TYPE_ICON: Record<string, string> = {
@@ -47,7 +49,7 @@ const SLIDE_TYPE_ICON: Record<string, string> = {
   matching: '🔗', hotspot: '📍', branching: '🌿', interaction: '⚙️',
   summary: '📋', 'game-template': '🎮', intro: '🎬', outro: '🏁',
   'exam-intro': '🎓', 'mastery-exam': '📝', 'exam-results': '🏆',
-  'player-tour': '🗺️', 'course-objectives': '🎯',
+  'player-tour': '🗺️', 'course-objectives': '🎯', 'hub-menu': '🗂️',
 };
 
 export function CourseNavSidebar({
@@ -65,6 +67,7 @@ export function CourseNavSidebar({
   qcPendingSlideIds,
   qcResolvedSlideIds,
   includeModuleOverviewSlides,
+  canNavigateTo,
 }: Props) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -93,11 +96,13 @@ export function CourseNavSidebar({
   const tocByIndex = tocNumberByIndex(allSlides);
 
   const isContentLocked = (idx: number): boolean => {
+    if (typeof canNavigateTo === 'function') return !canNavigateTo(idx);
     if (examPhase === 'active') return true;
     switch (navigationMode) {
       case 'free': return false;
       case 'linear': return true;
       case 'restricted': return idx > highestVisitedIndex;
+      case 'hub': return idx > highestVisitedIndex;
       default: return false;
     }
   };
@@ -203,6 +208,25 @@ export function CourseNavSidebar({
           </button>
         );
       })()}
+      {(() => {
+        const hubIdx = allSlides.findIndex(s => s.id === '__hub-menu__' || s.type === 'hub-menu');
+        if (hubIdx < 0) return null;
+        const isActive = currentSlideIndex === hubIdx;
+        return (
+          <button
+            key="__hub-menu__"
+            onClick={() => go(hubIdx)}
+            className={cn(
+              'w-full flex items-center gap-2.5 pl-4 pr-4 py-2.5 text-left transition-all mb-1',
+              isActive ? activeRow : inactiveRow
+            )}
+            title="Main Menu"
+          >
+            <span className="text-base shrink-0">🗂️</span>
+            <span className="text-sm leading-snug font-medium">Main Menu</span>
+          </button>
+        );
+      })()}
 
       {modules.map((mod, mi) => (
         <div key={mod.id} className="mb-1">
@@ -231,6 +255,7 @@ export function CourseNavSidebar({
               if (locked && examPhase === 'active') tooltip = 'Complete the quiz to return to course content';
               else if (locked && navigationMode === 'linear') tooltip = 'Complete slides in order';
               else if (locked && navigationMode === 'restricted') tooltip = 'Complete previous slides first';
+              else if (locked && navigationMode === 'hub') tooltip = 'Open this module from the Main Menu, or finish earlier slides first';
               return (
                 <button
                   key={`${id || 'slide'}-${occurrence}`}
@@ -272,11 +297,16 @@ export function CourseNavSidebar({
           {examIntroSlide && (() => {
             const idx = examIntroIndex!;
             const isActive = idx === currentSlideIndex;
+            const locked = isContentLocked(idx);
             return (
-              <button key="exam-intro" onClick={() => go(idx)}
-                className={cn('w-full flex items-center gap-2.5 pl-7 pr-4 py-2.5 text-left transition-all', isActive ? activeRow : inactiveRow)}
+              <button
+                key="exam-intro"
+                disabled={locked}
+                onClick={() => !locked && go(idx)}
+                title={locked ? 'Complete every module to unlock the quiz' : 'Mastery Quiz Intro'}
+                className={cn('w-full flex items-center gap-2.5 pl-7 pr-4 py-2.5 text-left transition-all', isActive ? activeRow : locked ? lockedRow : inactiveRow)}
               >
-                <span className="text-base shrink-0">🎓</span>
+                {locked ? <Lock className="w-3 h-3 shrink-0 opacity-50"/> : <span className="text-base shrink-0">🎓</span>}
                 <span className="text-sm leading-snug font-medium">Mastery Quiz Intro</span>
               </button>
             );

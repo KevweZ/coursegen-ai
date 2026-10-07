@@ -5,7 +5,7 @@
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, BookOpen, Trash2, FolderOpen, Clock, Layers, Save, AlertCircle, CheckCircle2, Lock, Pencil, Loader2 } from 'lucide-react';
+import { X, BookOpen, Trash2, FolderOpen, Clock, Layers, Save, AlertCircle, CheckCircle2, Lock, Pencil, Loader2, Send } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { CourseDraft } from '../../lib/useDraftCourses';
 
@@ -32,6 +32,7 @@ interface Props {
   onDelete: (id: string) => void;
   onReplace: (id: string) => void;
   onRename?: (id: string, title: string) => void | Promise<void>;
+  onHandoff?: (id: string) => void;
   saveMessage?: string | null;
 }
 
@@ -67,7 +68,7 @@ function SlotBar({ used, total, theme }: { used: number; total: number; theme: s
 export const DraftCoursesPanel: React.FC<Props> = ({
   isOpen, onClose, theme, drafts, slotsUsed, slotsTotal, canSave,
   isAuthenticated, currentCourseTitle, activeDraftId, isSaving, savingKind, savingDraftId, onSave, onUpdateCurrent,
-  onLoad, onDelete, onReplace, onRename, saveMessage,
+  onLoad, onDelete, onReplace, onRename, onHandoff, saveMessage,
 }) => {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -359,6 +360,19 @@ export const DraftCoursesPanel: React.FC<Props> = ({
                               : <Save className="w-3.5 h-3.5" />}
                             Overwrite
                           </button>
+                          {onHandoff && (
+                            <button
+                              onClick={() => onHandoff(draft.id)}
+                              disabled={savingBusy}
+                              className={cn(
+                                'p-2 rounded-lg transition-colors disabled:opacity-50',
+                                theme === 'light' ? 'text-slate-500 hover:bg-slate-200 hover:text-sky-600' : 'text-slate-400 hover:bg-slate-700/50 hover:text-sky-300'
+                              )}
+                              title="Send a copy to another account"
+                            >
+                              <Send className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           {onRename && (
                             <button
                               onClick={() => startRename(draft)}

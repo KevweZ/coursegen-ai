@@ -378,6 +378,26 @@ export async function fetchCloudDraft(
   }
 }
 
+export async function handoffCloudDraft(
+  draftId: string,
+  recipientEmail: string,
+): Promise<{ ok: boolean; error?: string; id?: string }> {
+  if (!(await isCloudDraftsAvailable())) {
+    return { ok: false, error: 'Cloud drafts unavailable. Sign in and try again.' };
+  }
+  try {
+    const res = await authedFetch('/api/drafts/handoff', {
+      method: 'POST',
+      body: JSON.stringify({ draftId, recipientEmail }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: data.error || data.message || `Send failed (${res.status})` };
+    return { ok: true, id: data.id };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'Send failed' };
+  }
+}
+
 export async function deleteCloudDraft(
   userId: string,
   draftId: string

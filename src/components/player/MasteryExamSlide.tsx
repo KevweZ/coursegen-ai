@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight, CheckCircle2, XCircle } from 'lucide-react';
 import type { ExamQuestion, ExamConfig, ExamSessionState } from '../../types/course';
+import { examShowsQuestionMap } from '../../lib/examQuestionMap';
 
 interface Props {
   questions: ExamQuestion[];
@@ -16,6 +17,56 @@ function isAnswered(q: ExamQuestion, answer: number | number[] | null | undefine
   if (q.type === 'ma') return Array.isArray(answer) && answer.length > 0;
   return true;
 }
+
+const QuestionMapPanel: React.FC<{
+  questions: ExamQuestion[];
+  answers: Record<string, number | number[] | null>;
+  currentQuestionId?: string;
+  onJump: (questionId: string, index: number) => void;
+}> = ({ questions, answers, currentQuestionId, onJump }) => (
+  <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
+    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">
+      Question Overview
+    </p>
+    <div className="grid grid-cols-4 gap-1.5 max-h-[min(52vh,420px)] overflow-y-auto pr-0.5 custom-scrollbar">
+      {questions.map((q, idx) => {
+        const done = isAnswered(q, answers[q.id]);
+        const current = currentQuestionId === q.id;
+        return (
+          <button
+            key={q.id}
+            type="button"
+            title={done ? `Question ${idx + 1} — answered` : `Question ${idx + 1} — unanswered`}
+            onClick={() => onJump(q.id, idx)}
+            className={`h-8 rounded-full text-[11px] font-bold transition-colors ${
+              current
+                ? 'bg-indigo-600 text-white ring-2 ring-indigo-300'
+                : done
+                ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+                : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+            }`}
+          >
+            {idx + 1}
+          </button>
+        );
+      })}
+    </div>
+    <div className="mt-3 pt-2 border-t border-slate-100 space-y-1.5">
+      <div className="flex items-center gap-2 text-[10px] text-slate-600 font-semibold">
+        <span className="w-3 h-3 rounded-full bg-indigo-600 shrink-0" />
+        Current
+      </div>
+      <div className="flex items-center gap-2 text-[10px] text-slate-600 font-semibold">
+        <span className="w-3 h-3 rounded-full bg-emerald-500 shrink-0" />
+        Answered
+      </div>
+      <div className="flex items-center gap-2 text-[10px] text-slate-600 font-semibold">
+        <span className="w-3 h-3 rounded-full bg-slate-200 shrink-0" />
+        Unanswered
+      </div>
+    </div>
+  </div>
+);
 
 // ─── Single question renderer ─────────────────────────────────────────────────
 
@@ -172,6 +223,8 @@ export const MasteryExamSlide: React.FC<Props> = ({
     onSubmit({ ...sessionState, submitted: true, score, passed });
   }, [questions, answers, examConfig.passingScore, sessionState, onSubmit]);
 
+  const showMap = examShowsQuestionMap(examConfig);
+
   const jumpToQuestion = useCallback((qId: string) => {
     const el = questionRefs.current[qId];
     const root = scrollRootRef.current;
@@ -181,46 +234,20 @@ export const MasteryExamSlide: React.FC<Props> = ({
     root.scrollTo({ top: root.scrollTop + (elTop - rootTop) - 8, behavior: 'smooth' });
   }, []);
 
+  const jumpOneAtATime = useCallback((index: number) => {
+    if (submitted) return;
+    onSubmit({ ...sessionState, currentQuestionIdx: index });
+  }, [onSubmit, sessionState, submitted]);
+
   // ── Scroll-all mode ─────────────────────────────────────────────────────────
   if (examConfig.presentationMode === 'scroll-all') {
     const answeredCount = questions.filter(q => isAnswered(q, answers[q.id])).length;
-
     const overviewPanel = (
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
-        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">
-          Question Overview
-        </p>
-        <div className="grid grid-cols-4 gap-1.5 max-h-[min(52vh,420px)] overflow-y-auto pr-0.5 custom-scrollbar">
-          {questions.map((q, idx) => {
-            const done = isAnswered(q, answers[q.id]);
-            return (
-              <button
-                key={q.id}
-                type="button"
-                title={done ? `Question ${idx + 1} — answered` : `Question ${idx + 1} — unanswered`}
-                onClick={() => jumpToQuestion(q.id)}
-                className={`h-8 rounded-full text-[11px] font-bold transition-colors ${
-                  done
-                    ? 'bg-emerald-500 text-white hover:bg-emerald-600'
-                    : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
-                }`}
-              >
-                {idx + 1}
-              </button>
-            );
-          })}
-        </div>
-        <div className="mt-3 pt-2 border-t border-slate-100 space-y-1.5">
-          <div className="flex items-center gap-2 text-[10px] text-slate-600 font-semibold">
-            <span className="w-3 h-3 rounded-full bg-emerald-500 shrink-0" />
-            Answered
-          </div>
-          <div className="flex items-center gap-2 text-[10px] text-slate-600 font-semibold">
-            <span className="w-3 h-3 rounded-full bg-slate-200 shrink-0" />
-            Unanswered
-          </div>
-        </div>
-      </div>
+      <QuestionMapPanel
+        questions={questions}
+        answers={answers}
+        onJump={(qId) => jumpToQuestion(qId)}
+      />
     );
 
     return (
@@ -261,15 +288,16 @@ export const MasteryExamSlide: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* Locked overview rail — outside the question scroller */}
+          {showMap && (
           <aside className="hidden md:flex w-[168px] shrink-0 flex-col border-l border-slate-200 bg-slate-50/90 p-3 overflow-hidden">
             <div className="sticky top-0 shrink-0">
               {overviewPanel}
             </div>
           </aside>
+          )}
         </div>
 
-        {/* Mobile overview strip */}
+        {showMap && (
         <div className="md:hidden border-t border-slate-200 bg-white px-3 py-2 flex gap-1.5 overflow-x-auto shrink-0">
           {questions.map((q, idx) => {
             const done = isAnswered(q, answers[q.id]);
@@ -287,6 +315,7 @@ export const MasteryExamSlide: React.FC<Props> = ({
             );
           })}
         </div>
+        )}
 
         {/* Submit bar — inside slide frame (not viewport-fixed) so it isn't cropped */}
         <div className="shrink-0 border-t border-slate-200 bg-white/95 backdrop-blur-sm p-3 flex justify-center">
@@ -319,30 +348,63 @@ export const MasteryExamSlide: React.FC<Props> = ({
   // ── One-at-a-time mode ───────────────────────────────────────────────────────
   return (
     <div className="h-full flex flex-col bg-white">
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="space-y-5 w-full">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={currentQuestionIdx}
-              initial={{ opacity: 0, x: 30 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -30 }}
-              transition={{ duration: 0.2 }}
-            >
-              {currentQ && (
-                <QuestionCard
-                  q={currentQ}
-                  idx={currentQuestionIdx}
-                  total={questions.length}
-                  answer={currentAnswer}
-                  submitted={isLast && submitted}
-                  onAnswer={(a) => onAnswer(currentQ.id, a)}
-                />
-              )}
-            </motion.div>
-          </AnimatePresence>
+      <div className="flex-1 min-h-0 flex overflow-hidden">
+        <div className="flex-1 min-w-0 overflow-y-auto p-6">
+          <div className="space-y-5 w-full">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={currentQuestionIdx}
+                initial={{ opacity: 0, x: 30 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -30 }}
+                transition={{ duration: 0.2 }}
+              >
+                {currentQ && (
+                  <QuestionCard
+                    q={currentQ}
+                    idx={currentQuestionIdx}
+                    total={questions.length}
+                    answer={currentAnswer}
+                    submitted={isLast && submitted}
+                    onAnswer={(a) => onAnswer(currentQ.id, a)}
+                  />
+                )}
+              </motion.div>
+            </AnimatePresence>
+          </div>
         </div>
+        {showMap && (
+          <aside className="hidden md:flex w-[168px] shrink-0 flex-col border-l border-slate-200 bg-slate-50/90 p-3 overflow-hidden">
+            <QuestionMapPanel
+              questions={questions}
+              answers={answers}
+              currentQuestionId={currentQ?.id}
+              onJump={(_id, idx) => jumpOneAtATime(idx)}
+            />
+          </aside>
+        )}
       </div>
+
+      {showMap && (
+        <div className="md:hidden border-t border-slate-200 bg-white px-3 py-2 flex gap-1.5 overflow-x-auto shrink-0">
+          {questions.map((q, idx) => {
+            const done = isAnswered(q, answers[q.id]);
+            const current = currentQ?.id === q.id;
+            return (
+              <button
+                key={q.id}
+                type="button"
+                onClick={() => jumpOneAtATime(idx)}
+                className={`w-8 h-8 shrink-0 rounded-full text-[11px] font-bold ${
+                  current ? 'bg-indigo-600 text-white' : done ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-600'
+                }`}
+              >
+                {idx + 1}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <div className="border-t border-slate-200 p-4 flex justify-end bg-white">
         {isLast ? (

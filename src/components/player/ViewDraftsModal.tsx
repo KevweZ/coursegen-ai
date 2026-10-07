@@ -5,7 +5,7 @@
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom';
-import { X, FolderOpen, Clock, Layers, BookOpen, Trash2, RefreshCw, Loader2, Pencil } from 'lucide-react';
+import { X, FolderOpen, Clock, Layers, BookOpen, Trash2, RefreshCw, Loader2, Pencil, Send } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { CourseDraft } from '../../lib/useDraftCourses';
 
@@ -21,6 +21,7 @@ interface Props {
   onLoad: (id: string) => void;
   onDelete: (id: string) => void;
   onRename?: (id: string, title: string) => void | Promise<void>;
+  onHandoff?: (id: string) => void;
 }
 
 type TabId = 'all' | 'preview' | 'design';
@@ -34,7 +35,7 @@ function formatDate(iso: string) {
 
 export const ViewDraftsModal: React.FC<Props> = ({
   isOpen, onClose, drafts, isReady = true, cloudEnabled = false, slotsUsed, slotsTotal,
-  onRefresh, onLoad, onDelete, onRename,
+  onRefresh, onLoad, onDelete, onRename, onHandoff,
 }) => {
   const [tab, setTab] = useState<TabId>('all');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -264,6 +265,15 @@ export const ViewDraftsModal: React.FC<Props> = ({
                         >
                           Open
                         </button>
+                        {onHandoff && (
+                          <button
+                            onClick={() => onHandoff(d.id)}
+                            className="p-2 rounded-lg text-slate-500 hover:text-sky-300 hover:bg-sky-500/10"
+                            title="Send a copy to another account"
+                          >
+                            <Send className="w-4 h-4" />
+                          </button>
+                        )}
                         {onRename && (
                           <button
                             onClick={() => {

@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Draft handoff / source-file transfer (priority backlog)
 
-**Status:** queued 2026-09-29 — Anthony after Steam Cracker ownership discussion. **Do not implement** unless he explicitly restarts this.
+**Status:** restarted 2026-10-06 — copy-not-co-edit from View drafts and Course Development (**Send copy**). Recipient must already have an account (email lookup).
 
 Customers (and L&D proponents who hired a contractor) will want the **editable source**, not only a SCORM zip. In NexCourse that source is the **saved draft**, not a Storyline `.story` and not the original PPT.
 

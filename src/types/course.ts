@@ -83,6 +83,12 @@ export interface FloatingImage {
    * null/undefined = slide-level (visible on every tab / intro).
    */
   tabId?: string | null;
+  /** Defaults to image. Video floats use native controls and optional clip points. */
+  kind?: 'image' | 'video';
+  /** Inclusive start (seconds) when the author trimmed the clip. */
+  clipStart?: number;
+  /** Exclusive end (seconds) when the author trimmed the clip. */
+  clipEnd?: number;
 }
 
 export interface Slide {
@@ -168,7 +174,7 @@ export interface Interaction {
 // ─── Mastery Quiz + Navigation ────────────────────────────────────────────────
 
 export type ExamPresentationMode = 'one-at-a-time' | 'scroll-all';
-export type NavigationMode = 'free' | 'linear' | 'restricted';
+export type NavigationMode = 'free' | 'linear' | 'restricted' | 'hub';
 
 export interface ExamQuestion {
   id: string;
@@ -193,6 +199,8 @@ export interface ExamConfig {
   /** Mastery Quiz question/activity types */
   questionTypes: ExamQuestionType[];
   presentationMode: ExamPresentationMode;   // default 'one-at-a-time'
+  /** Question map card. Default on for both presentation modes. */
+  showQuestionMap?: boolean;
   /** How many in-module Knowledge Checks to generate */
   knowledgeCheckMode?: 'total' | 'per-module';
   knowledgeCheckCount?: number;

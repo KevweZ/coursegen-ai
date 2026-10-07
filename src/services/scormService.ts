@@ -107,6 +107,10 @@ function extForMime(mime: string): string {
     'audio/x-wav': 'wav',
     'audio/webm': 'webm',
     'audio/ogg': 'ogg',
+    'video/mp4': 'mp4',
+    'video/webm': 'webm',
+    'video/ogg': 'ogv',
+    'video/quicktime': 'mov',
   };
   return map[m] || 'bin';
 }

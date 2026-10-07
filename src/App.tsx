@@ -177,9 +177,12 @@ import type { SandboxDemo } from './lib/routes';
 import { foundationFingerprint, type FoundationFingerprintInput } from './lib/courseReviewSync';
 import { DraftCoursesPanel } from './components/player/DraftCoursesPanel';
 import { ViewDraftsModal } from './components/player/ViewDraftsModal';
+import { DraftHandoffModal } from './components/builder/DraftHandoffModal';
+import { handoffCloudDraft } from './lib/draftCloudService';
 import { AppImagePickerModal } from './components/player/AppImagePickerModal';
 import { EnlargeableImage } from './components/player/EnlargeableImage';
 import { CourseTitleSlide } from './components/player/CourseTitleSlide';
+import { HubMenuSlide } from './components/player/HubMenuSlide';
 import { ClosingSlide } from './components/player/ClosingSlide';
 import { ModuleCoverSlide } from './components/player/ModuleCoverSlide';
 import { LearningObjectivesSlide }  from './components/player/LearningObjectivesSlide';
@@ -205,8 +208,24 @@ import { FloatingImageCanvas } from './components/FloatingImageCanvas';
 import { TrialInvitePanel } from './components/TrialInvitePanel';
 
 import { FloatingImage } from './types/course';
+import { floatingFromFile } from './lib/floatingMedia';
 import { stripCourseAutoPromotedFloating, floatingMapFromCourse } from './lib/promoteSlideImages';
 import { sanitizeCourseTitles } from './lib/splitCourseTitle';
+import {
+  HUB_SLIDE_ID,
+  HUB_SLIDE_TYPE,
+  isHubMenuSlide,
+  isHubNavigation,
+  isSlideInteractionGateOpen,
+} from './lib/interactionGate';
+import {
+  allContentModulesComplete,
+  hubSlideIndex,
+  isFirstSlideOfModule,
+  moduleIndexRange,
+  moduleNumberForSlide,
+  nextIndexAfterSlide,
+} from './lib/hubNavigation';
 import { slideTypeSkipsAiContentImages } from './lib/contentImageJobs';
 import { buildReviewSnapshot, createReviewLink, fetchReviewSnapshot } from './lib/reviewLinkService';
 import { downloadReviewScriptDocx } from './lib/reviewScriptDocx';
@@ -849,6 +868,7 @@ export default function App() {
   const restoredBySlideRef = React.useRef<Record<string, string>>({});
   const [showDraftsPanel, setShowDraftsPanel] = React.useState(false);
   const [showViewDraftsModal, setShowViewDraftsModal] = React.useState(false);
+  const [handoffDraftId, setHandoffDraftId] = React.useState<string | null>(null);
   const [isSyncingDrafts, setIsSyncingDrafts] = React.useState(false);
   const [isLoadingDraft, setIsLoadingDraft] = React.useState(false);
   const [draftLoadProgress, setDraftLoadProgress] = React.useState(0);
@@ -900,6 +920,15 @@ export default function App() {
     currentSlideId: currentSlideIdRef.current,
     ...(onProgress ? { onProgress } : {}),
   });
+
+  const openDraftHandoff = (id?: string | null) => {
+    const draftId = id || activeDraftId;
+    if (!draftId) {
+      showDraftMessage('Save a draft first, then send a copy.');
+      return;
+    }
+    setHandoffDraftId(draftId);
+  };
 
   /** Always create a new library slot (never overwrites the active draft). */
   const handleSaveDraft = async () => {
@@ -1169,6 +1198,8 @@ export default function App() {
 
     setCurrentSlideIndex(0);
     setHighestVisitedIndex(0);
+    setCompletedSlideIds(new Set());
+    setCompletedModuleNumbers(new Set());
     setQuizState({});
     setExploredBySlide({});
     setKcCheckedSlideIds(new Set());
@@ -1501,7 +1532,11 @@ export default function App() {
     if (isLearnerPlayer) return;
     setPlayerConfig(cfg);
     setNavigationMode(cfg.navigationMode);
-    setExamConfig(c => ({ ...c, presentationMode: cfg.examPresentationMode }));
+    setExamConfig(c => ({
+      ...c,
+      presentationMode: cfg.examPresentationMode,
+      showQuestionMap: cfg.showQuestionMap !== false,
+    }));
   };
 
   const persistPlayerPropertyDefaults = (cfg: PlayerConfig) => {
@@ -1771,6 +1806,8 @@ export default function App() {
     setExamQuestions(DUMMY_EXAM_QUESTIONS); setExamConfig(DUMMY_COURSE.examConfig!);
     setExamPhase('idle'); setExamError(null); setIsGeneratingExam(false);
     setHighestVisitedIndex(0);
+    setCompletedSlideIds(new Set());
+    setCompletedModuleNumbers(new Set());
     setPlayerConfig(prev => ({ ...prev, playerResolution: '16:9' }));
     setNavigationMode(DUMMY_COURSE.navigationMode ?? 'free');
     setStep('preview');
@@ -2324,6 +2361,9 @@ export default function App() {
   const [highestVisitedIndex, setHighestVisitedIndex] = useState(0);
   /** Per-slide set of explored interaction item ids (for requireInteractionsComplete) */
   const [exploredBySlide, setExploredBySlide] = useState<Record<string, string[]>>({});
+  /** Slides the learner already left via Next — revisits skip the interaction gate. */
+  const [completedSlideIds, setCompletedSlideIds] = useState<Set<string>>(() => new Set());
+  const [completedModuleNumbers, setCompletedModuleNumbers] = useState<Set<number>>(() => new Set());
 
   useEffect(() => {
     if (!isReviewPlayer) return;
@@ -2390,6 +2430,8 @@ export default function App() {
         examGenPromiseRef.current = null;
         setCurrentSlideIndex(0);
         setHighestVisitedIndex(0);
+    setCompletedSlideIds(new Set());
+    setCompletedModuleNumbers(new Set());
         setQuizState({});
         setExploredBySlide({});
         setKcCheckedSlideIds(new Set());
@@ -2538,7 +2580,11 @@ export default function App() {
             return false;
           }
           return true;
-        })];
+        }).map((s: any) => ({
+          ...s,
+          _moduleNumber: s._moduleNumber || modNum,
+          _moduleTitle: s._moduleTitle || m.title,
+        }))];
       })
     : [];
   // Item 12: Title slides — OST is title only; description is narration/CC, not on-screen
@@ -2591,17 +2637,32 @@ export default function App() {
     voiceOverUrl: syntheticAudioMap['__course-objectives__'] || undefined,
     _objectives: learningObjectives || [],
   } as Slide : null as any;
-  const PRE_CONTENT = 3; // cover + player-tour + course-objectives
-  const allSlides: Slide[] = course ? [coverSlide, playerTourSlide, courseObjectivesSlide, ...contentSlides, ...examVirtualSlides] : [];
-  // Compute which module the current slide belongs to (for accent color)
+  const hubMode = isHubNavigation(navigationMode);
+  const hubDefaultVo = 'Select a module from the main menu. Completed modules show a checkmark. The mastery quiz unlocks after every module is finished.';
+  const hubMenuSlide: Slide | null = course && hubMode ? {
+    id: HUB_SLIDE_ID,
+    title: 'Main Menu',
+    type: HUB_SLIDE_TYPE as any,
+    content: '',
+    voiceOverText: syntheticSlideOverrides[HUB_SLIDE_ID]?.voiceOverText ?? hubDefaultVo,
+    voiceOverUrl: syntheticAudioMap[HUB_SLIDE_ID] || undefined,
+  } as Slide : null;
+  const PRE_CONTENT = hubMode ? 4 : 3;
+  const allSlides: Slide[] = course ? [
+    coverSlide,
+    playerTourSlide,
+    courseObjectivesSlide,
+    ...(hubMenuSlide ? [hubMenuSlide] : []),
+    ...contentSlides,
+    ...examVirtualSlides,
+  ] : [];
   const currentModuleNumber = React.useMemo(() => {
+    const tagged = moduleNumberForSlide(allSlides[currentSlideIndex] as any);
+    if (tagged) return tagged;
     let mod = 0;
     for (let i = 0; i <= currentSlideIndex; i++) {
-      const s = allSlides[i];
-      if (s && typeof (s as any).id === 'string') {
-        const m = (s as any).id.match(/__module-(?:overview|cover)-(\d+)__/);
-        if (m) mod = parseInt(m[1]);
-      }
+      const n = moduleNumberForSlide(allSlides[i] as any);
+      if (n) mod = n;
     }
     return mod;
   }, [allSlides, currentSlideIndex]);
@@ -2617,7 +2678,7 @@ export default function App() {
   const examQIndex       = contentSlides.length + PRE_CONTENT + 1;
   const examResultsIndex = contentSlides.length + PRE_CONTENT + 2;
   const currentSlide = allSlides[currentSlideIndex];
-  const FULL_BLEED_TYPES = ['cover', 'title', 'module-cover', 'closing', 'key-takeaways', 'player-tour', 'course-objectives', 'module-overview', 'mastery-exam', 'exam-intro', 'exam-results'];
+  const FULL_BLEED_TYPES = ['cover', 'title', 'module-cover', 'closing', 'key-takeaways', 'player-tour', 'course-objectives', 'module-overview', 'hub-menu', 'mastery-exam', 'exam-intro', 'exam-results'];
   const isFullBleed = FULL_BLEED_TYPES.includes(currentSlide?.type as string);
 
   React.useEffect(() => {
@@ -2653,21 +2714,29 @@ export default function App() {
     return kcCheckedSlideIds.has(currentSlide.id);
   };
 
+  const modulesComplete = allContentModulesComplete(course?.modules?.length || 0, completedModuleNumbers);
+  const hubQuizLocked = hubMode && examConfig.enabled && !modulesComplete;
+
   const isCurrentSlideInteractionsComplete = (): boolean => {
-    if (!requireInteractionsComplete) return true;
-    if (navigationMode === 'free') return true;
     if (!currentSlide) return true;
-    const expected = expectedInteractionIds(currentSlide);
-    if (expected.length === 0) return true;
-    const explored = new Set(exploredBySlide[currentSlide.id] || []);
-    return expected.every(id => explored.has(id));
+    return isSlideInteractionGateOpen({
+      requireInteractionsComplete,
+      navigationMode,
+      expectedIds: expectedInteractionIds(currentSlide),
+      exploredIds: exploredBySlide[currentSlide.id] || [],
+      slideCompleted: completedSlideIds.has(currentSlide.id),
+    });
   };
 
   const interactionProgressLabel = (() => {
+    if (hubMode && isHubMenuSlide(currentSlide) && hubQuizLocked) {
+      return 'Complete every module to unlock the quiz';
+    }
     if (navigationMode !== 'free' && currentSlide && isKnowledgeCheckSlide(currentSlide) && !kcCheckedSlideIds.has(currentSlide.id)) {
       return 'Check your answers to continue';
     }
     if (!requireInteractionsComplete || navigationMode === 'free' || !currentSlide) return null;
+    if (completedSlideIds.has(currentSlide.id)) return null;
     const expected = expectedInteractionIds(currentSlide);
     if (expected.length === 0) return null;
     const explored = new Set(exploredBySlide[currentSlide.id] || []);
@@ -2691,25 +2760,79 @@ export default function App() {
   }, [qcReport, tocRefBySlideId]);
 
   const canNavigateTo = (targetIdx: number): boolean => {
+    const target = allSlides[targetIdx];
     const isExamIntro    = targetIdx === examIntroIndex;
     const isExamQuestion = targetIdx === examQIndex;
     const isExamResults  = targetIdx === examResultsIndex;
-    if (isExamIntro)    return true;
-    if (isExamQuestion) return examPhase !== 'idle';
+    if (isHubMenuSlide(target)) return examPhase !== 'active';
+    if (isExamIntro) {
+      if (hubMode && !modulesComplete) return false;
+      return true;
+    }
+    if (isExamQuestion) return examPhase !== 'idle' && (!hubMode || modulesComplete);
     if (isExamResults)  return examPhase === 'complete';
     if (examPhase === 'active') return false;
     switch (navigationMode) {
       case 'free':       return true;
       case 'linear':     return false;
       case 'restricted': return targetIdx <= highestVisitedIndex;
+      case 'hub': {
+        if (isFirstSlideOfModule(allSlides as any, targetIdx)) return true;
+        const n = moduleNumberForSlide(target as any);
+        if (n && completedModuleNumbers.has(n)) return true;
+        if (target?.id && completedSlideIds.has(target.id)) return true;
+        return targetIdx <= highestVisitedIndex;
+      }
       default:           return true;
     }
+  };
+
+  const markSlideCompleted = (slideId?: string) => {
+    if (!slideId) return;
+    setCompletedSlideIds(prev => {
+      if (prev.has(slideId)) return prev;
+      const next = new Set(prev);
+      next.add(slideId);
+      return next;
+    });
+  };
+
+  const markModuleCompleted = (moduleNumber: number) => {
+    if (!moduleNumber) return;
+    const range = moduleIndexRange(allSlides as any, moduleNumber);
+    setCompletedModuleNumbers(prev => {
+      if (prev.has(moduleNumber)) return prev;
+      const next = new Set(prev);
+      next.add(moduleNumber);
+      return next;
+    });
+    if (!range) return;
+    setCompletedSlideIds(prev => {
+      const next = new Set(prev);
+      for (let i = range.start; i <= range.end; i++) {
+        const id = allSlides[i]?.id;
+        if (id) next.add(id);
+      }
+      return next;
+    });
   };
 
   const handleNext = () => {
     if (!isKcCheckSatisfied()) return;
     if (!isCurrentSlideInteractionsComplete()) return;
-    const next = Math.min(allSlides.length - 1, currentSlideIndex + 1);
+    if (hubMode && isHubMenuSlide(currentSlide) && hubQuizLocked) return;
+    markSlideCompleted(currentSlide?.id);
+    if (hubMode && isHubMenuSlide(currentSlide)) {
+      const dest = examConfig.enabled ? examIntroIndex : Math.max(0, allSlides.length - 1);
+      setHighestVisitedIndex(prev => Math.max(prev, dest));
+      setCurrentSlideIndex(dest);
+      return;
+    }
+    const next = nextIndexAfterSlide(allSlides as any, currentSlideIndex, hubMode);
+    if (hubMode && next === hubSlideIndex(allSlides as any)) {
+      const n = moduleNumberForSlide(currentSlide as any);
+      if (n) markModuleCompleted(n);
+    }
     setHighestVisitedIndex(prev => Math.max(prev, next));
     setCurrentSlideIndex(next);
   };
@@ -3903,6 +4026,8 @@ export default function App() {
     // the previous course's last-viewed index (e.g. Key Takeaways before quiz).
     setCurrentSlideIndex(0);
     setHighestVisitedIndex(0);
+    setCompletedSlideIds(new Set());
+    setCompletedModuleNumbers(new Set());
     setQuizState({});
     setKcCheckedSlideIds(new Set());
     setExamPhase('idle');
@@ -4227,6 +4352,8 @@ export default function App() {
     setProgress(100);
     setCurrentSlideIndex(0);
     setHighestVisitedIndex(0);
+    setCompletedSlideIds(new Set());
+    setCompletedModuleNumbers(new Set());
     setStep('preview');
     navigateTo(ROUTES.courseDevelopment);
 
@@ -5949,6 +6076,7 @@ export default function App() {
                   ...playerConfig,
                   navigationMode,
                   examPresentationMode: examConfig.presentationMode,
+                  showQuestionMap: examConfig.showQuestionMap !== false,
                 }}
                 onChange={persistPlayerPropertyDefaults}
                 onClose={goHome}
@@ -6092,6 +6220,7 @@ export default function App() {
                 const result = await draftManager.renameDraft(id, title);
                 showDraftMessage(result.message);
               }}
+              onHandoff={(id) => openDraftHandoff(id)}
               saveMessage={draftSaveMessage}
             />
           )}
@@ -6132,6 +6261,19 @@ export default function App() {
             onRename={async (id, title) => {
               const result = await draftManager.renameDraft(id, title);
               showDraftMessage(result.message);
+            }}
+            onHandoff={(id) => openDraftHandoff(id)}
+          />
+
+          <DraftHandoffModal
+            isOpen={!!handoffDraftId}
+            courseTitle={draftManager.drafts.find(d => d.id === handoffDraftId)?.courseTitle || course?.title}
+            onClose={() => setHandoffDraftId(null)}
+            onSend={async (email) => {
+              if (!handoffDraftId) return { ok: false, error: 'No draft selected.' };
+              const result = await handoffCloudDraft(handoffDraftId, email);
+              if (result.ok) showDraftMessage(`Copy sent to ${email}. They will see it under View drafts.`);
+              return result;
             }}
           />
 
@@ -6848,20 +6990,16 @@ export default function App() {
 
                     <label
                       htmlFor="topbar-img-upload"
-                      title="Upload Image"
+                      title="Upload Media"
                       className="flex items-center gap-1 px-2 py-1 rounded-md border border-violet-700/50 hover:bg-violet-800/20 text-violet-300 text-[11px] font-semibold cursor-pointer"
                     >
-                      <Upload className="w-3 h-3" /><span className="hidden lg:inline">Upload Image</span>
-                      <input id="topbar-img-upload" type="file" accept="image/*" multiple className="hidden"
+                      <Upload className="w-3 h-3" /><span className="hidden lg:inline">Upload Media</span>
+                      <input id="topbar-img-upload" type="file" accept="image/*,video/*" multiple className="hidden"
                         onChange={e => {
                           if (e.target.files?.length && currentSlide?.id) {
-                            const newImgs: FloatingImage[] = Array.from(e.target.files).map((f, i) => ({
-                              id: `fi-${Date.now()}-${i}`,
-                              url: URL.createObjectURL(f),
-                              x: 40 + i * 20, y: 40 + i * 20, width: 320, height: 240,
-                              // Scope to active tab when uploading while a tab is open; otherwise slide-wide
-                              tabId: activeTabForImages || null,
-                            }));
+                            const newImgs: FloatingImage[] = Array.from(e.target.files).map((f, i) =>
+                              floatingFromFile(f, i, activeTabForImages || null)
+                            );
                             pushUndo();
                             syncFloatingImages(currentSlide.id, [...(floatingImagesMap[currentSlide.id] || []), ...newImgs]);
                             e.target.value = '';
@@ -7007,6 +7145,15 @@ export default function App() {
                         </button>
                       </div>
                     <button
+                      type="button"
+                      title="Send a copy of this draft to another NexCourse account"
+                      onClick={() => openDraftHandoff(activeDraftId)}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-sky-700/50 hover:bg-sky-800/20 text-sky-300 text-[11px] font-semibold"
+                    >
+                      <Send className="w-3 h-3" />
+                      <span className="hidden lg:inline">Send copy</span>
+                    </button>
+                    <button
                       title="Create a temporary SME review link (no authoring UI)"
                       onClick={() => {
                         setReviewLinkError(null);
@@ -7055,6 +7202,7 @@ export default function App() {
                   examPhase={examPhase}
                   examIntroIndex={examIntroIndex}
                   highestVisitedIndex={highestVisitedIndex}
+                  canNavigateTo={canNavigateTo}
                   defaultCollapsed={playerConfig.tocStartsCollapsed}
                   variant="sidebar"
                   qcPendingSlideIds={
@@ -7125,6 +7273,7 @@ export default function App() {
                         examPhase={examPhase}
                         examIntroIndex={examIntroIndex}
                         highestVisitedIndex={highestVisitedIndex}
+                        canNavigateTo={canNavigateTo}
                         defaultCollapsed={false}
                         variant={phoneTocPlacement === 'rail-left' ? 'gutter-rail' : 'dropdown'}
                         railSide="left"
@@ -7439,6 +7588,34 @@ export default function App() {
                                  );
                                })()}
 
+                               {isHubMenuSlide(currentSlide) && (
+                                 <div className="w-full h-full">
+                                   <HubMenuSlide
+                                     courseTitle={course?.title || ''}
+                                     coverImage={(course as any)?.coverImage || courseBg || null}
+                                     modules={(course?.modules || []).map((m: any, i: number) => ({
+                                       number: i + 1,
+                                       title: m.title || `Module ${i + 1}`,
+                                       complete: completedModuleNumbers.has(i + 1),
+                                     }))}
+                                     theme={theme}
+                                     accentColor={slideAccentColor}
+                                     quizEnabled={examConfig.enabled}
+                                     quizUnlocked={modulesComplete}
+                                     onSelectModule={(n) => {
+                                       const range = moduleIndexRange(allSlides as any, n);
+                                       if (!range) return;
+                                       setHighestVisitedIndex(prev => Math.max(prev, range.start));
+                                       setCurrentSlideIndex(range.start);
+                                     }}
+                                     onSelectQuiz={() => {
+                                       if (!modulesComplete) return;
+                                       setHighestVisitedIndex(prev => Math.max(prev, examIntroIndex));
+                                       setCurrentSlideIndex(examIntroIndex);
+                                     }}
+                                   />
+                                 </div>
+                               )}
                                {/* PLAYER TOUR SLIDE */}
                                {(currentSlide as any)?.type === 'player-tour' && (
                                  <div className="w-full h-full">
@@ -8148,7 +8325,9 @@ export default function App() {
                                    isGenerating={isGeneratingExam && examQuestions.length === 0}
                                    questionsReady={examQuestions.length > 0}
                                    errorMessage={examError}
+                                   lockedReason={hubQuizLocked ? 'Complete every module from the Main Menu to unlock the quiz.' : null}
                                    onBegin={async () => {
+                                     if (hubQuizLocked) return;
                                      setExamError(null);
                                      if (!course) {
                                        setExamError('Course data is missing. Please reload the preview and try again.');
@@ -8278,6 +8457,8 @@ export default function App() {
                                      setExamPhase('idle');
                                      setExamSession({ questions: [], answers: {}, currentQuestionIdx: 0, submitted: false, score: null, passed: null });
                                      setHighestVisitedIndex(0);
+    setCompletedSlideIds(new Set());
+    setCompletedModuleNumbers(new Set());
                                      setCurrentSlideIndex(0);
                                    }}
                                  />
@@ -8426,23 +8607,16 @@ export default function App() {
                               ) : (
                                 <label
                                   className="inline-flex flex-col items-center gap-2 cursor-pointer group"
-                                  title="Click to upload an image"
+                                  title="Click to upload an image or video"
                                 >
                                   <input
                                     type="file"
-                                    accept="image/*"
+                                    accept="image/*,video/*"
                                     className="sr-only"
                                     onChange={(e) => {
                                       const file = e.target.files?.[0];
                                       if (!file) return;
-                                      const url = URL.createObjectURL(file);
-                                      // Add to FloatingImageCanvas so it's draggable, resizable, croppable
-                                      const newImg: FloatingImage = {
-                                        id: `fi-placeholder-${Date.now()}`,
-                                        url,
-                                        x: 40, y: 40, width: 320, height: 240,
-                                        tabId: activeTabForImages || null,
-                                      };
+                                      const newImg = floatingFromFile(file, 0, activeTabForImages || null);
                                       pushUndo();
                                       syncFloatingImages(currentSlide.id, [...(floatingImagesMap[currentSlide.id] || []), newImg]);
                                       // Clear the placeholder flag so the dashed box disappears
@@ -8480,6 +8654,7 @@ export default function App() {
                            syncFloatingImages(currentSlide.id, next);
                          }}
                          onPinBack={isLearnerPlayer ? undefined : pinFloatBackToFlow}
+                         onMediaPlay={() => player.pause()}
                        />
                         </motion.div>
                        </AnimatePresence>
@@ -8522,6 +8697,7 @@ export default function App() {
                           currentSlide?.type === 'mastery-exam' ||
                           currentSlide?.type === 'exam-results' ||
                           (currentSlide?.type === 'scenario' && !scenarioCompleted) ||
+                          (isHubMenuSlide(currentSlide) && hubQuizLocked) ||
                           !isKcCheckSatisfied() ||
                           !isCurrentSlideInteractionsComplete()
                         }
@@ -8559,6 +8735,7 @@ export default function App() {
                         examPhase={examPhase}
                         examIntroIndex={examIntroIndex}
                         highestVisitedIndex={highestVisitedIndex}
+                        canNavigateTo={canNavigateTo}
                         defaultCollapsed={false}
                         variant="gutter-rail"
                         railSide="right"
@@ -8618,6 +8795,7 @@ export default function App() {
                           currentSlide?.type === 'mastery-exam' ||
                           currentSlide?.type === 'exam-results' ||
                           (currentSlide?.type === 'scenario' && !scenarioCompleted) ||
+                          (isHubMenuSlide(currentSlide) && hubQuizLocked) ||
                           !isKcCheckSatisfied() ||
                           !isCurrentSlideInteractionsComplete()
                         }
@@ -10002,6 +10180,7 @@ export default function App() {
                 ...playerConfig,
                 navigationMode,
                 examPresentationMode: examConfig.presentationMode,
+                showQuestionMap: examConfig.showQuestionMap !== false,
               }}
               onChange={applyPlayerConfig}
               onClose={closePlayerPropertiesModal}

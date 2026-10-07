@@ -1575,6 +1575,101 @@ app.delete('/api/drafts/:id', async (req, res) => {
   }
 });
 
+async function findAuthUserByEmail(supabase, email) {
+  const target = String(email || '').trim().toLowerCase();
+  if (!target || !target.includes('@')) return null;
+  let page = 1;
+  while (page <= 40) {
+    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: 200 });
+    if (error) throw error;
+    const hit = (data?.users || []).find(u => (u.email || '').toLowerCase() === target);
+    if (hit) return hit;
+    if (!data?.users?.length || data.users.length < 200) break;
+    page += 1;
+  }
+  return null;
+}
+
+async function copyDraftAssetPrefix(supabase, fromPrefix, toPrefix) {
+  const bucket = 'draft-assets';
+  const { data: top } = await supabase.storage.from(bucket).list(fromPrefix, { limit: 1000 });
+  for (const item of top || []) {
+    if (!item?.name) continue;
+    const isFolder = item.id == null;
+    if (isFolder) {
+      const { data: kids } = await supabase.storage.from(bucket).list(`${fromPrefix}/${item.name}`, { limit: 1000 });
+      for (const kid of kids || []) {
+        if (!kid?.name) continue;
+        await supabase.storage.from(bucket).copy(
+          `${fromPrefix}/${item.name}/${kid.name}`,
+          `${toPrefix}/${item.name}/${kid.name}`,
+        );
+      }
+    } else {
+      await supabase.storage.from(bucket).copy(`${fromPrefix}/${item.name}`, `${toPrefix}/${item.name}`);
+    }
+  }
+}
+
+/** Copy a draft to another signed-in account. Sender keeps their copy. */
+app.post('/api/drafts/handoff', async (req, res) => {
+  const auth = await requireAuthedUser(req);
+  if (!auth?.userId) return res.status(401).json({ error: 'Sign in required.' });
+  const draftId = String(req.body?.draftId || '').trim();
+  const recipientEmail = String(req.body?.recipientEmail || '').trim().toLowerCase();
+  if (!draftId || !recipientEmail.includes('@')) {
+    return res.status(400).json({ error: 'draftId and recipientEmail are required.' });
+  }
+  try {
+    const supabase = await getAdminSupabase();
+    const recipient = await findAuthUserByEmail(supabase, recipientEmail);
+    if (!recipient?.id) {
+      return res.status(404).json({ error: 'No NexCourse account uses that email. Ask them to sign up first.' });
+    }
+    if (recipient.id === auth.userId) {
+      return res.status(400).json({ error: 'Choose a different account — this copy stays on yours.' });
+    }
+    const { data: row, error: getErr } = await supabase
+      .from('course_drafts')
+      .select('*')
+      .eq('id', draftId)
+      .maybeSingle();
+    if (getErr) return res.status(400).json({ error: getErr.message });
+    if (!row) return res.status(404).json({ error: 'Draft not found.' });
+    if (row.user_id !== auth.userId) return res.status(403).json({ error: 'Forbidden.' });
+
+    const newId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `draft-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const now = new Date().toISOString();
+    const clone = {
+      ...row,
+      id: newId,
+      user_id: recipient.id,
+      workspace_id: null,
+      updated_at: now,
+    };
+    const { error: insErr } = await supabase.from('course_drafts').insert(clone);
+    if (insErr) {
+      console.error('[Drafts handoff] insert', insErr.message);
+      return res.status(400).json({ error: insErr.message });
+    }
+    try {
+      await copyDraftAssetPrefix(supabase, `${auth.userId}/${draftId}`, `${recipient.id}/${newId}`);
+    } catch (assetErr) {
+      console.warn('[Drafts handoff] asset copy:', assetErr?.message || assetErr);
+    }
+    return res.json({
+      success: true,
+      id: newId,
+      recipientEmail: recipient.email || recipientEmail,
+    });
+  } catch (err) {
+    console.error('[Drafts handoff]', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── 6f. SME review links (temporary unlisted player snapshots) ──────────────
 const REVIEW_BUCKET = 'draft-assets';
 const REVIEW_TTL_MS = 14 * 24 * 60 * 60 * 1000;

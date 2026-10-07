@@ -17,7 +17,7 @@ export interface SavedCourseSettings {
   objectiveFormat: string;
   examConfig: ExamConfig;
   navigationMode: NavigationMode;
-  /** When true (and nav is linear/restricted), Next stays locked until interactions on the slide are explored */
+  /** When true (and nav is linear/restricted/hub), Next stays locked until interactions on the slide are explored */
   requireInteractionsComplete: boolean;
   interactionTypes: string[];
   gameTemplateIds: string[];
@@ -63,6 +63,7 @@ export const DEFAULT_COURSE_SETTINGS: SavedCourseSettings = {
     allowRetake: true,
     questionTypes: ['mc', 'ma', 'tf'],
     presentationMode: 'one-at-a-time',
+    showQuestionMap: true,
     knowledgeCheckMode: 'per-module',
     knowledgeCheckCount: 2,
     knowledgeCheckQuestionTypes: ['sorting', 'matching', 'drop-targets'],
@@ -105,6 +106,10 @@ function cloneDefaults(): SavedCourseSettings {
 function normalizeSaved(parsed: SavedCourseSettings): SavedCourseSettings {
   return {
     ...parsed,
+    examConfig: {
+      ...parsed.examConfig,
+      showQuestionMap: parsed.examConfig?.showQuestionMap !== false,
+    },
     interactionTypes: stripParkedInteractionTypes(parsed.interactionTypes),
     imageMode: normalizeImageMode(parsed.imageMode),
     verticalTabSkin: resolveVerticalTabSkin(parsed.verticalTabSkin),
