@@ -1,6 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { shortenCourseTitle, shortenModuleTitle } from './splitCourseTitle.ts';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import {
+  expandFirstAcronymMentions,
+  sanitizeCourseTitles,
+  shortenCourseTitle,
+  shortenModuleTitle,
+} from './splitCourseTitle.ts';
 import { markdownToHtml } from './markdownInline.ts';
 import {
   collapseChoiceCardsOst,
@@ -22,18 +29,61 @@ test('cover titles drop Introduction-to laundry lists and stay at most 8 words',
   const next = shortenCourseTitle(
     'Introduction to Polymers: PE and PP Chemistry, Properties, and Processes',
   );
-  assert.equal(next, 'Polymers: PE and PP Chemistry');
+  assert.equal(next, 'Polymers: Chemistry');
   assert.ok(next.split(/\s+/).length <= 8);
+  assert.doesNotMatch(next, /\bPE\b|\bPP\b/);
   assert.equal(shortenCourseTitle('Steam Cracker Technology'), 'Steam Cracker Technology');
 });
 
-test('module titles drop Bloom gerunds and stay short topic labels', () => {
+test('cover titles ban unexplained acronyms and prefer a simple subject line', () => {
+  assert.equal(
+    shortenCourseTitle('Polymers: PE and PP Chemistry and Processes'),
+    'Polymers: Chemistry and Processes',
+  );
+  assert.doesNotMatch(shortenCourseTitle('Polymers: PE and PP Chemistry and Processes'), /\bPE\b|\bPP\b/);
+  assert.ok(shortenCourseTitle('Polymers: Chemistry and Processes').split(/\s+/).length <= 8);
+});
+
+test('module titles drop Bloom gerunds, stay short, and spell out PE/PP', () => {
   const next = shortenModuleTitle(
     'Tracing the Sequential Stages of the Steam Cracking Process',
   );
   assert.doesNotMatch(next, /^Tracing/i);
   assert.ok(next.split(/\s+/).length <= 6);
-  assert.equal(shortenModuleTitle('PE and PP Types'), 'PE and PP Types');
+  assert.equal(shortenModuleTitle('PE and PP Types'), 'Polyethylene and Polypropylene Types');
+  assert.equal(shortenModuleTitle('Identifying PE Types'), 'Polyethylene Types');
+});
+
+test('first mention of a title acronym is spelled out with the short form in parentheses', () => {
+  const next = expandFirstAcronymMentions(
+    'This course focuses on PE and PP chemistry.',
+  );
+  assert.match(next, /Polyethylene \(PE\)/);
+  assert.match(next, /Polypropylene \(PP\)/);
+  const again = expandFirstAcronymMentions(next);
+  assert.equal(again, next);
+});
+
+test('sanitizeCourseTitles rewrites an existing polymer draft without touching slide copy', () => {
+  const course = {
+    title: 'Polymers: PE and PP Chemistry and Processes',
+    description: 'This course provides an overview of polyolefin chemistry, focusing on polyethylene (PE) and polypropylene (PP).',
+    modules: [
+      { title: 'PE and PP Types', slides: [{ id: 's1', type: 'content', title: 'HDPE', content: 'Keep this.' }] },
+    ],
+  };
+  const next = sanitizeCourseTitles(course);
+  assert.equal(next.title, 'Polymers: Chemistry and Processes');
+  assert.equal(next.modules[0].title, 'Polyethylene and Polypropylene Types');
+  assert.equal(next.modules[0].slides[0].content, 'Keep this.');
+  assert.equal(next.modules[0].slides[0].title, 'HDPE');
+  assert.match(next.description, /polyethylene \(PE\)/i);
+});
+
+test('analyze prompt does not prefer a PE/PP cover title', () => {
+  const prompt = readFileSync(resolve(process.cwd(), 'src/services/aiService.ts'), 'utf8');
+  assert.doesNotMatch(prompt, /Polymers: PE and PP/);
+  assert.match(prompt, /not acronyms|spell out|unexplained acronym/i);
 });
 
 test('markdown artifacts are stripped for plain-text surfaces and rendered for HTML', () => {

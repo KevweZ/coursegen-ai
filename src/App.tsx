@@ -206,6 +206,7 @@ import { TrialInvitePanel } from './components/TrialInvitePanel';
 
 import { FloatingImage } from './types/course';
 import { stripCourseAutoPromotedFloating, floatingMapFromCourse } from './lib/promoteSlideImages';
+import { sanitizeCourseTitles } from './lib/splitCourseTitle';
 import { slideTypeSkipsAiContentImages } from './lib/contentImageJobs';
 import { buildReviewSnapshot, createReviewLink, fetchReviewSnapshot } from './lib/reviewLinkService';
 import { downloadReviewScriptDocx } from './lib/reviewScriptDocx';
@@ -1312,7 +1313,7 @@ export default function App() {
 
         // Remove auto-promoted floating overlays that broke tab layouts
         try {
-          const cleaned = stripCourseAutoPromotedFloating(working);
+          const cleaned = sanitizeCourseTitles(stripCourseAutoPromotedFloating(working));
           const fmap = floatingMapFromCourse(cleaned);
           setFloatingImagesMap(fmap);
           if (cleaned !== working) {
@@ -2951,9 +2952,10 @@ export default function App() {
   }, [user?.id, step, isSandboxMode, course?.title, needsLandscapeForPreview]);
 
   // One-time heal: strip auto-promoted floating images that overlapped tab titles
+  // and rewrite PE/PP-style cover/module titles on existing drafts.
   useEffect(() => {
     if (step !== 'preview' || !course?.modules || isLearnerPlayer) return;
-    const cleaned = stripCourseAutoPromotedFloating(course);
+    const cleaned = sanitizeCourseTitles(stripCourseAutoPromotedFloating(course));
     const hadPromoInCourse = cleaned !== course;
 
     setFloatingImagesMap(prev => {

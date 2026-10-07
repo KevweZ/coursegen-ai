@@ -8,6 +8,7 @@ import { cn } from '../../lib/utils';
 import type { NavigationMode } from '../../types/course';
 import { stripSlideTypePrefix } from '../../lib/stripSlideTypePrefix';
 import { indexOfPlayerSlide, tocNumberByIndex } from '../../lib/playerToc';
+import { shortenModuleTitle } from '../../lib/splitCourseTitle';
 
 interface Slide { id: string; title: string; type: string; }
 interface Module { id: string; title: string; slides: Slide[]; }
@@ -209,7 +210,7 @@ export function CourseNavSidebar({
             className={cn('w-full flex items-center gap-2 px-4 py-2.5 text-left transition-colors', modHeader, 'hover:bg-slate-800/30')}
           >
             <ChevronDown className={cn('w-3.5 h-3.5 shrink-0 transition-transform', expandedModules.has(mod.id) ? '' : '-rotate-90')} />
-            <span className="text-xs font-black uppercase tracking-wider leading-tight">{mod.title}</span>
+            <span className="text-xs font-black uppercase tracking-wider leading-tight">{shortenModuleTitle(mod.title)}</span>
           </button>
 
           {expandedModules.has(mod.id) && (() => {

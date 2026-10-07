@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { moduleAccentHex } from '../../lib/tabAccents';
+import { shortenModuleTitle } from '../../lib/splitCourseTitle';
 
 type Theme = 'light' | 'dark' | 'unified';
 
@@ -39,7 +40,7 @@ export const ModuleCoverSlide: React.FC<ModuleCoverSlideProps> = ({
   const titleClr = TITLE_CLR[theme] ?? TITLE_CLR.dark;
   const descClr = DESC_CLR[theme] ?? DESC_CLR.dark;
   const stripBg = STRIP[theme] ?? STRIP.dark;
-  const cleanTitle = preventWidow(cleanModuleTitle(moduleTitle));
+  const cleanTitle = preventWidow(cleanModuleTitle(shortenModuleTitle(moduleTitle)));
 
   return (
     <div className="w-full h-full flex flex-row overflow-hidden" style={{ backgroundColor: leftBg }}>

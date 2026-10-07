@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Camera, Loader2, ImageOff } from 'lucide-react';
-import { splitCourseTitle } from '../../lib/splitCourseTitle';
+import { shortenCourseTitle, splitCourseTitle } from '../../lib/splitCourseTitle';
 
 type Theme = 'light' | 'dark' | 'unified';
 
@@ -66,7 +66,7 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
   const descColor = THEME_DESC_COLOR[theme];
   const stripBg  = THEME_STRIP[theme];
 
-  const { primary, secondary, secondaryFirst } = splitCourseTitle(title);
+  const { primary, secondary, secondaryFirst } = splitCourseTitle(shortenCourseTitle(title));
   const [hovering, setHovering] = useState(false);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
 

@@ -9,8 +9,9 @@ These were already fixed once and leaked back after unrelated hydrate/KC work. *
 
 ## Invariants (code, not prompts)
 
-- **Cover title:** at most 8 words. `shortenCourseTitle` after file analysis and outline.
-- **Module title:** short topic label, no Bloom gerunds. `shortenModuleTitle` after outline coverage.
+- **Cover title:** at most 8 words. No unexplained acronyms (`PE`, `PP`). `shortenCourseTitle` after file analysis and outline. Prefer a simple subject (`Polymers: Chemistry and Processes`) over packing expansions into the cover.
+- **Module title:** short topic label, no Bloom gerunds, spell out acronyms (`Polyethylene Types` not `PE Types`). `shortenModuleTitle` after outline coverage. Player/cover/module slides apply the same helpers so existing drafts fix without regenerate.
+- **First mention:** course description expands the first acronym to `Full term (XX)` via `expandFirstAcronymMentions`. Later mentions may stay abbreviated. Do not put bare PE/PP on the cover or module-title page.
 - **Markdown glyphs:** `**bold**` and `###` never show as raw symbols. Choice-card body/reveal/prompt go through `markdownToHtml`. Quiz options and other plain-text surfaces use `stripMarkdownArtifacts`.
 - **Click-reveal layout:** intro/prompt left column; reveal rows on the right (`ClickRevealInteraction`). Process and vertical tabs use the same left-intro / right-interaction split (`InteractionIntroColumn`).
 - **Intro rail is white** on light theme (`InteractionIntroColumn` panel `#ffffff`). Process / tab / click-reveal **interaction wells keep** light blue or the module color. Do not paint the preamble with `PROCESS_PANEL_DEFAULT`.

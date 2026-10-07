@@ -4,7 +4,7 @@ import { ensureEnablingSlideCoverage, preserveEnablingIndex, normalizeTerminalGr
 import { allocateKnowledgeCheckSlots, alignHydratedSlidesToOutline, ensureKnowledgeCheckBudget } from "../lib/knowledgeCheckBudget";
 import { finalizeHydratedSlide, teachingSlideNeedsRetry, normalizeKeyTakeaways } from "../lib/hydrateGuards";
 import { sanitizeMasteryExamQuestions, examQuestionIsMeta } from "../lib/masteryExam";
-import { shortenCourseTitle, shortenModuleTitle } from "../lib/splitCourseTitle";
+import { extractAcronymGlossary, sanitizeCourseTitles, shortenCourseTitle, shortenModuleTitle } from "../lib/splitCourseTitle";
 import {
   STORYBOARD_SOURCE_CHARS,
   storyboardAnalyzeInstructions,
@@ -314,7 +314,7 @@ export async function analyzeUploadedFile(
      - "### HEADING" lines = section headings detected in PDF
      - "> Speaker Notes:" = presenter notes for context
      Use this structure to identify modules and map content accurately.
-  2. Generate a clean, professional course Title of AT MOST 8 words. Prefer the subject ("Polymers: PE and PP"), not "Introduction to …" lead-ins and not colon laundry lists ("Chemistry, Properties, and Processes").
+  2. Generate a clean, professional course Title of AT MOST 8 words. Spell out technical terms — never unexplained acronyms ("PE and PP"). Prefer a simple subject ("Polymer Chemistry and Processes"), not "Introduction to …" lead-ins and not colon laundry lists ("Chemistry, Properties, and Processes").
      Never use "Storyboard", "Build Specification", or "Developer Handoff" as the course title when the file is a spec for a subject-matter course.
   3. Write a 2-4 sentence Description (what learners will learn, context, why it matters).
   4. Classify the complexity (simple vs moderate vs complex).
@@ -358,7 +358,11 @@ export async function analyzeUploadedFile(
   const text = await executeAnthropicAI('complex', systemInstruction, userPrompt, 4096);
   const cleanedText = extractJsonFromText(text);
   const parsed = parseJsonSafely(text) as FileAnalysisResult;
-  if (parsed?.title) parsed.title = shortenCourseTitle(parsed.title);
+  if (parsed?.title) {
+    parsed.title = shortenCourseTitle(parsed.title, {
+      glossary: extractAcronymGlossary(fileText, parsed.summary, parsed.title),
+    });
+  }
   return parsed;
 }
 
@@ -566,7 +570,7 @@ export async function generateCourseOutline(
     "modules": [
       {
         "id": "uuid",
-        "title": "Short 3-4 word module title",
+        "title": "Short 3-4 word module title, spelled out (no unexplained acronyms)",
         "slides": [
           { "id": "uuid", "type": "${schemaTypeEnum}", "title": "Slide Title", "enablingIndex": 0 }
         ]
@@ -639,24 +643,25 @@ export async function generateCourseOutline(
   }
 
   parsedOutline.learningObjectives = objectives;
-  if (parsedOutline.title) parsedOutline.title = shortenCourseTitle(parsedOutline.title);
+  const gloss = extractAcronymGlossary(configParams.sourceContent, parsedOutline.description, parsedOutline.title);
+  if (parsedOutline.title) parsedOutline.title = shortenCourseTitle(parsedOutline.title, { glossary: gloss });
   if (sourceMode === 'storyboard') {
-    return parsedOutline;
+    return sanitizeCourseTitles(parsedOutline, { glossary: gloss });
   }
   const withCoverage = ensureEnablingSlideCoverage(parsedOutline, objectives);
   if (Array.isArray(withCoverage.modules)) {
     withCoverage.modules = withCoverage.modules.map(mod => ({
       ...mod,
-      title: shortenModuleTitle(mod.title || ''),
+      title: shortenModuleTitle(mod.title || '', { glossary: gloss }),
     }));
   }
-  return ensureKnowledgeCheckBudget(withCoverage, {
+  return sanitizeCourseTitles(ensureKnowledgeCheckBudget(withCoverage, {
     includeKnowledgeChecks: includeKCs,
     knowledgeCheckMode: kcMode,
     knowledgeCheckCount: kcCount,
     quizActivityTypes: uniqueQuizActivities,
     objectives,
-  });
+  }), { glossary: gloss });
 }
 
 export async function hydrateCourseContent(
@@ -697,8 +702,14 @@ export async function hydrateCourseContent(
         objectives: outlineDraft.learningObjectives,
       });
 
+  const gloss = extractAcronymGlossary(
+    configParams.sourceContent,
+    skeleton.description,
+    skeleton.title,
+    originalPrompt,
+  );
   const fullCourse: CourseOutline = {
-    title: shortenCourseTitle(skeleton.title || originalPrompt || ''),
+    title: shortenCourseTitle(skeleton.title || originalPrompt || '', { glossary: gloss }),
     description: skeleton.description,
     visualTheme: skeleton.visualTheme,
     learningObjectives: skeleton.learningObjectives,
@@ -1418,7 +1429,7 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     mod.slides = slides;
   }
 
-  return fullCourse;
+  return sanitizeCourseTitles(fullCourse, { glossary: gloss });
 }
 
 // --- Mastery Quiz Generator ---

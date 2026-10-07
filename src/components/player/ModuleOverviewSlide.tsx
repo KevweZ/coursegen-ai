@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, CheckCircle2, BookOpen } from 'lucide-react';
 import type { TerminalObjectiveGroup } from '../../types/course';
 import { MODULE_ACCENT_HEX } from '../../lib/tabAccents';
+import { shortenModuleTitle } from '../../lib/splitCourseTitle';
 
 type Theme = 'light' | 'dark' | 'unified';
 
@@ -58,7 +59,7 @@ export const ModuleOverviewSlide: React.FC<Props> = ({
   const normalized = objectives.map(normalize).filter(o => o.terminalObjective);
 
   // Strip "Module N — " prefix from moduleTitle for clean display
-  const cleanTitle = moduleTitle.replace(/^Module\s+\d+\s*[—\-]\s*/i, '');
+  const cleanTitle = shortenModuleTitle(moduleTitle.replace(/^Module\s+\d+\s*[—\-]\s*/i, ''));
 
   return (
     <div className="w-full h-full flex flex-col overflow-hidden px-9 py-8" style={{ backgroundColor: p.bg }}>
