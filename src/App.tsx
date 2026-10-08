@@ -84,6 +84,7 @@ import {
 } from './lib/knowledgeCheckOst';
 import { slideSkipsNarration } from './lib/enablingCoverage';
 import { collapseChoiceCardsOst, ensureSelectChoicePrompt, normalizeKeyTakeaways } from './lib/hydrateGuards';
+import { choiceCardsPromptForMode } from './lib/choiceCardCopy';
 import { parseOstSectionGroups } from './lib/ostSectionGroups';
 import { hasLiveNarrationUrl } from './lib/narrationAudio';
 import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft, generateMasteryExam, generateInsertedContent } from './services/aiService';
@@ -424,7 +425,7 @@ const DraftOpeningOverlay: React.FC<{ active: boolean; progress: number; statusT
     : 'Opening preview…');
 
   return (
-    <div className="fixed inset-0 z-[800] bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center gap-5 px-6">
+    <div className="fixed inset-0 z-[950] bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center gap-5 px-6">
       <Loader2 className="w-10 h-10 text-indigo-400 animate-spin" />
       <div className="text-center space-y-1.5">
         <p className="text-white font-bold text-base">Opening draft…</p>
@@ -1127,6 +1128,7 @@ export default function App() {
   /** Open a full interactive preview from a lean draft shell (images attach in the background). */
   const openPreviewFromSnapshot = async (id: string, snapshot: Extract<Awaited<ReturnType<typeof draftManager.loadDraftAsync>>, object>) => {
     if (snapshot.phase !== 'preview' || !snapshot.course?.modules?.length) {
+      setIsLoadingDraft(false);
       showDraftMessage('This draft has no course content and cannot be opened.');
       setStep('home');
       navigateTo(ROUTES.upload, true);
@@ -1145,9 +1147,9 @@ export default function App() {
     setShowViewDraftsModal(false);
     setShowDraftsPanel(false);
     setShowPlayerProperties(false);
-    setIsLoadingDraft(false);
-    setDraftLoadProgress(0);
-    setDraftLoadStatus('');
+    setIsLoadingDraft(true);
+    setDraftLoadProgress(prev => Math.max(prev, 36));
+    setDraftLoadStatus('Loading narration…');
 
     setPlayerConfig(cfg);
     setTheme((snapshot.theme as any) || 'light');
@@ -1164,6 +1166,8 @@ export default function App() {
     }
 
     const narrUrls = await draftManager.loadDraftNarration(id);
+    setDraftLoadProgress(prev => Math.max(prev, 42));
+    setDraftLoadStatus('Loading course media…');
     const applied = applyNarrationUrls(shell, narrUrls);
     const bySlide = indexRestoredNarrationUrls(narrUrls);
     for (const [sid, url] of Object.entries(bySlide)) {
@@ -1231,17 +1235,14 @@ export default function App() {
     setActiveDraftId(id);
     navigateTo(ROUTES.preview(id));
     const restored = Object.keys(narrUrls).length;
-    showDraftMessage(
-      restored > 0
-        ? `Draft loaded ✓ ${restored} narration clip${restored === 1 ? '' : 's'} restored.`
-        : 'Draft loaded ✓'
-    );
-
     // Images after first paint — do not re-apply audio from the lean shell (that wiped narration).
     const attachImages = async () => {
       try {
-        await new Promise<void>(r => setTimeout(r, 100));
-        const stored = await draftManager.loadDraftAssets(id);
+        await new Promise<void>(r => setTimeout(r, 40));
+        const stored = await draftManager.loadDraftAssets(id, (pct, label) => {
+          setDraftLoadProgress(42 + Math.round((pct / 100) * 50));
+          setDraftLoadStatus(label);
+        });
         const media = mediaRecordToMap(stored);
         legacyMedia.forEach((v, k) => { if (!media.has(k)) media.set(k, v); });
 
@@ -1370,7 +1371,15 @@ export default function App() {
         console.warn('[Drafts] Media attach after open failed:', e);
       }
     };
-    void attachImages();
+    await attachImages();
+    setDraftLoadProgress(100);
+    setIsLoadingDraft(false);
+    setDraftLoadStatus('');
+    showDraftMessage(
+      restored > 0
+        ? `Draft loaded ✓ ${restored} narration clip${restored === 1 ? '' : 's'} restored.`
+        : 'Draft loaded ✓'
+    );
     return true;
   };
 
@@ -1380,17 +1389,24 @@ export default function App() {
     setShowViewDraftsModal(false);
     setAdminDropdownOpen(false);
     setShowPlayerProperties(false);
-    setIsLoadingDraft(false);
-    setDraftLoadProgress(0);
-    setDraftLoadStatus('');
-    showDraftMessage('Opening draft…');
+    setIsLoadingDraft(true);
+    setDraftLoadProgress(4);
+    setDraftLoadStatus('Fetching saved draft…');
 
     // Wait one frame so portal modals leave the DOM before mounting the player
     window.requestAnimationFrame(() => {
       void (async () => {
         const t0 = performance.now();
         try {
-          const snapshot = await draftManager.loadDraftAsync(id);
+          const snapshot = await draftManager.loadDraftAsync(id, (pct, phase) => {
+            setDraftLoadProgress(Math.max(4, Math.round(pct * 0.35)));
+            setDraftLoadStatus(
+              phase === 'fetch' ? 'Fetching saved draft…'
+              : phase === 'parse' ? 'Reading course data…'
+              : phase === 'hydrate' ? 'Preparing course…'
+              : 'Opening draft…'
+            );
+          });
 
           if (!snapshot) {
             showDraftMessage('Draft not found. It may have failed to save — try saving again.');
@@ -1566,6 +1582,9 @@ export default function App() {
   const [lastUploadPath, setLastUploadPath] = useState<UploadPathChoice | null>(null);
   const [regeneratingSlideId, setRegeneratingSlideId] = useState<string | null>(null);
   const [showEditMenu, setShowEditMenu] = useState(false);
+  const [showMediaMenu, setShowMediaMenu] = useState(false);
+  const [showSendMenu, setShowSendMenu] = useState(false);
+  const [showPublishMenu, setShowPublishMenu] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [addContentOpen, setAddContentOpen] = useState(false);
   const [isAddingContent, setIsAddingContent] = useState(false);
@@ -1940,13 +1959,19 @@ export default function App() {
     }
     if (parsed.kind === 'preview') {
       void (async () => {
-        // Never block the UI with the draft overlay on deep-link restore
-        setIsLoadingDraft(false);
-        setDraftLoadProgress(0);
-        setDraftLoadStatus('');
-        showDraftMessage('Opening draft…');
+        setIsLoadingDraft(true);
+        setDraftLoadProgress(4);
+        setDraftLoadStatus('Fetching saved draft…');
         try {
-          const snap = await draftManager.loadDraftAsync(parsed.draftId);
+          const snap = await draftManager.loadDraftAsync(parsed.draftId, (pct, phase) => {
+            setDraftLoadProgress(Math.max(4, Math.round(pct * 0.35)));
+            setDraftLoadStatus(
+              phase === 'fetch' ? 'Fetching saved draft…'
+              : phase === 'parse' ? 'Reading course data…'
+              : phase === 'hydrate' ? 'Preparing course…'
+              : 'Opening draft…'
+            );
+          });
           if (snap?.phase === 'preview' && snap.course?.modules?.length) {
             setActiveDraftId(parsed.draftId);
             await openPreviewFromSnapshot(parsed.draftId, snap);
@@ -6795,7 +6820,7 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* Single unified toolbar — L→R: Desktop, Player Props, Edit, Upload, Undo, Reset, Quality, Save, Publish */}
+                  {/* Single unified toolbar — L→R: Desktop, Player Props, Edit, Media, Undo, Reset, Quality, Save, Send, Publish */}
                   <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
                     {!isPhoneViewport && (
                     <button
@@ -6823,7 +6848,12 @@ export default function App() {
                     <div className="relative">
                       <button
                         title="Edit — slide text, narration, and course media"
-                        onClick={() => setShowEditMenu(v => !v)}
+                        onClick={() => {
+                          setShowEditMenu(v => !v);
+                          setShowMediaMenu(false);
+                          setShowSendMenu(false);
+                          setShowPublishMenu(false);
+                        }}
                         className="flex items-center gap-1 px-2 py-1 rounded-md border border-indigo-700/50 hover:bg-indigo-800/20 text-indigo-300 text-[11px] font-semibold"
                       >
                         <Edit3 className="w-3 h-3" /><span className="hidden lg:inline">Edit</span>
@@ -6988,47 +7018,78 @@ export default function App() {
                       </button>
                     )}
 
-                    <label
-                      htmlFor="topbar-img-upload"
-                      title="Upload Media"
-                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-violet-700/50 hover:bg-violet-800/20 text-violet-300 text-[11px] font-semibold cursor-pointer"
-                    >
-                      <Upload className="w-3 h-3" /><span className="hidden lg:inline">Upload Media</span>
-                      <input id="topbar-img-upload" type="file" accept="image/*,video/*" multiple className="hidden"
-                        onChange={e => {
-                          if (e.target.files?.length && currentSlide?.id) {
-                            const newImgs: FloatingImage[] = Array.from(e.target.files).map((f, i) =>
-                              floatingFromFile(f, i, activeTabForImages || null)
-                            );
-                            pushUndo();
-                            syncFloatingImages(currentSlide.id, [...(floatingImagesMap[currentSlide.id] || []), ...newImgs]);
-                            e.target.value = '';
-                          }
-                        }}
-                      />
-                    </label>
-
-                    {!isLearnerPlayer && (
-                      <SlideBackdropMenu
-                        course={course}
-                        slideId={currentSlide?.id}
-                        onApply={(next) => {
-                          pushUndo();
-                          setCourse(next);
-                        }}
-                      />
-                    )}
-
-                    {sourceImages.length > 0 && currentSlide?.id && (
+                    <div className="relative">
                       <button
-                        type="button"
-                        title={`Source Image (${sourceImages.length} from upload)`}
-                        onClick={() => setShowImageGalleryForSlide(currentSlide.id)}
-                        className="flex items-center gap-1 px-2 py-1 rounded-md border border-teal-700/50 hover:bg-teal-800/20 text-teal-300 text-[11px] font-semibold"
+                        title="Media — upload, source images, and slide background"
+                        onClick={() => {
+                          setShowMediaMenu(v => !v);
+                          setShowEditMenu(false);
+                          setShowSendMenu(false);
+                          setShowPublishMenu(false);
+                        }}
+                        className="flex items-center gap-1 px-2 py-1 rounded-md border border-violet-700/50 hover:bg-violet-800/20 text-violet-300 text-[11px] font-semibold"
                       >
-                        <Library className="w-3 h-3" /><span className="hidden lg:inline">Source Image</span>
+                        <Upload className="w-3 h-3" /><span className="hidden lg:inline">Media</span>
+                        <ChevronDown className="w-3 h-3 opacity-70" />
                       </button>
-                    )}
+                      {showMediaMenu && (
+                        <>
+                          <div className="fixed inset-0 z-[60]" onClick={() => setShowMediaMenu(false)} />
+                          <div className="absolute right-0 top-full mt-1 z-[70] w-72 rounded-lg border border-slate-700 bg-slate-900 shadow-xl py-1 text-[12px]">
+                            <label
+                              htmlFor="topbar-img-upload"
+                              className="w-full text-left px-3 py-2 hover:bg-slate-800 text-violet-200 flex items-start gap-2 cursor-pointer"
+                            >
+                              <Upload className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                              <span>
+                                <span className="font-semibold block">Upload media</span>
+                                <span className="text-slate-500 text-[10px]">Images or video — move and resize on the slide</span>
+                              </span>
+                              <input id="topbar-img-upload" type="file" accept="image/*,video/*" multiple className="hidden"
+                                onChange={e => {
+                                  if (e.target.files?.length && currentSlide?.id) {
+                                    const newImgs: FloatingImage[] = Array.from(e.target.files).map((f, i) =>
+                                      floatingFromFile(f, i, activeTabForImages || null)
+                                    );
+                                    pushUndo();
+                                    syncFloatingImages(currentSlide.id, [...(floatingImagesMap[currentSlide.id] || []), ...newImgs]);
+                                    e.target.value = '';
+                                    setShowMediaMenu(false);
+                                  }
+                                }}
+                              />
+                            </label>
+                            {sourceImages.length > 0 && currentSlide?.id && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShowImageGalleryForSlide(currentSlide.id);
+                                  setShowMediaMenu(false);
+                                }}
+                                className="w-full text-left px-3 py-2 hover:bg-slate-800 text-teal-200 flex items-start gap-2"
+                              >
+                                <Library className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                                <span>
+                                  <span className="font-semibold block">Source image</span>
+                                  <span className="text-slate-500 text-[10px]">{sourceImages.length} from the uploaded file</span>
+                                </span>
+                              </button>
+                            )}
+                            {!isLearnerPlayer && (
+                              <SlideBackdropMenu
+                                asMenuItem
+                                course={course}
+                                slideId={currentSlide?.id}
+                                onApply={(next) => {
+                                  pushUndo();
+                                  setCourse(next);
+                                }}
+                              />
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
 
                     <button
                       title={undoHistory.length > 0 ? `Undo (${undoHistory.length})` : 'Nothing to undo'}
@@ -7110,70 +7171,132 @@ export default function App() {
                       )}
                     </button>
 
-                    {/* Closed beta: trial users may export SCORM (same control as paid). */}
-                    <div className="flex items-center rounded-md overflow-hidden border border-violet-700/50">
-                        <button
-                          title={`SCORM version (current: ${scormVersion})`}
-                          onClick={() => setScormVersion(v => v === '1.2' ? '2004' : '1.2')}
-                          className="px-1.5 py-1 text-violet-300 text-[10px] font-black tracking-wide hover:bg-violet-800/20 border-r border-violet-700/40"
-                        >
-                          {scormVersion}
-                        </button>
-                        <button
-                          title={`Publish Course as SCORM ${scormVersion}`}
-                          disabled={isExporting}
-                          onClick={() => {
-                            const pendingCount = qcReport
-                              ? qcReport.issues.filter(i => !qcConfirmed.has(i.id) && !qcDeclined.has(i.id)).length
-                              : 0;
-                            if (pendingCount > 0) setShowQcPublishWarning(true);
-                            else exportScorm();
-                          }}
-                          className="flex items-center gap-1 px-2 py-1 text-violet-300 text-[11px] font-semibold hover:bg-violet-800/20 disabled:opacity-60"
-                        >
-                          {isExporting ? (
-                            <>
-                              <div className="w-3 h-3 rounded-full border-2 border-violet-300/30 border-t-violet-300 animate-spin" />
-                              <span className="hidden lg:inline">{exportProgress < 100 ? `${exportProgress}%` : '…'}</span>
-                            </>
-                          ) : (
-                            <>
-                              <Download className="w-3 h-3" />
-                              <span className="hidden lg:inline">Publish Course</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    <button
-                      type="button"
-                      title="Send a copy of this draft to another NexCourse account"
-                      onClick={() => openDraftHandoff(activeDraftId)}
-                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-sky-700/50 hover:bg-sky-800/20 text-sky-300 text-[11px] font-semibold"
-                    >
-                      <Send className="w-3 h-3" />
-                      <span className="hidden lg:inline">Send copy</span>
-                    </button>
-                    <button
-                      title="Create a temporary SME review link (no authoring UI)"
-                      onClick={() => {
-                        setReviewLinkError(null);
-                        setShowReviewLinkModal(true);
-                      }}
-                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-sky-700/50 hover:bg-sky-800/20 text-sky-300 text-[11px] font-semibold"
-                    >
-                      <Link2 className="w-3 h-3" />
-                      <span className="hidden lg:inline">Review link</span>
-                    </button>
-                    <button
-                      type="button"
-                      title="Download on-screen text and narration as a Word file for SME markup"
-                      disabled={isExportingReviewScript}
-                      onClick={() => void exportReviewScript()}
-                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-teal-700/50 hover:bg-teal-800/20 text-teal-300 text-[11px] font-semibold disabled:opacity-60"
-                    >
-                      {isExportingReviewScript ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
-                      <span className="hidden lg:inline">{isExportingReviewScript ? 'Script…' : 'Review script'}</span>
-                    </button>
+                    <div className="relative">
+                      <button
+                        type="button"
+                        title="Send — copy to another account or SME review link"
+                        onClick={() => {
+                          setShowSendMenu(v => !v);
+                          setShowEditMenu(false);
+                          setShowMediaMenu(false);
+                          setShowPublishMenu(false);
+                        }}
+                        className="flex items-center gap-1 px-2 py-1 rounded-md border border-sky-700/50 hover:bg-sky-800/20 text-sky-300 text-[11px] font-semibold"
+                      >
+                        <Send className="w-3 h-3" /><span className="hidden lg:inline">Send</span>
+                        <ChevronDown className="w-3 h-3 opacity-70" />
+                      </button>
+                      {showSendMenu && (
+                        <>
+                          <div className="fixed inset-0 z-[60]" onClick={() => setShowSendMenu(false)} />
+                          <div className="absolute right-0 top-full mt-1 z-[70] w-72 rounded-lg border border-slate-700 bg-slate-900 shadow-xl py-1 text-[12px]">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowSendMenu(false);
+                                openDraftHandoff(activeDraftId);
+                              }}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-800 text-sky-200 flex items-start gap-2"
+                            >
+                              <Send className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                              <span>
+                                <span className="font-semibold block">Send copy</span>
+                                <span className="text-slate-500 text-[10px]">Duplicate this draft onto another NexCourse account</span>
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowSendMenu(false);
+                                setReviewLinkError(null);
+                                setShowReviewLinkModal(true);
+                              }}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-800 text-sky-200 flex items-start gap-2"
+                            >
+                              <Link2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                              <span>
+                                <span className="font-semibold block">Review link</span>
+                                <span className="text-slate-500 text-[10px]">Temporary play-only link for SME review</span>
+                              </span>
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    <div className="relative">
+                      <button
+                        type="button"
+                        title="Publish — SCORM zip or review script"
+                        onClick={() => {
+                          setShowPublishMenu(v => !v);
+                          setShowEditMenu(false);
+                          setShowMediaMenu(false);
+                          setShowSendMenu(false);
+                        }}
+                        className="flex items-center gap-1 px-2 py-1 rounded-md border border-violet-700/50 hover:bg-violet-800/20 text-violet-300 text-[11px] font-semibold"
+                      >
+                        {isExporting ? (
+                          <div className="w-3 h-3 rounded-full border-2 border-violet-300/30 border-t-violet-300 animate-spin" />
+                        ) : (
+                          <Download className="w-3 h-3" />
+                        )}
+                        <span className="hidden lg:inline">{isExporting ? (exportProgress < 100 ? `${exportProgress}%` : '…') : 'Publish'}</span>
+                        <ChevronDown className="w-3 h-3 opacity-70" />
+                      </button>
+                      {showPublishMenu && (
+                        <>
+                          <div className="fixed inset-0 z-[60]" onClick={() => setShowPublishMenu(false)} />
+                          <div className="absolute right-0 top-full mt-1 z-[70] w-72 rounded-lg border border-slate-700 bg-slate-900 shadow-xl py-1 text-[12px]">
+                            <button
+                              type="button"
+                              disabled={isExporting}
+                              onClick={() => {
+                                setShowPublishMenu(false);
+                                const pendingCount = qcReport
+                                  ? qcReport.issues.filter(i => !qcConfirmed.has(i.id) && !qcDeclined.has(i.id)).length
+                                  : 0;
+                                if (pendingCount > 0) setShowQcPublishWarning(true);
+                                else exportScorm();
+                              }}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-800 text-violet-200 disabled:opacity-60 flex items-start gap-2"
+                            >
+                              <Download className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                              <span>
+                                <span className="font-semibold block">Publish SCORM {scormVersion}</span>
+                                <span className="text-slate-500 text-[10px]">Download a zip for your LMS</span>
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setScormVersion(v => v === '1.2' ? '2004' : '1.2')}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-800 text-slate-300 flex items-start gap-2"
+                            >
+                              <span className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[10px] font-black">{scormVersion === '1.2' ? '04' : '12'}</span>
+                              <span>
+                                <span className="font-semibold block">Switch to SCORM {scormVersion === '1.2' ? '2004' : '1.2'}</span>
+                                <span className="text-slate-500 text-[10px]">Current package version is {scormVersion}</span>
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isExportingReviewScript}
+                              onClick={() => {
+                                setShowPublishMenu(false);
+                                void exportReviewScript();
+                              }}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-800 text-teal-200 disabled:opacity-60 flex items-start gap-2"
+                            >
+                              {isExportingReviewScript ? <Loader2 className="w-3.5 h-3.5 mt-0.5 shrink-0 animate-spin" /> : <FileText className="w-3.5 h-3.5 mt-0.5 shrink-0" />}
+                              <span>
+                                <span className="font-semibold block">Review script</span>
+                                <span className="text-slate-500 text-[10px]">Word file of on-screen text and narration</span>
+                              </span>
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>}
@@ -8288,7 +8411,7 @@ export default function App() {
                                  ).length;
                                  const prompt = mode === 'select'
                                    ? ensureSelectChoicePrompt(ost.prompt, correctCount)
-                                   : ost.prompt;
+                                   : choiceCardsPromptForMode(ost.prompt, mode);
                                  return (
                                  <div className="space-y-6 w-full">
                                    <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
@@ -9108,7 +9231,7 @@ export default function App() {
                             {(editingSlide.type === 'tabbed-horizontal')
                               ? <>Overview <span className="normal-case font-normal text-slate-600">(before steps)</span></>
                               : (editingSlide.type === 'tabbed-vertical')
-                              ? <>Introduction <span className="normal-case font-normal text-slate-600">(Intro tab)</span></>
+                              ? <>Instruction <span className="normal-case font-normal text-slate-600">(Instruction tab)</span></>
                               : <>On-Screen Text <span className="normal-case font-normal text-slate-600">(Rich Text)</span></>}
                           </span>
                         </label>
@@ -9353,7 +9476,7 @@ export default function App() {
                                 className="mt-0.5 w-4 h-4 rounded border-slate-600 text-indigo-500"
                               />
                               <span className="text-[11px] text-slate-300 leading-relaxed">
-                                Use one color for every selected tab — including Introduction — instead of a different color per tab.
+                                Use one color for every selected tab{editingSlide.type === 'tabbed-vertical' ? ' — including Instruction' : ''} — instead of a different color per tab.
                               </span>
                             </label>
                             {unify && (
@@ -9385,7 +9508,7 @@ export default function App() {
                                   value={introTitleHex}
                                   onPick={(hex) => patchTabs(tabs.map((t: any) => ({ ...t, labelColor: hex })), { introLabelColor: hex })}
                                 />
-                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Introduction tab text</label>
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{editingSlide.type === 'tabbed-vertical' ? 'Instruction tab text' : 'Overview text'}</label>
                                 <textarea
                                   rows={5}
                                   value={coerceOstText(editingSlide.content)}
@@ -9398,14 +9521,14 @@ export default function App() {
                                     setEditingSlide(updated);
                                   }}
                                   className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 resize-none"
-                                  placeholder="Short bullets for the Introduction tab (one idea per line)…"
+                                  placeholder="Short bullets for the Instruction tab (one idea per line)…"
                                 />
                               </div>
                             )}
                             {!unify && (
                               <div className="rounded-xl border border-slate-700 bg-slate-950 p-3 space-y-2">
-                                <p className="text-sm font-bold text-white">Introduction</p>
-                                <p className="text-[11px] text-slate-500">Fill of the Intro tab. Title text is separate so dark fills stay readable.</p>
+                                <p className="text-sm font-bold text-white">{editingSlide.type === 'tabbed-vertical' ? 'Instruction' : 'Overview'}</p>
+                                <p className="text-[11px] text-slate-500">Fill of the {editingSlide.type === 'tabbed-vertical' ? 'Instruction' : 'Overview'} tab. Title text is separate so dark fills stay readable.</p>
                                 <ColorDots
                                   value={introHex}
                                   onPick={(hex) => patchTabs(tabs, { introColor: hex })}
@@ -9427,7 +9550,7 @@ export default function App() {
                                     setEditingSlide(updated);
                                   }}
                                   className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 resize-none"
-                                  placeholder="Short bullets for the Introduction tab (one idea per line)…"
+                                  placeholder="Short bullets for the Instruction tab (one idea per line)…"
                                 />
                               </div>
                             )}

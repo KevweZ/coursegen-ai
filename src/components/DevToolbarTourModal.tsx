@@ -2,17 +2,19 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, ChevronLeft, ChevronRight, Monitor, Settings2, Edit3, Upload,
-  Undo2, Shield, Save, Rocket,
+  Undo2, Shield, Save, Rocket, Send,
 } from 'lucide-react';
 
-export const DEV_TOUR_KEY = 'nexcourse_dev_tour_dismissed_v2';
-const DEV_TOUR_SESSION_KEY = 'nexcourse_dev_tour_session_v2';
+export const DEV_TOUR_KEY = 'nexcourse_dev_tour_dismissed_v3';
+const DEV_TOUR_SESSION_KEY = 'nexcourse_dev_tour_session_v3';
 
 /** Clear legacy dismiss keys from the v1 tour gate so the tour can appear again. */
 export function migrateDevTourStorage(): void {
   try {
     localStorage.removeItem('nexcourse_dev_tour_dismissed');
     sessionStorage.removeItem('nexcourse_dev_tour_session');
+    localStorage.removeItem('nexcourse_dev_tour_dismissed_v2');
+    sessionStorage.removeItem('nexcourse_dev_tour_session_v2');
   } catch { /* ignore */ }
 }
 
@@ -38,9 +40,9 @@ const STEPS = [
   },
   {
     icon: Upload,
-    title: 'Upload Image',
-    body: 'Add your own images onto the current slide as floating media you can move and crop.',
-    accent: '#a78bfa', // violet — matches Upload Image
+    title: 'Media',
+    body: 'Upload images or video onto the current slide, pick a source image from your file, or set a slide background.',
+    accent: '#a78bfa', // violet — matches Media
   },
   {
     icon: Undo2,
@@ -61,9 +63,15 @@ const STEPS = [
     accent: '#94a3b8', // slate — matches Save
   },
   {
+    icon: Send,
+    title: 'Send',
+    body: 'Send a copy of this draft to another NexCourse account, or create a temporary play-only review link for an SME.',
+    accent: '#38bdf8', // sky — matches Send
+  },
+  {
     icon: Rocket,
-    title: 'Publish Course',
-    body: 'Export a SCORM package for your LMS when you’re ready. Choose SCORM 1.2 or 2004, then download the zip to upload to your LMS.',
+    title: 'Publish',
+    body: 'Export a SCORM zip for your LMS (1.2 or 2004), or download a Word review script of on-screen text and narration.',
     accent: '#a78bfa', // violet — matches Publish
   },
 ] as const;

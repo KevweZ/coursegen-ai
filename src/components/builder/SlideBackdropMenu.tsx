@@ -8,9 +8,11 @@ interface Props {
   slideId?: string;
   disabled?: boolean;
   onApply: (nextCourse: any) => void;
+  /** Render as a dropdown row instead of a toolbar chip. */
+  asMenuItem?: boolean;
 }
 
-export function SlideBackdropMenu({ course, slideId, disabled, onApply }: Props) {
+export function SlideBackdropMenu({ course, slideId, disabled, onApply, asMenuItem }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [pendingUrl, setPendingUrl] = useState<string | null>(null);
@@ -62,10 +64,19 @@ export function SlideBackdropMenu({ course, slideId, disabled, onApply }: Props)
           }
           inputRef.current?.click();
         }}
-        className="flex items-center gap-1 px-2 py-1 rounded-md border border-fuchsia-700/50 hover:bg-fuchsia-800/20 text-fuchsia-300 text-[11px] font-semibold disabled:opacity-40"
+        className={asMenuItem
+          ? 'w-full text-left px-3 py-2 hover:bg-slate-800 text-fuchsia-200 flex items-start gap-2 disabled:opacity-40'
+          : 'flex items-center gap-1 px-2 py-1 rounded-md border border-fuchsia-700/50 hover:bg-fuchsia-800/20 text-fuchsia-300 text-[11px] font-semibold disabled:opacity-40'}
       >
-        {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <ImageIcon className="w-3 h-3" />}
-        <span className="hidden lg:inline">Background</span>
+        {busy ? <Loader2 className="w-3 h-3 animate-spin mt-0.5 shrink-0" /> : <ImageIcon className="w-3 h-3 mt-0.5 shrink-0" />}
+        {asMenuItem ? (
+          <span>
+            <span className="font-semibold block">Background</span>
+            <span className="text-slate-500 text-[10px]">Slide, module, or whole-course backdrop</span>
+          </span>
+        ) : (
+          <span className="hidden lg:inline">Background</span>
+        )}
       </button>
       <input
         ref={inputRef}

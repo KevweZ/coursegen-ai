@@ -1030,7 +1030,7 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Tab colors across the course</p>
                     {([
                       { id: 'per-tab' as const, label: 'Different color per tab', hint: 'Each tab gets its own color. You can still change a slide in Edit.' },
-                      { id: 'unify' as const, label: 'One color for every vertical tab', hint: 'Introduction and every topic tab use the same color on every vertical-tab slide.' },
+                      { id: 'unify' as const, label: 'One color for every vertical tab', hint: 'Instruction and every topic tab use the same color on every vertical-tab slide.' },
                       { id: 'module' as const, label: 'Match each module’s accent', hint: 'Tabs in a module use the same color as that module’s title line and table-of-contents stripe.' },
                     ] as { id: VerticalTabColorMode; label: string; hint: string }[]).map(opt => (
                       <label key={opt.id} className="flex items-start gap-3 cursor-pointer">

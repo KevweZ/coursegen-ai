@@ -219,7 +219,7 @@ export default function TabbedContentVertical({
             type="button"
             data-tab-drop-zone="__intro__"
             onClick={selectIntro}
-            aria-label="Introduction"
+            aria-label="Instruction"
             aria-current={inIntro ? 'true' : undefined}
             className={cn(
               'flex items-center gap-2 w-full text-left px-3 py-2.5 rounded-xl font-bold text-sm transition-all border',
@@ -234,7 +234,7 @@ export default function TabbedContentVertical({
               ? { background: introHex, boxShadow: `0 0 0 2px ${introHex}55`, color: introTitleColor }
               : (isLight ? { borderLeft: `4px solid ${introHex}` } : undefined)}
           >
-            <span className="flex-1 leading-snug" style={{ color: inIntro ? introTitleColor : undefined }}>Introduction</span>
+            <span className="flex-1 leading-snug" style={{ color: inIntro ? introTitleColor : undefined }}>Instruction</span>
             {inIntro && <ChevronRight className="w-4 h-4 shrink-0" />}
           </button>
           {normalized.map((tab, i) => {
@@ -478,7 +478,7 @@ function VerticalTabsBlocksSkin({
             type="button"
             data-tab-drop-zone="__intro__"
             onClick={selectIntro}
-            aria-label="Introduction"
+            aria-label="Instruction"
             aria-current={inIntro ? 'true' : undefined}
             className={cn(
               'relative flex items-center justify-center w-full flex-1 min-h-[64px] px-3 py-2 text-center font-extrabold text-[11px] sm:text-xs leading-tight uppercase tracking-wide border-0',
@@ -487,7 +487,7 @@ function VerticalTabsBlocksSkin({
             style={blockFillStyle(introHex, inIntro, introHex, well, wellInk, isLight)}
           >
             <span className="block w-full px-2" style={{ color: inIntro ? wellInk : (isLight ? '#0f172a' : contrastTextOn(introHex)) }}>
-              Introduction
+              Instruction
             </span>
           </button>
           {normalized.map((tab, i) => {

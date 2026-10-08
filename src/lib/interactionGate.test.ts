@@ -68,7 +68,8 @@ test('process rail and vertical tabs expose a return-to-intro control', () => {
   assert.match(horiz, /aria-label="Introduction"/);
   const vert = src('src/components/interactions/TabbedContentVertical.tsx');
   assert.match(vert, /selectIntro/);
-  assert.match(vert, /Introduction/);
+  assert.match(vert, /Instruction/);
+  assert.match(vert, /aria-label="Instruction"/);
 });
 
 test('hub is an opt-in nav mode with a dedicated menu slide id', () => {

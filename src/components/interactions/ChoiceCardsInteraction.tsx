@@ -2,7 +2,12 @@ import React, { useState } from 'react';
 import { Check } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { markdownToHtml } from '../../lib/markdownInline';
-import { compactChoiceCardCopy } from '../../lib/choiceCardCopy';
+import {
+  compactChoiceCardCopy,
+  inferChoiceCardsMode,
+  choiceCardIsAccepted,
+  type ChoiceCardsMode,
+} from '../../lib/choiceCardCopy';
 
 export interface ChoiceCard {
   id: string;
@@ -16,7 +21,8 @@ export interface ChoiceCard {
   accepted?: boolean;
 }
 
-export type ChoiceCardsMode = 'explore' | 'select';
+export type { ChoiceCardsMode } from '../../lib/choiceCardCopy';
+export { inferChoiceCardsMode } from '../../lib/choiceCardCopy';
 
 interface Props {
   cards?: ChoiceCard[];
@@ -39,27 +45,7 @@ const PASTELS = [
 ];
 
 function isAccepted(card: ChoiceCard): boolean {
-  return card?.isCorrect === true || card?.accepted === true;
-}
-
-export function inferChoiceCardsMode(data: {
-  mode?: string;
-  prompt?: string;
-  cards?: ChoiceCard[];
-  items?: ChoiceCard[];
-  selectMode?: string;
-} | null | undefined): ChoiceCardsMode {
-  if (!data) return 'select';
-  if (data.mode === 'explore' || data.mode === 'select') return data.mode;
-  const cards = (Array.isArray(data.cards) && data.cards.length ? data.cards : data.items) || [];
-  const hasAccepted = cards.some(isAccepted);
-  if (hasAccepted) return 'select';
-  const hasReveal = cards.some(c => String(c?.reveal || '').trim());
-  if (hasReveal) return 'explore';
-  const prompt = String(data.prompt || '');
-  if (/select each|click each|explore|visit|reveal|callout/i.test(prompt)) return 'explore';
-  // No answer key — Check would show the same copy for every click.
-  return 'explore';
+  return choiceCardIsAccepted(card);
 }
 
 /**

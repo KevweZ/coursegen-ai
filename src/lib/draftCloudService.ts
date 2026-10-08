@@ -218,7 +218,11 @@ export async function uploadCloudAssets(
   await uploadAssets(userId, draftId, assets);
 }
 
-export async function downloadCloudAssets(userId: string, draftId: string): Promise<Record<string, string>> {
+export async function downloadCloudAssets(
+  userId: string,
+  draftId: string,
+  onProgress?: (done: number, total: number) => void,
+): Promise<Record<string, string>> {
   const prefix = assetPrefix(userId, draftId);
   const out: Record<string, string> = {};
 
@@ -231,13 +235,20 @@ export async function downloadCloudAssets(userId: string, draftId: string): Prom
       try {
         const man = JSON.parse(await manBlob.text());
         const list = Array.isArray(man?.files) ? man.files : [];
+        const total = Math.max(1, list.length);
+        let done = 0;
+        onProgress?.(0, total);
         for (const entry of list) {
           const name = String(entry?.name || '');
           const path = String(entry?.path || '');
-          if (!name || !path) continue;
+          done += 1;
+          if (!name || !path) {
+            onProgress?.(done, total);
+            continue;
+          }
           const { data: fileBlob, error: fErr } = await supabase.storage.from(BUCKET).download(`${prefix}/b/${name}`);
-          if (fErr || !fileBlob) continue;
-          out[path] = await blobToDataUrl(fileBlob);
+          if (!fErr && fileBlob) out[path] = await blobToDataUrl(fileBlob);
+          onProgress?.(done, total);
         }
         if (Object.keys(out).length) return out;
       } catch (e) {
@@ -251,16 +262,22 @@ export async function downloadCloudAssets(userId: string, draftId: string): Prom
     .filter(n => n === 'media.json' || /^media-\d+\.json$/.test(n))
     .sort();
 
+  const total = Math.max(1, mediaFiles.length);
+  let done = 0;
+  onProgress?.(0, total);
   for (const name of mediaFiles) {
     const { data, error: dlErr } = await supabase.storage.from(BUCKET).download(`${prefix}/${name}`);
-    if (dlErr || !data) continue;
-    try {
-      const text = await data.text();
-      const parsed = JSON.parse(text);
-      if (parsed && typeof parsed === 'object') Object.assign(out, parsed);
-    } catch (e) {
-      console.warn('[DraftCloud] Bad media chunk', name, e);
+    done += 1;
+    if (!dlErr && data) {
+      try {
+        const text = await data.text();
+        const parsed = JSON.parse(text);
+        if (parsed && typeof parsed === 'object') Object.assign(out, parsed);
+      } catch (e) {
+        console.warn('[DraftCloud] Bad media chunk', name, e);
+      }
     }
+    onProgress?.(done, total);
   }
   return out;
 }

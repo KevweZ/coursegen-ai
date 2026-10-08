@@ -398,3 +398,24 @@ test('process slides with 5+ steps remap to vertical tabs', () => {
   assert.equal(seven.type, 'tabbed-vertical');
   assert.equal(seven.data.tabs.length, 7);
 });
+
+test('oversized all-correct choice-cards remap to click-reveal, not Check-all-green', () => {
+  const next = finalizeHydratedSlide({
+    type: 'choice-cards',
+    title: 'Positive and Limiting Behaviors by Color Energy',
+    content: '',
+    data: {
+      mode: 'select',
+      prompt: 'Select the correct card pairs, then click Check.',
+      cards: Array.from({ length: 8 }, (_, i) => ({
+        id: `c${i + 1}`,
+        label: `Card ${i + 1}`,
+        body: 'A teaching point about this color energy.',
+        isCorrect: true,
+      })),
+    },
+  }, 'Color Energy');
+  assert.equal(next.type, 'click-reveal');
+  assert.equal(next.data.items.length, 8);
+  assert.match(String(next.data.items[0].term), /Card 1/);
+});

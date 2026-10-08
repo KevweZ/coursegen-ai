@@ -157,12 +157,32 @@ export function knowledgeCheckHasMetaStem(slide: any): boolean {
 
 /** Process (tabbed-horizontal) is 3–4 steps; 5+ remap to vertical tabs. */
 export const PROCESS_STEP_MAX = 4;
+/** Scored choice-cards stay 2–4 tiles; 5+ become click-reveal teaching rows. */
+export const CHOICE_CARD_SELECT_MAX = 4;
 
 export function remapOversizedProcessToTabs(slide: any): any {
   if (!slide || slide.type !== 'tabbed-horizontal') return slide;
   const tabs = slide.data?.tabs || slide.data?.items;
   if (!Array.isArray(tabs) || tabs.length < PROCESS_STEP_MAX + 1) return slide;
   return { ...slide, type: 'tabbed-vertical' };
+}
+
+export function remapOversizedChoiceCards(slide: any): any {
+  if (!slide || slide.type !== 'choice-cards') return slide;
+  const cards = Array.isArray(slide.data?.cards) ? slide.data.cards : (slide.data?.items || []);
+  if (!Array.isArray(cards) || cards.length < CHOICE_CARD_SELECT_MAX + 1) return slide;
+  return {
+    ...slide,
+    type: 'click-reveal',
+    data: {
+      ...(slide.data || {}),
+      items: cards.map((c: any, i: number) => ({
+        id: String(c?.id || `r${i + 1}`),
+        term: String(c?.label || c?.term || `Item ${i + 1}`),
+        definition: String(c?.reveal || c?.body || c?.definition || '').trim(),
+      })),
+    },
+  };
 }
 
 export function fallbackKnowledgeCheckData(title: string, moduleTitle = ''): Record<string, unknown> {
@@ -463,22 +483,27 @@ function degradeIncompleteInteraction(slide: any, moduleTitle: string): any {
  */
 export function finalizeHydratedSlide(slide: any, moduleTitle = ''): any {
   if (!slide || typeof slide !== 'object') return slide;
-  let next = remapOversizedProcessToTabs({ ...slide });
+  let next = remapOversizedChoiceCards(remapOversizedProcessToTabs({ ...slide }));
 
   if (next.type === 'choice-cards') {
     const collapsed = collapseChoiceCardsOst(next.content, next.data?.prompt);
     const cards = Array.isArray(next.data?.cards) ? next.data.cards : (next.data?.items || []);
-    const correctCount = (Array.isArray(cards) ? cards : []).filter(
+    const list = Array.isArray(cards) ? cards : [];
+    const correctCount = list.filter(
       (c: any) => c?.isCorrect === true || c?.accepted === true,
     ).length;
-    const scored = next.data?.mode === 'select' || correctCount > 0;
+    const allAccepted = list.length >= 2 && correctCount === list.length;
+    const scored = !allAccepted && (next.data?.mode === 'select' || correctCount > 0);
     next = {
       ...next,
       content: collapsed.content,
       data: {
         ...(next.data || {}),
+        mode: scored ? 'select' : 'explore',
         prompt: scored ? ensureSelectChoicePrompt(collapsed.prompt, correctCount) : collapsed.prompt,
-        cards: compactChoiceCardsList(Array.isArray(cards) ? cards : []),
+        cards: compactChoiceCardsList(list).map((c: any) => (
+          allAccepted ? { ...c, isCorrect: undefined, accepted: undefined } : c
+        )),
       },
     };
   }

@@ -506,7 +506,7 @@ export function FloatingImageCanvas({
     const interactable = interact('.floating-image').draggable({
       inertia: false,
       autoScroll: false,
-      ignoreFrom: 'button, .float-handle, video',
+      ignoreFrom: 'button, .float-handle, .float-video-controls',
       listeners: {
         start(event) {
           const id = (event.target as HTMLElement).getAttribute('data-id');
@@ -640,7 +640,19 @@ export function FloatingImageCanvas({
       }
     });
 
-    return () => interactable.unset();
+    const releasePointer = () => {
+      try { interact.stop(); } catch { /* ignore */ }
+    };
+    window.addEventListener('pointerup', releasePointer);
+    window.addEventListener('pointercancel', releasePointer);
+    window.addEventListener('blur', releasePointer);
+
+    return () => {
+      window.removeEventListener('pointerup', releasePointer);
+      window.removeEventListener('pointercancel', releasePointer);
+      window.removeEventListener('blur', releasePointer);
+      interactable.unset();
+    };
   }, [isAuthoring, visibleImages.map(i => i.id).join('|')]);
 
   return (
@@ -679,7 +691,16 @@ export function FloatingImageCanvas({
               }
             >
               {video ? (
-                <FloatingVideo img={img} onPlay={onMediaPlay} />
+                <div className="relative w-full h-full bg-black rounded-lg overflow-hidden">
+                  {isAuthoring && (
+                    <div className="absolute top-0 inset-x-0 z-20 h-8 bg-slate-900/85 text-white text-[10px] font-bold tracking-wide flex items-center justify-center cursor-move">
+                      Drag this bar to move
+                    </div>
+                  )}
+                  <div className={isAuthoring ? 'float-video-controls absolute inset-0 pt-8' : 'w-full h-full'}>
+                    <FloatingVideo img={img} onPlay={onMediaPlay} />
+                  </div>
+                </div>
               ) : (
               <img
                 src={img.url}
@@ -699,7 +720,7 @@ export function FloatingImageCanvas({
                 </span>
               )}
 
-              {isSelected && (
+              {(isSelected || (isAuthoring && video)) && (
                 <div className="absolute top-1 right-1 flex gap-1 z-50">
                   {onPinBack && !video && (
                     <button
@@ -737,7 +758,7 @@ export function FloatingImageCanvas({
                 </div>
               )}
 
-              {isSelected && (
+              {(isSelected || (isAuthoring && video)) && (
                 <>
                   <div className="float-handle float-handle-n float-handle-w absolute -top-1 -left-1 z-40 w-3 h-3 bg-indigo-500 border-2 border-white rounded-sm cursor-nwse-resize" />
                   <div className="float-handle float-handle-n float-handle-e absolute -top-1 -right-1 z-40 w-3 h-3 bg-indigo-500 border-2 border-white rounded-sm cursor-nesw-resize" />

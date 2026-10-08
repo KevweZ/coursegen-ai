@@ -46,3 +46,43 @@ export function compactChoiceCardCopy<T extends { body?: string; description?: s
 export function compactChoiceCardsList<T extends { body?: string; description?: string; reveal?: string }>(cards: T[] | undefined | null): T[] {
   return (Array.isArray(cards) ? cards : []).map(c => compactChoiceCardCopy(c));
 }
+
+export type ChoiceCardsMode = 'explore' | 'select';
+
+export function choiceCardIsAccepted(card: { isCorrect?: boolean; accepted?: boolean } | null | undefined): boolean {
+  return card?.isCorrect === true || card?.accepted === true;
+}
+
+/**
+ * Teaching tiles, not a fake matching quiz.
+ * 5+ cards, or every tile marked correct, is explore (click-to-reveal) — Check would
+ * green-check the whole board.
+ */
+export function inferChoiceCardsMode(data: {
+  mode?: string;
+  prompt?: string;
+  cards?: Array<{ isCorrect?: boolean; accepted?: boolean; reveal?: string }>;
+  items?: Array<{ isCorrect?: boolean; accepted?: boolean; reveal?: string }>;
+  selectMode?: string;
+} | null | undefined): ChoiceCardsMode {
+  if (!data) return 'select';
+  const cards = (Array.isArray(data.cards) && data.cards.length ? data.cards : data.items) || [];
+  if (cards.length > 4) return 'explore';
+  const acceptedCount = cards.filter(choiceCardIsAccepted).length;
+  if (cards.length >= 2 && acceptedCount === cards.length) return 'explore';
+  if (data.mode === 'explore' || data.mode === 'select') return data.mode;
+  if (acceptedCount > 0) return 'select';
+  const hasReveal = cards.some(c => String(c?.reveal || '').trim());
+  if (hasReveal) return 'explore';
+  const prompt = String(data.prompt || '');
+  if (/select each|click each|explore|visit|reveal|callout|pairs?/i.test(prompt)) return 'explore';
+  return 'explore';
+}
+
+export function choiceCardsPromptForMode(prompt: unknown, mode: ChoiceCardsMode): string {
+  const p = String(prompt || '').replace(/\s+/g, ' ').trim();
+  if (mode === 'explore' && /\bcheck\b|correct (card )?pairs/i.test(p)) {
+    return 'Select each card to explore this topic.';
+  }
+  return p;
+}

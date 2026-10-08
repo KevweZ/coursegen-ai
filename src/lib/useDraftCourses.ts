@@ -756,7 +756,10 @@ export interface UseDraftCoursesReturn {
     onProgress?: (pct: number, phase: DraftLoadProgressPhase) => void
   ) => Promise<DraftSnapshot | null>;
   /** Heavy data-URL images for a draft (may be empty for legacy inline payloads) */
-  loadDraftAssets: (id: string) => Promise<Record<string, string>>;
+  loadDraftAssets: (
+    id: string,
+    onProgress?: (pct: number, label: string) => void
+  ) => Promise<Record<string, string>>;
   /** Narration clips keyed by slide:/tab:/synth: — apply before mounting the player */
   loadDraftNarration: (id: string) => Promise<Record<string, string>>;
   deleteDraft: (id: string) => Promise<void>;
@@ -1352,14 +1355,23 @@ export function useDraftCourses(
     }
   }, [userId]);
 
-  const loadDraftAssets = useCallback(async (id: string): Promise<Record<string, string>> => {
+  const loadDraftAssets = useCallback(async (
+    id: string,
+    onProgress?: (pct: number, label: string) => void
+  ): Promise<Record<string, string>> => {
     if (!userId) return {};
     try {
+      onProgress?.(8, 'Checking saved media…');
       let blobs = await readDraftAssetBlobs(userId, id);
       if (countAudioAssetKeys(blobs) === 0) {
         try {
-          const cloudAssets = await downloadCloudAssets(userId, id);
+          onProgress?.(12, 'Downloading course media…');
+          const cloudAssets = await downloadCloudAssets(userId, id, (done, total) => {
+            const pct = 12 + Math.round((done / Math.max(1, total)) * 70);
+            onProgress?.(pct, `Downloading media ${done} of ${total}…`);
+          });
           if (Object.keys(cloudAssets).length) {
+            onProgress?.(86, 'Preparing media…');
             await writeDraftAssets(userId, id, { ...blobs, ...cloudAssets });
             blobs = await readDraftAssetBlobs(userId, id);
             if (!Object.keys(blobs).length) {
@@ -1367,6 +1379,7 @@ export function useDraftCourses(
               for (const [k, v] of Object.entries(cloudAssets)) {
                 try { fromCloud[k] = await dataUrlToBlob(v); } catch { /* skip */ }
               }
+              onProgress?.(92, 'Opening media…');
               return addPlayableUrls(id, fromCloud);
             }
           }
