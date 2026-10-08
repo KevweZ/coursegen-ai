@@ -7,6 +7,7 @@ import {
   sanitizeCourseTitles,
   shortenCourseTitle,
   shortenModuleTitle,
+  splitCourseTitle,
 } from './splitCourseTitle.ts';
 import { markdownToHtml } from './markdownInline.ts';
 import {
@@ -24,6 +25,21 @@ import {
   remapOversizedProcessToTabs,
 } from './hydrateGuards.ts';
 import { alignHydratedSlidesToOutline } from './knowledgeCheckBudget.ts';
+
+test('cover headline stays fully bold unless a colon or lead-in marks a subtitle', () => {
+  const joined = splitCourseTitle('Systems Design and Operation Fundamentals');
+  assert.equal(joined.secondary, '');
+  assert.equal(joined.primary.replace(/\u00a0/g, ' '), 'Systems Design and Operation Fundamentals');
+  assert.doesNotMatch(joined.primary.replace(/\u00a0/g, ' '), / and$/);
+
+  const colon = splitCourseTitle('Systems Design: Operation Fundamentals');
+  assert.equal(colon.primary.replace(/\u00a0/g, ' '), 'Systems Design:');
+  assert.equal(colon.secondary.replace(/\u00a0/g, ' '), 'Operation Fundamentals');
+
+  const lead = splitCourseTitle('Introduction to Polymer Chemistry');
+  assert.match(lead.primary.replace(/\u00a0/g, ' '), /Polymer Chemistry/);
+  assert.match(lead.secondary.replace(/\u00a0/g, ' '), /Introduction to/i);
+});
 
 test('cover titles drop Introduction-to laundry lists and stay at most 8 words', () => {
   const next = shortenCourseTitle(

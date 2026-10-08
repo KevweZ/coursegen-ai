@@ -363,10 +363,42 @@ export function shortenModuleTitle(title: string, opts?: TitleSanitizeOpts): str
   return cut.join(' ');
 }
 
+/** Small connecting words that must not end the bold headline. */
+const TITLE_LINE_CONNECTORS =
+  /^(and|or|of|the|to|for|with|in|on|that|a|an|by|vs\.?|versus|into|onto|from|as)$/i;
+
+/**
+ * Keep "and Operation" together so wrap cannot leave "and" as the last
+ * bold word on a line.
+ */
+export function glueTitleConnectors(text: string): string {
+  const words = String(text || '').trim().split(/\s+/).filter(Boolean);
+  if (words.length < 2) return words.join(' ');
+  const out: string[] = [];
+  for (let i = 0; i < words.length; i++) {
+    if (i < words.length - 1 && TITLE_LINE_CONNECTORS.test(words[i])) {
+      out.push(`${words[i]}\u00A0${words[i + 1]}`);
+      i += 1;
+      continue;
+    }
+    out.push(words[i]);
+  }
+  return out.join(' ');
+}
+
+function asHeadline(primary: string, secondary = '', secondaryFirst = false): SplitCourseTitle {
+  return {
+    primary: glueTitleConnectors(primary),
+    secondary: glueTitleConnectors(secondary),
+    secondaryFirst,
+  };
+}
+
 /**
  * Split course title into bold headline + lighter subtitle.
- * Prefer lead-in → subject, then "Subject: Rest…", then em/en-dash, then a
- * balanced word cut.
+ * Only split on a real subtitle: lead-in, colon, or em/en-dash.
+ * "Systems Design and Operation Fundamentals" is one topic — all bold.
+ * Never leave and/of/that as the last bold word.
  */
 export function splitCourseTitle(title: string): SplitCourseTitle {
   const t = title.trim().replace(/\s+/g, ' ');
@@ -374,11 +406,7 @@ export function splitCourseTitle(title: string): SplitCourseTitle {
 
   const lead = matchLeadIn(t);
   if (lead) {
-    return {
-      primary: lead.subject,
-      secondary: lead.leadIn,
-      secondaryFirst: true,
-    };
+    return asHeadline(lead.subject, lead.leadIn, true);
   }
 
   const colonIdx = t.indexOf(':');
@@ -388,33 +416,16 @@ export function splitCourseTitle(title: string): SplitCourseTitle {
     if (before && after) {
       // "Introduction: Steam Cracker Technology" → subject is after the colon
       if (GENERIC_COLON_LABELS.has(before.toLowerCase())) {
-        return { primary: after, secondary: before, secondaryFirst: true };
+        return asHeadline(after, before, true);
       }
-      return { primary: `${before}:`, secondary: after, secondaryFirst: false };
+      return asHeadline(`${before}:`, after, false);
     }
   }
 
   const dash = t.match(/^(.+?)\s+[—–]\s+(.+)$/);
   if (dash?.[1] && dash?.[2]) {
-    return {
-      primary: dash[1].trim(),
-      secondary: dash[2].trim(),
-      secondaryFirst: false,
-    };
+    return asHeadline(dash[1].trim(), dash[2].trim(), false);
   }
 
-  const words = t.split(' ').filter(Boolean);
-  if (words.length <= 2) {
-    return { primary: words.join(' '), secondary: '', secondaryFirst: false };
-  }
-
-  // Balanced fallback for titles without a structural separator.
-  // Bias slightly toward a longer primary (subject) line vs. the old 40% cut
-  // that often left thin lead-ish phrases huge.
-  const n = Math.min(Math.max(2, Math.ceil(words.length * 0.55)), words.length - 1);
-  return {
-    primary: words.slice(0, n).join(' '),
-    secondary: words.slice(n).join(' '),
-    secondaryFirst: false,
-  };
+  return asHeadline(t);
 }
