@@ -1,0 +1,19 @@
+---
+description: Video trim lock — clip seekbar shows the trimmed timeline; no end-of-clip spinner.
+alwaysApply: true
+---
+
+# Video trim lock (do not regress)
+
+Trimming a 21s file to 00:09 used native `<video controls>`, which still showed **00:21**. Pausing by seeking to `clipEnd` looped the buffering spinner. `npm test` must stay green (`src/lib/floatingMedia.test.ts`).
+
+## Invariants (code, not comments)
+
+- **Clip is a playback window**, not an ffmpeg re-encode. `clipStart` / `clipEnd` on [`FloatingImage`](src/types/course.ts). Helpers live in [`src/lib/floatingMedia.ts`](src/lib/floatingMedia.ts) (`videoClipRange`, `clipDisplayTime`, `formatVideoClock`).
+- **Seekbar matches the trim.** When `clipped` is true, [`FloatingVideo`](src/components/FloatingImageCanvas.tsx) hides native controls and shows a clip-relative bar (`00:09 / 00:09`). Untrimmed videos keep native controls.
+- **Do not seek at clip end.** Pause once; do **not** assign `currentTime = clipEnd` on every `timeupdate` — that seek is the spinner loop. Play after the clip restarts at `clipStart`.
+- **Move/resize stays.** Authoring drag bar, always-on handles, `ignoreFrom: 'button, .float-handle, .float-video-controls'`. Do not put `ignoreFrom: 'video'` back.
+
+## How to change this
+
+Change `videoClipRange` / `FloatingVideo` and add a failing test first. Native controls cannot fake a shorter `duration`.

@@ -209,9 +209,25 @@ export type QuizQuestionItem = {
   scenarioText?: string;
 };
 
+/** Keep the keyed answer on the option object so player shuffle can move it. */
+export function optionsWithCorrectFlags(options: any[] | undefined, correctAnswer?: unknown): any[] {
+  if (!Array.isArray(options) || !options.length) return options ? options.slice() : [];
+  if (options.some(o => o && typeof o === 'object' && (o.isCorrect === true || o.correct === true))) {
+    return options;
+  }
+  const indices = Array.isArray(correctAnswer)
+    ? correctAnswer.map(n => Number(n)).filter(n => Number.isFinite(n))
+    : (typeof correctAnswer === 'number' && Number.isFinite(correctAnswer) ? [correctAnswer] : []);
+  if (!indices.length) return options;
+  return options.map((o, i) => {
+    if (!o || typeof o !== 'object') return o;
+    return { ...o, isCorrect: indices.includes(i) };
+  });
+}
+
 function packQuizQuestion(q: any, fallbackScenario?: string): QuizQuestionItem | null {
   if (!q || typeof q !== 'object') return null;
-  const options = Array.isArray(q.options) ? q.options : [];
+  const options = optionsWithCorrectFlags(Array.isArray(q.options) ? q.options : [], q.correctAnswer);
   const questionText = String(q.questionText || q.prompt || q.question || '').trim();
   if (!questionText || options.length < 2) return null;
   const scenarioText = quizScenarioText(q) || fallbackScenario || '';
@@ -237,6 +253,37 @@ export function quizQuestionList(source: any): QuizQuestionItem[] {
   }
   const one = packQuizQuestion(d, quizScenarioText(source));
   return one ? [one] : [];
+}
+
+function hashSeed(seed: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/** Stable permutation so KC option order does not change across re-renders. */
+export function shuffleKnowledgeCheckOptions<T>(options: T[] | undefined, seed: string): T[] {
+  if (!Array.isArray(options) || options.length < 2) return options ? options.slice() : [];
+  const next = options.slice();
+  let h = hashSeed(seed);
+  for (let i = next.length - 1; i > 0; i--) {
+    h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
+    const j = h % (i + 1);
+    [next[i], next[j]] = [next[j], next[i]];
+  }
+  return next;
+}
+
+/** Shuffle each knowledge-check question's choices. Mastery exam is a separate renderer. */
+export function shuffleQuizQuestionOptions(questions: QuizQuestionItem[], seed: string): QuizQuestionItem[] {
+  if (!Array.isArray(questions) || !questions.length) return questions || [];
+  return questions.map((q, i) => ({
+    ...q,
+    options: shuffleKnowledgeCheckOptions(q.options, `${seed}:${i}:${q.questionText || ''}`),
+  }));
 }
 
 /**

@@ -3,10 +3,10 @@
  * Full feature set: drag (interact.js), resize (corner handles), delete, and crop modal.
  */
 import interact from 'interactjs';
-import { Trash2, Crop, X, Check, PanelRight, Scissors } from 'lucide-react';
+import { Trash2, Crop, X, Check, PanelRight, Scissors, Play, Pause } from 'lucide-react';
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { FloatingImage } from '../types/course';
-import { isFloatingVideo } from '../lib/floatingMedia';
+import { clipDisplayTime, formatVideoClock, isFloatingVideo, videoClipRange } from '../lib/floatingMedia';
 
 interface Props {
   images: FloatingImage[];
@@ -330,41 +330,145 @@ function FloatingVideo({
   onPlay?: () => void;
 }) {
   const ref = useRef<HTMLVideoElement>(null);
-  const start = Number.isFinite(img.clipStart) ? Math.max(0, Number(img.clipStart)) : 0;
-  const end = Number.isFinite(img.clipEnd) ? Number(img.clipEnd) : null;
+  const clipEndedRef = useRef(false);
+  const [fileDuration, setFileDuration] = useState(0);
+  const [relTime, setRelTime] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const clip = videoClipRange(img, fileDuration);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const onLoaded = () => {
-      if (start > 0 && el.currentTime < start) el.currentTime = start;
+    clipEndedRef.current = false;
+
+    const finishClip = () => {
+      if (clipEndedRef.current) return;
+      clipEndedRef.current = true;
+      el.pause();
+      setPlaying(false);
+      setRelTime(clip.duration);
+      // Do not assign currentTime here — seeking at the clip edge loops the buffering spinner.
+    };
+
+    const onMeta = () => {
+      const d = el.duration;
+      if (Number.isFinite(d) && d > 0) setFileDuration(d);
+      if (el.currentTime + 0.001 < clip.start) el.currentTime = clip.start;
+      setRelTime(clipDisplayTime(el.currentTime, clip.start, clip.duration));
     };
     const onTime = () => {
-      if (end != null && end > start && el.currentTime >= end) {
-        el.pause();
-        el.currentTime = end;
+      if (el.currentTime + 0.001 < clip.start) {
+        el.currentTime = clip.start;
+        return;
+      }
+      if (clip.clipped && el.currentTime >= clip.start + clip.duration - 0.04) {
+        finishClip();
+        return;
+      }
+      if (!clipEndedRef.current) {
+        setRelTime(clipDisplayTime(el.currentTime, clip.start, clip.duration));
       }
     };
-    const onStarted = () => onPlay?.();
-    el.addEventListener('loadedmetadata', onLoaded);
+    const onStarted = () => {
+      if (clipEndedRef.current || (clip.clipped && el.currentTime >= clip.start + clip.duration - 0.05)) {
+        clipEndedRef.current = false;
+        el.currentTime = clip.start;
+        setRelTime(0);
+      } else if (el.currentTime + 0.001 < clip.start) {
+        el.currentTime = clip.start;
+      }
+      setPlaying(true);
+      onPlay?.();
+    };
+    const onPaused = () => setPlaying(false);
+    const onSeeking = () => {
+      if (clip.clipped && el.currentTime >= clip.start + clip.duration - 0.04) {
+        finishClip();
+      }
+    };
+
+    el.addEventListener('loadedmetadata', onMeta);
+    el.addEventListener('durationchange', onMeta);
     el.addEventListener('timeupdate', onTime);
     el.addEventListener('play', onStarted);
+    el.addEventListener('pause', onPaused);
+    el.addEventListener('seeking', onSeeking);
+    el.addEventListener('ended', finishClip);
     return () => {
-      el.removeEventListener('loadedmetadata', onLoaded);
+      el.removeEventListener('loadedmetadata', onMeta);
+      el.removeEventListener('durationchange', onMeta);
       el.removeEventListener('timeupdate', onTime);
       el.removeEventListener('play', onStarted);
+      el.removeEventListener('pause', onPaused);
+      el.removeEventListener('seeking', onSeeking);
+      el.removeEventListener('ended', finishClip);
     };
-  }, [start, end, img.url, onPlay]);
+  }, [clip.start, clip.duration, clip.clipped, img.url, onPlay]);
+
+  const seekToRel = (rel: number) => {
+    const el = ref.current;
+    if (!el) return;
+    const next = Math.min(clip.duration, Math.max(0, rel));
+    clipEndedRef.current = next >= clip.duration - 0.04;
+    el.currentTime = clip.start + next;
+    setRelTime(next);
+    if (clipEndedRef.current) {
+      el.pause();
+      setPlaying(false);
+    }
+  };
+
+  const togglePlay = () => {
+    const el = ref.current;
+    if (!el) return;
+    if (!el.paused && !clipEndedRef.current) {
+      el.pause();
+      return;
+    }
+    if (clipEndedRef.current || relTime >= clip.duration - 0.05) {
+      clipEndedRef.current = false;
+      el.currentTime = clip.start;
+      setRelTime(0);
+    }
+    void el.play();
+  };
 
   return (
-    <video
-      ref={ref}
-      src={img.url}
-      controls
-      playsInline
-      preload="metadata"
-      className="w-full h-full object-contain bg-black pointer-events-auto"
-    />
+    <div className="relative w-full h-full bg-black">
+      <video
+        ref={ref}
+        src={img.url}
+        controls={!clip.clipped}
+        playsInline
+        preload="metadata"
+        className="w-full h-full object-contain bg-black pointer-events-auto"
+        onClick={clip.clipped ? togglePlay : undefined}
+      />
+      {clip.clipped && (
+        <div
+          className="float-video-controls absolute bottom-0 inset-x-0 z-10 bg-gradient-to-t from-black/85 to-transparent px-2 pt-5 pb-1.5 flex items-center gap-2 text-white pointer-events-auto"
+          onPointerDown={e => e.stopPropagation()}
+          onClick={e => e.stopPropagation()}
+        >
+          <button type="button" onClick={togglePlay} className="p-1 rounded hover:bg-white/15 shrink-0" aria-label={playing ? 'Pause' : 'Play'}>
+            {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 fill-current" />}
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={clip.duration}
+            step={0.05}
+            value={Math.min(clip.duration, relTime)}
+            onChange={e => seekToRel(Number(e.target.value))}
+            className="flex-1 min-w-0 h-1.5 accent-white cursor-pointer"
+            aria-label="Seek"
+          />
+          <span className="text-[10px] font-bold tabular-nums shrink-0">
+            {formatVideoClock(relTime)} / {formatVideoClock(clip.duration)}
+          </span>
+        </div>
+      )}
+    </div>
   );
 }
 

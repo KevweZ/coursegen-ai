@@ -81,6 +81,9 @@ import {
   alignQuizSelectPrompt,
   emptyScenarioQuizKind,
   quizQuestionList,
+  shuffleKnowledgeCheckOptions,
+  shuffleQuizQuestionOptions,
+  optionsWithCorrectFlags,
 } from './lib/knowledgeCheckOst';
 import { slideSkipsNarration } from './lib/enablingCoverage';
 import { collapseChoiceCardsOst, ensureSelectChoicePrompt, normalizeKeyTakeaways } from './lib/hydrateGuards';
@@ -7789,7 +7792,8 @@ export default function App() {
                                {(currentSlide?.type === 'quiz' || (currentSlide?.type as string) === 'multiple-choice' || (currentSlide?.type as string) === 'true-false' || emptyScenarioQuizKind(currentSlide) === 'quiz') && (() => {
                                  const interactions = currentSlide.interactions || [];
                                  const quiz = interactions[0] || currentSlide.data;
-                                 const questions = quizQuestionList(quiz).length ? quizQuestionList(quiz) : quizQuestionList(currentSlide);
+                                 const rawQuestions = quizQuestionList(quiz).length ? quizQuestionList(quiz) : quizQuestionList(currentSlide);
+                                 const questions = shuffleQuizQuestionOptions(rawQuestions, currentSlide.id);
                                  const seqKey = currentSlide.id + '-seq';
                                  const qIndex = Math.min(Number(quizState[seqKey]?.qIndex || 0), Math.max(0, questions.length - 1));
                                  const currentQ = questions[qIndex];
@@ -7888,7 +7892,10 @@ export default function App() {
 
                                {/* MULTIPLE ANSWERS (multi-select) */}
                                {(currentSlide?.type === 'multiple-answers' || emptyScenarioQuizKind(currentSlide) === 'multiple-answers') && (() => {
-                                 const quiz = (currentSlide.interactions?.[0]) || currentSlide.data;
+                                 const quizRaw = (currentSlide.interactions?.[0]) || currentSlide.data;
+                                 const quiz = quizRaw && Array.isArray(quizRaw.options)
+                                   ? { ...quizRaw, options: shuffleKnowledgeCheckOptions(optionsWithCorrectFlags(quizRaw.options, quizRaw.correctAnswer), currentSlide.id) }
+                                   : quizRaw;
                                  const qKey = currentSlide.id + '-ma';
                                  const maState: { selected: number[]; submitted: boolean } = (quizState as any)[qKey] || { selected: [], submitted: false };
                                  if (!quiz?.options?.length) return <p className={cn('text-sm p-4 rounded-xl', theme === 'light' ? 'text-amber-700 bg-amber-50' : 'text-amber-300 bg-amber-900/20')}>Question data missing.</p>;

@@ -83,7 +83,7 @@ export interface FloatingImage {
    * null/undefined = slide-level (visible on every tab / intro).
    */
   tabId?: string | null;
-  /** Defaults to image. Video floats use native controls and optional clip points. */
+  /** Defaults to image. Video floats use native controls unless trimmed. */
   kind?: 'image' | 'video';
   /** Inclusive start (seconds) when the author trimmed the clip. */
   clipStart?: number;
