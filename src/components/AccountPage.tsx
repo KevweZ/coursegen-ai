@@ -509,7 +509,7 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
             </div>
             <div>
               <p className="font-bold text-white">Credit Balance</p>
-              <p className="text-xs text-slate-500">Used for AI course generation and TTS narration</p>
+              <p className="text-xs text-slate-500">Used for course generation, AI images, and TTS narration</p>
             </div>
           </div>
 

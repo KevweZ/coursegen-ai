@@ -15,6 +15,7 @@ import {
   applyContentImageUrl,
   collectContentImageJobs,
 } from '../lib/contentImageJobs';
+import { getSupabaseAccessToken } from '../lib/supabaseAccessToken';
 
 export {
   MAX_CONTENT_AI_IMAGES,
@@ -34,6 +35,14 @@ const IMAGE_GEN_CONCURRENCY = 2;
 
 function sleep(ms: number): Promise<void> {
   return new Promise(r => setTimeout(r, ms));
+}
+
+function isImageAuthOrCreditStop(err: any): boolean {
+  const status = Number(err?.status);
+  if (status === 401 || status === 402 || status === 403) return true;
+  return /AI_NO_CREDITS|AI_AUTH_REQUIRED|TRIAL_EXPIRED|Sign in required to generate|no AI generation credits/i.test(
+    String(err?.message || ''),
+  );
 }
 
 /** Run async work with at most `concurrency` in flight; results stay in input order. */
@@ -334,9 +343,13 @@ async function callImageEndpoint(
   intended?: string,
 ): Promise<string> {
   const execute = async () => {
+    const token = getSupabaseAccessToken();
     const response = await fetch('/api/generate-image', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify({
         prompt: withImageNoTextRule(prompt),
         model,
@@ -360,6 +373,9 @@ async function callImageEndpoint(
   try {
     return await execute();
   } catch (err: any) {
+    if (isImageAuthOrCreditStop(err)) {
+      throw err;
+    }
     if (err?.status === 429 || /429|rate.?limit|too many/i.test(String(err?.message || ''))) {
       console.warn('[ImageService] Rate limited — waiting 8s then retrying once…');
       await sleep(8000);
@@ -735,11 +751,14 @@ export async function enrichHotspotAndCarouselImages(
 
   if (aiJobs.length) {
     const withLock = createAsyncLock();
+    let stopRemaining = false;
     await mapWithConcurrency(aiJobs, IMAGE_GEN_CONCURRENCY, async (job) => {
+      if (stopRemaining) return;
       let url: string | null = null;
       try {
         url = await callImageEndpoint(job.prompt, DEFAULT_IMAGE_MODEL, job.intended);
       } catch (e) {
+        if (isImageAuthOrCreditStop(e)) stopRemaining = true;
         console.warn('[ImageService] Hotspot/carousel AI image failed:', e);
       }
       if (url) {
@@ -833,20 +852,24 @@ export async function generateContentSlideImages(
 
   let done = 0;
   const withLock = createAsyncLock();
+  let stopRemaining = false;
 
   await mapWithConcurrency(selected, IMAGE_GEN_CONCURRENCY, async (job) => {
     let url: string | null = null;
-    try {
-      url = await groundedCall({
-        courseTitle: course.title || 'Course',
-        moduleTitle: job.moduleTitle,
-        slideTitle: job.slideTitle,
-        panelLabel: job.panelLabel,
-        panelBody: job.panelBody,
-        mediaPrompt: job.mediaPrompt,
-      });
-    } catch (err) {
-      console.warn(`[ImageService] Content visual failed for "${job.subject}":`, err);
+    if (!stopRemaining) {
+      try {
+        url = await groundedCall({
+          courseTitle: course.title || 'Course',
+          moduleTitle: job.moduleTitle,
+          slideTitle: job.slideTitle,
+          panelLabel: job.panelLabel,
+          panelBody: job.panelBody,
+          mediaPrompt: job.mediaPrompt,
+        });
+      } catch (err) {
+        if (isImageAuthOrCreditStop(err)) stopRemaining = true;
+        console.warn(`[ImageService] Content visual failed for "${job.subject}":`, err);
+      }
     }
 
     if (url) {

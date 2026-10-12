@@ -126,7 +126,7 @@ function buildPlans(billing: 'annual' | 'monthly'): PricingPlan[] {
 const faqItems = [
   {
     q: 'How do credits work?',
-    a: 'Credits are used when you generate a course and when you generate AI narration. A short overview uses fewer credits than a full multi-module course. Narration uses TTS credits per slide based on script length. Your plan refreshes AI and TTS credits each billing cycle.',
+    a: 'AI credits are spent on successful generation calls (analysis, outline, slide hydrate) and on each AI image that is returned. A short overview uses fewer credits than a full multi-module course. Narration uses TTS credits per successful clip. Your plan refreshes AI and TTS credits each billing cycle.',
   },
   {
     q: 'Do unused credits roll over?',

@@ -41,8 +41,8 @@ export function TermsOfServicePage({ onBack }: { onBack: () => void }) {
         <h2>4. Plans, credits, and billing</h2>
         <ul>
           <li>Paid plans are billed through Stripe. Prices and included credits are shown on the Pricing page at purchase.</li>
-          <li>AI credits are spent when generation API calls succeed (analysis, outline, and slide hydrate). TTS credits are spent per successful narration clip.</li>
-          <li>A short course uses fewer AI credits than a long multi-module course. Image generation is not billed as AI credits.</li>
+          <li>AI credits are spent when generation API calls succeed (analysis, outline, and slide hydrate) and when an AI image is returned. TTS credits are spent per successful narration clip.</li>
+          <li>A short course uses fewer AI credits than a full multi-module course. Failed generation or image calls do not spend credits.</li>
           <li>Subscription credits refresh at the start of each billing cycle. Pay-as-you-go credit packs are added when purchased and do not have a separate expiry date.</li>
           <li>You may cancel anytime via My Account → Manage Subscription (Stripe Customer Portal). Access continues through the paid period.</li>
         </ul>

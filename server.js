@@ -664,6 +664,11 @@ app.post('/api/generate-image', imageRateLimit, async (req, res) => {
     return res.status(400).json({ error: 'Missing required field: prompt' });
   }
 
+  const authz = await authorizeAiRequest(req, { isComplexCall: false });
+  if (!authz.ok) {
+    return res.status(authz.status).json(authz.body);
+  }
+
   const hasOpenRouter = !!(process.env.OPENROUTER_API_KEY);
   const hasOpenAI = !!OPENAI_API_KEY;
   if (!hasOpenRouter && !hasOpenAI) {
@@ -715,6 +720,7 @@ app.post('/api/generate-image', imageRateLimit, async (req, res) => {
     }
 
     console.log(`[ImageGen] ✓ via ${provider} — prompt: "${prompt.slice(0, 60)}..."`);
+    await recordAiSuccess(authz.supabase, authz.billing);
     return res.json({ imageDataUrl });
   } catch (err) {
     console.error('[ImageGen] Error:', err.message);
@@ -2214,7 +2220,8 @@ async function recordTtsSuccess(supabase, billing) {
 }
 
 /**
- * Paid AI generation: 1 credits_ai per successful /api/ai call (complex + bulk).
+ * Paid AI generation: 1 credits_ai per successful /api/ai call (complex + bulk)
+ * and per successful /api/generate-image (image returned to the author).
  * Trial stays on the weekly ai_usage cap for complex calls only.
  */
 async function authorizeAiRequest(req, { isComplexCall = false } = {}) {

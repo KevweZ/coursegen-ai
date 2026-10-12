@@ -5,11 +5,11 @@ alwaysApply: true
 
 # Billing and credits lock (do not regress)
 
-Paid AI credits were granted and advertised but not spent. Do not go back to that. `npm test` must stay green (`src/lib/routes.test.ts`).
+Paid AI credits were granted and advertised but not spent. Do not go back to that. `npm test` must stay green (`src/lib/routes.test.ts`, `src/lib/imageCreditMeter.test.ts`).
 
 ## Invariants (code, not copy)
 
-- **1 `credits_ai` per successful `/api/ai` call** (Sonnet `complex` and Haiku `bulk`) via `authorizeAiRequest` / `recordAiSuccess` in [`server.js`](server.js). Deduct only after Anthropic 200. Mirror TTS. Trial stays on the weekly `ai_usage` cap, not the paid pool. Team spends the workspace pool first. Admin bypass like TTS. Image gen stays unmetered.
+- **1 `credits_ai` per successful `/api/ai` call** (Sonnet `complex` and Haiku `bulk`) **and per successful `/api/generate-image`** (the image returned to the author, including after a QA retry). `authorizeAiRequest` / `recordAiSuccess` in [`server.js`](server.js). Deduct only after a real result. Mirror TTS. Trial stays on the weekly `ai_usage` cap, not the paid pool (trial images do not spend `credits_ai`). Team spends the workspace pool first. Admin bypass like TTS. Clients must send the Bearer token.
 - **Do not** meter as 1 credit per Generate click or as complex-only (hydrate would be free).
 - QC regen must send the Bearer token ([`qcService.ts`](src/services/qcService.ts) + [`getSupabaseAccessToken`](src/lib/supabaseAccessToken.ts)).
 - **`invoice.paid`** with `billing_reason === 'subscription_cycle'` refreshes subscription credit pools. First invoice stays on `checkout.session.completed`. Do not flip `STRIPE_MODE=live` unless Anthony asks.
