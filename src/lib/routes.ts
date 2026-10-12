@@ -16,6 +16,9 @@ export const ROUTES = {
   methodology: '/methodology',
   pricing: '/pricing',
   examples: '/examples',
+  terms: '/terms',
+  privacy: '/privacy',
+  reportBug: '/report-a-bug',
   /** Password-reset email landing (public; auth gate shows ResetPasswordPage) */
   resetPassword: '/reset-password',
   courseSettings: '/CourseSettings',
@@ -37,7 +40,7 @@ export const ROUTES = {
 export type SandboxDemo = 'settings' | 'development' | 'mobile' | 'designMobile';
 
 export type ParsedAppPath =
-  | { kind: 'marketing'; view: 'homepage' | 'methodology' | 'pricing' | 'examples' }
+  | { kind: 'marketing'; view: 'homepage' | 'methodology' | 'pricing' | 'examples' | 'terms' | 'privacy' | 'report-a-bug' }
   | { kind: 'auth'; mode: 'login' | 'signup' }
   | { kind: 'upload' }
   | { kind: 'building' }
@@ -63,7 +66,8 @@ export function isProtectedPath(pathname: string): boolean {
     p === '/CourseReview' ||
     p === '/CourseDevelopment' ||
     p === '/PlayerProperties' ||
-    p === '/MyAccount'
+    p === '/MyAccount' ||
+    p === '/account'
   ) return true;
   if (p.startsWith('/design/') || p.startsWith('/preview/')) return true;
   if (p.startsWith('/sandbox/')) return true;
@@ -77,6 +81,9 @@ export function parseAppPath(pathname: string): ParsedAppPath {
   if (p === '/methodology') return { kind: 'marketing', view: 'methodology' };
   if (p === '/pricing') return { kind: 'marketing', view: 'pricing' };
   if (p === '/examples') return { kind: 'marketing', view: 'examples' };
+  if (p === '/terms') return { kind: 'marketing', view: 'terms' };
+  if (p === '/privacy') return { kind: 'marketing', view: 'privacy' };
+  if (p === '/report-a-bug') return { kind: 'marketing', view: 'report-a-bug' };
   if (p === '/login') return { kind: 'auth', mode: 'login' };
   if (p === '/signup') return { kind: 'auth', mode: 'signup' };
   if (p === '/reset-password') return { kind: 'auth', mode: 'login' };
@@ -86,7 +93,7 @@ export function parseAppPath(pathname: string): ParsedAppPath {
   if (p === '/CourseReview') return { kind: 'courseReview' };
   if (p === '/CourseDevelopment') return { kind: 'courseDevelopment' };
   if (p === '/PlayerProperties') return { kind: 'playerProperties' };
-  if (p === '/MyAccount') return { kind: 'myAccount' };
+  if (p === '/MyAccount' || p === '/account') return { kind: 'myAccount' };
   if (p === '/payment-success') return { kind: 'payment', outcome: 'success' };
   if (p === '/payment-cancel') return { kind: 'payment', outcome: 'cancel' };
 

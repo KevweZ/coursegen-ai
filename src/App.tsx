@@ -271,6 +271,9 @@ import { ResetPasswordPage } from './components/auth/ResetPasswordPage';
 import { MarketingHomepage } from './components/marketing/MarketingHomepage';
 import { MethodologyPage } from './components/marketing/MethodologyPage';
 import { ExamplesPage } from './components/marketing/ExamplesPage';
+import { TermsOfServicePage } from './components/legal/TermsOfServicePage';
+import { PrivacyPolicyPage } from './components/legal/PrivacyPolicyPage';
+import { ReportBugPage } from './components/support/ReportBugPage';
 import { HelpWidget } from './components/HelpWidget';
 import { WelcomeTourModal, shouldShowWelcomeTour, dismissWelcomeTourForSession } from './components/WelcomeTourModal';
 import { DevToolbarTourModal, shouldShowDevTour, migrateDevTourStorage } from './components/DevToolbarTourModal';
@@ -1467,7 +1470,7 @@ export default function App() {
   };
 
   // Controls which pre-auth view to show: public marketing homepage OR login/signup
-  const [publicView, setPublicView] = useState<'homepage' | 'auth' | 'methodology' | 'pricing' | 'examples'>('homepage');
+  const [publicView, setPublicView] = useState<'homepage' | 'auth' | 'methodology' | 'pricing' | 'examples' | 'terms' | 'privacy' | 'report-a-bug'>('homepage');
   const [authInitialMode, setAuthInitialMode] = useState<'login' | 'signup'>('login');
   
   const [step, setStep] = useState<AppStep>(isScormPlayer ? 'preview' : 'home');
@@ -1864,6 +1867,11 @@ export default function App() {
       navigateTo(ROUTES.home, true);
       return;
     }
+    if (parsed.kind === 'marketing' && parsed.view !== 'pricing') {
+      setPublicView(parsed.view);
+      setStep('marketing');
+      return;
+    }
     if (target === '/' || target === '') {
       setPublicView('homepage');
       setStep('marketing');
@@ -2059,6 +2067,9 @@ export default function App() {
       else if (publicView === 'methodology' && path !== ROUTES.methodology) navigateTo(ROUTES.methodology, true);
       else if (publicView === 'pricing' && path !== ROUTES.pricing) navigateTo(ROUTES.pricing, true);
       else if (publicView === 'examples' && path !== ROUTES.examples) navigateTo(ROUTES.examples, true);
+      else if (publicView === 'terms' && path !== ROUTES.terms) navigateTo(ROUTES.terms, true);
+      else if (publicView === 'privacy' && path !== ROUTES.privacy) navigateTo(ROUTES.privacy, true);
+      else if (publicView === 'report-a-bug' && path !== ROUTES.reportBug) navigateTo(ROUTES.reportBug, true);
       return;
     }
     // /upload vs /Building for step===home is handled in a later effect (needs analyze/generate flags)
@@ -5816,6 +5827,15 @@ export default function App() {
           onGetStarted={user ? enterApp : () => { setAuthInitialMode('signup'); setPublicView('auth'); navigateTo(ROUTES.signup); }}
         />
       );
+    }
+    if (publicView === 'terms') {
+      return <TermsOfServicePage onBack={goMarketing} />;
+    }
+    if (publicView === 'privacy') {
+      return <PrivacyPolicyPage onBack={goMarketing} />;
+    }
+    if (publicView === 'report-a-bug') {
+      return <ReportBugPage onBack={goMarketing} />;
     }
     return (
       <MarketingHomepage

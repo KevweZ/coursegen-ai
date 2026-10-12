@@ -21,6 +21,7 @@ import {
   type SourceMode,
 } from "../lib/storyboardSource";
 import { applyAlignedQuizPrompt, quizQuestionList } from "../lib/knowledgeCheckOst";
+import { getSupabaseAccessToken } from "../lib/supabaseAccessToken";
 
 // ── Secure AI Proxy Client ───────────────────────────────────────────────────
 // API keys live ONLY in server.js — never in the browser bundle.
@@ -194,21 +195,8 @@ async function executeAnthropicAI(modelTier: 'complex' | 'bulk', systemPrompt: s
         // Send the Supabase JWT so the server can enforce trial rate limits.
         // Reads from localStorage where Supabase stores the session client-side.
         ...(() => {
-          try {
-            // Supabase key format: sb-<project-ref>-auth-token
-            const key = Object.keys(localStorage).find(k =>
-              (k.startsWith('sb-') && k.includes('auth-token')) ||
-              (k.includes('supabase') && k.includes('auth'))
-            );
-            let token = key ? JSON.parse(localStorage.getItem(key) ?? '')?.access_token : null;
-            if (!token) {
-              // Fallback: scan all keys
-              for (const k of Object.keys(localStorage)) {
-                try { const v = JSON.parse(localStorage.getItem(k) ?? ''); if (v?.access_token) { token = v.access_token; break; } } catch { /**/ }
-              }
-            }
-            return token ? { 'Authorization': `Bearer ${token}` } : {};
-          } catch { return {}; }
+          const token = getSupabaseAccessToken();
+          return token ? { 'Authorization': `Bearer ${token}` } : {};
         })(),
       },
       body: JSON.stringify({

@@ -33,7 +33,7 @@ You cannot have “admin on test, customers on live” on the same server simult
 ### 2. Webhook grants credits / Team workspace
 After a test Team (or Creator) checkout completes:
 
-- [ ] Stripe Dashboard → Developers → Webhooks → endpoint for `https://nexcourse-ai-api.onrender.com/api/payments/webhook` shows **checkout.session.completed** = succeeded
+- [ ] Stripe Dashboard → Developers → Webhooks → endpoint for `https://nexcourse-ai-api.onrender.com/api/payments/webhook` shows **checkout.session.completed** = succeeded (also enable **invoice.paid** so subscription credits refresh each cycle)
 - [ ] Supabase `user_entitlements` row updated (`subscription`, `credits_ai`, `credits_tts`, `stripe_customer_id`)
 - [ ] Team only: `workspaces` + `workspace_members` owner row created
 - [ ] My Account → Team seats panel shows you as owner (real data, not demo)

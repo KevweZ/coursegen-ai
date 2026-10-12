@@ -12,6 +12,7 @@ import { coerceCarouselColor } from '../lib/colorContrast';
 import { slideSkipsNarration, stripSlideNarration } from '../lib/enablingCoverage';
 import { applyAlignedQuizPrompt } from '../lib/knowledgeCheckOst';
 import { finalizeHydratedSlide } from '../lib/hydrateGuards';
+import { getSupabaseAccessToken } from '../lib/supabaseAccessToken';
 
 const BATCH_SIZE = 5;
 /** Always use same-origin /api/* (Cloudflare Worker → Render). Never localhost in production. */
@@ -454,9 +455,13 @@ ${type === 'choice-cards' ? '- This is a teaching slide, not a knowledge check. 
   for (let attempt = 0; attempt < 3 && !parsed; attempt++) {
     try {
       if (attempt > 0) await new Promise(r => setTimeout(r, 1500 * attempt));
+      const token = getSupabaseAccessToken();
       const res = await fetch(`${API_BASE}/api/ai`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           model: 'bulk',
           system: 'You are an expert eLearning content author. Return ONLY valid JSON matching the requested schema. No markdown fences, no explanation.',

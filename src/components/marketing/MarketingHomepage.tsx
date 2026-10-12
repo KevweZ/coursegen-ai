@@ -3,7 +3,7 @@ import { motion, useInView, AnimatePresence } from 'framer-motion';
 import {
   Zap, ArrowRight, Sparkles, Brain, Layers, Mic,
   FileOutput, GraduationCap, Building2, CheckCircle2,
-  ChevronRight, ChevronLeft, ChevronDown, Shield, BarChart3, BookOpen,
+  ChevronRight, ChevronLeft, ChevronDown, BarChart3, BookOpen,
   Award, X, Menu, Volume2, Play, Pause,
   Eye, EyeOff, Image,
   AlertCircle, Lock, MessageSquare, Send, Loader2, Mail
@@ -900,8 +900,11 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
             <span className="font-extrabold text-base text-white">NexCourse <span className="text-indigo-400">AI</span></span>
           </div>
           <span className="text-slate-600 text-sm">© 2026 NexCourse AI. All rights reserved.</span>
-          <div className="flex items-center gap-1.5 text-slate-600 text-xs">
-            <Shield className="w-3 h-3" /> Your data is always kept private & safe
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-slate-500 text-xs">
+            <a href="/terms" className="hover:text-indigo-300">Terms</a>
+            <a href="/privacy" className="hover:text-indigo-300">Privacy</a>
+            <a href="/report-a-bug" className="hover:text-indigo-300">Report a bug</a>
+            <a href="mailto:support@nexcourse.ai" className="hover:text-indigo-300">Support</a>
           </div>
         </div>
       </footer>

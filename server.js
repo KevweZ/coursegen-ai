@@ -730,69 +730,10 @@ app.post('/api/ai', aiRateLimit, async (req, res) => {
     return res.status(400).json({ error: 'Missing required fields: model, system, user' });
   }
 
-  // ── Trial-user gates ─────────────────────────────────────────────────────
-  // • Expired trials are blocked on ALL AI calls (not just complex).
-  // • Only 'complex' calls count toward the weekly limit (analysis, outline, etc.).
-  // • Usage is logged AFTER a successful AI response — failed/retried requests
-  //   never consume the weekly allowance.
-  const authHeader = req.headers.authorization ?? '';
-  const jwt = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  let trialSupaClient = null;
-  let trialUserId = null;
   const isComplexCall = (model === 'complex');
-  const TRIAL_AI_LIMIT = 30; // complex AI calls per rolling 7 days (pilot-friendly)
-
-  if (jwt) {
-    try {
-      const { createClient } = await import('@supabase/supabase-js');
-      trialSupaClient = createClient(
-        process.env.VITE_SUPABASE_URL,
-        getSupabaseKey(),
-        { auth: { autoRefreshToken: false, persistSession: false } }
-      );
-      const { data: { user: authUser } } = await trialSupaClient.auth.getUser(jwt);
-      if (authUser?.user_metadata?.role === 'trial') {
-        const expiresAt = authUser.user_metadata?.trial_expires_at;
-        if (expiresAt && new Date(expiresAt).getTime() <= Date.now()) {
-          return res.status(403).json({
-            error: 'Your trial has expired. Contact us to upgrade your account.',
-            code: 'TRIAL_EXPIRED',
-          });
-        }
-
-        if (isComplexCall) {
-          trialUserId = authUser.id;
-          const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-          // Count only course-generation AI calls — never TTS rows (those have their own weekly cap).
-          const { count, error: countErr } = await trialSupaClient
-            .from('ai_usage')
-            .select('*', { count: 'exact', head: true })
-            .eq('user_id', authUser.id)
-            .eq('type', 'course_generation')
-            .gte('created_at', weekAgo);
-
-          if (countErr) {
-            // Fail closed for trial users — don't allow unlimited AI if usage table is broken
-            console.error('[AI Proxy] Trial usage check failed:', countErr.message);
-            return res.status(503).json({
-              error: 'Trial usage tracking temporarily unavailable. Please try again shortly.',
-              code: 'TRIAL_USAGE_UNAVAILABLE',
-            });
-          }
-
-          if (typeof count === 'number' && count >= TRIAL_AI_LIMIT) {
-            return res.status(429).json({
-              error: `Weekly AI generation limit reached (${count}/${TRIAL_AI_LIMIT}). This is separate from your trial end date — wait for the weekly reset or contact support@nexcourse.ai.`,
-              code: 'TRIAL_LIMIT_EXCEEDED',
-            });
-          }
-        }
-      }
-    } catch (trialCheckErr) {
-      console.warn('[AI Proxy] Trial check error:', trialCheckErr?.message ?? trialCheckErr);
-      trialSupaClient = null;
-      trialUserId = null;
-    }
+  const authz = await authorizeAiRequest(req, { isComplexCall });
+  if (!authz.ok) {
+    return res.status(authz.status).json(authz.body);
   }
 
   const modelStr =
@@ -823,14 +764,7 @@ app.post('/api/ai', aiRateLimit, async (req, res) => {
     const data = await response.json();
     const text = data?.content?.[0]?.text ?? '{}';
 
-    // ── Log usage ONLY after a confirmed successful AI response ───────────────
-    // This ensures failed/retried requests never burn trial credits.
-    if (trialSupaClient && trialUserId) {
-      trialSupaClient.from('ai_usage')
-        .insert({ user_id: trialUserId, type: 'course_generation' })
-        .then(() => {})
-        .catch(e => console.warn('[AI Proxy] Usage log failed (non-fatal):', e?.message));
-    }
+    await recordAiSuccess(authz.supabase, authz.billing);
 
     return res.json({ text });
 
@@ -1084,6 +1018,48 @@ async function applyCheckoutEntitlements({
   }
 
   return { entitlementPlan, credits, isSubscription };
+}
+
+/** Reset subscription credit pools on a new Stripe billing cycle. Packs bought later add on top. */
+async function refreshSubscriptionCredits({ custId, subId }) {
+  if (!custId) return { plan: null };
+  const supabase = await getAdminSupabase();
+  const { data: ent } = await supabase
+    .from('user_entitlements')
+    .select('user_id, subscription')
+    .eq('stripe_customer_id', custId)
+    .maybeSingle();
+  if (!ent?.user_id) return { plan: null };
+
+  const plan = normalizeEntitlementPlan(ent.subscription);
+  if (plan === 'free' || !PLAN_CREDITS[plan]) return { plan };
+  const credits = PLAN_CREDITS[plan];
+  const patch = {
+    credits_ai: credits.credits_ai,
+    credits_tts: credits.credits_tts,
+    updated_at: new Date().toISOString(),
+  };
+  if (subId) patch.stripe_sub_id = subId;
+
+  const { error } = await supabase
+    .from('user_entitlements')
+    .update(patch)
+    .eq('user_id', ent.user_id);
+  if (error) throw new Error(`cycle credit refresh failed: ${error.message}`);
+
+  if (plan === 'business_team') {
+    await supabase
+      .from('workspaces')
+      .update({
+        credits_ai: credits.credits_ai,
+        credits_tts: credits.credits_tts,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('stripe_customer_id', custId)
+      .eq('status', 'active');
+  }
+
+  return { plan };
 }
 
 // Decode a Supabase JWT payload without verifying the signature.
@@ -2004,19 +1980,23 @@ function classifyTtsFailure(status, errText) {
   };
 }
 
-async function consumeTtsCreditOptimistic(supabase, table, idField, id, current) {
+async function consumeCreditOptimistic(supabase, table, idField, id, column, current) {
   if (current <= 0) return false;
   const { data } = await supabase
     .from(table)
     .update({
-      credits_tts: current - 1,
+      [column]: current - 1,
       updated_at: new Date().toISOString(),
     })
     .eq(idField, id)
-    .eq('credits_tts', current)
-    .select('credits_tts')
+    .eq(column, current)
+    .select(column)
     .maybeSingle();
   return !!data;
+}
+
+async function consumeTtsCreditOptimistic(supabase, table, idField, id, current) {
+  return consumeCreditOptimistic(supabase, table, idField, id, 'credits_tts', current);
 }
 
 /**
@@ -2230,6 +2210,181 @@ async function recordTtsSuccess(supabase, billing) {
     }
   } catch (err) {
     console.warn('[TTS] credit/usage record failed (non-fatal):', err?.message || err);
+  }
+}
+
+/**
+ * Paid AI generation: 1 credits_ai per successful /api/ai call (complex + bulk).
+ * Trial stays on the weekly ai_usage cap for complex calls only.
+ */
+async function authorizeAiRequest(req, { isComplexCall = false } = {}) {
+  const identity = await authorizeTtsIdentity(req);
+  if (!identity.ok) {
+    const authRequired = identity.body?.code === 'TTS_AUTH_REQUIRED' || identity.status === 401;
+    return {
+      ...identity,
+      body: {
+        error: authRequired
+          ? 'Sign in required to generate.'
+          : (identity.body?.error || 'AI generation is unavailable.'),
+        code: authRequired ? 'AI_AUTH_REQUIRED' : (identity.body?.code || 'AI_ERROR'),
+        retryAfterMs: identity.body?.retryAfterMs ?? 0,
+      },
+    };
+  }
+
+  const { supabase, user } = identity;
+  const email = (user.email || '').toLowerCase();
+  const isAdmin =
+    (ADMIN_EMAIL && email === ADMIN_EMAIL) ||
+    user.user_metadata?.role === 'admin';
+  const isTrial = user.user_metadata?.role === 'trial';
+
+  if (isAdmin) {
+    return { ok: true, supabase, user, billing: { mode: 'admin' } };
+  }
+
+  if (isTrial) {
+    const expiresAt = user.user_metadata?.trial_expires_at;
+    if (expiresAt && new Date(expiresAt).getTime() <= Date.now()) {
+      return {
+        ok: false,
+        status: 403,
+        body: {
+          error: 'Your trial has expired. Contact us to upgrade your account.',
+          code: 'TRIAL_EXPIRED',
+        },
+      };
+    }
+
+    if (isComplexCall) {
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { count, error: countErr } = await supabase
+        .from('ai_usage')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('type', 'course_generation')
+        .gte('created_at', weekAgo);
+
+      if (countErr) {
+        console.error('[AI Proxy] Trial usage check failed:', countErr.message);
+        return {
+          ok: false,
+          status: 503,
+          body: {
+            error: 'Trial usage tracking temporarily unavailable. Please try again shortly.',
+            code: 'TRIAL_USAGE_UNAVAILABLE',
+          },
+        };
+      }
+
+      if (typeof count === 'number' && count >= 30) {
+        return {
+          ok: false,
+          status: 429,
+          body: {
+            error: `Weekly AI generation limit reached (${count}/30). This is separate from your trial end date — wait for the weekly reset or contact support@nexcourse.ai.`,
+            code: 'TRIAL_LIMIT_EXCEEDED',
+          },
+        };
+      }
+    }
+
+    return {
+      ok: true,
+      supabase,
+      user,
+      billing: { mode: 'trial', userId: user.id, logComplex: isComplexCall },
+    };
+  }
+
+  const membership = await getActiveTeamMembership(supabase, user.id, email);
+  const ws = membership?.workspaces;
+  if (ws?.status === 'active') {
+    const credits = ws.credits_ai ?? 0;
+    if (credits <= 0) {
+      return {
+        ok: false,
+        status: 402,
+        body: {
+          error: 'No AI credits left in your Team workspace. Ask the owner to upgrade or buy a credit pack.',
+          code: 'AI_NO_CREDITS',
+        },
+      };
+    }
+    return {
+      ok: true,
+      supabase,
+      user,
+      billing: { mode: 'workspace', workspaceId: ws.id, credits },
+    };
+  }
+
+  const { data: ent } = await supabase
+    .from('user_entitlements')
+    .select('credits_ai, subscription')
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  const credits = ent?.credits_ai ?? 0;
+  if (credits <= 0) {
+    return {
+      ok: false,
+      status: 402,
+      body: {
+        error: 'No AI generation credits remaining. Upgrade your plan or purchase credits, then retry.',
+        code: 'AI_NO_CREDITS',
+      },
+    };
+  }
+
+  return {
+    ok: true,
+    supabase,
+    user,
+    billing: { mode: 'entitlement', userId: user.id, credits },
+  };
+}
+
+async function recordAiSuccess(supabase, billing) {
+  try {
+    if (billing.mode === 'trial') {
+      if (billing.logComplex) {
+        await supabase.from('ai_usage').insert({ user_id: billing.userId, type: 'course_generation' });
+      }
+      return;
+    }
+    if (billing.mode === 'workspace') {
+      for (let i = 0; i < 3; i++) {
+        const { data: ws } = await supabase
+          .from('workspaces')
+          .select('credits_ai')
+          .eq('id', billing.workspaceId)
+          .maybeSingle();
+        const current = ws?.credits_ai ?? 0;
+        if (current <= 0) return;
+        if (await consumeCreditOptimistic(supabase, 'workspaces', 'id', billing.workspaceId, 'credits_ai', current)) {
+          return;
+        }
+      }
+      return;
+    }
+    if (billing.mode === 'entitlement') {
+      for (let i = 0; i < 3; i++) {
+        const { data: ent } = await supabase
+          .from('user_entitlements')
+          .select('credits_ai')
+          .eq('user_id', billing.userId)
+          .maybeSingle();
+        const current = ent?.credits_ai ?? 0;
+        if (current <= 0) return;
+        if (await consumeCreditOptimistic(supabase, 'user_entitlements', 'user_id', billing.userId, 'credits_ai', current)) {
+          return;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[AI] credit/usage record failed (non-fatal):', err?.message || err);
   }
 }
 
@@ -2712,7 +2867,7 @@ app.post('/api/payments/billing-portal', async (req, res) => {
   try {
     const session = await stripe.billingPortal.sessions.create({
       customer:   customerId,
-      return_url: `${frontendBase}/account`,
+      return_url: `${frontendBase}/MyAccount`,
     });
     return res.json({ url: session.url });
   } catch (err) {
@@ -2762,6 +2917,20 @@ app.post(
         console.log(
           `[Stripe Webhook] checkout.session.completed — userId=${userId} plan=${planId} entitlement=${applied.entitlementPlan}`
         );
+      }
+
+      if (event.type === 'invoice.paid') {
+        const invoice = event.data.object;
+        // First invoice is already applied via checkout.session.completed.
+        if (invoice.billing_reason === 'subscription_cycle') {
+          const refreshed = await refreshSubscriptionCredits({
+            custId: invoice.customer,
+            subId: invoice.subscription ?? null,
+          });
+          console.log(
+            `[Stripe Webhook] invoice.paid cycle — customer=${invoice.customer} plan=${refreshed?.plan || 'none'}`
+          );
+        }
       }
 
       if (event.type === 'customer.subscription.deleted') {

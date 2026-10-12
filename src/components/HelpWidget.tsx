@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 
 // ── FAQ Data ─────────────────────────────────────────────────────────────────
-const FAQS = [
+const FAQS: { q: string; a: React.ReactNode }[] = [
   {
     q: 'My PowerPoint upload isn\'t working — what should I do?',
     a: 'Make sure your file is a .pptx file (not .ppt or .odp). Files over 50MB may time out — try splitting your deck into smaller sections. PDFs and Word documents also work if you can export to those formats.',
@@ -34,6 +34,16 @@ const FAQS = [
   {
     q: 'How do I cancel or change my subscription?',
     a: 'Go to My Account → Manage Subscription (Stripe billing portal) to update payment method, download invoices, or cancel. Access continues through the end of the paid period. For refund requests within 14 days of a charge, email support@nexcourse.ai with your account email and receipt.',
+  },
+  {
+    q: 'How do I report a bug?',
+    a: (
+      <>
+        Open Submit Ticket in this widget and choose Bug Report, or read{' '}
+        <a href="/report-a-bug" className="text-indigo-400 hover:text-indigo-300 font-semibold">how to report a bug</a>.
+        Email support@nexcourse.ai with your account email, what you clicked, and a screenshot. Keep any NCX- ticket id we send back.
+      </>
+    ),
   },
 ];
 

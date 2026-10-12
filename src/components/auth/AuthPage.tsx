@@ -292,7 +292,10 @@ export function AuthPage({ onBackToHome, initialMode = 'login' }: { onBackToHome
 
       {/* Footer */}
       <p className="relative z-10 mt-6 text-xs text-slate-600 text-center">
-        By signing in you agree to our Terms of Service and Privacy Policy.<br />
+        By signing in you agree to our{' '}
+        <a href="/terms" className="text-slate-400 hover:text-indigo-300 underline underline-offset-2">Terms of Service</a>
+        {' '}and{' '}
+        <a href="/privacy" className="text-slate-400 hover:text-indigo-300 underline underline-offset-2">Privacy Policy</a>.<br />
         Your data is always kept private &amp; safe.
       </p>
     </div>

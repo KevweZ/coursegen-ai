@@ -100,14 +100,6 @@ function CreditBar({ used, total, color }: { used: number; total: number; color:
   );
 }
 
-// ── Days until reset ──────────────────────────────────────────────────────────
-function daysUntilReset(updatedAt?: string): number {
-  if (!updatedAt) return 30;
-  const last = new Date(updatedAt).getTime();
-  const next = last + 30 * 24 * 60 * 60 * 1000;
-  const diff = Math.ceil((next - Date.now()) / (1000 * 60 * 60 * 24));
-  return Math.max(0, diff);
-}
 
 // ── Main Component ────────────────────────────────────────────────────────────
 interface AccountPageProps {
@@ -282,7 +274,6 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
     else setPwResetMessage('Password reset link sent. Check your inbox (and spam) to set or change your password.');
   };
 
-  const daysLeft = daysUntilReset();
   // Billing portal: real Stripe customer only; Team seat members never have one
   const canManageBilling =
     !!status?.stripe_customer_id
@@ -490,28 +481,19 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
             )}
           </motion.div>
 
-          {/* Credit Reset Timer */}
+          {/* Billing cycle — real refresh is invoice.paid, not a fake 30-day clock */}
           <motion.div
             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.1 }}
             className="relative rounded-2xl border border-slate-700/60 bg-slate-900/60 backdrop-blur-sm p-6 overflow-hidden"
           >
             <div className="absolute top-0 right-0 w-40 h-40 bg-indigo-900/10 rounded-full blur-2xl pointer-events-none" />
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Credit Reset</p>
-            <div className="flex items-end gap-3 mb-4">
-              <p className="text-5xl font-black text-white">{daysLeft}</p>
-              <p className="text-slate-400 font-bold text-lg mb-1">days left</p>
-            </div>
-            <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden mb-3">
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${Math.round((daysLeft / 30) * 100)}%` }}
-                transition={{ duration: 0.8, ease: 'easeOut', delay: 0.3 }}
-                className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-purple-500"
-              />
-            </div>
-            <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
-              <Calendar className="w-3.5 h-3.5" />
-              <span>Credits reset automatically every 30 days</span>
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Billing cycle</p>
+            <div className="flex items-start gap-2 text-sm text-slate-400 font-medium leading-relaxed">
+              <Calendar className="w-4 h-4 mt-0.5 shrink-0 text-indigo-400" />
+              <span>
+                Subscription AI and TTS credits refresh at the start of each Stripe billing cycle.
+                Pay-as-you-go packs are added when you buy them. Manage or cancel anytime from the billing portal.
+              </span>
             </div>
           </motion.div>
         </div>
