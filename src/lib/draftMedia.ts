@@ -308,6 +308,42 @@ export function countAudioAssetKeys(assets: Record<string, string | Blob> | null
   return n;
 }
 
+export function countImageAssetKeys(assets: Record<string, string | Blob> | null | undefined): number {
+  if (!assets) return 0;
+  let n = 0;
+  for (const k of Object.keys(assets)) {
+    if (!isAudioAssetPath(k)) n += 1;
+  }
+  return n;
+}
+
+/** Fetch cloud draft-assets when local IDB has no pictures — even if audio keys already exist. */
+export function needsCloudImageDownload(assets: Record<string, string | Blob> | null | undefined): boolean {
+  return countImageAssetKeys(assets) === 0;
+}
+
+export function hasPlayableImageUrl(val: unknown): boolean {
+  return typeof val === 'string' && val.trim().length > 8;
+}
+
+/** Lean shell after a failed image attach: empty cover or empty content/hotspot slots. */
+export function courseHasEmptyVisualSlots(course: any): boolean {
+  if (!hasPlayableImageUrl(course?.coverImage)) return true;
+  for (const m of course?.modules || []) {
+    for (const s of m.slides || []) {
+      const type = String(s?.type || '');
+      if (type === 'hotspot') {
+        if (!hasPlayableImageUrl(s.imageUrl) && !hasPlayableImageUrl(s.data?.imageUrl)) return true;
+        continue;
+      }
+      if (type === 'content' || type === 'summary' || type === 'key-takeaways') {
+        if (!hasPlayableImageUrl(s.imageUrl) && !hasPlayableImageUrl(s.coverImage)) return true;
+      }
+    }
+  }
+  return false;
+}
+
 function isPackableAudioUrl(url: unknown): url is string {
   if (typeof url !== 'string') return false;
   const u = url.trim();

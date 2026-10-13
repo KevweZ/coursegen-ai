@@ -3,6 +3,8 @@
  * Only writes image URL fields. Never rewrites OST, voice-over, interaction type, or tab copy.
  */
 
+import { hasPlayableImageUrl } from './draftMedia';
+
 export const MAX_CONTENT_AI_IMAGES = 14;
 /** One authoring click on “this slide” — intro + a few tabs/items, not a course-wide refill. */
 export const MAX_SLIDE_AI_IMAGES = 8;
@@ -64,21 +66,21 @@ function floatsOn(slide: any): any[] {
   return Array.isArray(slide?.floatingMedia) ? slide.floatingMedia : [];
 }
 
-/** Slide-level visual already present (in-flow or a slide-scoped float). */
+/** Slide-level visual already present (in-flow or a slide-scoped float with a real URL). */
 export function contentSlideHasVisual(slide: any): boolean {
-  if (slide?.imageUrl || slide?.coverImage) return true;
-  return floatsOn(slide).some((f: any) => !f?.tabId);
+  if (hasPlayableImageUrl(slide?.imageUrl) || hasPlayableImageUrl(slide?.coverImage)) return true;
+  return floatsOn(slide).some((f: any) => !f?.tabId && hasPlayableImageUrl(f?.url));
 }
 
 export function introHasVisual(slide: any): boolean {
-  if (slide?.data?.introImageUrl) return true;
-  return floatsOn(slide).some((f: any) => f?.tabId === '__intro__');
+  if (hasPlayableImageUrl(slide?.data?.introImageUrl)) return true;
+  return floatsOn(slide).some((f: any) => f?.tabId === '__intro__' && hasPlayableImageUrl(f?.url));
 }
 
 export function tabHasVisual(slide: any, tab: any): boolean {
-  if (tab?.imageUrl) return true;
+  if (hasPlayableImageUrl(tab?.imageUrl)) return true;
   const tabId = tab?.id != null ? String(tab.id) : '';
-  if (tabId && floatsOn(slide).some((f: any) => String(f?.tabId || '') === tabId)) return true;
+  if (tabId && floatsOn(slide).some((f: any) => String(f?.tabId || '') === tabId && hasPlayableImageUrl(f?.url))) return true;
   return false;
 }
 

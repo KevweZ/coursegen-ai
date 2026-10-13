@@ -157,6 +157,7 @@ import {
   mediaRecordToMap,
   takeLegacyMedia,
   isAudioAssetPath,
+  courseHasEmptyVisualSlots,
 } from './lib/draftMedia';
 import { clearNarrationCache, stashAudioUrl, setLiveNarrationScope } from './lib/narrationCache';
 import { mergeRegenIntoSlide, patchCourseSlideById, slidesMatchId } from './lib/slideRegenMerge';
@@ -1241,6 +1242,8 @@ export default function App() {
     setActiveDraftId(id);
     navigateTo(ROUTES.preview(id));
     const restored = Object.keys(narrUrls).length;
+    let attachedImageCount = 0;
+    let courseAfterAttach = applied.course;
     // Images after first paint — do not re-apply audio from the lean shell (that wiped narration).
     const attachImages = async () => {
       try {
@@ -1296,6 +1299,8 @@ export default function App() {
           }
         }
 
+        attachedImageCount = imageMedia.size;
+        courseAfterAttach = working;
         if (!imageMedia.size && !audioMedia.size) {
           const missingAudio = (working.modules || []).some((m: any) =>
             (m.slides || []).some((s: any) =>
@@ -1348,6 +1353,7 @@ export default function App() {
           await new Promise<void>(r => setTimeout(r, 32));
         }
         console.log(`[Drafts] Attached ${attachMap.size} media asset(s) after preview open`);
+        courseAfterAttach = working;
 
         // Remove auto-promoted floating overlays that broke tab layouts
         try {
@@ -1359,6 +1365,7 @@ export default function App() {
             setCourse(working);
             setOriginalCourse(working);
           }
+          courseAfterAttach = working;
         } catch (e) {
           console.warn('[Drafts] Floating cleanup failed:', e);
         }
@@ -1381,11 +1388,18 @@ export default function App() {
     setDraftLoadProgress(100);
     setIsLoadingDraft(false);
     setDraftLoadStatus('');
-    showDraftMessage(
-      restored > 0
-        ? `Draft loaded ✓ ${restored} narration clip${restored === 1 ? '' : 's'} restored.`
-        : 'Draft loaded ✓'
-    );
+    const imagesMissing = attachedImageCount === 0 && courseHasEmptyVisualSlots(courseAfterAttach);
+    if (restored > 0 && imagesMissing) {
+      showDraftMessage(
+        `Draft loaded ✓ ${restored} narration clip${restored === 1 ? '' : 's'} restored. Course images did not restore.`
+      );
+    } else {
+      showDraftMessage(
+        restored > 0
+          ? `Draft loaded ✓ ${restored} narration clip${restored === 1 ? '' : 's'} restored.`
+          : 'Draft loaded ✓'
+      );
+    }
     return true;
   };
 
@@ -4849,7 +4863,7 @@ export default function App() {
           console.warn('[Images] Cover regen failed', e);
         }
       }
-      const { course: withImages, jobsAttempted } = await generateContentSlideImages(
+      const { course: withImages, jobsAttempted, jobsApplied, lastError } = await generateContentSlideImages(
         working,
         (done, total) => {
           setImageProgress({
@@ -4865,16 +4879,28 @@ export default function App() {
       working = stripCourseAutoPromotedFloating(withImages);
       setFloatingImagesMap(floatingMapFromCourse(working));
       setCourse(working);
+      const failMsg = lastError || 'No image was returned.';
+      if (jobsAttempted > 0) {
+        setImageProgress({
+          isRunning: false,
+          isDone: true,
+          current: jobsApplied,
+          total: jobsAttempted,
+          error: jobsApplied === 0 ? failMsg : (jobsApplied < jobsAttempted ? lastError : null),
+        });
+      }
       if (!coverMade && jobsAttempted === 0) {
         showDraftMessage(
           thisSlideOnly
             ? 'This slide already has an image, or it is not a content/tab slide. Remove the photo first to generate a new one. Crop and Move still work on the current image.'
             : 'No eligible slides for AI images. Objectives, overviews, and quizzes are skipped — only content/tabs that still need visuals are filled. Use Upload Image for a specific slide.'
         );
+      } else if (!coverMade && jobsApplied === 0) {
+        showDraftMessage(failMsg);
       } else {
         const parts = [
           coverMade ? 'cover updated' : null,
-          jobsAttempted > 0 ? `${jobsAttempted} content visual${jobsAttempted === 1 ? '' : 's'}` : null,
+          jobsApplied > 0 ? `${jobsApplied} content visual${jobsApplied === 1 ? '' : 's'}` : null,
         ].filter(Boolean);
         showDraftMessage(
           parts.length

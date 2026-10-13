@@ -37,7 +37,7 @@ test('course-wide generate fills remaining empty slots only, capped at 14', () =
   const slides = [
     ...manyContentSlides(10),
     { id: 'quiz', type: 'knowledge-check', title: 'Check', content: 'Furnace' },
-    { id: 'has', type: 'content', title: 'Existing Furnace', content: 'Radiant coils.', imageUrl: 'keep-me' },
+    { id: 'has', type: 'content', title: 'Existing Furnace', content: 'Radiant coils.', imageUrl: 'keep-me.png' },
     ...manyContentSlides(8).map((s, i) => ({ ...s, id: `extra-${i}` })),
   ];
   const jobs = collectContentImageJobs(courseWithSlides(slides));
@@ -80,16 +80,19 @@ test('skips quizzes, objectives, and slides that already have in-flow or floatin
   assert.ok(slideTypeSkipsAiContentImages('knowledge-check'));
   assert.ok(slideTypeSkipsAiContentImages('mastery-exam'));
   assert.ok(!slideTypeSkipsAiContentImages('content'));
-  assert.ok(contentSlideHasVisual({ imageUrl: 'x' }));
-  assert.ok(contentSlideHasVisual({ floatingMedia: [{ id: 'fi-1', url: 'x', x: 0, y: 0, width: 100, height: 80 }] }));
+  assert.ok(contentSlideHasVisual({ imageUrl: 'keep-me.png' }));
+  assert.ok(contentSlideHasVisual({ floatingMedia: [{ id: 'fi-1', url: 'keep-me.png', x: 0, y: 0, width: 100, height: 80 }] }));
+  assert.equal(contentSlideHasVisual({ imageUrl: null }), false);
+  assert.equal(contentSlideHasVisual({ floatingMedia: [{ id: 'fi-stub', url: null, x: 0, y: 0, width: 100, height: 80 }] }), false);
 
   const jobs = collectContentImageJobs(courseWithSlides([
     { id: 'obj', type: 'course-objectives', title: 'Objectives', content: 'Furnace' },
     { id: 'kc', type: 'knowledge-check', title: 'KC', content: 'Furnace' },
-    { id: 'float', type: 'content', title: 'Furnace', content: 'Radiant coils.', floatingMedia: [{ id: 'fi-9', url: 'u', x: 1, y: 1, width: 80, height: 80 }] },
+    { id: 'float', type: 'content', title: 'Furnace', content: 'Radiant coils.', floatingMedia: [{ id: 'fi-9', url: 'keep-me.png', x: 1, y: 1, width: 80, height: 80 }] },
+    { id: 'stub', type: 'content', title: 'Furnace', content: 'Radiant coils and process heat.', floatingMedia: [{ id: 'fi-empty', url: null, x: 1, y: 1, width: 80, height: 80 }] },
     { id: 'ok', type: 'content', title: 'Furnace', content: 'Radiant coils and process heat.' },
   ]));
-  assert.deepEqual(jobs.map((j) => j.slideId), ['ok']);
+  assert.deepEqual(jobs.map((j) => j.slideId), ['stub', 'ok']);
 });
 
 test('apply writes only image URL fields — text, type, and tab copy stay locked', () => {
@@ -145,9 +148,11 @@ test('image gen and authoring stay wired: remaining fill, this-slide, crop/move,
   const service = src('src/services/imageService.ts');
   assert.match(service, /collectContentImageJobs/);
   assert.match(service, /applyContentImageUrl/);
+  assert.match(service, /jobsApplied/);
   assert.match(service, /opts\?\: \{ slideId\?\: string \}/);
 
   const app = src('src/App.tsx');
+  assert.match(app, /jobsApplied/);
   assert.match(app, /Generate AI images/);
   assert.match(app, /Fill slides that don[’']t have an image yet/);
   assert.match(app, /Generate AI image for this slide/);

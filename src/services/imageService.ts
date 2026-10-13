@@ -822,14 +822,23 @@ export function applyCoverImageToCourse(
  * Course-wide (Edit → Generate AI images): remaining empty slots, cap MAX_CONTENT_AI_IMAGES.
  * `{ slideId }` (this slide only): empty slots on that slide, bypass visual heuristic, smaller cap.
  */
-export type ContentImageGenResult = { course: any; jobsAttempted: number };
+export type ContentImageGenResult = {
+  course: any;
+  jobsAttempted: number;
+  jobsApplied: number;
+  lastError: string | null;
+};
+
+function emptyImageGenResult(course: any): ContentImageGenResult {
+  return { course, jobsAttempted: 0, jobsApplied: 0, lastError: null };
+}
 
 export async function generateContentSlideImages(
   course: any,
   onProgress?: (done: number, total: number) => void,
   opts?: { slideId?: string },
 ): Promise<ContentImageGenResult> {
-  if (!course?.modules?.length) return { course, jobsAttempted: 0 };
+  if (!course?.modules?.length) return emptyImageGenResult(course);
 
   const selected = collectContentImageJobs(course, {
     slideId: opts?.slideId,
@@ -837,7 +846,7 @@ export async function generateContentSlideImages(
   });
   if (!selected.length) {
     onProgress?.(0, 0);
-    return { course, jobsAttempted: 0 };
+    return emptyImageGenResult(course);
   }
   onProgress?.(0, selected.length);
 
@@ -851,6 +860,8 @@ export async function generateContentSlideImages(
   }));
 
   let done = 0;
+  let jobsApplied = 0;
+  let lastError: string | null = null;
   const withLock = createAsyncLock();
   let stopRemaining = false;
 
@@ -866,7 +877,8 @@ export async function generateContentSlideImages(
           panelBody: job.panelBody,
           mediaPrompt: job.mediaPrompt,
         });
-      } catch (err) {
+      } catch (err: any) {
+        lastError = err?.message || String(err) || 'Image generation failed.';
         if (isImageAuthOrCreditStop(err)) stopRemaining = true;
         console.warn(`[ImageService] Content visual failed for "${job.subject}":`, err);
       }
@@ -876,8 +888,11 @@ export async function generateContentSlideImages(
       await withLock(() => {
         const slide = modules[job.mi].slides[job.si];
         modules[job.mi].slides[job.si] = applyContentImageUrl(slide, job, url);
+        jobsApplied += 1;
         console.log(`[ImageService] ✓ Content visual for "${job.subject}"`);
       });
+    } else if (!lastError && !stopRemaining) {
+      lastError = 'No image was returned.';
     }
 
     done++;
@@ -885,5 +900,10 @@ export async function generateContentSlideImages(
     await sleep(IMAGE_PACE_MS);
   });
 
-  return { course: { ...course, modules }, jobsAttempted: selected.length };
+  return {
+    course: { ...course, modules },
+    jobsAttempted: selected.length,
+    jobsApplied,
+    lastError: jobsApplied === selected.length ? null : lastError,
+  };
 }

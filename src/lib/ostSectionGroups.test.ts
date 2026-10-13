@@ -1,10 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   formatOstSectionGroups,
   looksLikeSectionHeader,
   parseOstSectionGroups,
 } from './ostSectionGroups.ts';
+import { markdownToInlineHtml } from './markdownInline.ts';
 
 test('ALL-CAPS and fully-bold list items are section headers, not teaching bullets', () => {
   assert.equal(looksLikeSectionHeader('- **WHAT ARE COMONOMERS?**'), true);
@@ -81,4 +84,14 @@ test('ALL-CAPS parent lines stay headers with only children bulleted', () => {
   assert.equal(groups![0].bullets.length, 2);
   assert.match(groups![1].heading, /branching reduces crystalline packing/i);
   assert.doesNotMatch(groups![0].heading, /^-/);
+});
+
+test('section-group bullets render **ArtStation** as bold, not glyphs', () => {
+  const html = markdownToInlineHtml('**ArtStation**: portfolio showcase, trending work');
+  assert.match(html, /<strong>ArtStation<\/strong>/);
+  assert.doesNotMatch(html, /\*\*/);
+
+  const view = readFileSync(resolve(process.cwd(), 'src/components/interactions/OstSectionGroupsView.tsx'), 'utf8');
+  assert.match(view, /markdownToInlineHtml\(g\.heading\)/);
+  assert.match(view, /markdownToInlineHtml\(b\)/);
 });

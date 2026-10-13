@@ -24,7 +24,7 @@ import {
   cloneLeanCourse,
   stashLegacyMedia,
   countCourseAudioClips,
-  countAudioAssetKeys,
+  needsCloudImageDownload,
   dataUrlToBlob,
   blobToDataUrl,
   extractHeavyMediaToBlobs,
@@ -1363,7 +1363,7 @@ export function useDraftCourses(
     try {
       onProgress?.(8, 'Checking saved media…');
       let blobs = await readDraftAssetBlobs(userId, id);
-      if (countAudioAssetKeys(blobs) === 0) {
+      if (needsCloudImageDownload(blobs)) {
         try {
           onProgress?.(12, 'Downloading course media…');
           const cloudAssets = await downloadCloudAssets(userId, id, (done, total) => {
@@ -1437,18 +1437,19 @@ export function useDraftCourses(
     if (!Object.keys(blobs).length) {
       try {
         const cloudAssets = await downloadCloudAssets(userId, id);
-        const fromCloud: Record<string, Blob> = {};
+        const fromCloudAudio: Record<string, Blob> = {};
+        const fromCloudAll: Record<string, Blob> = {};
         for (const [k, v] of Object.entries(cloudAssets)) {
-          if (!isAudioAssetPath(k)) continue;
           try {
             const blob = await dataUrlToBlob(v);
-            if (blob.size >= 64) fromCloud[k] = blob;
+            fromCloudAll[k] = blob;
+            if (isAudioAssetPath(k) && blob.size >= 64) fromCloudAudio[k] = blob;
           } catch { /* skip */ }
         }
-        merge(fromCloud);
-        if (Object.keys(blobs).length) {
+        merge(fromCloudAudio);
+        if (Object.keys(fromCloudAll).length) {
           try {
-            await writeDraftAssets(userId, id, blobs);
+            await writeDraftAssets(userId, id, fromCloudAll);
           } catch { /* play from cloud this session anyway */ }
         }
       } catch (cloudErr) {
