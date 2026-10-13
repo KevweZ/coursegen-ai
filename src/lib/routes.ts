@@ -5,6 +5,7 @@
  */
 
 export const RETURN_TO_KEY = 'nexcourse_return_to';
+export const TEAM_INVITE_STORAGE_KEY = 'nexcourse_team_invite';
 
 export const ROUTES = {
   home: '/',
@@ -59,7 +60,7 @@ export type ParsedAppPath =
 
 /** Paths that require a signed-in user (deep-link → login if anonymous). */
 export function isProtectedPath(pathname: string): boolean {
-  const p = pathname.replace(/\/+$/, '') || '/';
+  const p = (pathname.split('?')[0] || '').replace(/\/+$/, '') || '/';
   if (p === '/upload' || p === '/Building') return true;
   if (
     p === '/CourseSettings' ||
@@ -75,7 +76,7 @@ export function isProtectedPath(pathname: string): boolean {
 }
 
 export function parseAppPath(pathname: string): ParsedAppPath {
-  const p = pathname.replace(/\/+$/, '') || '/';
+  const p = (pathname.split('?')[0] || '').replace(/\/+$/, '') || '/';
 
   if (p === '/') return { kind: 'marketing', view: 'homepage' };
   if (p === '/methodology') return { kind: 'marketing', view: 'methodology' };
@@ -116,13 +117,61 @@ export function parseAppPath(pathname: string): ParsedAppPath {
 
 export function navigateTo(path: string, replace = false) {
   if (typeof window === 'undefined') return;
-  if (window.location.pathname === path) return;
+  if (window.location.pathname === path && !path.includes('?')) return;
+  if (window.location.pathname + window.location.search === path) return;
   if (replace) window.history.replaceState({}, '', path);
   else window.history.pushState({}, '', path);
 }
 
+/** Read invite token from a query string (with or without leading ?). */
+export function teamInviteFromSearch(search: string | null | undefined): string {
+  const raw = String(search || '');
+  const q = raw.startsWith('?') ? raw.slice(1) : raw;
+  return (new URLSearchParams(q).get('team_invite') || '').trim();
+}
+
+export function myAccountInvitePath(token: string): string {
+  return `${ROUTES.myAccount}?team_invite=${encodeURIComponent(token)}`;
+}
+
+export function peekTeamInvite(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const stored = (sessionStorage.getItem(TEAM_INVITE_STORAGE_KEY) || localStorage.getItem(TEAM_INVITE_STORAGE_KEY) || '').trim();
+    return stored || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Persist ?team_invite= so /account → /MyAccount and Google OAuth cannot drop it. */
+export function captureTeamInviteFromLocation(): string | null {
+  if (typeof window === 'undefined') return null;
+  const fromUrl = teamInviteFromSearch(window.location.search);
+  if (fromUrl) {
+    try {
+      sessionStorage.setItem(TEAM_INVITE_STORAGE_KEY, fromUrl);
+      localStorage.setItem(TEAM_INVITE_STORAGE_KEY, fromUrl);
+    } catch { /* ignore */ }
+    return fromUrl;
+  }
+  return peekTeamInvite();
+}
+
+export function consumeTeamInvite(): void {
+  try {
+    sessionStorage.removeItem(TEAM_INVITE_STORAGE_KEY);
+    localStorage.removeItem(TEAM_INVITE_STORAGE_KEY);
+  } catch { /* ignore */ }
+}
+
 export function stashReturnTo(path: string) {
   try {
+    const invite = captureTeamInviteFromLocation();
+    if (invite) {
+      sessionStorage.setItem(RETURN_TO_KEY, myAccountInvitePath(invite));
+      return;
+    }
     if (isProtectedPath(path)) sessionStorage.setItem(RETURN_TO_KEY, path);
   } catch { /* ignore */ }
 }

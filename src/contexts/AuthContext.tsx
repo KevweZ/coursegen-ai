@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
+import { captureTeamInviteFromLocation, ROUTES } from '../lib/routes';
 
 const ADMIN_EMAIL = ((import.meta as any).env.VITE_ADMIN_EMAIL as string ?? '').toLowerCase().trim();
 const RECOVERY_FLAG_KEY = 'nexcourse_password_recovery';
@@ -253,13 +254,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signInWithGoogle = async () => {
-    // After OAuth, land on /upload. On native this opens the system browser for now;
-    // email/password stays in-app (smoke-test path). Deep-link return is a later milestone.
-    const redirectTo = `${getAuthRedirectOrigin()}/upload`;
+    // Keep redirectTo on the known-allowlisted /upload path. A pending Team invite
+    // is stored (localStorage) and App bootstrap sends the user to My Account after session.
+    captureTeamInviteFromLocation();
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo,
+        redirectTo: `${getAuthRedirectOrigin()}${ROUTES.upload}`,
         queryParams: { access_type: 'offline', prompt: 'select_account' },
       },
     });

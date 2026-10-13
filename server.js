@@ -809,8 +809,20 @@ function authFromHeader(authHeader) {
   if (!payload?.sub) return null;
   return {
     userId: payload.sub,
-    email: (payload.email ?? '').toLowerCase(),
+    email: (payload.email || payload.user_metadata?.email || '').toLowerCase(),
   };
+}
+
+async function resolveAuthEmail(supabase, auth) {
+  const fromJwt = (auth?.email || '').toLowerCase().trim();
+  if (fromJwt) return fromJwt;
+  if (!auth?.userId) return '';
+  try {
+    const { data: { user } } = await supabase.auth.admin.getUserById(auth.userId);
+    return (user?.email || '').toLowerCase().trim();
+  } catch {
+    return '';
+  }
 }
 
 /**
@@ -873,6 +885,39 @@ async function ensureTeamWorkspace(supabase, {
   return workspaceId;
 }
 
+/** Turn an email invite into an active seat once that person is signed in. */
+async function activatePendingTeamInvites(supabase, userId, email) {
+  const em = (email || '').toLowerCase().trim();
+  if (!userId || !em) return 0;
+  const { data: rows } = await supabase
+    .from('workspace_members')
+    .select('id, workspace_id, workspaces(status)')
+    .ilike('email', em)
+    .eq('status', 'invited');
+  let n = 0;
+  const now = new Date().toISOString();
+  for (const row of rows || []) {
+    if (row.workspaces?.status !== 'active') continue;
+    await supabase.from('workspace_members').update({
+      user_id: userId,
+      status: 'active',
+      joined_at: now,
+      invite_token: null,
+    }).eq('id', row.id);
+    n += 1;
+  }
+  if (n) {
+    try {
+      await supabase.auth.admin.updateUserById(userId, {
+        user_metadata: { plan: 'business_team' },
+      });
+    } catch (metaErr) {
+      console.warn('[Workspace] pending-invite metadata sync failed:', metaErr?.message);
+    }
+  }
+  return n;
+}
+
 /** Active Team membership for a user (owner or member). */
 async function getActiveTeamMembership(supabase, userId, email) {
   const memberSelect =
@@ -892,7 +937,7 @@ async function getActiveTeamMembership(supabase, userId, email) {
     const { data: byEmail } = await supabase
       .from('workspace_members')
       .select(memberSelect)
-      .eq('email', email.toLowerCase())
+      .ilike('email', email.toLowerCase())
       .eq('status', 'active')
       .limit(1)
       .maybeSingle();
@@ -3026,6 +3071,13 @@ app.get('/api/payments/status', async (req, res) => {
       ? data
       : { subscription: 'free', credits_ai: 0, credits_tts: 0, stripe_customer_id: null };
 
+    let email = '';
+    try {
+      const { data: { user } } = await supabase.auth.admin.getUserById(userId);
+      email = user?.email || '';
+    } catch { /* ignore */ }
+    await activatePendingTeamInvites(supabase, userId, email);
+
     // Owner on Team: expose workspace pooled credits
     if (own.subscription === 'business_team') {
       const { data: ws } = await supabase
@@ -3049,12 +3101,7 @@ app.get('/api/payments/status', async (req, res) => {
     }
 
     // Member seat: inherit Team plan + pooled credits (not billing customer)
-    if (own.subscription !== 'business_team' && own.subscription !== 'pro_creator') {
-      let email = '';
-      try {
-        const { data: { user } } = await supabase.auth.admin.getUserById(userId);
-        email = user?.email || '';
-      } catch { /* ignore */ }
+    if (own.subscription !== 'business_team') {
       const membership = await getActiveTeamMembership(supabase, userId, email);
       if (membership?.workspaces) {
         const ws = membership.workspaces;
@@ -3092,7 +3139,9 @@ app.get('/api/workspace', async (req, res) => {
 
   try {
     const supabase = await getAdminSupabase();
-    const membership = await getActiveTeamMembership(supabase, auth.userId, auth.email);
+    const email = await resolveAuthEmail(supabase, auth);
+    await activatePendingTeamInvites(supabase, auth.userId, email);
+    const membership = await getActiveTeamMembership(supabase, auth.userId, email);
     if (!membership?.workspaces) {
       // Owner may have Team entitlement but membership row missing — heal
       const { data: ent } = await supabase
@@ -3103,7 +3152,7 @@ app.get('/api/workspace', async (req, res) => {
       if (ent?.subscription === 'business_team') {
         const wsId = await ensureTeamWorkspace(supabase, {
           ownerUserId: auth.userId,
-          ownerEmail: auth.email,
+          ownerEmail: email || auth.email,
           creditsAi: ent.credits_ai,
           creditsTts: ent.credits_tts,
           stripeCustomerId: ent.stripe_customer_id,
@@ -3217,7 +3266,7 @@ app.post('/api/workspace/invite', async (req, res) => {
     if (error) throw error;
 
     const baseUrl = isProd ? 'https://nexcourse.ai' : 'http://localhost:3000';
-    const inviteLink = `${baseUrl}/account?team_invite=${inviteToken}`;
+    const inviteLink = `${baseUrl}/MyAccount?team_invite=${inviteToken}`;
 
     if (resend) {
       await resend.emails.send({
@@ -3258,20 +3307,28 @@ app.post('/api/workspace/accept', async (req, res) => {
 
   try {
     const supabase = await getAdminSupabase();
+    const signedInEmail = await resolveAuthEmail(supabase, auth);
     const { data: invite, error } = await supabase
       .from('workspace_members')
       .select('id, email, status, workspace_id, workspaces:workspace_id(status, seat_limit)')
       .eq('invite_token', token)
       .maybeSingle();
 
-    if (error || !invite) return res.status(404).json({ error: 'Invite not found.' });
+    if (error || !invite) {
+      await activatePendingTeamInvites(supabase, auth.userId, signedInEmail);
+      const membership = await getActiveTeamMembership(supabase, auth.userId, signedInEmail);
+      if (membership?.workspace_id) {
+        return res.json({ ok: true, workspace_id: membership.workspace_id });
+      }
+      return res.status(404).json({ error: 'Invite not found.' });
+    }
     if (invite.workspaces?.status !== 'active') {
       return res.status(400).json({ error: 'This Team workspace is no longer active.' });
     }
     if (invite.status === 'removed') {
       return res.status(400).json({ error: 'This invite was revoked.' });
     }
-    if (invite.email !== auth.email) {
+    if ((invite.email || '').toLowerCase() !== signedInEmail) {
       return res.status(403).json({
         error: `Sign in as ${invite.email} to accept this invite.`,
       });

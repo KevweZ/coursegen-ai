@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isProtectedPath, parseAppPath, ROUTES } from './routes.ts';
+import {
+  isProtectedPath,
+  parseAppPath,
+  ROUTES,
+  teamInviteFromSearch,
+  myAccountInvitePath,
+} from './routes.ts';
 
 test('terms, privacy, and report-a-bug are public marketing paths', () => {
   assert.deepEqual(parseAppPath('/terms'), { kind: 'marketing', view: 'terms' });
@@ -14,4 +20,14 @@ test('terms, privacy, and report-a-bug are public marketing paths', () => {
 test('/account aliases My Account for Stripe portal return', () => {
   assert.deepEqual(parseAppPath('/account'), { kind: 'myAccount' });
   assert.equal(isProtectedPath('/account'), true);
+});
+
+test('team invite query survives /account and /MyAccount path parsing', () => {
+  assert.equal(teamInviteFromSearch('?team_invite=abc123'), 'abc123');
+  assert.equal(teamInviteFromSearch('team_invite=abc123&x=1'), 'abc123');
+  assert.equal(myAccountInvitePath('tok'), '/MyAccount?team_invite=tok');
+  assert.deepEqual(parseAppPath('/MyAccount?team_invite=abc'), { kind: 'myAccount' });
+  assert.deepEqual(parseAppPath('/account?team_invite=abc'), { kind: 'myAccount' });
+  assert.equal(isProtectedPath('/MyAccount?team_invite=abc'), true);
+  assert.equal(isProtectedPath('/account?team_invite=abc'), true);
 });

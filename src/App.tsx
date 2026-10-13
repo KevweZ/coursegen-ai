@@ -177,6 +177,9 @@ import {
   navigateTo,
   stashReturnTo,
   consumeReturnTo,
+  captureTeamInviteFromLocation,
+  peekTeamInvite,
+  myAccountInvitePath,
 } from './lib/routes';
 import type { SandboxDemo } from './lib/routes';
 import { foundationFingerprint, type FoundationFingerprintInput } from './lib/courseReviewSync';
@@ -2041,6 +2044,7 @@ export default function App() {
 
     if (!user) {
       pathBootstrappedForUser.current = null;
+      captureTeamInviteFromLocation();
       if (isProtectedPath(path)) {
         stashReturnTo(path);
         setPublicView('auth');
@@ -2061,11 +2065,17 @@ export default function App() {
     }
 
     // Authenticated bootstrap once per user session (honor returnTo after login)
-    if (pathBootstrappedForUser.current === user.id) return;
+    captureTeamInviteFromLocation();
+    if (pathBootstrappedForUser.current === user.id) {
+      // Already in-app: clicking an invite link must still open My Account.
+      if (parseAppPath(path).kind === 'myAccount') applyAuthenticatedPath(path);
+      return;
+    }
     pathBootstrappedForUser.current = user.id;
+    const invite = peekTeamInvite();
     const returnTo = consumeReturnTo();
-    const target = returnTo || path;
-    if (returnTo) navigateTo(returnTo, true);
+    const target = invite ? myAccountInvitePath(invite) : (returnTo || path);
+    if (invite || returnTo) navigateTo(target, true);
     applyAuthenticatedPath(target);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading, isScormPlayer, isReviewPlayer, isAdmin, passwordRecovery]);
@@ -2096,7 +2106,11 @@ export default function App() {
       } else if (!activeDraftId && path !== ROUTES.courseReview && !path.startsWith('/design/')) {
         navigateTo(ROUTES.courseReview, true);
       }
-    } else if (step === 'account' && path !== ROUTES.myAccount) navigateTo(ROUTES.myAccount, true);
+    } else if (step === 'account' && path !== ROUTES.myAccount) {
+      captureTeamInviteFromLocation();
+      const invite = peekTeamInvite();
+      navigateTo(invite ? myAccountInvitePath(invite) : ROUTES.myAccount, true);
+    }
     else if (step === 'pricing' && path !== ROUTES.pricing) navigateTo(ROUTES.pricing, true);
     else if (step === 'player-properties' && path !== ROUTES.playerProperties) {
       navigateTo(ROUTES.playerProperties, true);

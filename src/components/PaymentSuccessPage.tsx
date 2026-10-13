@@ -20,7 +20,6 @@ export function PaymentSuccessPage({ onContinue, userId }: PaymentSuccessPagePro
     const sessionId = params.get('session_id');
     if (!sessionId || !userId) {
       setSyncing(false);
-      if (!sessionId) setSyncError('Missing session id — open My Account and refresh, or contact support if plan stays Free.');
       return;
     }
 
@@ -103,6 +102,15 @@ export function PaymentSuccessPage({ onContinue, userId }: PaymentSuccessPagePro
             <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
             <p className="text-sm text-amber-200">{syncError}</p>
           </div>
+        )}
+
+        {!syncing && (
+          <p className="text-slate-500 text-sm mb-6 leading-relaxed">
+            If you have any issues accessing the features, email{' '}
+            <a href="mailto:support@nexcourse.ai" className="text-indigo-400 hover:text-indigo-300 font-semibold">
+              support@nexcourse.ai
+            </a>.
+          </p>
         )}
 
         <div className="space-y-4">
