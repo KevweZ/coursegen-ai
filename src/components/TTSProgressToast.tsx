@@ -13,13 +13,15 @@ interface Props {
   progress: TTSProgress;
   /** Clears completed toast UI only — must not cancel an in-flight TTS job. */
   onDismiss?: () => void;
+  /** Asked when the user hits X while audio is still generating. */
+  onRequestStop?: () => void;
   /** Resume missing clips after a lost job or partial failure. */
   onRetry?: () => void;
   /** When true, parent owns position (stack with image toast). */
   layout?: 'fixed' | 'inline';
 }
 
-export const TTSProgressToast: React.FC<Props> = ({ progress, onDismiss, onRetry, layout = 'fixed' }) => {
+export const TTSProgressToast: React.FC<Props> = ({ progress, onDismiss, onRequestStop, onRetry, layout = 'fixed' }) => {
   const [visible, setVisible] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -54,6 +56,10 @@ export const TTSProgressToast: React.FC<Props> = ({ progress, onDismiss, onRetry
   }, [progress.isRunning, progress.isDone, progress.error, onDismiss]);
 
   const handleDismiss = () => {
+    if (progress.isRunning) {
+      onRequestStop?.();
+      return;
+    }
     if (timerRef.current) {
       clearTimeout(timerRef.current);
       timerRef.current = null;

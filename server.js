@@ -1501,22 +1501,20 @@ app.get('/api/drafts/:id', async (req, res) => {
     if (error) return res.status(400).json({ error: error.message });
     if (!data) return res.status(404).json({ error: 'Draft not found.' });
     if (data.user_id !== auth.userId) {
-      // Allow workspace members to open shared drafts
+      // Allow workspace members / owner to open shared drafts
       if (data.workspace_id) {
-        const { data: mem } = await supabase
-          .from('workspace_members')
-          .select('id')
-          .eq('workspace_id', data.workspace_id)
-          .eq('user_id', auth.userId)
-          .eq('status', 'active')
-          .maybeSingle();
+        const email = await resolveAuthEmail(supabase, auth);
+        const membership = await getActiveTeamMembership(supabase, auth.userId, email);
+        const memberWsId = membership?.workspace_id || membership?.workspaces?.id;
         const { data: owned } = await supabase
           .from('workspaces')
           .select('id')
           .eq('id', data.workspace_id)
           .eq('owner_user_id', auth.userId)
           .maybeSingle();
-        if (!mem && !owned) return res.status(403).json({ error: 'Forbidden.' });
+        if (memberWsId !== data.workspace_id && !owned) {
+          return res.status(403).json({ error: 'Forbidden.' });
+        }
       } else {
         return res.status(403).json({ error: 'Forbidden.' });
       }

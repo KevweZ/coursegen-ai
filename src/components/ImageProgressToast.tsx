@@ -20,6 +20,8 @@ interface Props {
   progress: ImageGenProgress;
   /** Clears completed toast UI only — must not cancel in-flight image jobs. */
   onDismiss?: () => void;
+  /** Asked when the user hits X while images are still generating. */
+  onRequestStop?: () => void;
   /** When true, parent owns position (stack with audio toast). */
   layout?: 'fixed' | 'inline';
 }
@@ -27,6 +29,7 @@ interface Props {
 export const ImageProgressToast: React.FC<Props> = ({
   progress,
   onDismiss,
+  onRequestStop,
   layout = 'fixed',
 }) => {
   const [visible, setVisible] = useState(false);
@@ -62,6 +65,10 @@ export const ImageProgressToast: React.FC<Props> = ({
   }, [progress.isRunning, progress.isDone, progress.error, progress.total, onDismiss]);
 
   const handleDismiss = () => {
+    if (progress.isRunning) {
+      onRequestStop?.();
+      return;
+    }
     if (timerRef.current) {
       clearTimeout(timerRef.current);
       timerRef.current = null;

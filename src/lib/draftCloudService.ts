@@ -383,15 +383,17 @@ export async function fetchCloudDraft(
   try {
     const res = await authedFetch(`/api/drafts/${encodeURIComponent(draftId)}`);
     const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.snapshot) {
-      if (!res.ok) console.warn('[DraftCloud] fetch failed:', data.error || res.status);
-      return null;
+    if (!res.ok) {
+      const msg = data.error || data.message || `Could not load draft (${res.status}).`;
+      console.warn('[DraftCloud] fetch failed:', msg);
+      throw new Error(msg);
     }
+    if (!data.snapshot) return null;
     void userId;
     return { snapshot: data.snapshot as CloudDraftSnapshot, assets: {} };
   } catch (e: any) {
     console.warn('[DraftCloud] fetch failed:', e?.message || e);
-    return null;
+    throw e instanceof Error ? e : new Error(e?.message || 'Could not load draft.');
   }
 }
 

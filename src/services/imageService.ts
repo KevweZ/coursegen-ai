@@ -836,7 +836,7 @@ function emptyImageGenResult(course: any): ContentImageGenResult {
 export async function generateContentSlideImages(
   course: any,
   onProgress?: (done: number, total: number) => void,
-  opts?: { slideId?: string },
+  opts?: { slideId?: string; shouldCancel?: () => boolean },
 ): Promise<ContentImageGenResult> {
   if (!course?.modules?.length) return emptyImageGenResult(course);
 
@@ -866,6 +866,7 @@ export async function generateContentSlideImages(
   let stopRemaining = false;
 
   await mapWithConcurrency(selected, IMAGE_GEN_CONCURRENCY, async (job) => {
+    if (opts?.shouldCancel?.()) stopRemaining = true;
     let url: string | null = null;
     if (!stopRemaining) {
       try {
@@ -897,7 +898,7 @@ export async function generateContentSlideImages(
 
     done++;
     onProgress?.(done, selected.length);
-    await sleep(IMAGE_PACE_MS);
+    if (!stopRemaining) await sleep(IMAGE_PACE_MS);
   });
 
   return {

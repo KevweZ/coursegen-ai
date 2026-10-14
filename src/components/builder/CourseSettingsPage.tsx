@@ -311,7 +311,7 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
 
           {/* Overhead tabs + panel — one bordered region so the active tab owns the content */}
           <div className="rounded-2xl border-2 border-indigo-500/45 overflow-hidden bg-slate-950/40 shadow-[inset_0_1px_0_rgba(129,140,248,0.12)]">
-            <div className="flex gap-0 overflow-x-auto bg-slate-950/90 scrollbar-thin">
+            <div className="flex flex-wrap gap-0 overflow-x-auto overscroll-x-contain bg-slate-950/90 [touch-action:pan-x] [-webkit-overflow-scrolling:touch]">
             {tabs.map(tab => (
               <button
                 key={tab.id}

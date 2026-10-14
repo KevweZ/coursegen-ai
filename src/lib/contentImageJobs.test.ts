@@ -149,7 +149,7 @@ test('image gen and authoring stay wired: remaining fill, this-slide, crop/move,
   assert.match(service, /collectContentImageJobs/);
   assert.match(service, /applyContentImageUrl/);
   assert.match(service, /jobsApplied/);
-  assert.match(service, /opts\?\: \{ slideId\?\: string \}/);
+  assert.match(service, /opts\?\: \{ slideId\?\: string; shouldCancel\?\: \(\) => boolean \}/);
 
   const app = src('src/App.tsx');
   assert.match(app, /jobsApplied/);

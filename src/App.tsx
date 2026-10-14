@@ -1432,7 +1432,7 @@ export default function App() {
           });
 
           if (!snapshot) {
-            showDraftMessage('Draft not found. It may have failed to save — try saving again.');
+            showDraftMessage('Could not open this draft. If it was just sent, wait a moment and try again from View drafts.');
             setStep('home');
             navigateTo(ROUTES.upload, true);
             return;
@@ -1622,6 +1622,8 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isHydrating, setIsHydrating] = useState(false);
   const [isGeneratingImages, setIsGeneratingImages] = useState(false);
+  const imageGenTokenRef = React.useRef(0);
+  const [stopJobKind, setStopJobKind] = useState<null | 'images' | 'audio'>(null);
   const [imageProgress, setImageProgress] = useState<ImageGenProgress>({
     isRunning: false,
     isDone: false,
@@ -1968,14 +1970,20 @@ export default function App() {
       void (async () => {
         setIsLoadingDraft(false);
         showDraftMessage('Opening design draft…');
-        const snap = await draftManager.loadDraftAsync(parsed.draftId);
-        if (snap?.phase === 'design') {
-          setActiveDraftId(parsed.draftId);
-          setShowPlayerProperties(false);
-          applyDesignSnapshot(snap);
-          showDraftMessage('Design draft loaded ✓');
-        } else {
-          showDraftMessage('Design draft not found.');
+        try {
+          const snap = await draftManager.loadDraftAsync(parsed.draftId);
+          if (snap?.phase === 'design') {
+            setActiveDraftId(parsed.draftId);
+            setShowPlayerProperties(false);
+            applyDesignSnapshot(snap);
+            showDraftMessage('Design draft loaded ✓');
+          } else {
+            showDraftMessage('Design draft not found.');
+            navigateTo(ROUTES.upload, true);
+            setStep('home');
+          }
+        } catch (e: any) {
+          showDraftMessage(e?.message || 'Design draft not found.');
           navigateTo(ROUTES.upload, true);
           setStep('home');
         }
@@ -2586,7 +2594,7 @@ export default function App() {
     pause: () => player.pause(),
     clearAudio: () => player.loadSlide('', null, null),
   };
-  const { progress: ttsProgress, generateTTS, resetTTS, clearTTSProgress } = useTTSGeneration();
+  const { progress: ttsProgress, generateTTS, cancelTTS, resetTTS, clearTTSProgress } = useTTSGeneration();
 
   // Virtual exam slides appended after all content slides.
   // Module Title (module-cover) and Module Overview are injected per Course Settings.
@@ -4853,6 +4861,7 @@ export default function App() {
       return;
     }
     setShowEditMenu(false);
+    const token = ++imageGenTokenRef.current;
     setIsGeneratingImages(true);
     setImageProgress({ isRunning: false, isDone: false, current: 0, total: 0, error: null });
     showDraftMessage(
@@ -4864,7 +4873,7 @@ export default function App() {
       const { generateContentSlideImages, generateCourseCoverImage } = await import('./services/imageService');
       let working: any = course;
       let coverMade = false;
-      if (!thisSlideOnly && !working.coverImage) {
+      if (!thisSlideOnly && !working.coverImage && imageGenTokenRef.current === token) {
         try {
           const cover = await generateCourseCoverImage(working.title || 'Course', working.description || '');
           if (cover) {
@@ -4877,6 +4886,14 @@ export default function App() {
           console.warn('[Images] Cover regen failed', e);
         }
       }
+      if (imageGenTokenRef.current !== token) {
+        showDraftMessage(
+          coverMade
+            ? 'Stopped image generation. Cover was updated — Save the draft to keep it.'
+            : 'Stopped image generation.'
+        );
+        return;
+      }
       const { course: withImages, jobsAttempted, jobsApplied, lastError } = await generateContentSlideImages(
         working,
         (done, total) => {
@@ -4888,8 +4905,12 @@ export default function App() {
             error: null,
           });
         },
-        thisSlideOnly ? { slideId: opts!.slideId } : undefined,
+        {
+          ...(thisSlideOnly ? { slideId: opts!.slideId } : {}),
+          shouldCancel: () => imageGenTokenRef.current !== token,
+        },
       );
+      const cancelled = imageGenTokenRef.current !== token;
       working = stripCourseAutoPromotedFloating(withImages);
       setFloatingImagesMap(floatingMapFromCourse(working));
       setCourse(working);
@@ -4903,7 +4924,13 @@ export default function App() {
           error: jobsApplied === 0 ? failMsg : (jobsApplied < jobsAttempted ? lastError : null),
         });
       }
-      if (!coverMade && jobsAttempted === 0) {
+      if (cancelled) {
+        showDraftMessage(
+          jobsApplied > 0
+            ? `Stopped image generation. ${jobsApplied} visual${jobsApplied === 1 ? '' : 's'} kept — Save the draft to keep them.`
+            : 'Stopped image generation.'
+        );
+      } else if (!coverMade && jobsAttempted === 0) {
         showDraftMessage(
           thisSlideOnly
             ? 'This slide already has an image, or it is not a content/tab slide. Remove the photo first to generate a new one. Crop and Move still work on the current image.'
@@ -6925,7 +6952,7 @@ export default function App() {
                       {showEditMenu && (
                         <>
                           <div className="fixed inset-0 z-[60]" onClick={() => setShowEditMenu(false)} />
-                          <div className="absolute right-0 top-full mt-1 z-[70] w-72 rounded-lg border border-slate-700 bg-slate-900 shadow-xl py-1 text-[12px]">
+                          <div className="fixed right-2 top-11 sm:absolute sm:right-0 sm:top-full sm:mt-1 z-[70] w-72 max-h-[min(70dvh,24rem)] overflow-y-auto overscroll-contain [touch-action:pan-y] rounded-lg border border-slate-700 bg-slate-900 shadow-xl py-1 text-[12px]">
                             <button
                               type="button"
                               onClick={() => {
@@ -7098,7 +7125,7 @@ export default function App() {
                       {showMediaMenu && (
                         <>
                           <div className="fixed inset-0 z-[60]" onClick={() => setShowMediaMenu(false)} />
-                          <div className="absolute right-0 top-full mt-1 z-[70] w-72 rounded-lg border border-slate-700 bg-slate-900 shadow-xl py-1 text-[12px]">
+                          <div className="fixed right-2 top-11 sm:absolute sm:right-0 sm:top-full sm:mt-1 z-[70] w-72 max-h-[min(70dvh,24rem)] overflow-y-auto overscroll-contain [touch-action:pan-y] rounded-lg border border-slate-700 bg-slate-900 shadow-xl py-1 text-[12px]">
                             <label
                               htmlFor="topbar-img-upload"
                               className="w-full text-left px-3 py-2 hover:bg-slate-800 text-violet-200 flex items-start gap-2 cursor-pointer"
@@ -7252,7 +7279,7 @@ export default function App() {
                       {showSendMenu && (
                         <>
                           <div className="fixed inset-0 z-[60]" onClick={() => setShowSendMenu(false)} />
-                          <div className="absolute right-0 top-full mt-1 z-[70] w-72 rounded-lg border border-slate-700 bg-slate-900 shadow-xl py-1 text-[12px]">
+                          <div className="fixed right-2 top-11 sm:absolute sm:right-0 sm:top-full sm:mt-1 z-[70] w-72 max-h-[min(70dvh,24rem)] overflow-y-auto overscroll-contain [touch-action:pan-y] rounded-lg border border-slate-700 bg-slate-900 shadow-xl py-1 text-[12px]">
                             <button
                               type="button"
                               onClick={() => {
@@ -7310,7 +7337,7 @@ export default function App() {
                       {showPublishMenu && (
                         <>
                           <div className="fixed inset-0 z-[60]" onClick={() => setShowPublishMenu(false)} />
-                          <div className="absolute right-0 top-full mt-1 z-[70] w-72 rounded-lg border border-slate-700 bg-slate-900 shadow-xl py-1 text-[12px]">
+                          <div className="fixed right-2 top-11 sm:absolute sm:right-0 sm:top-full sm:mt-1 z-[70] w-72 max-h-[min(70dvh,24rem)] overflow-y-auto overscroll-contain [touch-action:pan-y] rounded-lg border border-slate-700 bg-slate-900 shadow-xl py-1 text-[12px]">
                             <button
                               type="button"
                               disabled={isExporting}
@@ -10385,6 +10412,7 @@ export default function App() {
               layout="inline"
               progress={ttsProgress}
               onDismiss={clearTTSProgress}
+              onRequestStop={() => setStopJobKind('audio')}
               onRetry={() => void retryMissingNarration()}
             />
           </div>
@@ -10393,6 +10421,7 @@ export default function App() {
               layout="inline"
               progress={imageProgress}
               onDismiss={clearImageProgress}
+              onRequestStop={() => setStopJobKind('images')}
             />
           </div>
         </div>
@@ -10812,6 +10841,29 @@ export default function App() {
           setLeavePreviewOpen(false);
           leavePreviewConfirmRef.current = null;
         }}
+      />
+
+      <ConfirmDialog
+        open={!!stopJobKind}
+        title={stopJobKind === 'images' ? 'Stop generating images?' : 'Stop generating narration?'}
+        body="Anything already created will stay. Remaining jobs will not run."
+        primaryLabel="Stop"
+        cancelLabel="Keep going"
+        onPrimary={() => {
+          if (stopJobKind === 'images') {
+            imageGenTokenRef.current += 1;
+            setIsGeneratingImages(false);
+            setImageProgress(prev => ({
+              ...prev,
+              isRunning: false,
+              isDone: prev.total > 0,
+            }));
+          } else if (stopJobKind === 'audio') {
+            cancelTTS();
+          }
+          setStopJobKind(null);
+        }}
+        onCancel={() => setStopJobKind(null)}
       />
 
       </main>

@@ -1281,21 +1281,17 @@ export function useDraftCourses(
 
       if (!snapshot) {
         onProgress?.(32, 'fetch');
-        const cloudPromise = fetchCloudDraft(userId, id);
-        const timed = await Promise.race([
-          cloudPromise.then(c => ({ ok: true as const, c })),
-          new Promise<{ ok: false }>(r => setTimeout(() => r({ ok: false }), 4000)),
-        ]);
-        if (timed.ok && timed.c?.snapshot) {
-          snapshot = parseSnapshotRaw(timed.c.snapshot);
+        // Wait for the cloud shell. A 4s race used to return "not found" on first open
+        // of a sent copy (no IndexedDB cache, larger payload).
+        const cloud = await fetchCloudDraft(userId, id);
+        if (cloud?.snapshot) {
+          snapshot = parseSnapshotRaw(cloud.snapshot);
           if (snapshot) {
             try {
               await idbPut(STORE_PAYLOAD, payloadKey(userId, id), snapshot);
             } catch { /* cache best-effort */ }
           }
           console.log(`[DraftCourses] Loaded "${id}" from cloud`);
-        } else if (!timed.ok) {
-          console.warn('[DraftCourses] Cloud fetch timed out — continuing without it');
         }
       }
 
@@ -1351,7 +1347,7 @@ export function useDraftCourses(
     } catch (e) {
       console.error('[DraftCourses] loadDraftAsync failed:', e);
       onProgress?.(0, 'error');
-      return null;
+      throw e;
     }
   }, [userId]);
 
@@ -1584,7 +1580,11 @@ export function useDraftCourses(
       }
     }
     if (!snapshot) {
-      snapshot = await loadDraftAsync(id);
+      try {
+        snapshot = await loadDraftAsync(id);
+      } catch {
+        snapshot = null;
+      }
     }
     if (!snapshot) return { success: false, message: 'Could not load draft to rename.' };
 
