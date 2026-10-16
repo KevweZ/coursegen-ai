@@ -23,7 +23,7 @@ Intro / prompt on the **left**; reveal rows on the **right**, not a full-width s
 
 - **In-flow by default.** Generated tab/content images stay `imageUrl` / `introImageUrl` in the column. Do **not** auto-promote with `fi-ai-` / `fi-promo-` (overlays tab titles). `stripCourseAutoPromotedFloating` stays.
 - **Crop / move / resize like uploads:** authoring chrome on [`EnlargeableImage`](src/components/player/EnlargeableImage.tsx) (Crop + Move) lifts into [`FloatingImageCanvas`](src/components/FloatingImageCanvas.tsx) with id `fi-${Date.now()}`. Uploads still go straight to the float canvas.
-- **Edit → Generate AI images** fills remaining empty slots only (`collectContentImageJobs`, cap `MAX_CONTENT_AI_IMAGES` = 14). Skips quizzes/objectives and slides that already have `imageUrl` or a slide-level float.
+- **Edit → Generate AI images** opens a slide checklist of remaining empty slots (`collectContentImageJobs`, cap `MAX_CONTENT_AI_IMAGES` = 14), then fills the checked ones. Skips quizzes/objectives and slides that already have `imageUrl` or a slide-level float. Author-initiated generate bypasses `topicBenefitsFromVisual` so composition/abstract content slides still appear on the list. Auto-gen after Build still uses the heuristic.
 - **Edit → Generate AI image for this slide** passes `{ slideId }` — that slide’s empty slots only. Never a course-wide refill.
 - **Images only.** `applyContentImageUrl` writes `imageUrl` / `introImageUrl` / tab `imageUrl`. It must not rewrite OST, voice-over, interaction type, tab labels, or tab copy.
 

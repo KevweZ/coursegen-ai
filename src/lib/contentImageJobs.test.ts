@@ -7,8 +7,12 @@ import {
   MAX_SLIDE_AI_IMAGES,
   applyContentImageUrl,
   collectContentImageJobs,
+  contentImageJobKey,
+  contentImageJobSlotLabel,
   contentSlideHasVisual,
+  groupContentImageJobs,
   slideTypeSkipsAiContentImages,
+  topicBenefitsFromVisual,
 } from './contentImageJobs.ts';
 
 function src(rel: string): string {
@@ -144,21 +148,72 @@ test('apply writes only image URL fields — text, type, and tab copy stay locke
   assert.equal(afterSlide.title, 'Furnace');
 });
 
+test('author generate lists empty content slides in course order, including abstract titles', () => {
+  const howTitle = 'How Triangle and Circle Compositions Shape Viewer Experience';
+  assert.equal(topicBenefitsFromVisual(howTitle, 'Triangle composition: stability and drama.'), false);
+
+  const slides = [
+    { id: 'ov', type: 'module-overview', title: 'Module 1 — Overview', content: 'Overview copy.' },
+    {
+      id: 'how',
+      type: 'tabbed-horizontal',
+      title: howTitle,
+      content: 'Triangle composition: stability, movement, drama.',
+      data: {
+        tabs: [
+          { id: 't1', label: 'Triangle', content: 'Stability and drama.' },
+          { id: 't2', label: 'Circle', content: 'Harmony and unity.' },
+        ],
+      },
+    },
+    { id: 'kc', type: 'knowledge-check', title: 'Knowledge Check', content: 'Composition types.' },
+    { id: 'plain', type: 'content', title: 'What Is Visual Composition in Practice', content: 'Shape psychology affects feeling.' },
+  ];
+  const auto = collectContentImageJobs(courseWithSlides(slides));
+  assert.ok(!auto.some((j) => j.kind === 'intro' && j.slideId === 'how'));
+  assert.ok(!auto.some((j) => j.slideId === 'plain'));
+
+  const author = collectContentImageJobs(courseWithSlides(slides), { skipBenefitHeuristic: true });
+  assert.ok(author.some((j) => j.slideId === 'how' && j.kind === 'intro'));
+  assert.ok(author.some((j) => j.slideId === 'plain'));
+  assert.ok(!author.some((j) => j.slideId === 'ov' || j.slideId === 'kc'));
+  const howJobs = author.filter((j) => j.slideId === 'how');
+  assert.deepEqual(howJobs.map((j) => j.kind), ['intro', 'tab', 'tab']);
+  assert.ok(author.findIndex((j) => j.slideId === 'how') < author.findIndex((j) => j.slideId === 'plain'));
+
+  const groups = groupContentImageJobs(author, { how: '2.3', plain: '2.4' });
+  assert.equal(groups[0].tocRef, '2.3');
+  assert.equal(groups[0].jobs.length, 3);
+  assert.equal(contentImageJobSlotLabel(howJobs[0]), 'Overview photo');
+  assert.equal(contentImageJobSlotLabel(howJobs[1]), 'Triangle');
+  assert.equal(contentImageJobKey(howJobs[1]), 'how:tab:0');
+});
+
 test('image gen and authoring stay wired: remaining fill, this-slide, crop/move, no auto fi-ai- promote', () => {
   const service = src('src/services/imageService.ts');
   assert.match(service, /collectContentImageJobs/);
   assert.match(service, /applyContentImageUrl/);
   assert.match(service, /jobsApplied/);
-  assert.match(service, /opts\?\: \{ slideId\?\: string; shouldCancel\?\: \(\) => boolean \}/);
+  assert.match(service, /onJob\?:/);
+  assert.match(service, /jobs\?: ContentImageJob\[\]/);
 
   const app = src('src/App.tsx');
   assert.match(app, /jobsApplied/);
   assert.match(app, /Generate AI images/);
-  assert.match(app, /Empty pictures on content, tabs, and click-reveal/);
+  assert.match(app, /Fill empty pictures on content slides \(up to 14\)/);
   assert.match(app, /Generate AI image for this slide/);
+  assert.match(app, /openGenerateImagesPicker/);
+  assert.match(app, /GenerateImagesDialog/);
+  assert.match(app, /skipBenefitHeuristic: true/);
   assert.match(app, /slideId:\s*currentSlide\.id/);
   assert.match(app, /onPromoteToFloat/);
   assert.doesNotMatch(app, /id:\s*`fi-ai-/);
+
+  const dialog = src('src/components/builder/GenerateImagesDialog.tsx');
+  assert.match(dialog, /Stop generating images\?/);
+  assert.match(dialog, /No further images will be generated/);
+  assert.match(dialog, /Pictures already on slides will stay/);
+  assert.match(dialog, /Uncheck any you want to skip/);
 
   const enlarge = src('src/components/player/EnlargeableImage.tsx');
   assert.match(enlarge, /Crop/);

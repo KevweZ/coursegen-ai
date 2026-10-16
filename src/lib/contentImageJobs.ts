@@ -62,6 +62,65 @@ export type ContentImageJob = {
   mediaPrompt?: string;
 };
 
+export type ContentImageJobStatus = 'pending' | 'generating' | 'done' | 'skipped';
+
+export type ContentImageJobGroup = {
+  slideId: string;
+  mi: number;
+  si: number;
+  slideTitle: string;
+  moduleTitle: string;
+  tocRef?: string;
+  jobs: ContentImageJob[];
+};
+
+export function contentImageJobKey(job: Pick<ContentImageJob, 'slideId' | 'kind' | 'tabIndex'>): string {
+  if (job.kind === 'tab') return `${job.slideId}:tab:${job.tabIndex ?? 0}`;
+  return `${job.slideId}:${job.kind}`;
+}
+
+/** Short slot name next to the slide title (Overview photo, Frame, Slide photo). */
+export function contentImageJobSlotLabel(job: ContentImageJob): string {
+  if (job.kind === 'slide') return 'Slide photo';
+  if (job.kind === 'intro') return 'Overview photo';
+  const label = String(job.panelLabel || '').trim();
+  const title = String(job.slideTitle || '').trim();
+  if (label && label.toLowerCase() !== title.toLowerCase()) return label;
+  return `Picture ${(job.tabIndex ?? 0) + 1}`;
+}
+
+export function groupContentImageJobs(
+  jobs: ContentImageJob[],
+  tocRefBySlideId?: Map<string, string> | Record<string, string>,
+): ContentImageJobGroup[] {
+  const groups: ContentImageJobGroup[] = [];
+  const indexById = new Map<string, number>();
+  const lookup = (id: string) => {
+    if (!tocRefBySlideId) return undefined;
+    if (tocRefBySlideId instanceof Map) return tocRefBySlideId.get(id);
+    return tocRefBySlideId[id];
+  };
+  for (const job of jobs) {
+    const id = String(job.slideId || '');
+    let i = indexById.get(id);
+    if (i == null) {
+      i = groups.length;
+      indexById.set(id, i);
+      groups.push({
+        slideId: id,
+        mi: job.mi,
+        si: job.si,
+        slideTitle: job.slideTitle || 'Untitled slide',
+        moduleTitle: job.moduleTitle || '',
+        tocRef: lookup(id),
+        jobs: [],
+      });
+    }
+    groups[i].jobs.push(job);
+  }
+  return groups;
+}
+
 function floatsOn(slide: any): any[] {
   return Array.isArray(slide?.floatingMedia) ? slide.floatingMedia : [];
 }
@@ -89,7 +148,6 @@ export function collectContentImageJobs(
   opts?: { slideId?: string; skipBenefitHeuristic?: boolean },
 ): ContentImageJob[] {
   const jobs: ContentImageJob[] = [];
-  const introJobs: ContentImageJob[] = [];
   const onlyId = opts?.slideId ? String(opts.slideId) : '';
   const forceVisual = !!opts?.skipBenefitHeuristic;
 
@@ -126,7 +184,7 @@ export function collectContentImageJobs(
         if (!introHasVisual(s)) {
           const introBody = s.content || s.data?.introContent || s.voiceOverText || s.narration || '';
           if (benefits(s.title || '', introBody)) {
-            introJobs.push({
+            jobs.push({
               kind: 'intro',
               mi,
               si,
@@ -193,9 +251,8 @@ export function collectContentImageJobs(
     }
   }
 
-  const pooled = [...introJobs, ...jobs];
   const cap = onlyId ? MAX_SLIDE_AI_IMAGES : MAX_CONTENT_AI_IMAGES;
-  return pooled.slice(0, cap);
+  return jobs.slice(0, cap);
 }
 
 /**

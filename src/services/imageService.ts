@@ -14,6 +14,7 @@ import {
 import {
   applyContentImageUrl,
   collectContentImageJobs,
+  type ContentImageJob,
 } from '../lib/contentImageJobs';
 import { getSupabaseAccessToken } from '../lib/supabaseAccessToken';
 
@@ -833,17 +834,28 @@ function emptyImageGenResult(course: any): ContentImageGenResult {
   return { course, jobsAttempted: 0, jobsApplied: 0, lastError: null };
 }
 
+export type ContentImageGenOpts = {
+  slideId?: string;
+  shouldCancel?: () => boolean;
+  /** Author-picked slots. When set, collect is skipped. */
+  jobs?: ContentImageJob[];
+  skipBenefitHeuristic?: boolean;
+  onJob?: (job: ContentImageJob, status: 'started' | 'done' | 'skipped') => void;
+};
+
 export async function generateContentSlideImages(
   course: any,
   onProgress?: (applied: number, total: number, latestCourse?: any) => void,
-  opts?: { slideId?: string; shouldCancel?: () => boolean },
+  opts?: ContentImageGenOpts,
 ): Promise<ContentImageGenResult> {
   if (!course?.modules?.length) return emptyImageGenResult(course);
 
-  const selected = collectContentImageJobs(course, {
-    slideId: opts?.slideId,
-    skipBenefitHeuristic: !!opts?.slideId,
-  });
+  const selected = Array.isArray(opts?.jobs)
+    ? opts.jobs
+    : collectContentImageJobs(course, {
+        slideId: opts?.slideId,
+        skipBenefitHeuristic: !!opts?.slideId || !!opts?.skipBenefitHeuristic,
+      });
   if (!selected.length) {
     onProgress?.(0, 0);
     return emptyImageGenResult(course);
@@ -871,22 +883,25 @@ export async function generateContentSlideImages(
 
   await mapWithConcurrency(selected, IMAGE_GEN_CONCURRENCY, async (job) => {
     if (opts?.shouldCancel?.()) stopRemaining = true;
+    if (stopRemaining) {
+      opts?.onJob?.(job, 'skipped');
+      return;
+    }
+    opts?.onJob?.(job, 'started');
     let url: string | null = null;
-    if (!stopRemaining) {
-      try {
-        url = await groundedCall({
-          courseTitle: course.title || 'Course',
-          moduleTitle: job.moduleTitle,
-          slideTitle: job.slideTitle,
-          panelLabel: job.panelLabel,
-          panelBody: job.panelBody,
-          mediaPrompt: job.mediaPrompt,
-        });
-      } catch (err: any) {
-        lastError = err?.message || String(err) || 'Image generation failed.';
-        if (isImageAuthOrCreditStop(err)) stopRemaining = true;
-        console.warn(`[ImageService] Content visual failed for "${job.subject}":`, err);
-      }
+    try {
+      url = await groundedCall({
+        courseTitle: course.title || 'Course',
+        moduleTitle: job.moduleTitle,
+        slideTitle: job.slideTitle,
+        panelLabel: job.panelLabel,
+        panelBody: job.panelBody,
+        mediaPrompt: job.mediaPrompt,
+      });
+    } catch (err: any) {
+      lastError = err?.message || String(err) || 'Image generation failed.';
+      if (isImageAuthOrCreditStop(err)) stopRemaining = true;
+      console.warn(`[ImageService] Content visual failed for "${job.subject}":`, err);
     }
 
     if (url) {
@@ -897,8 +912,10 @@ export async function generateContentSlideImages(
         console.log(`[ImageService] ✓ Content visual for "${job.subject}"`);
         onProgress?.(jobsApplied, selected.length, snapshot());
       });
-    } else if (!lastError && !stopRemaining) {
-      lastError = 'No image was returned.';
+      opts?.onJob?.(job, 'done');
+    } else {
+      if (!lastError) lastError = 'No image was returned.';
+      opts?.onJob?.(job, 'skipped');
     }
 
     if (!stopRemaining) await sleep(IMAGE_PACE_MS);

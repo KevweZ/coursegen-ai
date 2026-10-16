@@ -108,6 +108,7 @@ import { OutlinePreview } from './components/builder/OutlinePreview';
 import { CourseSettingsPage } from './components/builder/CourseSettingsPage';
 import { CourseReviewPage } from './components/builder/CourseReviewPage';
 import { ConfirmDialog } from './components/builder/ConfirmDialog';
+import { GenerateImagesDialog } from './components/builder/GenerateImagesDialog';
 import { AddContentModal, type AddContentForm } from './components/builder/AddContentModal';
 import { ReviewLinkModal } from './components/builder/ReviewLinkModal';
 import { EditSlideItemFields, sanitizeInteractionOstOnSave } from './components/builder/EditSlideItemFields';
@@ -234,7 +235,15 @@ import {
   moduleNumberForSlide,
   nextIndexAfterSlide,
 } from './lib/hubNavigation';
-import { slideTypeSkipsAiContentImages } from './lib/contentImageJobs';
+import {
+  collectContentImageJobs,
+  contentImageJobKey,
+  groupContentImageJobs,
+  slideTypeSkipsAiContentImages,
+  type ContentImageJob,
+  type ContentImageJobGroup,
+  type ContentImageJobStatus,
+} from './lib/contentImageJobs';
 import { buildReviewSnapshot, createReviewLink, fetchReviewSnapshot } from './lib/reviewLinkService';
 import { downloadReviewScriptDocx } from './lib/reviewScriptDocx';
 import { tocRefMapFirstWins } from './lib/playerToc';
@@ -1624,6 +1633,15 @@ export default function App() {
   const [isGeneratingImages, setIsGeneratingImages] = useState(false);
   const imageGenTokenRef = React.useRef(0);
   const [stopJobKind, setStopJobKind] = useState<null | 'images' | 'audio'>(null);
+  const [imagePickOpen, setImagePickOpen] = useState(false);
+  const [imagePickGroups, setImagePickGroups] = useState<ContentImageJobGroup[]>([]);
+  const [imagePickJobs, setImagePickJobs] = useState<ContentImageJob[]>([]);
+  const [imagePickCoverMissing, setImagePickCoverMissing] = useState(false);
+  const [imageSelectedSlideIds, setImageSelectedSlideIds] = useState<string[]>([]);
+  const [imageCoverSelected, setImageCoverSelected] = useState(false);
+  const [imageRunGroups, setImageRunGroups] = useState<ContentImageJobGroup[]>([]);
+  const [imageRunCover, setImageRunCover] = useState(false);
+  const [imageJobStatus, setImageJobStatus] = useState<Record<string, ContentImageJobStatus>>({});
   const [imageProgress, setImageProgress] = useState<ImageGenProgress>({
     isRunning: false,
     isDone: false,
@@ -4851,7 +4869,12 @@ export default function App() {
   };
 
   /** Fill remaining empty content visuals (course-wide, ~14 cap) or this slide only. Never rewrites OST/tabs. */
-  const runAiContentImages = async (opts?: { slideId?: string }) => {
+  const runAiContentImages = async (opts?: {
+    slideId?: string;
+    jobs?: ContentImageJob[];
+    includeCover?: boolean;
+    skipBenefitHeuristic?: boolean;
+  }) => {
     if (!course?.modules) return;
     const thisSlideOnly = !!opts?.slideId;
     if (thisSlideOnly && slideTypeSkipsAiContentImages(currentSlide?.type)) {
@@ -4874,7 +4897,10 @@ export default function App() {
       const { generateContentSlideImages, generateCourseCoverImage } = await import('./services/imageService');
       let working: any = course;
       let coverMade = false;
-      if (!thisSlideOnly && !working.coverImage && imageGenTokenRef.current === token) {
+      const wantCover = !thisSlideOnly && (opts?.includeCover !== false) && !working.coverImage
+        && (opts?.includeCover === true || opts?.jobs == null);
+      if (wantCover && imageGenTokenRef.current === token) {
+        setImageJobStatus(prev => ({ ...prev, cover: 'generating' }));
         try {
           const cover = await generateCourseCoverImage(working.title || 'Course', working.description || '');
           if (cover) {
@@ -4882,9 +4908,13 @@ export default function App() {
             working = { ...working, coverImage: cover };
             setCourse(working);
             setCourseBg(cover);
+            setImageJobStatus(prev => ({ ...prev, cover: 'done' }));
+          } else {
+            setImageJobStatus(prev => ({ ...prev, cover: 'skipped' }));
           }
         } catch (e) {
           console.warn('[Images] Cover regen failed', e);
+          setImageJobStatus(prev => ({ ...prev, cover: 'skipped' }));
         }
       }
       if (imageGenTokenRef.current !== token) {
@@ -4915,7 +4945,16 @@ export default function App() {
         },
         {
           ...(thisSlideOnly ? { slideId: opts!.slideId } : {}),
+          ...(Array.isArray(opts?.jobs) ? { jobs: opts.jobs } : {}),
+          skipBenefitHeuristic: !!opts?.skipBenefitHeuristic,
           shouldCancel: () => imageGenTokenRef.current !== token,
+          onJob: (job, status) => {
+            const key = contentImageJobKey(job);
+            setImageJobStatus(prev => ({
+              ...prev,
+              [key]: status === 'started' ? 'generating' : status === 'done' ? 'done' : 'skipped',
+            }));
+          },
         },
       );
       const cancelled = imageGenTokenRef.current !== token;
@@ -4972,10 +5011,49 @@ export default function App() {
     }
   };
 
-  const regenerateAiImages = () => void runAiContentImages();
+  const openGenerateImagesPicker = () => {
+    if (!course?.modules) return;
+    setShowEditMenu(false);
+    const jobs = collectContentImageJobs(course, { skipBenefitHeuristic: true });
+    const groups = groupContentImageJobs(jobs, tocRefBySlideId);
+    const coverMissing = !course.coverImage;
+    setImagePickJobs(jobs);
+    setImagePickGroups(groups);
+    setImagePickCoverMissing(coverMissing);
+    setImageSelectedSlideIds(groups.map(g => g.slideId));
+    setImageCoverSelected(coverMissing);
+    setImagePickOpen(true);
+  };
+
+  const confirmGenerateImagesFromPicker = () => {
+    const selected = new Set(imageSelectedSlideIds);
+    const jobs = imagePickJobs.filter(j => selected.has(j.slideId));
+    const includeCover = imagePickCoverMissing && imageCoverSelected;
+    const groups = imagePickGroups.filter(g => selected.has(g.slideId));
+    const status: Record<string, ContentImageJobStatus> = {};
+    if (includeCover) status.cover = 'pending';
+    for (const job of jobs) status[contentImageJobKey(job)] = 'pending';
+    setImageRunGroups(groups);
+    setImageRunCover(includeCover);
+    setImageJobStatus(status);
+    setImagePickOpen(false);
+    void runAiContentImages({ jobs, includeCover, skipBenefitHeuristic: true });
+  };
+
+  const regenerateAiImages = () => openGenerateImagesPicker();
   const regenerateAiImagesForCurrentSlide = () => {
-    if (!currentSlide?.id) return;
-    void runAiContentImages({ slideId: currentSlide.id });
+    if (!currentSlide?.id || !course?.modules) return;
+    const jobs = collectContentImageJobs(course, {
+      slideId: currentSlide.id,
+      skipBenefitHeuristic: true,
+    });
+    const groups = groupContentImageJobs(jobs, tocRefBySlideId);
+    const status: Record<string, ContentImageJobStatus> = {};
+    for (const job of jobs) status[contentImageJobKey(job)] = 'pending';
+    setImageRunGroups(groups);
+    setImageRunCover(false);
+    setImageJobStatus(status);
+    void runAiContentImages({ slideId: currentSlide.id, jobs, skipBenefitHeuristic: true });
   };
 
   const hydrateCourse = async () => {
@@ -7076,7 +7154,7 @@ export default function App() {
                               <ImageIcon className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                               <span>
                                 <span className="font-semibold block">Generate AI images</span>
-                                <span className="text-slate-500 text-[10px]">Empty pictures on content, tabs, and click-reveal only (up to 14). Skips covers, overviews, quizzes, and slides that already have a photo.</span>
+                                <span className="text-slate-500 text-[10px]">Fill empty pictures on content slides (up to 14)</span>
                               </span>
                             </button>
                             <button
@@ -7088,7 +7166,7 @@ export default function App() {
                               <ImageIcon className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                               <span>
                                 <span className="font-semibold block">Generate AI image for this slide</span>
-                                <span className="text-slate-500 text-[10px]">Empty pictures on this content/tab slide only</span>
+                                <span className="text-slate-500 text-[10px]">Fill empty pictures on this slide only</span>
                               </span>
                             </button>
                             <button
@@ -10852,27 +10930,67 @@ export default function App() {
         }}
       />
 
-      <ConfirmDialog
-        open={!!stopJobKind}
-        title={stopJobKind === 'images' ? 'Stop generating images?' : 'Stop generating narration?'}
-        body={
-          stopJobKind === 'images'
-            ? 'Images already on slides will stay. No further images will be generated.'
-            : 'Audio already recorded will stay. No further narration will be generated.'
+      <GenerateImagesDialog
+        open={imagePickOpen}
+        mode="pick"
+        groups={imagePickGroups}
+        selectedSlideIds={imageSelectedSlideIds}
+        onToggleSlide={(slideId) => {
+          setImageSelectedSlideIds(prev => (
+            prev.includes(slideId) ? prev.filter(id => id !== slideId) : [...prev, slideId]
+          ));
+        }}
+        onToggleAll={(on) => {
+          setImageSelectedSlideIds(on ? imagePickGroups.map(g => g.slideId) : []);
+          if (imagePickCoverMissing) setImageCoverSelected(on);
+        }}
+        coverOption={imagePickCoverMissing ? { selected: imageCoverSelected } : null}
+        onToggleCover={() => setImageCoverSelected(v => !v)}
+        selectedPictureCount={
+          imagePickJobs.filter(j => imageSelectedSlideIds.includes(j.slideId)).length
+          + (imagePickCoverMissing && imageCoverSelected ? 1 : 0)
         }
+        onPrimary={confirmGenerateImagesFromPicker}
+        onCancel={() => setImagePickOpen(false)}
+      />
+
+      <GenerateImagesDialog
+        open={stopJobKind === 'images'}
+        mode="stop"
+        groups={imageRunGroups}
+        selectedSlideIds={imageRunGroups.map(g => g.slideId)}
+        onToggleSlide={() => {}}
+        onToggleAll={() => {}}
+        coverOption={imageRunCover ? { selected: true, status: imageJobStatus.cover } : null}
+        jobStatus={imageJobStatus}
+        selectedPictureCount={imageRunGroups.reduce((n, g) => n + g.jobs.length, 0) + (imageRunCover ? 1 : 0)}
+        onPrimary={() => {
+          imageGenTokenRef.current += 1;
+          setImageProgress(prev => ({
+            ...prev,
+            stopping: true,
+            isRunning: true,
+          }));
+          setImageJobStatus(prev => {
+            const next = { ...prev };
+            for (const [key, status] of Object.entries(next)) {
+              if (status === 'pending') next[key] = 'skipped';
+            }
+            return next;
+          });
+          setStopJobKind(null);
+        }}
+        onCancel={() => setStopJobKind(null)}
+      />
+
+      <ConfirmDialog
+        open={stopJobKind === 'audio'}
+        title="Stop generating narration?"
+        body="Audio already recorded will stay. No further narration will be generated."
         primaryLabel="Stop"
         cancelLabel="Keep going"
         onPrimary={() => {
-          if (stopJobKind === 'images') {
-            imageGenTokenRef.current += 1;
-            setImageProgress(prev => ({
-              ...prev,
-              stopping: true,
-              isRunning: true,
-            }));
-          } else if (stopJobKind === 'audio') {
-            cancelTTS();
-          }
+          cancelTTS();
           setStopJobKind(null);
         }}
         onCancel={() => setStopJobKind(null)}
