@@ -145,7 +145,7 @@ export function tabHasVisual(slide: any, tab: any): boolean {
 
 export function collectContentImageJobs(
   course: any,
-  opts?: { slideId?: string; skipBenefitHeuristic?: boolean },
+  opts?: { slideId?: string; skipBenefitHeuristic?: boolean; noCap?: boolean },
 ): ContentImageJob[] {
   const jobs: ContentImageJob[] = [];
   const onlyId = opts?.slideId ? String(opts.slideId) : '';
@@ -251,8 +251,27 @@ export function collectContentImageJobs(
     }
   }
 
+  if (opts?.noCap) return jobs;
   const cap = onlyId ? MAX_SLIDE_AI_IMAGES : MAX_CONTENT_AI_IMAGES;
   return jobs.slice(0, cap);
+}
+
+/** Author-facing count: pictures vs slides, never “14 slides” for 14 picture slots. */
+export function summarizeImageSelection(opts: {
+  pictureCount: number;
+  slideCount: number;
+  maxPictures?: number;
+}): string {
+  const max = opts.maxPictures ?? MAX_CONTENT_AI_IMAGES;
+  const pics = Math.max(0, opts.pictureCount);
+  const slides = Math.max(0, opts.slideCount);
+  const picWord = pics === 1 ? 'picture' : 'pictures';
+  const slideWord = slides === 1 ? 'slide' : 'slides';
+  if (pics === 0) return 'No pictures selected.';
+  if (pics > max) {
+    return `${pics} ${picWord} on ${slides} ${slideWord} selected. This run will generate the first ${max} pictures in course order.`;
+  }
+  return `${pics} ${picWord} on ${slides} ${slideWord} selected (up to ${max} pictures per run).`;
 }
 
 /**

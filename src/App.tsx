@@ -236,6 +236,7 @@ import {
   nextIndexAfterSlide,
 } from './lib/hubNavigation';
 import {
+  MAX_CONTENT_AI_IMAGES,
   collectContentImageJobs,
   contentImageJobKey,
   groupContentImageJobs,
@@ -5014,7 +5015,7 @@ export default function App() {
   const openGenerateImagesPicker = () => {
     if (!course?.modules) return;
     setShowEditMenu(false);
-    const jobs = collectContentImageJobs(course, { skipBenefitHeuristic: true });
+    const jobs = collectContentImageJobs(course, { skipBenefitHeuristic: true, noCap: true });
     const groups = groupContentImageJobs(jobs, tocRefBySlideId);
     const coverMissing = !course.coverImage;
     setImagePickJobs(jobs);
@@ -5027,9 +5028,14 @@ export default function App() {
 
   const confirmGenerateImagesFromPicker = () => {
     const selected = new Set(imageSelectedSlideIds);
-    const jobs = imagePickJobs.filter(j => selected.has(j.slideId));
+    const jobs = imagePickJobs
+      .filter(j => selected.has(j.slideId))
+      .slice(0, MAX_CONTENT_AI_IMAGES);
     const includeCover = imagePickCoverMissing && imageCoverSelected;
-    const groups = imagePickGroups.filter(g => selected.has(g.slideId));
+    const jobKeys = new Set(jobs.map(j => contentImageJobKey(j)));
+    const groups = imagePickGroups
+      .map(g => ({ ...g, jobs: g.jobs.filter(j => jobKeys.has(contentImageJobKey(j))) }))
+      .filter(g => g.jobs.length > 0);
     const status: Record<string, ContentImageJobStatus> = {};
     if (includeCover) status.cover = 'pending';
     for (const job of jobs) status[contentImageJobKey(job)] = 'pending';

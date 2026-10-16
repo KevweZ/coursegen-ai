@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertCircle, CheckCircle2, Image as ImageIcon, Loader2, X } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ChevronDown, Image as ImageIcon, Loader2, X } from 'lucide-react';
 import {
   MAX_CONTENT_AI_IMAGES,
   contentImageJobKey,
   contentImageJobSlotLabel,
+  summarizeImageSelection,
   type ContentImageJobGroup,
   type ContentImageJobStatus,
 } from '../../lib/contentImageJobs';
@@ -62,6 +63,30 @@ export function GenerateImagesDialog({
   const selected = new Set(selectedSlideIds);
   const allOn = groups.length > 0 && groups.every((g) => selected.has(g.slideId));
   const empty = groups.length === 0 && !coverOption;
+  const selectedSlideCount =
+    groups.filter((g) => selected.has(g.slideId)).length
+    + (coverOption?.selected ? 1 : 0);
+  const listRef = useRef<HTMLDivElement>(null);
+  const [canScrollMore, setCanScrollMore] = useState(false);
+
+  useEffect(() => {
+    const el = listRef.current;
+    if (!open || !el) {
+      setCanScrollMore(false);
+      return;
+    }
+    const update = () => {
+      setCanScrollMore(el.scrollHeight - el.scrollTop - el.clientHeight > 12);
+    };
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
+    ro?.observe(el);
+    return () => {
+      el.removeEventListener('scroll', update);
+      ro?.disconnect();
+    };
+  }, [open, groups, coverOption, mode]);
 
   return (
     <AnimatePresence>
@@ -80,7 +105,7 @@ export function GenerateImagesDialog({
             initial={{ opacity: 0, scale: 0.96, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 12 }}
-            className="relative w-full max-w-3xl max-h-[min(90dvh,40rem)] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col sm:flex-row"
+            className="relative w-full max-w-3xl max-h-[min(90dvh,42rem)] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col sm:flex-row sm:items-stretch"
           >
             <div className="sm:w-[17rem] shrink-0 p-5 border-b sm:border-b-0 sm:border-r border-slate-800 flex flex-col gap-3">
               <div className="flex items-start gap-3">
@@ -114,7 +139,11 @@ export function GenerateImagesDialog({
                 <p className="text-xs text-slate-500 leading-relaxed">
                   {empty
                     ? 'No empty content pictures to fill. Use Upload Image for a specific slide, or Generate AI image for this slide on a content/tab slide.'
-                    : `${selectedPictureCount} picture${selectedPictureCount === 1 ? '' : 's'} selected${selectedPictureCount >= MAX_CONTENT_AI_IMAGES ? ` (max ${MAX_CONTENT_AI_IMAGES})` : ''}.`}
+                    : summarizeImageSelection({
+                        pictureCount: selectedPictureCount,
+                        slideCount: selectedSlideCount,
+                        maxPictures: MAX_CONTENT_AI_IMAGES,
+                      })}
                 </p>
               )}
               <div className="mt-auto flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
@@ -140,9 +169,9 @@ export function GenerateImagesDialog({
               </div>
             </div>
 
-            <div className="flex-1 min-h-0 flex flex-col bg-slate-950/40">
+            <div className="flex-1 min-h-0 min-w-0 flex flex-col bg-slate-950/40">
               {picking && groups.length > 0 && (
-                <div className="px-4 py-2 border-b border-slate-800 flex items-center justify-between">
+                <div className="px-4 py-2 border-b border-slate-800 flex items-center justify-between shrink-0">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Slides</span>
                   <button
                     type="button"
@@ -153,7 +182,11 @@ export function GenerateImagesDialog({
                   </button>
                 </div>
               )}
-              <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+              <div className="relative min-h-0 flex-1">
+              <div
+                ref={listRef}
+                className="overflow-y-scroll overscroll-contain p-3 space-y-1.5 max-h-[min(52dvh,22rem)] sm:max-h-[min(70dvh,30rem)]"
+              >
                 {coverOption && (
                   <div className={`flex items-start gap-3 rounded-xl border px-3 py-2.5 ${
                     coverOption.status === 'done'
@@ -252,6 +285,15 @@ export function GenerateImagesDialog({
                     Nothing to generate on this course yet.
                   </p>
                 )}
+              </div>
+              {canScrollMore && (
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-slate-950 to-transparent flex items-end justify-center pb-1.5">
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-violet-300">
+                    <ChevronDown className="w-3.5 h-3.5" />
+                    Scroll for more slides
+                  </span>
+                </div>
+              )}
               </div>
             </div>
           </motion.div>

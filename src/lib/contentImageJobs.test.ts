@@ -12,6 +12,7 @@ import {
   contentSlideHasVisual,
   groupContentImageJobs,
   slideTypeSkipsAiContentImages,
+  summarizeImageSelection,
   topicBenefitsFromVisual,
 } from './contentImageJobs.ts';
 
@@ -189,6 +190,31 @@ test('author generate lists empty content slides in course order, including abst
   assert.equal(contentImageJobKey(howJobs[1]), 'how:tab:0');
 });
 
+test('selection copy names pictures and slides separately, and picker can list past the 14 cap', () => {
+  assert.equal(
+    summarizeImageSelection({ pictureCount: 14, slideCount: 5 }),
+    '14 pictures on 5 slides selected (up to 14 pictures per run).',
+  );
+  assert.equal(
+    summarizeImageSelection({ pictureCount: 1, slideCount: 1 }),
+    '1 picture on 1 slide selected (up to 14 pictures per run).',
+  );
+  assert.equal(
+    summarizeImageSelection({ pictureCount: 22, slideCount: 8 }),
+    '22 pictures on 8 slides selected. This run will generate the first 14 pictures in course order.',
+  );
+  assert.equal(summarizeImageSelection({ pictureCount: 0, slideCount: 0 }), 'No pictures selected.');
+
+  const slides = [
+    ...manyContentSlides(10),
+    ...manyContentSlides(8).map((s, i) => ({ ...s, id: `extra-${i}` })),
+  ];
+  const capped = collectContentImageJobs(courseWithSlides(slides));
+  const listed = collectContentImageJobs(courseWithSlides(slides), { skipBenefitHeuristic: true, noCap: true });
+  assert.equal(capped.length, 14);
+  assert.ok(listed.length > 14);
+});
+
 test('image gen and authoring stay wired: remaining fill, this-slide, crop/move, no auto fi-ai- promote', () => {
   const service = src('src/services/imageService.ts');
   assert.match(service, /collectContentImageJobs/);
@@ -205,6 +231,8 @@ test('image gen and authoring stay wired: remaining fill, this-slide, crop/move,
   assert.match(app, /openGenerateImagesPicker/);
   assert.match(app, /GenerateImagesDialog/);
   assert.match(app, /skipBenefitHeuristic: true/);
+  assert.match(app, /noCap:\s*true/);
+  assert.match(app, /slice\(0,\s*MAX_CONTENT_AI_IMAGES\)/);
   assert.match(app, /slideId:\s*currentSlide\.id/);
   assert.match(app, /onPromoteToFloat/);
   assert.doesNotMatch(app, /id:\s*`fi-ai-/);
@@ -214,6 +242,9 @@ test('image gen and authoring stay wired: remaining fill, this-slide, crop/move,
   assert.match(dialog, /No further images will be generated/);
   assert.match(dialog, /Pictures already on slides will stay/);
   assert.match(dialog, /Uncheck any you want to skip/);
+  assert.match(dialog, /summarizeImageSelection/);
+  assert.match(dialog, /overflow-y-scroll/);
+  assert.match(dialog, /Scroll for more slides/);
 
   const enlarge = src('src/components/player/EnlargeableImage.tsx');
   assert.match(enlarge, /Crop/);
