@@ -154,7 +154,7 @@ test('image gen and authoring stay wired: remaining fill, this-slide, crop/move,
   const app = src('src/App.tsx');
   assert.match(app, /jobsApplied/);
   assert.match(app, /Generate AI images/);
-  assert.match(app, /Fill slides that don[’']t have an image yet/);
+  assert.match(app, /Empty pictures on content, tabs, and click-reveal/);
   assert.match(app, /Generate AI image for this slide/);
   assert.match(app, /slideId:\s*currentSlide\.id/);
   assert.match(app, /onPromoteToFloat/);

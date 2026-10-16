@@ -14,6 +14,7 @@ export interface ImageGenProgress {
   current: number;
   total: number;
   error: string | null;
+  stopping?: boolean;
 }
 
 interface Props {
@@ -131,11 +132,15 @@ export const ImageProgressToast: React.FC<Props> = ({
                     ? (progress.error
                         ? (progress.current === 0 ? 'Image generation failed' : 'Image generation finished with errors')
                         : 'Course visuals ready')
-                    : 'Generating course visuals'}
+                    : progress.stopping
+                      ? 'Stopping image generation'
+                      : 'Generating course visuals'}
                 </p>
                 {progress.isRunning && (
                   <p className="text-xs text-slate-400 mt-0.5 truncate">
-                    Image {Math.min(progress.current + (progress.current < progress.total ? 1 : 0), progress.total)} of {progress.total}
+                    {progress.stopping
+                      ? `${progress.current} of ${progress.total} on slides — no further images will be generated`
+                      : `${progress.current} of ${progress.total} on slides`}
                   </p>
                 )}
                 {progress.isDone && !progress.isRunning && (

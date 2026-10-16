@@ -835,7 +835,7 @@ function emptyImageGenResult(course: any): ContentImageGenResult {
 
 export async function generateContentSlideImages(
   course: any,
-  onProgress?: (done: number, total: number) => void,
+  onProgress?: (applied: number, total: number, latestCourse?: any) => void,
   opts?: { slideId?: string; shouldCancel?: () => boolean },
 ): Promise<ContentImageGenResult> {
   if (!course?.modules?.length) return emptyImageGenResult(course);
@@ -859,7 +859,11 @@ export async function generateContentSlideImages(
     })),
   }));
 
-  let done = 0;
+  const snapshot = () => ({
+    ...course,
+    modules: modules.map((m: any) => ({ ...m, slides: [...(m.slides || [])] })),
+  });
+
   let jobsApplied = 0;
   let lastError: string | null = null;
   const withLock = createAsyncLock();
@@ -891,18 +895,17 @@ export async function generateContentSlideImages(
         modules[job.mi].slides[job.si] = applyContentImageUrl(slide, job, url);
         jobsApplied += 1;
         console.log(`[ImageService] ✓ Content visual for "${job.subject}"`);
+        onProgress?.(jobsApplied, selected.length, snapshot());
       });
     } else if (!lastError && !stopRemaining) {
       lastError = 'No image was returned.';
     }
 
-    done++;
-    onProgress?.(done, selected.length);
     if (!stopRemaining) await sleep(IMAGE_PACE_MS);
   });
 
   return {
-    course: { ...course, modules },
+    course: snapshot(),
     jobsAttempted: selected.length,
     jobsApplied,
     lastError: jobsApplied === selected.length ? null : lastError,

@@ -1637,6 +1637,7 @@ export default function App() {
     current: 0,
     total: 0,
     error: null,
+    stopping: false,
   });
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [isRunningQC, setIsRunningQC] = useState(false);
@@ -4863,7 +4864,7 @@ export default function App() {
     setShowEditMenu(false);
     const token = ++imageGenTokenRef.current;
     setIsGeneratingImages(true);
-    setImageProgress({ isRunning: false, isDone: false, current: 0, total: 0, error: null });
+    setImageProgress({ isRunning: true, isDone: false, current: 0, total: 0, error: null, stopping: false });
     showDraftMessage(
       thisSlideOnly
         ? 'Generating AI image for this slide…'
@@ -4896,13 +4897,20 @@ export default function App() {
       }
       const { course: withImages, jobsAttempted, jobsApplied, lastError } = await generateContentSlideImages(
         working,
-        (done, total) => {
+        (applied, total, latest) => {
+          if (latest) {
+            const next = stripCourseAutoPromotedFloating(latest);
+            setCourse(next);
+            setFloatingImagesMap(floatingMapFromCourse(next));
+            working = next;
+          }
           setImageProgress({
-            isRunning: done < total,
-            isDone: done >= total && total > 0,
-            current: done,
+            isRunning: true,
+            isDone: false,
+            current: applied,
             total,
             error: null,
+            stopping: imageGenTokenRef.current !== token,
           });
         },
         {
@@ -4922,6 +4930,7 @@ export default function App() {
           current: jobsApplied,
           total: jobsAttempted,
           error: jobsApplied === 0 ? failMsg : (jobsApplied < jobsAttempted ? lastError : null),
+          stopping: false,
         });
       }
       if (cancelled) {
@@ -7067,7 +7076,7 @@ export default function App() {
                               <ImageIcon className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                               <span>
                                 <span className="font-semibold block">Generate AI images</span>
-                                <span className="text-slate-500 text-[10px]">Fill slides that don’t have an image yet (about 14). Does not change text or interactions.</span>
+                                <span className="text-slate-500 text-[10px]">Empty pictures on content, tabs, and click-reveal only (up to 14). Skips covers, overviews, quizzes, and slides that already have a photo.</span>
                               </span>
                             </button>
                             <button
@@ -7079,7 +7088,7 @@ export default function App() {
                               <ImageIcon className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                               <span>
                                 <span className="font-semibold block">Generate AI image for this slide</span>
-                                <span className="text-slate-500 text-[10px]">Visuals for the slide you’re viewing only</span>
+                                <span className="text-slate-500 text-[10px]">Empty pictures on this content/tab slide only</span>
                               </span>
                             </button>
                             <button
@@ -10846,17 +10855,20 @@ export default function App() {
       <ConfirmDialog
         open={!!stopJobKind}
         title={stopJobKind === 'images' ? 'Stop generating images?' : 'Stop generating narration?'}
-        body="Anything already created will stay. Remaining jobs will not run."
+        body={
+          stopJobKind === 'images'
+            ? 'Images already on slides will stay. No further images will be generated.'
+            : 'Audio already recorded will stay. No further narration will be generated.'
+        }
         primaryLabel="Stop"
         cancelLabel="Keep going"
         onPrimary={() => {
           if (stopJobKind === 'images') {
             imageGenTokenRef.current += 1;
-            setIsGeneratingImages(false);
             setImageProgress(prev => ({
               ...prev,
-              isRunning: false,
-              isDone: prev.total > 0,
+              stopping: true,
+              isRunning: true,
             }));
           } else if (stopJobKind === 'audio') {
             cancelTTS();
