@@ -248,6 +248,7 @@ import {
 import { buildReviewSnapshot, createReviewLink, fetchReviewSnapshot } from './lib/reviewLinkService';
 import { downloadReviewScriptDocx } from './lib/reviewScriptDocx';
 import { tocRefMapFirstWins } from './lib/playerToc';
+import { resolvePreviewDraftNav } from './lib/previewDraftNav';
 import TabbedHorizontal, { PROCESS_PANEL_DEFAULT, PROCESS_PANEL_PRESETS } from './components/interactions/TabbedContentHorizontal';
 import TabbedVertical from './components/interactions/TabbedContentVertical';
 import FolderExplorer from './components/interactions/FolderExplorer';
@@ -939,6 +940,8 @@ export default function App() {
     syntheticAudioMap: syntheticAudioMapRef.current,
     examQuestions,
     currentSlideId: currentSlideIdRef.current,
+    navigationMode,
+    requireInteractionsComplete,
     ...(onProgress ? { onProgress } : {}),
   });
 
@@ -1162,6 +1165,8 @@ export default function App() {
     const shell = snapshot.course;
     const legacyMedia = mediaRecordToMap(takeLegacyMedia(id));
     const cfg = snapshot.playerConfig || defaultPlayerConfig;
+    const previewNav = resolvePreviewDraftNav(snapshot, cfg);
+    previewDraftOpenIdRef.current = id;
 
     // Ensure no modal/backdrop can sit on top of the player and eat clicks
     setShowViewDraftsModal(false);
@@ -1171,7 +1176,9 @@ export default function App() {
     setDraftLoadProgress(prev => Math.max(prev, 36));
     setDraftLoadStatus('Loading narration…');
 
-    setPlayerConfig(cfg);
+    setPlayerConfig({ ...cfg, navigationMode: previewNav.navigationMode });
+    setNavigationMode(previewNav.navigationMode);
+    setRequireInteractionsComplete(previewNav.requireInteractionsComplete);
     setTheme((snapshot.theme as any) || 'light');
     // Restore objectives / VO overrides so Course Objectives & module overview rebuild
     const restoredObjectives =
@@ -1215,10 +1222,6 @@ export default function App() {
     );
     if (Object.keys(narrUrls).length) setVoiceOverEnabled(true);
     setSyntheticAudioMap(applied.synthetic);
-    // Authoring preview: always allow free navigation so drafts aren't "frozen"
-    // (linear/restricted + interaction gates make the player feel like a screenshot).
-    setNavigationMode('free');
-    setRequireInteractionsComplete(false);
 
     setCurrentSlideIndex(0);
     setHighestVisitedIndex(0);
@@ -1518,8 +1521,14 @@ export default function App() {
     setStep('home');
     setMobileDesignDemo(false);
     setActiveDraftId(null);
+    previewDraftOpenIdRef.current = null;
     setIsSandboxMode(false);
     navigateTo(ROUTES.upload);
+    if (!isLearnerPlayer) {
+      applySavedSettings(resolveCourseSettings(user?.id));
+      const pp = loadPlayerProperties(user?.id);
+      if (pp) applyPlayerConfig(pp);
+    }
   };
 
   /** Back from Course Settings / Review course — resume upload chooser if a file is still pending. */
@@ -1633,6 +1642,8 @@ export default function App() {
   const [isHydrating, setIsHydrating] = useState(false);
   const [isGeneratingImages, setIsGeneratingImages] = useState(false);
   const imageGenTokenRef = React.useRef(0);
+  /** While a saved draft is open, account Course Settings must not overwrite its navigation. */
+  const previewDraftOpenIdRef = React.useRef<string | null>(null);
   const [stopJobKind, setStopJobKind] = useState<null | 'images' | 'audio'>(null);
   const [imagePickOpen, setImagePickOpen] = useState(false);
   const [imagePickGroups, setImagePickGroups] = useState<ContentImageJobGroup[]>([]);
@@ -3333,6 +3344,16 @@ export default function App() {
       }
       const cloud = await fetchAccountPreferences();
       if (cancelled) return;
+      if (previewDraftOpenIdRef.current) {
+        if (cloud?.courseSettings && typeof cloud.courseSettings === 'object') {
+          cacheCourseSettings(cloud.courseSettings as SavedCourseSettings, user.id);
+        }
+        if (cloud?.playerProperties && typeof cloud.playerProperties === 'object') {
+          cachePlayerProperties({ ...defaultPlayerConfig, ...cloud.playerProperties }, user.id);
+        }
+        playerDefaultsLoadedFor.current = user.id;
+        return;
+      }
       const localSettings = resolveCourseSettings(user.id);
       const localPlayer = loadPlayerProperties(user.id);
 

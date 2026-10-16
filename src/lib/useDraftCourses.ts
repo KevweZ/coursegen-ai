@@ -101,6 +101,9 @@ export interface PreviewDraftSnapshot {
   course: any;
   playerConfig: any;
   theme: string;
+  /** Last-saved player navigation for this draft (not the account default). */
+  navigationMode?: string;
+  requireInteractionsComplete?: boolean;
   /** Restored so Course Objectives / module overview rebuild correctly */
   learningObjectives?: any[];
   syntheticSlideOverrides?: Record<string, { content?: string; voiceOverText?: string }>;
@@ -741,8 +744,9 @@ export interface UseDraftCoursesReturn {
       syntheticAudioMap?: Record<string, string>;
       examQuestions?: any[];
       currentSlideId?: string | null;
+      navigationMode?: string;
+      requireInteractionsComplete?: boolean;
       /** Force a distinct library name (e.g. "Course (1)") without renaming the live editor title. */
-      titleOverride?: string;
       titleOverride?: string;
       onProgress?: (msg: string) => void;
     }
@@ -774,6 +778,8 @@ export interface UseDraftCoursesReturn {
       syntheticAudioMap?: Record<string, string>;
       examQuestions?: any[];
       currentSlideId?: string | null;
+      navigationMode?: string;
+      requireInteractionsComplete?: boolean;
       onProgress?: (msg: string) => void;
     }
   ) => Promise<{ success: boolean; message: string }>;
@@ -940,6 +946,8 @@ export function useDraftCourses(
       syntheticAudioMap?: Record<string, string>;
       examQuestions?: any[];
       currentSlideId?: string | null;
+      navigationMode?: string;
+      requireInteractionsComplete?: boolean;
       onProgress?: (msg: string) => void;
     }
   ) => {
@@ -1027,9 +1035,17 @@ export function useDraftCourses(
     );
     const snapshot: PreviewDraftSnapshot = {
       phase: 'preview',
-      course: working,
-      playerConfig,
+      course: {
+        ...working,
+        navigationMode: extras?.navigationMode || playerConfig?.navigationMode || working.navigationMode,
+      },
+      playerConfig: {
+        ...playerConfig,
+        navigationMode: extras?.navigationMode || playerConfig?.navigationMode,
+      },
       theme,
+      navigationMode: extras?.navigationMode || playerConfig?.navigationMode,
+      requireInteractionsComplete: extras?.requireInteractionsComplete,
       learningObjectives: extras?.learningObjectives,
       syntheticSlideOverrides: extras?.syntheticSlideOverrides,
       syntheticAudioIds,
