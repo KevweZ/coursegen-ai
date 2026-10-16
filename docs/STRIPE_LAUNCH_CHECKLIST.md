@@ -69,7 +69,7 @@ Stripe Dashboard → Settings → Billing → Customer portal: enable cancel, in
 1. Stripe Dashboard → toggle to **Live**
 2. Create live webhook endpoint → same URL `/api/payments/webhook` → copy `whsec_…` → `STRIPE_WEBHOOK_SECRET_LIVE`
 3. Put `STRIPE_SECRET_KEY_LIVE=sk_live_…` in local `.env` (never commit)
-4. Run: `node stripe_create_v2_prices.mjs --live`
+4. Run: `node stripe_create_v2_prices.mjs --live` (Creator annual/monthly, Team annual, plus Standard/Volume credit packs)
 5. Copy printed `STRIPE_PRICE_*_LIVE` values into Render **Environment** (do **not** set `STRIPE_MODE=live` yet)
 6. Also store on Render (inactive until flip):
    - `STRIPE_SECRET_KEY_LIVE`

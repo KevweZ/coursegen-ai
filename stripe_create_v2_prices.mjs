@@ -72,6 +72,20 @@ const DEFS = [
     unit_amount: 178800,
     recurring: { interval: 'year' },
   },
+  {
+    baseKey: 'STRIPE_PRICE_CREDITS_STANDARD',
+    name: 'Standard Credit Pack',
+    description: '100 AI credits · Never expire · Stack on top of subscription',
+    metadata: { type: 'credit_pack', credits: '100', stripe_mode: mode },
+    unit_amount: 2500,
+  },
+  {
+    baseKey: 'STRIPE_PRICE_CREDITS_VOLUME',
+    name: 'Volume Credit Pack',
+    description: '500 AI credits · Best value (save 20%) · Never expire · Stack on top of subscription',
+    metadata: { type: 'credit_pack', credits: '500', stripe_mode: mode },
+    unit_amount: 10000,
+  },
 ];
 
 async function main() {
@@ -88,7 +102,7 @@ async function main() {
       product: product.id,
       unit_amount: def.unit_amount,
       currency: 'usd',
-      recurring: def.recurring,
+      ...(def.recurring ? { recurring: def.recurring } : {}),
       metadata: def.metadata,
     });
     const envKey = `${def.baseKey}${modeSuffix}`;
