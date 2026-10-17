@@ -91,7 +91,7 @@ export function GenerateImagesDialog({
   return (
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-[10050] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[10050] flex items-center justify-center p-2 sm:p-4">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -105,9 +105,10 @@ export function GenerateImagesDialog({
             initial={{ opacity: 0, scale: 0.96, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 12 }}
-            className="relative w-full max-w-3xl max-h-[min(90dvh,42rem)] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col sm:flex-row sm:items-stretch"
+            className="relative w-full max-w-3xl max-h-[min(92dvh,42rem)] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
           >
-            <div className="sm:w-[17rem] shrink-0 p-5 border-b sm:border-b-0 sm:border-r border-slate-800 flex flex-col gap-3">
+            <div className="flex-1 min-h-0 flex flex-col sm:flex-row sm:items-stretch">
+            <div className="sm:w-[17rem] sm:shrink-0 max-sm:max-h-[42%] p-4 sm:p-5 border-b sm:border-b-0 sm:border-r border-slate-800 flex flex-col gap-3 min-h-0 overflow-y-auto">
               <div className="flex items-start gap-3">
                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
                   picking ? 'bg-violet-500/20' : 'bg-amber-500/20'
@@ -146,27 +147,6 @@ export function GenerateImagesDialog({
                       })}
                 </p>
               )}
-              <div className="mt-auto flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={onCancel}
-                  className="px-4 py-2.5 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-800"
-                >
-                  {picking ? 'Cancel' : 'Keep going'}
-                </button>
-                <button
-                  type="button"
-                  disabled={picking && selectedPictureCount === 0}
-                  onClick={onPrimary}
-                  className={`px-4 py-2.5 rounded-xl text-sm font-bold text-white transition-colors disabled:opacity-40 ${
-                    picking
-                      ? 'bg-violet-600 hover:bg-violet-500'
-                      : 'bg-rose-600 hover:bg-rose-500'
-                  }`}
-                >
-                  {picking ? 'Generate' : 'Stop'}
-                </button>
-              </div>
             </div>
 
             <div className="flex-1 min-h-0 min-w-0 flex flex-col bg-slate-950/40">
@@ -185,7 +165,7 @@ export function GenerateImagesDialog({
               <div className="relative min-h-0 flex-1">
               <div
                 ref={listRef}
-                className="overflow-y-scroll overscroll-contain p-3 space-y-1.5 max-h-[min(52dvh,22rem)] sm:max-h-[min(70dvh,30rem)]"
+                className="h-full overflow-y-scroll overscroll-contain p-3 space-y-1.5"
               >
                 {coverOption && (
                   <div className={`flex items-start gap-3 rounded-xl border px-3 py-2.5 ${
@@ -295,6 +275,28 @@ export function GenerateImagesDialog({
                 </div>
               )}
               </div>
+            </div>
+            </div>
+            <div className="generate-images-footer shrink-0 border-t border-slate-800 px-4 py-3 flex flex-col-reverse sm:flex-row sm:justify-end gap-2 bg-slate-900">
+              <button
+                type="button"
+                onClick={onCancel}
+                className="px-4 py-2.5 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-800"
+              >
+                {picking ? 'Cancel' : 'Keep going'}
+              </button>
+              <button
+                type="button"
+                disabled={picking && selectedPictureCount === 0}
+                onClick={onPrimary}
+                className={`px-4 py-2.5 rounded-xl text-sm font-bold text-white transition-colors disabled:opacity-40 ${
+                  picking
+                    ? 'bg-violet-600 hover:bg-violet-500'
+                    : 'bg-rose-600 hover:bg-rose-500'
+                }`}
+              >
+                {picking ? 'Generate' : 'Stop'}
+              </button>
             </div>
           </motion.div>
         </div>

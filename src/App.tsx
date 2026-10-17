@@ -3107,16 +3107,23 @@ export default function App() {
   // Item 13: Auto-play voice-over when slide changes
   // Uses a ref so the setTimeout closure always calls the LATEST play() — avoids stale isPlaying=true skip
   const playerPlayRef = useRef<() => void>(() => {});
+  const playerPauseRef = useRef<() => void>(() => {});
   useEffect(() => { playerPlayRef.current = player.play; }, [player.play]);
+  useEffect(() => { playerPauseRef.current = player.pause; }, [player.pause]);
   useEffect(() => {
     if (step !== 'preview' || !voiceOverEnabled) return;
+    // Phone portrait shows a rotate prompt over the player — hold audio until landscape.
+    if (needsLandscapeForPreview) {
+      playerPauseRef.current();
+      return;
+    }
     const timer = setTimeout(() => {
       // Call via ref — guaranteed to use state from the most recent render
       playerPlayRef.current();
     }, 400);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, currentSlide?.id, player.hasAudio, voiceOverEnabled, activeTabAudioUrl]);
+  }, [step, currentSlide?.id, player.hasAudio, voiceOverEnabled, activeTabAudioUrl, needsLandscapeForPreview]);
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);

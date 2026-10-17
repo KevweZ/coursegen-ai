@@ -245,6 +245,10 @@ test('image gen and authoring stay wired: remaining fill, this-slide, crop/move,
   assert.match(dialog, /summarizeImageSelection/);
   assert.match(dialog, /overflow-y-scroll/);
   assert.match(dialog, /Scroll for more slides/);
+  assert.match(dialog, /generate-images-footer/);
+  assert.match(dialog, /generate-images-footer[\s\S]*Generate/);
+  assert.match(dialog, /flex flex-col/);
+  assert.doesNotMatch(dialog, /mt-auto flex flex-col-reverse/);
 
   const enlarge = src('src/components/player/EnlargeableImage.tsx');
   assert.match(enlarge, /Crop/);
