@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
 import { captureTeamInviteFromLocation, ROUTES } from '../lib/routes';
+import { describeAuthError, describeSignUpResult } from '../lib/authErrors';
 
 const ADMIN_EMAIL = ((import.meta as any).env.VITE_ADMIN_EMAIL as string ?? '').toLowerCase().trim();
 const RECOVERY_FLAG_KEY = 'nexcourse_password_recovery';
@@ -227,8 +228,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // ── Auth Methods ────────────────────────────────────────────────────────────
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error: error?.message ?? null };
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      return { error: error ? describeAuthError(error.message) : null };
+    } catch (err: any) {
+      return { error: describeAuthError(err?.message) };
+    }
   };
 
   const signUp = async (
@@ -237,20 +242,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     fullName: string,
     track: UserTrack
   ) => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          full_name: fullName,
-          track,
-          plan: 'free',
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: fullName,
+            track,
+            plan: 'free',
+          },
         },
-      },
-    });
-
-    if (error) return { error: error.message, needsVerification: false };
-    return { error: null, needsVerification: !data.session };
+      });
+      const mapped = describeSignUpResult(error, data);
+      if (mapped) return { error: mapped, needsVerification: false };
+      return { error: null, needsVerification: !data.session };
+    } catch (err: any) {
+      return { error: describeAuthError(err?.message), needsVerification: false };
+    }
   };
 
   const signInWithGoogle = async () => {

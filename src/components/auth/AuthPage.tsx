@@ -82,10 +82,15 @@ export function AuthPage({ onBackToHome, initialMode = 'login' }: { onBackToHome
     if (password !== confirm) { setError('Passwords do not match.'); return; }
     if (password.length < 8)  { setError('Password must be at least 8 characters.'); return; }
     setLoading(true); setError(null);
-    const { error, needsVerification } = await signUp(email, password, fullName, track);
-    setLoading(false);
-    if (error) { setError(error); return; }
-    if (needsVerification) { setSuccess('Account created! Please check your email to verify your address before signing in.'); switchMode('login'); }
+    try {
+      const { error, needsVerification } = await signUp(email, password, fullName, track);
+      if (error) { setError(error); return; }
+      if (needsVerification) { setSuccess('Account created! Please check your email to verify your address before signing in.'); switchMode('login'); }
+    } catch (err: any) {
+      setError(err?.message || 'Could not create the account. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleForgot = async (e: React.FormEvent) => {
