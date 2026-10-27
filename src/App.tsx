@@ -183,6 +183,7 @@ import {
   myAccountInvitePath,
 } from './lib/routes';
 import type { SandboxDemo } from './lib/routes';
+import { formatAnalysisFailure } from './lib/analysisErrors';
 import { foundationFingerprint, type FoundationFingerprintInput } from './lib/courseReviewSync';
 import { DraftCoursesPanel } from './components/player/DraftCoursesPanel';
 import { ViewDraftsModal } from './components/player/ViewDraftsModal';
@@ -3127,6 +3128,7 @@ export default function App() {
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const [analyzeErrorAction, setAnalyzeErrorAction] = useState<'retry' | 'account'>('retry');
   /** Mirrors upload vs progress URL for tour gating (navigateTo does not re-render by itself). */
   const [homeRoutePath, setHomeRoutePath] = useState<string>(ROUTES.upload);
   /** When set, shows a non-error warm-up UI and auto-retries analysis at 0 */
@@ -3677,20 +3679,14 @@ export default function App() {
       clearInterval(analysisTimer);
       console.error('File analysis error:', err);
       const isColdStart = err?.message?.includes('COLD_START') || err?.message?.includes('warming up') || err?.message?.includes('503');
-      const isTrialExpiredErr = /TRIAL_EXPIRED|trial has expired/i.test(String(err?.message || ''));
-      const isTrialLimitErr = /TRIAL_LIMIT_EXCEEDED|weekly AI generation limit|trial limit/i.test(String(err?.message || ''));
       if (isColdStart) {
         // Friendly warm-up state with auto-retry — not framed as a failure
         startColdStartCountdown();
         return;
       }
-      setAnalyzeError(
-        isTrialExpiredErr
-          ? 'Your trial access period has ended. Contact support@nexcourse.ai to continue.'
-          : isTrialLimitErr
-            ? 'Weekly AI generation limit reached (this is not your trial end date). Wait for the weekly reset, open a saved draft from Save, or contact support@nexcourse.ai.'
-            : `Analysis failed: ${err?.message ?? 'Unknown error'}. Please try again.`
-      );
+      const failure = formatAnalysisFailure(err?.message);
+      setAnalyzeError(failure.body);
+      setAnalyzeErrorAction(failure.action);
       // Keep progress at 80% and stay on the analyzing screen so the user can retry
       setProgress(80);
       // Do NOT call setIsAnalyzing(false) — stay on the overlay to show the error
@@ -3706,6 +3702,7 @@ export default function App() {
       setAnalyzeError(
         `File is ${(file.size / (1024 * 1024)).toFixed(1)}MB — max upload size is ${maxMb}MB. Compress or split the PDF/PPTX, then try again.`
       );
+      setAnalyzeErrorAction('retry');
       setHomeRoutePath(ROUTES.building);
       navigateTo(ROUTES.building, true);
       setIsAnalyzing(true);
@@ -6718,26 +6715,45 @@ export default function App() {
                          <p className="text-slate-400 mt-3 text-sm leading-relaxed max-w-md mx-auto">{analyzeError}</p>
                        </div>
                        <div className="flex gap-3 justify-center">
-                         <button
-                           onClick={() => {
-                             if (!uploadedFile) return;
-                             if (lastUploadPath) {
-                               const override = resolveCourseSettings(user?.id);
-                               applySavedSettings(override);
-                               runAnalysis(uploadedFile, lastUploadPath, override);
-                             } else {
-                               setPendingUploadFile(uploadedFile);
+                         {analyzeErrorAction === 'account' ? (
+                           <button
+                             onClick={() => {
                                setIsAnalyzing(false);
                                setAnalyzeError(null);
-                               setShowUploadPathModal(true);
-                             }
-                           }}
-                           className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-all"
-                         >
-                           Try Again
-                         </button>
+                               setAnalyzeErrorAction('retry');
+                               setUploadedFile(null);
+                               setProgress(0);
+                               clearColdStartCountdown();
+                               dismissPlayerProperties();
+                               setStep('account');
+                               navigateTo(ROUTES.myAccount);
+                             }}
+                             className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-all"
+                           >
+                             My Account
+                           </button>
+                         ) : (
+                           <button
+                             onClick={() => {
+                               if (!uploadedFile) return;
+                               if (lastUploadPath) {
+                                 const override = resolveCourseSettings(user?.id);
+                                 applySavedSettings(override);
+                                 runAnalysis(uploadedFile, lastUploadPath, override);
+                               } else {
+                                 setPendingUploadFile(uploadedFile);
+                                 setIsAnalyzing(false);
+                                 setAnalyzeError(null);
+                                 setShowUploadPathModal(true);
+                               }
+                             }}
+                             className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-all"
+                           >
+                             Try Again
+                           </button>
+                         )}
                          <button
-                           onClick={() => { setIsAnalyzing(false); setAnalyzeError(null); setUploadedFile(null); setProgress(0); clearColdStartCountdown(); }}
+                           onClick={() => { setIsAnalyzing(false); setAnalyzeError(null); setAnalyzeErrorAction('retry'); setUploadedFile(null); setProgress(0); clearColdStartCountdown(); }}
                            className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl transition-all"
                          >
                            Cancel
