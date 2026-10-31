@@ -7,6 +7,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2, XCircle, X, Loader2 } from 'lucide-react';
+import { isApiColdStart } from '../lib/apiWarmup';
 
 export interface ImageGenProgress {
   isRunning: boolean;
@@ -81,6 +82,7 @@ export const ImageProgressToast: React.FC<Props> = ({
   const pct = progress.total > 0
     ? Math.round((progress.current / progress.total) * 100)
     : 0;
+  const displayError = isApiColdStart(progress.error) ? null : progress.error;
 
   return (
     <AnimatePresence>
@@ -97,9 +99,9 @@ export const ImageProgressToast: React.FC<Props> = ({
           <div className="h-[3px] w-full bg-slate-800 relative overflow-hidden">
             <motion.div
               className={`absolute left-0 top-0 h-full transition-all duration-500 ${
-                progress.isDone && !progress.error
+                progress.isDone && !displayError
                   ? 'bg-emerald-500'
-                  : progress.error
+                  : displayError
                   ? 'bg-red-500'
                   : 'bg-purple-500'
               }`}
@@ -111,15 +113,15 @@ export const ImageProgressToast: React.FC<Props> = ({
           <div className="p-4">
             <div className="flex items-start gap-3">
               <div className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-                progress.isDone && !progress.error
+                progress.isDone && !displayError
                   ? 'bg-emerald-500/20'
-                  : progress.error
+                  : displayError
                   ? 'bg-red-500/20'
                   : 'bg-purple-500/20'
               }`}>
-                {progress.isDone && !progress.error ? (
+                {progress.isDone && !displayError ? (
                   <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                ) : progress.error && !progress.isRunning ? (
+                ) : displayError && !progress.isRunning ? (
                   <XCircle className="w-4 h-4 text-red-400" />
                 ) : (
                   <Loader2 className="w-4 h-4 text-purple-400 animate-spin" />
@@ -129,7 +131,7 @@ export const ImageProgressToast: React.FC<Props> = ({
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-white leading-tight">
                   {progress.isDone && !progress.isRunning
-                    ? (progress.error
+                    ? (displayError
                         ? (progress.current === 0 ? 'Image generation failed' : 'Image generation finished with errors')
                         : 'Course visuals ready')
                     : progress.stopping
@@ -144,15 +146,15 @@ export const ImageProgressToast: React.FC<Props> = ({
                   </p>
                 )}
                 {progress.isDone && !progress.isRunning && (
-                  <p className={`text-xs mt-0.5 ${progress.error ? 'text-amber-300' : 'text-emerald-400'}`}>
+                  <p className={`text-xs mt-0.5 ${displayError ? 'text-amber-300' : 'text-emerald-400'}`}>
                     {progress.current > 0
                       ? `${progress.current} visual${progress.current !== 1 ? 's' : ''} ready`
-                      : progress.error || 'No new visuals generated'}
+                      : displayError || 'No new visuals generated'}
                   </p>
                 )}
-                {progress.error && progress.current > 0 && (
+                {displayError && progress.current > 0 && (
                   <p className="text-xs text-red-400 mt-0.5 leading-relaxed">
-                    {progress.error}
+                    {displayError}
                   </p>
                 )}
               </div>

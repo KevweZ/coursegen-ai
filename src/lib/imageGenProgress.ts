@@ -1,5 +1,7 @@
 /** Final image-toast state after generateContentSlideImages returns. */
 
+import { isApiColdStart } from './apiWarmup';
+
 export type ImageGenResultLike = {
   jobsAttempted: number;
   jobsApplied: number;
@@ -34,13 +36,16 @@ export function finishImageGenProgress(result: ImageGenResultLike): FinishedImag
       stopping: false,
     };
   }
-  const failMsg = lastError || 'No image was returned.';
+  const publicError = isApiColdStart(lastError) ? null : lastError;
+  const failMsg = publicError || 'No image was returned.';
   return {
     isRunning: false,
     isDone: true,
     current: jobsApplied,
     total: jobsAttempted,
-    error: jobsApplied === 0 ? failMsg : (jobsApplied < jobsAttempted ? lastError : null),
+    error: jobsApplied === 0
+      ? (publicError ? failMsg : null)
+      : (jobsApplied < jobsAttempted ? publicError : null),
     stopping: false,
   };
 }

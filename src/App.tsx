@@ -247,6 +247,7 @@ import {
   type ContentImageJobStatus,
 } from './lib/contentImageJobs';
 import { finishImageGenProgress } from './lib/imageGenProgress';
+import { isApiColdStart, waitForApiWarm } from './lib/apiWarmup';
 import { buildReviewSnapshot, createReviewLink, fetchReviewSnapshot } from './lib/reviewLinkService';
 import { downloadReviewScriptDocx } from './lib/reviewScriptDocx';
 import { tocRefMapFirstWins } from './lib/playerToc';
@@ -4343,6 +4344,7 @@ export default function App() {
     if (runImagery) {
       setIsGeneratingImages(true);
       setProgress(56);
+      await waitForApiWarm({ timeoutMs: 40000 });
       try {
         // Prefer early-upload extract (ref/cache). Never re-run a full extract when we
         // already have images — and never block cover/preview > EXTRACT_DEADLINE_MS.
@@ -4414,6 +4416,8 @@ export default function App() {
         setProgress(63);
 
         if (wantsAi) {
+          await waitForApiWarm({ timeoutMs: 40000 });
+          setProgress(66);
           try {
             const aiCover = await generateCourseCoverImage(working.title || 'Course', working.description);
             coverUrl = aiCover;
@@ -4435,10 +4439,12 @@ export default function App() {
               showDraftMessage('AI cover image ready ✓');
             } catch (err2: any) {
               console.warn('[ImageService] Cover generation failed:', err2);
-              if (coverUrl) {
+              if (isApiColdStart(err2)) {
+                /* retry already happened inside generateCourseCoverImage */
+              } else if (coverUrl) {
                 showDraftMessage('AI cover failed — using an image from your upload on the title slide.');
               } else {
-                showDraftMessage(err2?.message || 'Cover image generation failed — hover the title image panel to upload one, or Edit → Generate AI images.');
+                showDraftMessage('Cover image generation failed — hover the title image panel to upload one, or Edit → Generate AI images.');
               }
             }
           }
@@ -4457,7 +4463,6 @@ export default function App() {
       setCourseBg(coverUrl);
     } else if (wantsAi) {
       console.warn('[ImageService] AI images enabled but no cover URL after cover phase');
-      showDraftMessage('AI cover did not generate — use Edit → Generate AI images or Upload Image on the title slide.');
     } else if (!wantsAi && !wantsSource) {
       showDraftMessage('Multimedia images are off in Course Settings — enable AI Images to generate a cover.');
     }
@@ -4596,45 +4601,66 @@ export default function App() {
             commitCourse(next);
 
             if (wantsAi) {
-              const imageResult = await generateContentSlideImages(
+              const onImageProgress = (applied: number, total: number, latest?: any) => {
+                if (!stillActive()) return;
+                if (latest) {
+                  const cleaned = stripCourseAutoPromotedFloating(latest);
+                  const withCover = coverUrl ? { ...cleaned, coverImage: cleaned.coverImage || coverUrl } : cleaned;
+                  const seeded = seedFloatingFromCourse(withCover) || withCover;
+                  commitCourse(seeded);
+                  next = seeded;
+                }
+                setImageProgress({
+                  isRunning: true,
+                  isDone: false,
+                  current: applied,
+                  total,
+                  error: null,
+                });
+              };
+              let imageResult = await generateContentSlideImages(
                 next,
-                (applied, total, latest) => {
-                  if (!stillActive()) return;
-                  if (latest) {
-                    const cleaned = stripCourseAutoPromotedFloating(latest);
-                    const withCover = coverUrl ? { ...cleaned, coverImage: cleaned.coverImage || coverUrl } : cleaned;
-                    const seeded = seedFloatingFromCourse(withCover) || withCover;
-                    commitCourse(seeded);
-                    next = seeded;
-                  }
-                  setImageProgress({
-                    isRunning: true,
-                    isDone: false,
-                    current: applied,
-                    total,
-                    error: null,
-                  });
-                },
+                onImageProgress,
                 { shouldCancel: () => !stillActive() },
               );
+              if (
+                stillActive() &&
+                imageResult.jobsApplied === 0 &&
+                isApiColdStart(imageResult.lastError)
+              ) {
+                await waitForApiWarm({ timeoutMs: 30000 });
+                if (stillActive()) {
+                  imageResult = await generateContentSlideImages(
+                    next,
+                    onImageProgress,
+                    { shouldCancel: () => !stillActive() },
+                  );
+                }
+              }
               if (!stillActive()) return;
               next = stripCourseAutoPromotedFloating(imageResult.course);
               if (coverUrl) next = { ...next, coverImage: next.coverImage || coverUrl };
               next = seedFloatingFromCourse(next) || next;
               commitCourse(next);
               setImageProgress(finishImageGenProgress(imageResult));
-              if (imageResult.jobsAttempted > 0 && imageResult.jobsApplied === 0 && imageResult.lastError) {
+              if (
+                imageResult.jobsAttempted > 0 &&
+                imageResult.jobsApplied === 0 &&
+                imageResult.lastError &&
+                !isApiColdStart(imageResult.lastError)
+              ) {
                 showDraftMessage(imageResult.lastError);
               }
             }
           } catch (err: any) {
             console.warn('[ImageService] Background imagery failed:', err);
             if (stillActive()) {
+              const cold = isApiColdStart(err);
               setImageProgress(prev => ({
                 ...prev,
-                isRunning: false,
-                isDone: prev.total > 0,
-                error: err?.message || 'Image generation failed',
+                isRunning: cold ? true : false,
+                isDone: cold ? false : prev.total > 0,
+                error: cold ? null : (err?.message || 'Image generation failed'),
               }));
             }
           } finally {
@@ -5020,7 +5046,7 @@ export default function App() {
             : 'No eligible slides for AI images. Objectives, overviews, and quizzes are skipped — only content/tabs that still need visuals are filled. Use Upload Image for a specific slide.'
         );
       } else if (!coverMade && jobsApplied === 0) {
-        showDraftMessage(failMsg);
+        if (!isApiColdStart(failMsg)) showDraftMessage(failMsg);
       } else {
         const parts = [
           coverMade ? 'cover updated' : null,
@@ -5034,13 +5060,14 @@ export default function App() {
       }
     } catch (err: any) {
       console.error('[Images] Regen failed:', err);
+      const cold = isApiColdStart(err);
       setImageProgress(prev => ({
         ...prev,
-        isRunning: false,
-        isDone: prev.total > 0,
-        error: err?.message || 'Failed to regenerate AI images.',
+        isRunning: cold ? true : false,
+        isDone: cold ? false : prev.total > 0,
+        error: cold ? null : (err?.message || 'Failed to regenerate AI images.'),
       }));
-      showDraftMessage(err?.message || 'Failed to regenerate AI images.');
+      if (!cold) showDraftMessage(err?.message || 'Failed to regenerate AI images.');
     } finally {
       setIsGeneratingImages(false);
     }
@@ -5099,6 +5126,7 @@ export default function App() {
   const hydrateCourse = async () => {
     setIsHydrating(true);
     setProgress(10);
+    void waitForApiWarm({ timeoutMs: 40000 });
     try {
       // Snapshot live Course Settings so multimedia / VO aren't stale vs React batching.
       const settingsSnap = collectCurrentSettings();

@@ -17,6 +17,7 @@ import {
   type ContentImageJob,
 } from '../lib/contentImageJobs';
 import { getSupabaseAccessToken } from '../lib/supabaseAccessToken';
+import { isApiColdStart, waitForApiWarm } from '../lib/apiWarmup';
 
 export {
   MAX_CONTENT_AI_IMAGES,
@@ -391,6 +392,19 @@ async function callImageEndpoint(
   } catch (err: any) {
     if (isImageAuthOrCreditStop(err)) {
       throw err;
+    }
+    if (isApiColdStart(err)) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        console.warn('[ImageService] API warming up — waiting, then retrying image…');
+        await waitForApiWarm({ timeoutMs: 30000 });
+        try {
+          return await execute();
+        } catch (retryErr: any) {
+          if (isImageAuthOrCreditStop(retryErr)) throw retryErr;
+          if (!isApiColdStart(retryErr) && retryErr?.status !== 429) throw retryErr;
+          err = retryErr;
+        }
+      }
     }
     if (err?.status === 429 || /429|rate.?limit|too many/i.test(String(err?.message || ''))) {
       console.warn('[ImageService] Rate limited — waiting 8s then retrying once…');
