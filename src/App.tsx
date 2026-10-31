@@ -246,6 +246,7 @@ import {
   type ContentImageJobGroup,
   type ContentImageJobStatus,
 } from './lib/contentImageJobs';
+import { finishImageGenProgress } from './lib/imageGenProgress';
 import { buildReviewSnapshot, createReviewLink, fetchReviewSnapshot } from './lib/reviewLinkService';
 import { downloadReviewScriptDocx } from './lib/reviewScriptDocx';
 import { tocRefMapFirstWins } from './lib/playerToc';
@@ -4595,20 +4596,36 @@ export default function App() {
             commitCourse(next);
 
             if (wantsAi) {
-              next = await generateContentSlideImages(next, (done, total) => {
-                if (!stillActive()) return;
-                setImageProgress({
-                  isRunning: done < total,
-                  isDone: done >= total && total > 0,
-                  current: done,
-                  total,
-                  error: null,
-                });
-              }).then(r => r.course);
-              if (coverUrl) next = { ...next, coverImage: coverUrl };
-              next = seedFloatingFromCourse(next) || next;
+              const imageResult = await generateContentSlideImages(
+                next,
+                (applied, total, latest) => {
+                  if (!stillActive()) return;
+                  if (latest) {
+                    const cleaned = stripCourseAutoPromotedFloating(latest);
+                    const withCover = coverUrl ? { ...cleaned, coverImage: cleaned.coverImage || coverUrl } : cleaned;
+                    const seeded = seedFloatingFromCourse(withCover) || withCover;
+                    commitCourse(seeded);
+                    next = seeded;
+                  }
+                  setImageProgress({
+                    isRunning: true,
+                    isDone: false,
+                    current: applied,
+                    total,
+                    error: null,
+                  });
+                },
+                { shouldCancel: () => !stillActive() },
+              );
               if (!stillActive()) return;
+              next = stripCourseAutoPromotedFloating(imageResult.course);
+              if (coverUrl) next = { ...next, coverImage: next.coverImage || coverUrl };
+              next = seedFloatingFromCourse(next) || next;
               commitCourse(next);
+              setImageProgress(finishImageGenProgress(imageResult));
+              if (imageResult.jobsAttempted > 0 && imageResult.jobsApplied === 0 && imageResult.lastError) {
+                showDraftMessage(imageResult.lastError);
+              }
             }
           } catch (err: any) {
             console.warn('[ImageService] Background imagery failed:', err);
@@ -4951,7 +4968,7 @@ export default function App() {
         );
         return;
       }
-      const { course: withImages, jobsAttempted, jobsApplied, lastError } = await generateContentSlideImages(
+      const imageResult = await generateContentSlideImages(
         working,
         (applied, total, latest) => {
           if (latest) {
@@ -4984,20 +5001,12 @@ export default function App() {
         },
       );
       const cancelled = imageGenTokenRef.current !== token;
+      const { course: withImages, jobsAttempted, jobsApplied, lastError } = imageResult;
       working = stripCourseAutoPromotedFloating(withImages);
       setFloatingImagesMap(floatingMapFromCourse(working));
       setCourse(working);
       const failMsg = lastError || 'No image was returned.';
-      if (jobsAttempted > 0) {
-        setImageProgress({
-          isRunning: false,
-          isDone: true,
-          current: jobsApplied,
-          total: jobsAttempted,
-          error: jobsApplied === 0 ? failMsg : (jobsApplied < jobsAttempted ? lastError : null),
-          stopping: false,
-        });
-      }
+      setImageProgress(finishImageGenProgress(imageResult));
       if (cancelled) {
         showDraftMessage(
           jobsApplied > 0

@@ -532,14 +532,14 @@ async function generateImageViaOpenAI(prompt) {
 
   let lastErr = 'No image returned from OpenAI.';
   for (const attempt of attempts) {
-    const orResponse = await fetch('https://api.openai.com/v1/images/generations', {
+    const orResponse = await fetchWithTimeout('https://api.openai.com/v1/images/generations', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${OPENAI_API_KEY}`,
         'Content-Type':  'application/json',
       },
       body: JSON.stringify(attempt.body),
-    });
+    }, OPENAI_IMAGE_TIMEOUT_MS);
     if (!orResponse.ok) {
       const errText = await orResponse.text().catch(() => orResponse.statusText);
       lastErr = `${attempt.model} ${orResponse.status}: ${errText.slice(0, 180)}`;
@@ -561,46 +561,105 @@ async function generateImageViaOpenAI(prompt) {
   throw new Error(`OpenAI image error: ${lastErr}`);
 }
 
+const OPENROUTER_IMAGE_TIMEOUT_MS = 35000;
+const OPENAI_IMAGE_TIMEOUT_MS = 40000;
+/** Stable Gemini image first; preview/2.5 stay as fallbacks if a slug is retired. */
+const OPENROUTER_IMAGE_MODELS = [
+  'google/gemini-3.1-flash-image',
+  'google/gemini-3.1-flash-image-preview',
+  'google/gemini-2.5-flash-image',
+];
+
+async function fetchWithTimeout(url, init, ms) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (err) {
+    if (err?.name === 'AbortError') {
+      throw new Error(`Image provider timed out after ${ms}ms`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function extractOpenRouterChatImage(data) {
+  const message = data?.choices?.[0]?.message;
+  if (message?.images?.length > 0) {
+    const img = message.images[0];
+    return img?.image_url?.url ?? img?.url ?? null;
+  }
+  if (Array.isArray(message?.content)) {
+    for (const part of message.content) {
+      if (part?.type === 'image' || part?.type === 'image_url') {
+        const url = part?.image_url?.url ?? part?.url ?? null;
+        if (url) return url;
+      }
+    }
+  }
+  return null;
+}
+
+function extractOpenRouterImagesApi(data) {
+  const item = data?.data?.[0] || data?.images?.[0];
+  if (!item) return null;
+  if (item.b64_json) {
+    const mime = item.media_type || item.mime_type || 'image/png';
+    return `data:${mime};base64,${item.b64_json}`;
+  }
+  return item?.image_url?.url ?? item?.url ?? null;
+}
+
 async function generateImageViaOpenRouter(prompt, model) {
   const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? '';
   if (!OPENROUTER_API_KEY) return null;
 
-  const orResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+  const headers = {
+    'Authorization':  `Bearer ${OPENROUTER_API_KEY}`,
+    'Content-Type':   'application/json',
+    'HTTP-Referer':   'https://nexcourse.ai',
+    'X-Title':        'NexCourse AI',
+  };
+  const safePrompt = withImageNoTextRule(prompt);
+
+  // Image API is the current OpenRouter path; chat+modalities 404s when a slug
+  // no longer advertises image output, which previously hung the 0/14 toast.
+  const imgRes = await fetchWithTimeout('https://openrouter.ai/api/v1/images', {
     method: 'POST',
-    headers: {
-      'Authorization':  `Bearer ${OPENROUTER_API_KEY}`,
-      'Content-Type':   'application/json',
-      'HTTP-Referer':   'https://nexcourse.ai',
-      'X-Title':        'NexCourse AI',
-    },
+    headers,
     body: JSON.stringify({
       model,
-      messages: [{ role: 'user', content: withImageNoTextRule(prompt) }],
+      prompt: safePrompt,
+      aspect_ratio: '16:9',
+      n: 1,
+    }),
+  }, OPENROUTER_IMAGE_TIMEOUT_MS);
+  if (imgRes.ok) {
+    const fromApi = extractOpenRouterImagesApi(await imgRes.json());
+    if (fromApi) return fromApi;
+  } else {
+    const errText = await imgRes.text().catch(() => imgRes.statusText);
+    console.warn(`[ImageGen] OpenRouter /images ${imgRes.status} (${model}): ${String(errText).slice(0, 180)}`);
+  }
+
+  const orResponse = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: safePrompt }],
       modalities: ['image', 'text'],
     }),
-  });
+  }, OPENROUTER_IMAGE_TIMEOUT_MS);
 
   if (!orResponse.ok) {
     const errText = await orResponse.text().catch(() => orResponse.statusText);
     throw new Error(`OpenRouter image error ${orResponse.status}: ${errText.slice(0, 200)}`);
   }
 
-  const data = await orResponse.json();
-  const message = data?.choices?.[0]?.message;
-  let imageDataUrl = null;
-
-  if (message?.images?.length > 0) {
-    const img = message.images[0];
-    imageDataUrl = img?.image_url?.url ?? img?.url ?? null;
-  } else if (Array.isArray(message?.content)) {
-    for (const part of message.content) {
-      if (part?.type === 'image' || part?.type === 'image_url') {
-        imageDataUrl = part?.image_url?.url ?? part?.url ?? null;
-        if (imageDataUrl) break;
-      }
-    }
-  }
-  return imageDataUrl;
+  return extractOpenRouterChatImage(await orResponse.json());
 }
 
 async function reviewGeneratedImage(imageDataUrl, intended) {
@@ -659,7 +718,7 @@ async function reviewGeneratedImage(imageDataUrl, intended) {
 }
 
 app.post('/api/generate-image', imageRateLimit, async (req, res) => {
-  const { prompt, model = 'google/gemini-3.1-flash-image-preview', intended } = req.body ?? {};
+  const { prompt, model = 'google/gemini-3.1-flash-image', intended } = req.body ?? {};
   if (!prompt?.trim()) {
     return res.status(400).json({ error: 'Missing required field: prompt' });
   }
@@ -680,17 +739,31 @@ app.post('/api/generate-image', imageRateLimit, async (req, res) => {
   const generateOnce = async (p) => {
     let imageDataUrl = null;
     let provider = '';
+    const modelsToTry = [];
+    for (const id of [model, ...OPENROUTER_IMAGE_MODELS]) {
+      if (id && !modelsToTry.includes(id)) modelsToTry.push(id);
+    }
     if (hasOpenRouter) {
-      try {
-        imageDataUrl = await generateImageViaOpenRouter(p, model);
-        provider = 'openrouter';
-      } catch (err) {
-        console.warn('[ImageGen] OpenRouter failed, trying OpenAI fallback:', err.message);
+      for (const modelId of modelsToTry) {
+        try {
+          imageDataUrl = await generateImageViaOpenRouter(p, modelId);
+          if (imageDataUrl) {
+            provider = 'openrouter';
+            break;
+          }
+        } catch (err) {
+          console.warn(`[ImageGen] OpenRouter ${modelId} failed:`, err.message);
+          if (/timed out/i.test(String(err.message || ''))) break;
+        }
       }
     }
     if (!imageDataUrl && hasOpenAI) {
-      imageDataUrl = await generateImageViaOpenAI(p);
-      provider = 'openai-dall-e-3';
+      try {
+        imageDataUrl = await generateImageViaOpenAI(p);
+        provider = 'openai-dall-e-3';
+      } catch (err) {
+        console.warn('[ImageGen] OpenAI fallback failed:', err.message);
+      }
     }
     return { imageDataUrl, provider };
   };

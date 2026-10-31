@@ -25,7 +25,7 @@ export {
   topicBenefitsFromVisual,
 } from '../lib/contentImageJobs';
 
-const DEFAULT_IMAGE_MODEL = 'google/gemini-3.1-flash-image-preview';
+const DEFAULT_IMAGE_MODEL = 'google/gemini-3.1-flash-image';
 
 export { IMAGE_NO_TEXT_RULE };
 
@@ -345,18 +345,33 @@ async function callImageEndpoint(
 ): Promise<string> {
   const execute = async () => {
     const token = getSupabaseAccessToken();
-    const response = await fetch('/api/generate-image', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({
-        prompt: withImageNoTextRule(prompt),
-        model,
-        ...(intended?.trim() ? { intended: intended.trim() } : {}),
-      }),
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 95000);
+    let response: Response;
+    try {
+      response = await fetch('/api/generate-image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          prompt: withImageNoTextRule(prompt),
+          model,
+          ...(intended?.trim() ? { intended: intended.trim() } : {}),
+        }),
+        signal: controller.signal,
+      });
+    } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        const e = new Error('Image generation timed out.') as Error & { status?: number };
+        e.status = 504;
+        throw e;
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({ error: response.statusText }));
