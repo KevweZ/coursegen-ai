@@ -13,6 +13,7 @@
 import React, { useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import ListItem from '@tiptap/extension-list-item';
 import Underline from '@tiptap/extension-underline';
 import { TextStyle } from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
@@ -39,6 +40,23 @@ const HEADING_OPTIONS = [
   { label: 'Heading 2', value: 2 },
   { label: 'Heading 3', value: 3 },
 ] as const;
+
+/** Persist color on <li> so ::marker follows the swatch, not only wrapped text. */
+const ColoredListItem = ListItem.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      color: {
+        default: null,
+        parseHTML: (element: HTMLElement) => element.style.color || null,
+        renderHTML: (attributes: { color?: string | null }) => {
+          if (!attributes.color) return {};
+          return { style: `color: ${attributes.color}` };
+        },
+      },
+    };
+  },
+});
 
 function markdownToHtml(md: string): string {
   if (!md) return '';
@@ -96,7 +114,13 @@ export function RichTextEditor({ value, onChange, placeholder = 'Edit slide cont
   const [headingOpen, setHeadingOpen] = useState(false);
 
   const editor = useEditor({
-    extensions: [StarterKit, Underline, TextStyle, Color],
+    extensions: [
+      StarterKit.configure({ listItem: false }),
+      ColoredListItem,
+      Underline,
+      TextStyle,
+      Color,
+    ],
     content: markdownToHtml(value),
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
@@ -140,6 +164,19 @@ export function RichTextEditor({ value, onChange, placeholder = 'Edit slide cont
     } else {
       editor.chain().focus().setHeading({ level: level as 1 | 2 | 3 }).run();
     }
+  };
+
+  const applyColor = (value: string | null) => {
+    const inList = editor.isActive('listItem') || editor.isActive('bulletList') || editor.isActive('orderedList');
+    const chain = editor.chain().focus();
+    if (!value) {
+      chain.unsetColor();
+      if (inList) chain.updateAttributes('listItem', { color: null });
+    } else {
+      chain.setColor(value);
+      if (inList) chain.updateAttributes('listItem', { color: value });
+    }
+    chain.run();
   };
 
   return (
@@ -212,13 +249,13 @@ export function RichTextEditor({ value, onChange, placeholder = 'Edit slide cont
 
       {/* ── ROW 2: Color palette ── */}
       <div className="flex items-center gap-1.5 flex-wrap bg-slate-800/70 border border-slate-700 rounded-b-xl border-t-0 px-3 py-2">
-        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mr-1">Text Color</span>
+        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mr-1">Color</span>
         {COLORS.map(c => (
           <button
             key={c.value}
             type="button"
             title={c.label}
-            onMouseDown={e => { e.preventDefault(); editor.chain().focus().setColor(c.value).run(); }}
+            onMouseDown={e => { e.preventDefault(); applyColor(c.value); }}
             className="w-5 h-5 rounded-full border-2 border-transparent hover:border-white hover:scale-110 transition-all shrink-0"
             style={{
               backgroundColor: c.value,
@@ -230,7 +267,7 @@ export function RichTextEditor({ value, onChange, placeholder = 'Edit slide cont
         <button
           type="button"
           title="Remove color"
-          onMouseDown={e => { e.preventDefault(); editor.chain().focus().unsetColor().run(); }}
+          onMouseDown={e => { e.preventDefault(); applyColor(null); }}
           className="ml-1 px-2 py-0.5 rounded-md text-[10px] text-slate-500 hover:text-slate-300 hover:bg-slate-700 font-bold transition-colors"
         >
           ✕ Reset

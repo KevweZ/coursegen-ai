@@ -593,16 +593,6 @@ const SlideContent = ({
         },
         ul: ({ node, children, ...props }) => {
           const n = listChildCount(children);
-          if (n === 1) {
-            const only = React.Children.toArray(children).find(c => React.isValidElement(c)) as
-              | React.ReactElement<{ children?: React.ReactNode }>
-              | undefined;
-            return (
-              <p {...props} className={cn('text-lg mb-4', theme === 'light' ? 'text-gray-800' : 'text-gray-200')}>
-                {only?.props.children}
-              </p>
-            );
-          }
           const twoCol = !hasSideImage && n >= 4;
           return (
             <ul
@@ -721,16 +711,9 @@ const SmartContent = ({ content, className, theme, accentColor }: { content: str
     <ReactMarkdown
       className={className}
       components={{
-        ul: ({ node, children, ...props }) => {
-          const items = React.Children.toArray(children).filter(c => React.isValidElement(c));
-          if (items.length === 1) {
-            const inner = (items[0] as React.ReactElement<{ children?: React.ReactNode }>).props.children;
-            return <p className="mb-4">{inner}</p>;
-          }
-          return (
-            <ul {...props} className="pl-6 space-y-2 list-disc mb-4" style={{ ['--slide-marker' as any]: markerColor }}>{children}</ul>
-          );
-        },
+        ul: ({ node, children, ...props }) => (
+          <ul {...props} className="pl-6 space-y-2 list-disc mb-4" style={{ ['--slide-marker' as any]: markerColor }}>{children}</ul>
+        ),
         ol: ({ node, children, ...props }) => (
           <ol {...props} className="pl-6 space-y-2 list-decimal mb-4" style={{ ['--slide-marker' as any]: markerColor }}>{children}</ol>
         ),

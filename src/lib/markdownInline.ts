@@ -11,6 +11,24 @@ import { coerceOstText } from './formatTabIntroOst';
 
 const isHTML = (str: string): boolean => /<[a-z][\s\S]*>/i.test(str);
 
+/**
+ * Tailwind preflight zeros list-style. Markdown conversion already emits
+ * `class="md-list"`; TipTap HTML from Edit Slide does not. Stamp the class so
+ * discs/numbers survive Save on Overview, tabs, and other HTML OST.
+ */
+export function ensureAuthoredListMarkers(html: string): string {
+  return html.replace(/<(ul|ol)([^>]*)>/gi, (_full, tag: string, attrs: string) => {
+    if (/\bmd-list\b/.test(attrs)) return `<${tag}${attrs}>`;
+    if (/\bclass\s*=\s*"/i.test(attrs)) {
+      return `<${tag}${attrs.replace(/class\s*=\s*"/i, 'class="md-list ')}>`;
+    }
+    if (/\bclass\s*=\s*'/i.test(attrs)) {
+      return `<${tag}${attrs.replace(/class\s*=\s*'/i, "class='md-list ")}>`;
+    }
+    return `<${tag} class="md-list"${attrs}>`;
+  });
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -44,7 +62,7 @@ export function markdownToInlineHtml(text: string | unknown): string {
 export function markdownToHtml(text: string | unknown): string {
   const src = coerceOstText(text);
   if (!src) return '';
-  if (isHTML(src)) return src;
+  if (isHTML(src)) return ensureAuthoredListMarkers(src);
 
   const lines = src.replace(/\r\n/g, '\n').split('\n');
   const out: string[] = [];

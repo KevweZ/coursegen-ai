@@ -310,6 +310,22 @@ button, [role="button"], a { cursor: pointer; }
 .tiptap-editor-wrapper .ProseMirror li > p {
   margin: 0;
 }
+/* Default OST is black on the light slide but uncolored in HTML, so the
+   editor's light ink stays readable. An explicit Black/Dark swatch writes
+   inline #000 / #1e293b — remap only the editor preview, not saved HTML. */
+.tiptap-editor-wrapper .ProseMirror [style*="color: #000000"],
+.tiptap-editor-wrapper .ProseMirror [style*="color:#000000"],
+.tiptap-editor-wrapper .ProseMirror [style*="color: #000;"],
+.tiptap-editor-wrapper .ProseMirror [style*="color:#000;"],
+.tiptap-editor-wrapper .ProseMirror [style*="color: #000 "],
+.tiptap-editor-wrapper .ProseMirror [style*="color: rgb(0, 0, 0)"],
+.tiptap-editor-wrapper .ProseMirror [style*="color:rgb(0, 0, 0)"],
+.tiptap-editor-wrapper .ProseMirror [style*="color: black"],
+.tiptap-editor-wrapper .ProseMirror [style*="color:black"],
+.tiptap-editor-wrapper .ProseMirror [style*="color: #1e293b"],
+.tiptap-editor-wrapper .ProseMirror [style*="color:#1e293b"] {
+  color: #e2e8f0 !important;
+}
 .tiptap-editor-wrapper .ProseMirror p {
   margin-bottom: 0.5rem;
 }
@@ -353,8 +369,19 @@ button, [role="button"], a { cursor: pointer; }
 }
 .rich-slide-content li::marker,
 .prose li::marker,
-.prose :where(li)::marker {
-  color: var(--slide-marker, #0f172a) !important;
+.prose :where(li)::marker,
+.tab-ost-body li::marker,
+ul.md-list li::marker,
+ol.md-list li::marker {
+  color: var(--slide-marker, currentColor);
+}
+.rich-slide-content li[style*="color"]::marker,
+.prose li[style*="color"]::marker,
+.tab-ost-body li[style*="color"]::marker,
+ul.md-list li[style*="color"]::marker,
+ol.md-list li[style*="color"]::marker,
+.tiptap-editor-wrapper .ProseMirror li[style*="color"]::marker {
+  color: inherit;
 }
 .rich-slide-content li > p {
   margin: 0;
@@ -409,18 +436,46 @@ ul.md-list {
   padding-left: 1.35rem;
   margin: 0.4rem 0 0.75rem;
 }
+ol.md-list {
+  list-style-type: decimal !important;
+  list-style-position: outside;
+  padding-left: 1.35rem;
+  margin: 0.4rem 0 0.75rem;
+}
 ul.md-list ul.md-list {
   list-style-type: circle !important;
   margin: 0.2rem 0;
   padding-left: 1.15rem;
 }
-ul.md-list li {
+ul.md-list li,
+ol.md-list li {
   margin: 0.28rem 0;
   padding-left: 0.15rem;
   line-height: 1.45;
 }
-.tab-ost-body ul.md-list {
+.tab-ost-body ul.md-list,
+.tab-ost-body ol.md-list {
   margin-top: 0.15rem;
+}
+/* Authored TipTap <ul>/<ol> (Edit Slide) often lack .md-list until convert. */
+.tab-ost-body ul {
+  list-style-type: disc !important;
+  list-style-position: outside;
+  padding-left: 1.35rem;
+  margin: 0.4rem 0 0.75rem;
+}
+.tab-ost-body ol {
+  list-style-type: decimal !important;
+  list-style-position: outside;
+  padding-left: 1.35rem;
+  margin: 0.4rem 0 0.75rem;
+}
+.tab-ost-body li {
+  margin: 0.28rem 0;
+  line-height: 1.45;
+}
+.tab-ost-body li > p {
+  margin: 0;
 }
 
 /* ── Slide prose: ensure proper spacing after bullet/numbered lists ────── */

@@ -1,0 +1,21 @@
+---
+description: Edit Slide OST lists and colors — authored bullets must survive Save; markers follow ink; dark editor stays readable.
+alwaysApply: true
+---
+
+# Edit Slide OST lists lock (do not regress)
+
+Anthony (2026-11-01): clearing Overview / on-screen text and pasting a new bullet list saved HTML with no discs. Text color did not recolor markers. Picking Black in the dark TipTap editor hid the words (default uncolored slide-black stayed readable).
+
+`npm test` must stay green (`src/lib/markdownInline.test.ts`).
+
+## Invariants (code, not comments)
+
+- **Authored HTML lists keep discs.** TipTap Save emits `<ul><li>` without `md-list`. [`ensureAuthoredListMarkers`](src/lib/markdownInline.ts) stamps `md-list` on HTML in `markdownToHtml`. [`.tab-ost-body ul`](src/index.css) also restores `list-style-type: disc` so Overview / tab OST is not relying on the class alone. Do not pass TipTap HTML through as-is.
+- **Do not collapse a 1-item `<ul>` to a `<p>`.** [`App.tsx`](src/App.tsx) content / SmartContent markdown lists keep `list-disc` even for one bullet.
+- **Marker color follows author ink.** `li::marker` defaults to `--slide-marker`; `li[style*="color"]::marker` uses `inherit`. Edit Slide Color applies `setColor` **and** `updateAttributes('listItem', { color })` via `ColoredListItem`. Do not restore `::marker { color: var(--slide-marker) !important }` — that ignores the swatch.
+- **Black is readable in the editor.** Uncolored text uses the wrapper’s light ink (slide default is still black). Explicit `#000000` / `#1e293b` stay in the HTML for the player; editor CSS remaps those inline colors to `#e2e8f0`. Do not switch the editor to a light canvas just to preview Black.
+
+## How to change this
+
+Change `ensureAuthoredListMarkers` / `RichTextEditor` / the marker CSS and add a failing test first. Prompt-only “keep bullets” notes will drift.
