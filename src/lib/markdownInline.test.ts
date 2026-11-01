@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { ensureAuthoredListMarkers, markdownToHtml } from './markdownInline.ts';
+import { ensureAuthoredListMarkers, markdownToHtml, stampListItemColorFromText } from './markdownInline.ts';
 import { formatTabIntroOst, sanitizeOstText } from './formatTabIntroOst.ts';
 
 test('markdown lists still render with md-list discs', () => {
@@ -61,12 +61,27 @@ test('list markers follow author color instead of locking --slide-marker', () =>
   assert.match(css, /li\[style\*="color"\]::marker[\s\S]{0,80}color:\s*inherit/);
 });
 
+test('inline text color is copied onto list items so markers can inherit it', () => {
+  const html = stampListItemColorFromText(
+    '<ul><li><span style="color: #000000">Ethylene glycol</span></li></ul>',
+  );
+  assert.match(html, /<li style="color: #000000">/);
+  const already = stampListItemColorFromText(
+    '<li style="color: #818cf8"><span style="color: #818cf8">Keep</span></li>',
+  );
+  assert.match(already, /<li style="color: #818cf8">/);
+  const rendered = markdownToHtml(
+    '<ul><li><span style="color: #34d399">Ethylene oxide</span></li></ul>',
+  );
+  assert.match(rendered, /<li style="color: #34d399">/);
+  assert.match(rendered, /<ul class="md-list">/);
+});
+
 test('dark editor remaps Black/Dark so authored slide-black stays readable', () => {
   const css = readFileSync(resolve(process.cwd(), 'src/index.css'), 'utf8');
   assert.match(css, /tiptap-editor-wrapper[\s\S]*color: #000000[\s\S]*#e2e8f0\s*!important/);
   const editor = readFileSync(resolve(process.cwd(), 'src/components/player/RichTextEditor.tsx'), 'utf8');
-  assert.match(editor, /updateAttributes\('listItem'/);
-  assert.match(editor, /@tiptap\/extension-list-item/);
+  assert.match(editor, /stampListItemColorFromText\(editor\.getHTML\(\)\)/);
 });
 
 test('content markdown no longer collapses a one-item list into a paragraph', () => {

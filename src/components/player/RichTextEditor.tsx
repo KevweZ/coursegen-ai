@@ -13,7 +13,6 @@
 import React, { useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import ListItem from '@tiptap/extension-list-item';
 import Underline from '@tiptap/extension-underline';
 import { TextStyle } from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
@@ -22,6 +21,7 @@ import {
   List, ListOrdered, Minus, ChevronDown,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { stampListItemColorFromText } from '../../lib/markdownInline';
 
 const COLORS = [
   { label: 'White',   value: '#ffffff' },
@@ -40,23 +40,6 @@ const HEADING_OPTIONS = [
   { label: 'Heading 2', value: 2 },
   { label: 'Heading 3', value: 3 },
 ] as const;
-
-/** Persist color on <li> so ::marker follows the swatch, not only wrapped text. */
-const ColoredListItem = ListItem.extend({
-  addAttributes() {
-    return {
-      ...this.parent?.(),
-      color: {
-        default: null,
-        parseHTML: (element: HTMLElement) => element.style.color || null,
-        renderHTML: (attributes: { color?: string | null }) => {
-          if (!attributes.color) return {};
-          return { style: `color: ${attributes.color}` };
-        },
-      },
-    };
-  },
-});
 
 function markdownToHtml(md: string): string {
   if (!md) return '';
@@ -114,16 +97,10 @@ export function RichTextEditor({ value, onChange, placeholder = 'Edit slide cont
   const [headingOpen, setHeadingOpen] = useState(false);
 
   const editor = useEditor({
-    extensions: [
-      StarterKit.configure({ listItem: false }),
-      ColoredListItem,
-      Underline,
-      TextStyle,
-      Color,
-    ],
+    extensions: [StarterKit, Underline, TextStyle, Color],
     content: markdownToHtml(value),
     onUpdate: ({ editor }) => {
-      onChange(editor.getHTML());
+      onChange(stampListItemColorFromText(editor.getHTML()));
     },
     editorProps: {
       attributes: {
@@ -167,15 +144,9 @@ export function RichTextEditor({ value, onChange, placeholder = 'Edit slide cont
   };
 
   const applyColor = (value: string | null) => {
-    const inList = editor.isActive('listItem') || editor.isActive('bulletList') || editor.isActive('orderedList');
     const chain = editor.chain().focus();
-    if (!value) {
-      chain.unsetColor();
-      if (inList) chain.updateAttributes('listItem', { color: null });
-    } else {
-      chain.setColor(value);
-      if (inList) chain.updateAttributes('listItem', { color: value });
-    }
+    if (!value) chain.unsetColor();
+    else chain.setColor(value);
     chain.run();
   };
 

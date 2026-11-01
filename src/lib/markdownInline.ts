@@ -29,6 +29,23 @@ export function ensureAuthoredListMarkers(html: string): string {
   });
 }
 
+/** Copy the first inline text color onto <li> so ::marker can inherit it. */
+export function stampListItemColorFromText(html: string): string {
+  return html.replace(/<li\b([^>]*)>([\s\S]*?)<\/li>/gi, (full, attrs: string, inner: string) => {
+    if (/\bstyle\s*=\s*["'][^"']*color\s*:/i.test(attrs)) return full;
+    const color = inner.match(/style\s*=\s*["'][^"']*color\s*:\s*([^;"']+)/i);
+    if (!color) return full;
+    const value = color[1].trim();
+    if (/\bstyle\s*=\s*"/i.test(attrs)) {
+      return `<li${attrs.replace(/style\s*=\s*"/i, `style="color: ${value}; `)}>${inner}</li>`;
+    }
+    if (/\bstyle\s*=\s*'/i.test(attrs)) {
+      return `<li${attrs.replace(/style\s*=\s*'/i, `style='color: ${value}; `)}>${inner}</li>`;
+    }
+    return `<li style="color: ${value}"${attrs}>${inner}</li>`;
+  });
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -62,7 +79,7 @@ export function markdownToInlineHtml(text: string | unknown): string {
 export function markdownToHtml(text: string | unknown): string {
   const src = coerceOstText(text);
   if (!src) return '';
-  if (isHTML(src)) return ensureAuthoredListMarkers(src);
+  if (isHTML(src)) return ensureAuthoredListMarkers(stampListItemColorFromText(src));
 
   const lines = src.replace(/\r\n/g, '\n').split('\n');
   const out: string[] = [];
