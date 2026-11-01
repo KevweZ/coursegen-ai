@@ -5,6 +5,8 @@ import {
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { OutlinePreview } from './OutlinePreview';
+import { ObjectiveReorderButtons } from './ObjectiveReorderButtons';
+import { moveArrayItem } from '../../lib/objectiveOrder';
 import { ConfirmDialog } from './ConfirmDialog';
 import type { CourseOutlineDraft } from '../../services/aiService';
 import type { TerminalObjectiveGroup } from '../../types/course';
@@ -359,6 +361,12 @@ export function CourseReviewPage(props: CourseReviewPageProps) {
                   if (typeof obj === 'string') {
                     return (
                       <div key={i} className="flex gap-3 items-start group">
+                        <ObjectiveReorderButtons
+                          index={i}
+                          count={props.learningObjectives.length}
+                          label={`objective ${i + 1}`}
+                          onMove={(from, to) => props.setLearningObjectives(moveArrayItem(props.learningObjectives, from, to))}
+                        />
                         <div className="mt-2.5 w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0 shadow-[0_0_8px_rgba(99,102,241,0.8)]" />
                         <textarea
                           rows={2}
@@ -385,6 +393,13 @@ export function CourseReviewPage(props: CourseReviewPageProps) {
                   return (
                     <div key={i} className="bg-slate-950/50 border border-indigo-500/20 rounded-xl p-4 space-y-3 relative group">
                       <div className="flex gap-3 items-start">
+                        <ObjectiveReorderButtons
+                          index={i}
+                          count={props.learningObjectives.length}
+                          label={`terminal objective ${i + 1}`}
+                          className="mt-6"
+                          onMove={(from, to) => props.setLearningObjectives(moveArrayItem(props.learningObjectives, from, to))}
+                        />
                         <div className="mt-2.5 w-2 h-2 rounded-full bg-indigo-400 shrink-0" />
                         <div className="flex-1 space-y-1">
                           <p className="text-xs font-bold text-indigo-400 uppercase tracking-wider">Terminal Objective</p>
@@ -411,6 +426,17 @@ export function CourseReviewPage(props: CourseReviewPageProps) {
                         <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Enabling Objectives</p>
                         {tObj.enablingObjectives.map((enablingObj, eIdx) => (
                           <div key={eIdx} className="flex gap-2 items-start group/enabling">
+                            <ObjectiveReorderButtons
+                              index={eIdx}
+                              count={tObj.enablingObjectives.length}
+                              label={`enabling objective ${eIdx + 1}`}
+                              className="mt-1"
+                              onMove={(from, to) => {
+                                const next = [...props.learningObjectives];
+                                next[i] = { ...tObj, enablingObjectives: moveArrayItem(tObj.enablingObjectives, from, to) };
+                                props.setLearningObjectives(next);
+                              }}
+                            />
                             <div className="mt-2 text-slate-600 shrink-0">↳</div>
                             <textarea
                               rows={3}

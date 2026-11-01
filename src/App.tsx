@@ -247,6 +247,8 @@ import {
   type ContentImageJobStatus,
 } from './lib/contentImageJobs';
 import { finishImageGenProgress } from './lib/imageGenProgress';
+import { moveArrayItem } from './lib/objectiveOrder';
+import { ObjectiveReorderButtons } from './components/builder/ObjectiveReorderButtons';
 import { isApiColdStart, waitForApiWarm } from './lib/apiWarmup';
 import { buildReviewSnapshot, createReviewLink, fetchReviewSnapshot } from './lib/reviewLinkService';
 import { downloadReviewScriptDocx } from './lib/reviewScriptDocx';
@@ -9350,7 +9352,7 @@ export default function App() {
                         <div className="space-y-3">
                           <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">Course objectives</label>
                           <p className="text-[11px] text-slate-400 leading-relaxed">
-                            Parent fields are terminal objectives; nested fields are enabling objectives. Promote an enabling item to make it its own parent without regenerating the course.
+                            Parent fields are terminal objectives; nested fields are enabling objectives. Promote turns an enabling item into its own terminal. Use the arrows to reorder, then Save — no need to regenerate.
                           </p>
                           {(Array.isArray((editingSlide as any)._objectives) ? (editingSlide as any)._objectives : learningObjectives || []).map((obj: any, oi: number) => {
                             const term = typeof obj === 'string' ? obj : (obj?.terminalObjective || '');
@@ -9369,7 +9371,15 @@ export default function App() {
                             return (
                               <div key={oi} className="rounded-xl border border-slate-700 bg-slate-950 p-3 space-y-2">
                                 <div className="flex items-center justify-between gap-2">
-                                  <label className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">Objective {oi + 1} (parent)</label>
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <ObjectiveReorderButtons
+                                      index={oi}
+                                      count={readList().length}
+                                      label={`terminal objective ${oi + 1}`}
+                                      onMove={(from, to) => writeList(moveArrayItem(readList(), from, to))}
+                                    />
+                                    <label className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">Objective {oi + 1} (parent)</label>
+                                  </div>
                                   <button
                                     type="button"
                                     onClick={() => writeList(readList().filter((_, idx) => idx !== oi))}
@@ -9394,6 +9404,17 @@ export default function App() {
                                 />
                                 {enablers.map((en, ei) => (
                                   <div key={ei} className="flex items-start gap-1.5">
+                                    <ObjectiveReorderButtons
+                                      index={ei}
+                                      count={enablers.length}
+                                      label={`enabling objective ${ei + 1}`}
+                                      onMove={(from, to) => {
+                                        const list = readList();
+                                        const prev = asGroup(list[oi]);
+                                        list[oi] = { ...prev, enablingObjectives: moveArrayItem(prev.enablingObjectives, from, to) };
+                                        writeList(list);
+                                      }}
+                                    />
                                     <input
                                       value={en}
                                       onChange={(e) => {
