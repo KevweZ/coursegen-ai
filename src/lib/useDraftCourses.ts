@@ -28,6 +28,7 @@ import {
   dataUrlToBlob,
   blobToDataUrl,
   extractHeavyMediaToBlobs,
+  mergeDraftAssetPaths,
   withAssetMime,
   addPlayableUrls,
   narrationRecordsToBlobs,
@@ -348,7 +349,9 @@ async function writeDraftAssets(
     });
   }
 
-  const paths = [...new Set([...prevPaths, ...converted.map(c => c.path)])];
+  const incomingPaths = converted.map(c => c.path);
+  const paths = mergeDraftAssetPaths(prevPaths, incomingPaths);
+  const drop = prevPaths.filter(p => !paths.includes(p));
   const db = await openDraftsDb();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction([STORE_ASSET_BLOBS, STORE_ASSETS], 'readwrite');
@@ -356,6 +359,9 @@ async function writeDraftAssets(
     const mans = tx.objectStore(STORE_ASSETS);
     for (const { path, blob } of converted) {
       blobStore.put(blob, assetBlobKey(key, path));
+    }
+    for (const path of drop) {
+      blobStore.delete(assetBlobKey(key, path));
     }
     mans.put({ __nexcourseAssetManifest: 1, paths }, key);
     tx.oncomplete = () => resolve();
@@ -1072,7 +1078,7 @@ export function useDraftCourses(
           error: 'Narration was generated but could not be packed for storage. Try saving again.',
         };
       }
-      if (assets && Object.keys(assets).length) {
+      if (assets) {
         await writeDraftAssets(userId, meta.id, assets, onProgress);
       }
       await idbPut(STORE_PAYLOAD, payloadKey(userId, meta.id), snapshot);
@@ -1128,7 +1134,7 @@ export function useDraftCourses(
           error: 'Narration was generated but could not be packed for storage. Try Update Draft again.',
         };
       }
-      if (assets && Object.keys(assets).length) {
+      if (assets) {
         await writeDraftAssets(userId, id, assets, onProgress);
       }
       await idbPut(STORE_PAYLOAD, payloadKey(userId, id), snapshot);

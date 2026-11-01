@@ -11,6 +11,22 @@ import type { FloatingImage } from '../types/course';
 /** Auto-promoted ids from the brief movable-image experiment */
 const PROMOTED_ID = /^(fi-promo-|fi-ai-|fi-src-)/;
 
+/** Drop `undefined` so JSON/draft shells omit deleted imageUrl instead of keeping a hole. */
+export function omitUndefinedDeep<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => omitUndefinedDeep(item)) as T;
+  }
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+      if (nested === undefined) continue;
+      out[key] = omitUndefinedDeep(nested);
+    }
+    return out as T;
+  }
+  return value;
+}
+
 export function isAutoPromotedFloating(img: FloatingImage): boolean {
   return PROMOTED_ID.test(String(img?.id || ''));
 }

@@ -47,16 +47,52 @@ export function detachHeavyMedia(course: any): MediaMap {
   return map;
 }
 
+function mediaPathParts(path: string): string[] {
+  return path.replace(/\[(\d+)\]/g, '.$1').split('.').filter(Boolean);
+}
+
+/**
+ * True when the shell already has this field (including `null` placeholders
+ * left by detach). False when the author deleted the image — do not create it.
+ */
+export function hasOwnMediaPath(root: any, path: string): boolean {
+  const parts = mediaPathParts(path);
+  if (!parts.length) return false;
+  let cur = root;
+  for (let i = 0; i < parts.length; i++) {
+    if (cur == null || typeof cur !== 'object') return false;
+    const p = parts[i];
+    if (!Object.prototype.hasOwnProperty.call(cur, p)) return false;
+    cur = cur[p];
+  }
+  return true;
+}
+
+/**
+ * Image keys on a new save replace the previous set. Leftover audio may stay
+ * so a missed extract does not wipe narration blobs.
+ */
+export function mergeDraftAssetPaths(prevPaths: string[], incomingPaths: string[]): string[] {
+  const incoming = incomingPaths.filter(p => typeof p === 'string' && p.length > 0);
+  const incomingSet = new Set(incoming);
+  const keepAudio = prevPaths.filter(p => typeof p === 'string' && isAudioAssetPath(p) && !incomingSet.has(p));
+  return [...new Set([...keepAudio, ...incoming])];
+}
+
 /** Put media back onto a course object (mutates). */
 export function attachHeavyMedia(course: any, map: MediaMap): void {
   if (!course || !map.size) return;
   for (const [path, url] of map) {
+    // Audio keys can land on slides that never stored a null placeholder.
+    // Image keys must already exist on the shell — leftover IndexedDB/cloud
+    // blobs must not resurrect a deleted or Crop/Move-promoted imageUrl.
+    if (!isAudioAssetPath(path) && !hasOwnMediaPath(course, path)) continue;
     setByPath(course, path, url);
   }
 }
 
 function setByPath(root: any, path: string, value: string) {
-  const parts = path.replace(/\[(\d+)\]/g, '.$1').split('.').filter(Boolean);
+  const parts = mediaPathParts(path);
   if (!parts.length) return;
   if (parts.length === 1) {
     root[parts[0]] = value;
@@ -454,7 +490,10 @@ export function applyNarrationUrls(
       }),
     })),
   };
-  for (const [path, url] of pathUrl) setByPath(next, path, url);
+  for (const [path, url] of pathUrl) {
+    if (!isAudioAssetPath(path) && !hasOwnMediaPath(next, path)) continue;
+    setByPath(next, path, url);
+  }
   return { course: next, synthetic };
 }
 

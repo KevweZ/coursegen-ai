@@ -220,7 +220,7 @@ import { TrialInvitePanel } from './components/TrialInvitePanel';
 
 import { FloatingImage } from './types/course';
 import { floatingFromFile } from './lib/floatingMedia';
-import { stripCourseAutoPromotedFloating, floatingMapFromCourse } from './lib/promoteSlideImages';
+import { stripCourseAutoPromotedFloating, floatingMapFromCourse, omitUndefinedDeep } from './lib/promoteSlideImages';
 import { sanitizeCourseTitles } from './lib/splitCourseTitle';
 import {
   HUB_SLIDE_ID,
@@ -5265,7 +5265,7 @@ export default function App() {
         modules: (prev.modules || []).map((mod: any) => ({
           ...mod,
           slides: (mod.slides || []).map((s: any) =>
-            slidesMatchId(s.id, id) ? { ...s, ...updates } : s
+            slidesMatchId(s.id, id) ? omitUndefinedDeep({ ...s, ...updates }) : s
           ),
         })),
       };
@@ -5569,7 +5569,7 @@ export default function App() {
           ...mod,
           slides: (mod.slides || []).map((s: any) => {
             if (!slidesMatchId(s.id, slideId)) return s;
-            return clear({ ...s, floatingMedia: [...(s.floatingMedia || []), newImg] });
+            return omitUndefinedDeep(clear({ ...s, floatingMedia: [...(s.floatingMedia || []), newImg] }));
           }),
         })),
       };
