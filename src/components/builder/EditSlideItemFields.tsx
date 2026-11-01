@@ -5,7 +5,11 @@
 import React from 'react';
 import { coerceOstText, sanitizeOstText } from '../../lib/formatTabIntroOst';
 import { CAROUSEL_CARD_HEX, carouselCardHex } from '../../lib/colorContrast';
-import { quizScenarioText } from '../../lib/knowledgeCheckOst';
+import {
+  applyKnowledgeCheckEdits,
+  knowledgeCheckEditQuestions,
+  setKnowledgeCheckCorrect,
+} from '../../lib/knowledgeCheckOst';
 import { inferChoiceCardsMode } from '../interactions/ChoiceCardsInteraction';
 
 interface Props {
@@ -383,99 +387,125 @@ export function EditSlideItemFields({ slide, onPatch, getSlide }: Props) {
     );
   }
 
-  if (QUIZ_TYPES.has(type)) {
-    const d = slide.data || {};
-    const options: any[] = Array.isArray(d.options) ? d.options : [];
-    const question = d.questionText || d.prompt || d.question || '';
+  if (QUIZ_TYPES.has(type) || type === 'knowledge-check') {
+    const current = live();
+    const questions = knowledgeCheckEditQuestions(current);
     const isTf = type === 'true-false';
     const multi = type === 'multiple-answers' || type === 'multiple-answer';
+    const commit = (nextQuestions: typeof questions, extra?: { scenarioText?: string; feedback?: string }) => {
+      onPatch(applyKnowledgeCheckEdits(live(), nextQuestions, extra));
+    };
+    const scenario = String(questions[0]?.scenarioText || '');
+    const feedback = String(questions[0]?.feedback || '');
     return (
       <div className="space-y-3">
         <label className={labelClass}>Question &amp; answers</label>
-        <textarea
-          rows={3}
-          value={quizScenarioText({ data: d })}
-          onChange={(e) => patchData(live(), { scenarioText: e.target.value }, onPatch)}
-          className={areaClass}
-          placeholder="Optional situation / short story the learner reads before the question"
-        />
-        <textarea
-          rows={2}
-          value={question}
-          onChange={(e) => patchData(live(), { questionText: e.target.value }, onPatch)}
-          className={areaClass}
-          placeholder="Question text"
-        />
-        {options.map((opt, i) => {
-          const correct = !!(opt.isCorrect || opt.correct);
-          return (
-            <div key={opt.id || i} className="rounded-xl border border-slate-700 bg-slate-950 p-3 space-y-2">
-              <div className="flex items-center gap-2">
-                <input
-                  type={multi ? 'checkbox' : 'radio'}
-                  name="quiz-correct"
-                  checked={correct}
-                  onChange={() => {
-                    const next = options.map((o, j) => {
-                      if (multi) return j === i ? { ...o, isCorrect: !correct, correct: !correct } : o;
-                      return { ...o, isCorrect: j === i, correct: j === i };
-                    });
-                    patchData(live(), { options: next }, onPatch);
-                  }}
-                  className="w-4 h-4 accent-emerald-500"
-                  title={multi ? 'Mark as a correct answer' : 'Mark as the correct answer'}
-                />
-                <span className="text-[10px] font-bold text-slate-500 uppercase">
-                  {correct ? 'Correct' : 'Choice'}
-                </span>
-                {!isTf && options.length > 2 && (
-                  <button
-                    type="button"
-                    onClick={() => patchData(live(), { options: options.filter((_, j) => j !== i) }, onPatch)}
-                    className="ml-auto text-[10px] font-bold text-rose-400 hover:text-rose-300"
-                  >
-                    Remove
-                  </button>
-                )}
-              </div>
-              <textarea
-                rows={2}
-                value={coerceOstText(opt.text)}
-                onChange={(e) => {
-                  const next = [...options];
-                  next[i] = { ...next[i], text: e.target.value };
-                  patchData(live(), { options: next }, onPatch);
+        <p className="text-[11px] text-slate-500 leading-relaxed">
+          These are the stem and choices on the slide. Mark the correct answer
+          {multi ? 's (this is a select-all question)' : ''} — no need to regenerate.
+        </p>
+        {questions.map((q, qi) => (
+          <div key={qi} className="space-y-2">
+            {questions.length > 1 && (
+              <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-300">
+                Question {qi + 1} of {questions.length}
+              </p>
+            )}
+            <textarea
+              rows={3}
+              value={q.questionText || ''}
+              onChange={(e) => {
+                const next = questions.map((item, idx) =>
+                  idx === qi ? { ...item, questionText: e.target.value } : item
+                );
+                commit(next);
+              }}
+              className={areaClass}
+              placeholder="Question text"
+            />
+            {(q.options || []).map((opt, i) => {
+              const correct = !!(opt.isCorrect || opt.correct);
+              return (
+                <div key={opt.id || i} className="rounded-xl border border-slate-700 bg-slate-950 p-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type={multi ? 'checkbox' : 'radio'}
+                      name={`quiz-correct-${qi}`}
+                      checked={correct}
+                      onChange={() => commit(setKnowledgeCheckCorrect(questions, qi, i, multi))}
+                      className="w-4 h-4 accent-emerald-500"
+                      title={multi ? 'Mark as a correct answer' : 'Mark as the correct answer'}
+                    />
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">
+                      {correct ? 'Correct' : 'Choice'}
+                    </span>
+                    {!isTf && (q.options || []).length > 2 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = questions.map((item, idx) =>
+                            idx === qi
+                              ? { ...item, options: (item.options || []).filter((_, j) => j !== i) }
+                              : item
+                          );
+                          commit(next);
+                        }}
+                        className="ml-auto text-[10px] font-bold text-rose-400 hover:text-rose-300"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  <textarea
+                    rows={2}
+                    value={coerceOstText(opt.text)}
+                    onChange={(e) => {
+                      const next = questions.map((item, idx) => {
+                        if (idx !== qi) return item;
+                        const options = [...(item.options || [])];
+                        options[i] = { ...options[i], text: e.target.value };
+                        return { ...item, options };
+                      });
+                      commit(next);
+                    }}
+                    className={areaClass}
+                    placeholder={`Answer ${i + 1}`}
+                    disabled={isTf}
+                  />
+                </div>
+              );
+            })}
+            {!isTf && (q.options || []).length < 6 && (
+              <button
+                type="button"
+                onClick={() => {
+                  const opts = q.options || [];
+                  const id = String.fromCharCode(97 + opts.length);
+                  const next = questions.map((item, idx) =>
+                    idx === qi
+                      ? { ...item, options: [...opts, { id, text: '', isCorrect: false }] }
+                      : item
+                  );
+                  commit(next);
                 }}
-                className={areaClass}
-                placeholder={`Answer ${i + 1}`}
-                disabled={isTf}
-              />
-            </div>
-          );
-        })}
-        {!isTf && options.length < 6 && (
-          <button
-            type="button"
-            onClick={() => {
-              const id = String.fromCharCode(97 + options.length);
-              patchData(live(), {
-                options: [...options, { id, text: '', isCorrect: false }],
-              }, onPatch);
-            }}
-            className="text-[11px] font-bold text-indigo-300 hover:text-indigo-200"
-          >
-            + Add answer choice
-          </button>
-        )}
-        {Array.isArray(d.questions) && d.questions.length > 1 && (
-          <p className="text-[11px] text-slate-500 leading-relaxed">
-            This slide has {d.questions.length} questions. The fields above edit question 1; remaining questions are on the learner screen in order.
-          </p>
-        )}
+                className="text-[11px] font-bold text-indigo-300 hover:text-indigo-200"
+              >
+                + Add answer choice
+              </button>
+            )}
+          </div>
+        ))}
         <textarea
           rows={2}
-          value={coerceOstText(d.feedback)}
-          onChange={(e) => patchData(live(), { feedback: e.target.value }, onPatch)}
+          value={scenario}
+          onChange={(e) => commit(questions, { scenarioText: e.target.value, feedback })}
+          className={areaClass}
+          placeholder="Optional situation the learner reads before the question"
+        />
+        <textarea
+          rows={2}
+          value={feedback}
+          onChange={(e) => commit(questions, { scenarioText: scenario, feedback: e.target.value })}
           className={areaClass}
           placeholder="Feedback after submit (optional)"
         />
@@ -609,6 +639,15 @@ export function sanitizeInteractionOstOnSave(slide: any): any {
   }
   if (Array.isArray(d.options)) {
     d.options = d.options.map((o: any) => ({ ...o, text: o.text != null ? clean(o.text) : o.text }));
+  }
+  if (d.questionText != null) d.questionText = clean(d.questionText);
+  if (Array.isArray(s.interactions) && s.interactions[0] && typeof s.interactions[0] === 'object') {
+    const ix = { ...s.interactions[0] };
+    if (ix.questionText != null) ix.questionText = clean(ix.questionText);
+    if (Array.isArray(ix.options)) {
+      ix.options = ix.options.map((o: any) => ({ ...o, text: o.text != null ? clean(o.text) : o.text }));
+    }
+    s.interactions = [ix, ...s.interactions.slice(1)];
   }
   return s;
 }

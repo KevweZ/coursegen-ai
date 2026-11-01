@@ -255,6 +255,131 @@ export function quizQuestionList(source: any): QuizQuestionItem[] {
   return one ? [one] : [];
 }
 
+export const QUIZ_EDIT_TYPES = new Set([
+  'quiz',
+  'multiple-choice',
+  'multiple-answers',
+  'multiple-answer',
+  'true-false',
+  'knowledge-check',
+]);
+
+export function isQuizKnowledgeCheckType(type?: string): boolean {
+  return QUIZ_EDIT_TYPES.has(String(type || ''));
+}
+
+function asEditOptions(options: any[] | undefined): any[] {
+  return (options || []).map((o, i) => {
+    if (typeof o === 'string') {
+      return { id: String.fromCharCode(97 + i), text: o, isCorrect: false };
+    }
+    const text = String(o?.text || o?.label || '').trim();
+    return {
+      ...o,
+      id: o?.id || String.fromCharCode(97 + i),
+      text,
+      isCorrect: !!(o?.isCorrect || o?.correct),
+    };
+  });
+}
+
+const EMPTY_KC_OPTIONS = [
+  { id: 'a', text: '', isCorrect: true },
+  { id: 'b', text: '', isCorrect: false },
+  { id: 'c', text: '', isCorrect: false },
+  { id: 'd', text: '', isCorrect: false },
+];
+
+/** Question + choices for Edit Slide — prefers interactions[0] (player source) over data. */
+export function knowledgeCheckEditQuestions(slide: any): QuizQuestionItem[] {
+  const listed = quizQuestionList(slide?.interactions?.[0] || slide?.data || slide);
+  if (listed.length) {
+    return listed.map(q => ({
+      ...q,
+      options: asEditOptions(q.options),
+    }));
+  }
+  const raw = slide?.interactions?.[0] || slide?.data || {};
+  const questionText = String(raw.questionText || raw.prompt || raw.question || '').trim();
+  const options = asEditOptions(raw.options);
+  if (questionText || options.length) {
+    return [{
+      questionText,
+      options: options.length >= 2 ? options : EMPTY_KC_OPTIONS.map(o => ({ ...o })),
+      feedback: raw.feedback != null ? String(raw.feedback) : undefined,
+      scenarioText: quizScenarioText(slide) || undefined,
+    }];
+  }
+  return [{
+    questionText: '',
+    options: EMPTY_KC_OPTIONS.map(o => ({ ...o })),
+    scenarioText: quizScenarioText(slide) || undefined,
+  }];
+}
+
+function quizPayloadFromQuestions(
+  questions: QuizQuestionItem[],
+  extra?: { scenarioText?: string; feedback?: string },
+): Record<string, unknown> {
+  const first = questions[0] || { questionText: '', options: [] as any[] };
+  const scenarioText = extra?.scenarioText ?? first.scenarioText ?? '';
+  const feedback = extra?.feedback ?? first.feedback ?? '';
+  const payload: Record<string, unknown> = {
+    questionText: first.questionText,
+    prompt: first.questionText,
+    options: first.options,
+    scenarioText,
+    feedback,
+    questions: questions.length > 1 ? questions : undefined,
+  };
+  return payload;
+}
+
+/**
+ * Write edited KC questions to both `data` and `interactions[0]` so the player
+ * (which prefers interactions[0]) and QC/review (which read data) stay in sync.
+ */
+export function applyKnowledgeCheckEdits(
+  slide: any,
+  questions: QuizQuestionItem[],
+  extra?: { scenarioText?: string; feedback?: string },
+): any {
+  const payload = quizPayloadFromQuestions(questions, extra);
+  const next: any = {
+    ...slide,
+    data: { ...(slide?.data || {}), ...payload },
+  };
+  if (Array.isArray(slide?.interactions) && slide.interactions[0] && typeof slide.interactions[0] === 'object') {
+    next.interactions = [
+      { ...slide.interactions[0], ...payload },
+      ...slide.interactions.slice(1),
+    ];
+  } else if (Array.isArray(slide?.interactions) && slide.interactions.length === 0) {
+    next.interactions = [{ ...payload }];
+  }
+  return next;
+}
+
+export function setKnowledgeCheckCorrect(
+  questions: QuizQuestionItem[],
+  questionIndex: number,
+  optionIndex: number,
+  multi: boolean,
+): QuizQuestionItem[] {
+  return questions.map((q, qi) => {
+    if (qi !== questionIndex) return q;
+    const options = (q.options || []).map((o, oi) => {
+      if (multi) {
+        if (oi !== optionIndex) return o;
+        const nextCorrect = !(o.isCorrect || o.correct);
+        return { ...o, isCorrect: nextCorrect, correct: nextCorrect };
+      }
+      return { ...o, isCorrect: oi === optionIndex, correct: oi === optionIndex };
+    });
+    return { ...q, options };
+  });
+}
+
 function hashSeed(seed: string): number {
   let h = 2166136261;
   for (let i = 0; i < seed.length; i++) {

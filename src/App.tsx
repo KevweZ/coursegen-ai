@@ -84,6 +84,7 @@ import {
   shuffleKnowledgeCheckOptions,
   shuffleQuizQuestionOptions,
   optionsWithCorrectFlags,
+  isQuizKnowledgeCheckType,
 } from './lib/knowledgeCheckOst';
 import { slideSkipsNarration } from './lib/enablingCoverage';
 import { collapseChoiceCardsOst, ensureSelectChoicePrompt, normalizeKeyTakeaways } from './lib/hydrateGuards';
@@ -9496,7 +9497,7 @@ export default function App() {
                             <Plus className="w-3.5 h-3.5" /> Add parent objective
                           </button>
                         </div>
-                      ) : (
+                      ) : isQuizKnowledgeCheckType(editingSlide.type) ? null : (
                       <div className="space-y-2">
                         <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest flex items-center justify-between">
                           <span>
@@ -10465,6 +10466,18 @@ export default function App() {
                             setLearningObjectives(cleaned as any);
                           }
                         } else {
+                          if (isQuizKnowledgeCheckType(latest.type)) {
+                            setQuizState((s: any) => {
+                              const next = { ...s };
+                              delete next[latest.id];
+                              delete next[`${latest.id}-ma`];
+                              delete next[`${latest.id}-seq`];
+                              Object.keys(next).forEach((k) => {
+                                if (k.startsWith(`${latest.id}-q-`)) delete next[k];
+                              });
+                              return next;
+                            });
+                          }
                           setCourse((prevCourse: any) => {
                             if (!prevCourse) return prevCourse;
                             const slideToSave = sanitizeInteractionOstOnSave(latest);

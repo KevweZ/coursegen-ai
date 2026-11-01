@@ -1,0 +1,21 @@
+---
+description: Edit Slide for Knowledge Checks must edit the stem and choices, not leftover Overview OST.
+alwaysApply: true
+---
+
+# Knowledge Check Edit Slide lock (do not regress)
+
+Anthony (2026-11-01): Edit on a Knowledge Check still showed leftover “Test your understanding…” on-screen text that is not on the slide, while the stem and choices (e.g. “Base olefins” → “Lower olefins”) could not be changed without regenerate.
+
+`npm test` must stay green (`src/lib/knowledgeCheckOst.test.ts`).
+
+## Invariants (code, not comments)
+
+- **Edit Text shows the question.** For quiz / multiple-choice / multiple-answers / true-false / `knowledge-check`, Edit Slide does **not** render the leftover OST RichTextEditor. [`isQuizKnowledgeCheckType`](src/lib/knowledgeCheckOst.ts) gates that in [`App.tsx`](src/App.tsx).
+- **Stem and choices are the fields.** [`knowledgeCheckEditQuestions`](src/lib/knowledgeCheckOst.ts) reads `interactions[0]` first (player source), then `data`. [`applyKnowledgeCheckEdits`](src/lib/knowledgeCheckOst.ts) writes **both** so Save updates the slide the learner sees.
+- **Correct answers are togglable.** Radio for single-select; checkbox for multiple-answers (`setKnowledgeCheckCorrect`). Do not require Regenerate to change a word or the keyed answer.
+- **Keep the player layout.** Do not put “Test your understanding” back on the KC canvas.
+
+## How to change this
+
+Change the helpers and add a failing test first. Do not “fix” Edit by putting the stem into on-screen text.

@@ -1,8 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
+  applyKnowledgeCheckEdits,
+  knowledgeCheckEditQuestions,
   optionsWithCorrectFlags,
   quizQuestionList,
+  setKnowledgeCheckCorrect,
   shuffleKnowledgeCheckOptions,
   shuffleQuizQuestionOptions,
 } from './knowledgeCheckOst.ts';
@@ -55,4 +60,59 @@ test('numeric correctAnswer is stamped onto options before shuffle', () => {
   });
   const shuffled = shuffleQuizQuestionOptions(listed, 'kc-index');
   assert.equal(shuffled[0].options.find(o => o.isCorrect)?.text, 'HDPE');
+});
+
+test('Edit Slide reads KC stem from interactions and writes back to both stores', () => {
+  const slide = {
+    type: 'quiz',
+    title: 'Knowledge Check: Olefin Products and Applications',
+    content: 'Test your understanding of steam cracking.',
+    data: {},
+    interactions: [{
+      questionText: "Which statement BEST DESCRIBES the term 'base olefins' in steam cracking?",
+      options: [
+        { id: 'a', text: 'Base olefins are the primary C2 and C3 products.', isCorrect: true },
+        { id: 'b', text: 'Base olefins are heavy fuel oil byproducts.', isCorrect: false },
+        { id: 'c', text: 'Base olefins are secondary products such as butadiene.', isCorrect: false },
+        { id: 'd', text: 'Base olefins are aromatic compounds in boiler fuel.', isCorrect: false },
+      ],
+    }],
+  };
+  const listed = knowledgeCheckEditQuestions(slide);
+  assert.match(listed[0].questionText, /base olefins/i);
+  assert.equal(listed[0].options.length, 4);
+  listed[0].questionText = listed[0].questionText.replace(/base olefins/gi, 'Lower olefins');
+  listed[0].options[0].text = listed[0].options[0].text.replace(/Base olefins/g, 'Lower olefins');
+  const saved = applyKnowledgeCheckEdits(slide, listed);
+  assert.match(saved.data.questionText, /Lower olefins/);
+  assert.match(saved.interactions[0].questionText, /Lower olefins/);
+  assert.match(saved.interactions[0].options[0].text, /Lower olefins/);
+  assert.equal(saved.interactions[0].options[0].isCorrect, true);
+});
+
+test('single-select toggle marks one correct; multiple-answers can mark two', () => {
+  const qs = knowledgeCheckEditQuestions({
+    type: 'quiz',
+    data: {
+      questionText: 'Pick one',
+      options: [
+        { id: 'a', text: 'A', isCorrect: true },
+        { id: 'b', text: 'B', isCorrect: false },
+        { id: 'c', text: 'C', isCorrect: false },
+      ],
+    },
+  });
+  const single = setKnowledgeCheckCorrect(qs, 0, 1, false);
+  assert.equal(single[0].options.filter(o => o.isCorrect).map(o => o.id).join(), 'b');
+  const multi = setKnowledgeCheckCorrect(single, 0, 2, true);
+  assert.deepEqual(multi[0].options.filter(o => o.isCorrect).map(o => o.id).sort(), ['b', 'c']);
+});
+
+test('Edit Slide hides leftover KC OST and binds question fields', () => {
+  const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+  assert.match(app, /isQuizKnowledgeCheckType\(editingSlide\.type\) \? null/);
+  const fields = readFileSync(resolve(process.cwd(), 'src/components/builder/EditSlideItemFields.tsx'), 'utf8');
+  assert.match(fields, /knowledgeCheckEditQuestions/);
+  assert.match(fields, /applyKnowledgeCheckEdits/);
+  assert.match(fields, /setKnowledgeCheckCorrect/);
 });
