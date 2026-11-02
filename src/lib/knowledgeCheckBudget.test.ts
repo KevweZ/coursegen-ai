@@ -69,6 +69,47 @@ test('post-hydrate budget clusters leftover checks before the summary and caps p
   assert.equal(next.modules[0].slides.at(-1).type, 'key-takeaways');
 });
 
+test('budget keeps one Module Summary and the richer takeaway cards', () => {
+  const next = ensureKnowledgeCheckBudget({
+    learningObjectives: [{ terminalObjective: 'Explain auxiliary systems', enablingObjectives: ['Quench', 'Steam'] }],
+    modules: [{
+      id: 'm4',
+      title: 'Auxiliary Systems',
+      slides: [
+        { id: 'a', type: 'content', title: 'Quench Oil' },
+        {
+          id: 'thin',
+          type: 'key-takeaways',
+          title: 'Module Summary: Auxiliary Systems Overview',
+          data: { objectives: [{ id: '1', label: 'Quench oil separates heat' }, { id: '2', label: 'Quench water cools gas' }] },
+        },
+        { id: 'k1', type: 'quiz', title: 'Knowledge Check: Quench' },
+        {
+          id: 'rich',
+          type: 'key-takeaways',
+          title: 'Module Summary',
+          data: {
+            objectives: [
+              { id: '1', label: 'The quench oil tower rapidly cools cracked gas leaving the furnace and returns cooled oil for continuous heat removal.' },
+              { id: '2', label: 'Dilution steam is generated from treated condensate and injected into furnace coils to control residence time.' },
+            ],
+          },
+        },
+      ],
+    }],
+  }, {
+    includeKnowledgeChecks: true,
+    knowledgeCheckMode: 'per-module',
+    knowledgeCheckCount: 1,
+    quizActivityTypes: ['quiz'],
+    objectives: [{ terminalObjective: 'Explain auxiliary systems', enablingObjectives: ['Quench', 'Steam'] }],
+  });
+  const summaries = next.modules[0].slides.filter((s: any) => s.type === 'key-takeaways');
+  assert.equal(summaries.length, 1);
+  assert.equal(summaries[0].id, 'rich');
+  assert.equal(next.modules[0].slides.at(-1).id, 'rich');
+});
+
 test('budget fill never inserts a knowledge check without a question payload', () => {
   const next = ensureKnowledgeCheckBudget({
     learningObjectives: [{ terminalObjective: 'T', enablingObjectives: ['A'] }],

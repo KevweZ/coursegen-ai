@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  collapseDuplicateModuleSummaries,
   ensureEnablingSlideCoverage,
   isKnowledgeCheckSlide,
   MAX_TEACHING_SLIDES_PER_ENABLING,
@@ -62,4 +63,50 @@ test('knowledge checks never keep spoken narration', () => {
   assert.equal(next.voiceOverText, '');
   assert.equal(next.narration, '');
   assert.equal(next.voiceOverUrl, undefined);
+});
+
+test('one Module Summary per module keeps the detailed cards and distinct knowledge checks', () => {
+  const next = collapseDuplicateModuleSummaries({
+    modules: [{
+      id: 'm4',
+      slides: [
+        { id: 'teach', type: 'content', title: 'Quench Oil Tower', content: '- Quench oil removes heat from cracked gas' },
+        {
+          id: 'thin',
+          type: 'key-takeaways',
+          title: 'Module Summary: Auxiliary Systems Overview',
+          data: {
+            objectives: [
+              { id: '1', label: 'Quench oil separates heat and recovered hydrocarbons' },
+              { id: '2', label: 'Quench water cools gas to compressor entry point' },
+              { id: '3', label: 'Dilution steam prevents coke, improves product yield' },
+              { id: '4', label: 'Integrated utility systems ensure stable cracker operation' },
+            ],
+          },
+        },
+        { id: 'kc-a', type: 'quiz', title: 'Knowledge Check: Quench Systems', data: { questionText: 'What does quench oil remove?' } },
+        { id: 'kc-b', type: 'quiz', title: 'Knowledge Check: Utility Systems', data: { questionText: 'Which header is shared?' } },
+        {
+          id: 'rich',
+          type: 'key-takeaways',
+          title: 'Module Summary',
+          data: {
+            objectives: [
+              { id: '1', label: 'The quench oil tower rapidly cools cracked gas leaving the furnace, condenses heavy hydrocarbons such as pyrolysis fuel oil, and circulates cooled oil back to the furnace outlet.' },
+              { id: '2', label: 'The quench water tower condenses dilution steam carried in the cracked gas stream and cools the gas to compressor suction temperature.' },
+              { id: '3', label: 'Dilution steam is generated from recovered and treated process condensate, superheated to furnace inlet conditions, and injected into furnace coils.' },
+              { id: '4', label: 'The cracker complex integrates waste heat boilers for steam generation powering turbine drivers, and cascaded refrigerant circuits for light olefin recovery.' },
+            ],
+          },
+        },
+      ],
+    }],
+  });
+  const slides = next.modules[0].slides;
+  const summaries = slides.filter((s: any) => s.type === 'key-takeaways');
+  assert.equal(summaries.length, 1);
+  assert.equal(summaries[0].id, 'rich');
+  assert.ok(slides.some((s: any) => s.id === 'kc-a'));
+  assert.ok(slides.some((s: any) => s.id === 'kc-b'));
+  assert.ok(slides.some((s: any) => s.id === 'teach'));
 });

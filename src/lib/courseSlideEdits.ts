@@ -1,6 +1,7 @@
 import { slidesMatchId } from './slideRegenMerge';
 import { sanitizeOstText } from './formatTabIntroOst';
 import { moveArrayItem } from './objectiveOrder';
+import { collapseDuplicateModuleSummaries } from './enablingCoverage';
 
 function slideBodyText(slide: any): string {
   const question = String(
@@ -53,8 +54,8 @@ export function dedupeIdenticalModuleSlides(course: any): any {
     changed = true;
     return { ...m, slides: next.slides };
   });
-  if (!changed) return course;
-  return { ...course, modules };
+  const fingerprinted = changed ? { ...course, modules } : course;
+  return collapseDuplicateModuleSummaries(fingerprinted);
 }
 
 export function buildSpecifiedContentSlide(opts: {

@@ -14,6 +14,7 @@ Anthony (2026-11-02): after adding 4.5–4.7, Dilution Steam appeared three time
 - **Insert only new slides.** [`insertSlidesIntoCourse`](src/lib/courseSlideEdits.ts) splices incoming slides; it must not clone the host slide or concatenate the rest of the module. [`slideIdentityFingerprint`](src/lib/courseSlideEdits.ts) skips generated copies of a slide already in that module.
 - **Heal identical copies.** [`dedupeIdenticalModuleSlides`](src/lib/courseSlideEdits.ts) keeps the first payload and drops later clones (fresh ids still count). [`ensureUniqueSlideIds`](src/lib/courseSlideEdits.ts) runs this on load/stamp. Distinct KC stems stay.
 - **No unsolicited checks.** Add content does not inherit Course Settings quiz types. [`generateInsertedContent`](src/services/aiService.ts) emits a knowledge check only when the author picked one.
+- **No unsolicited summaries.** Add content strips `key-takeaways` / `summary` the same way. The module already has its Module Summary; do not insert a second recap.
 - **One Generate.** [`addingContentRef`](src/App.tsx) ignores a second click while the first insert is in flight. Splice from `courseRef.current`.
 - **Background snapshots keep the author list.** [`mergeBackgroundCourseSnapshot`](src/lib/narrationAudio.ts) copies images/audio onto matching ids and must not replace/append the live `modules[].slides` list.
 

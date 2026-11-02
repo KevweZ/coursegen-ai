@@ -106,6 +106,44 @@ test('ensureUniqueSlideIds also drops identical content copies', () => {
   assert.equal(course.modules[0].slides[0].id, 'same');
 });
 
+test('load/insert heals a thin Module Summary beside the detailed cards', () => {
+  const course = ensureUniqueSlideIds({
+    modules: [{
+      slides: [
+        {
+          id: 'thin',
+          type: 'key-takeaways',
+          title: 'Module Summary: Auxiliary Systems Overview',
+          content: '1. Quench oil separates heat and recovered hydrocarbons',
+          data: {
+            objectives: [
+              { id: '1', label: 'Quench oil separates heat and recovered hydrocarbons' },
+              { id: '2', label: 'Quench water cools gas to compressor entry point' },
+            ],
+          },
+        },
+        { id: 'kc', type: 'quiz', title: 'Knowledge Check: Quench Systems', data: { questionText: 'What does quench oil remove from cracked gas?' } },
+        {
+          id: 'rich',
+          type: 'key-takeaways',
+          title: 'Module Summary',
+          content: '1. The quench oil tower rapidly cools cracked gas leaving the furnace.',
+          data: {
+            objectives: [
+              { id: '1', label: 'The quench oil tower rapidly cools cracked gas leaving the furnace, condenses heavy hydrocarbons, and circulates cooled oil back to the furnace outlet.' },
+              { id: '2', label: 'Dilution steam is generated from recovered condensate, superheated, and injected into furnace coils to minimize coke formation.' },
+            ],
+          },
+        },
+      ],
+    }],
+  });
+  const slides = course.modules[0].slides;
+  assert.equal(slides.filter((s: any) => s.type === 'key-takeaways').length, 1);
+  assert.equal(slides.find((s: any) => s.type === 'key-takeaways').id, 'rich');
+  assert.equal(slides.filter((s: any) => s.type === 'quiz').length, 1);
+});
+
 test('moveSlideInCourse swaps within the module and leaves chrome / other modules alone', () => {
   const course = {
     modules: [{
@@ -139,9 +177,16 @@ test('App insert path heals duplicates, blocks a second Generate, and does not i
   const ai = readFileSync(resolve(process.cwd(), 'src/services/aiService.ts'), 'utf8');
   assert.match(ai, /allowQuiz/);
   assert.match(ai, /Do not include knowledge checks unless quiz is listed/);
+  assert.match(ai, /isSummarySlide/);
+  assert.match(ai, /collapseDuplicateModuleSummaries/);
+  assert.match(ai, /Do not include cover, module-overview, key-takeaways, summary/);
   const lock = readFileSync(resolve(process.cwd(), '.cursor/rules/add-content-dedupe-lock.mdc'), 'utf8');
   assert.match(lock, /slideIdentityFingerprint/);
   assert.match(lock, /mergeBackgroundCourseSnapshot/);
+  assert.match(lock, /No unsolicited summaries/);
+  const hydrateLock = readFileSync(resolve(process.cwd(), '.cursor/rules/hydrate-quality-lock.mdc'), 'utf8');
+  assert.match(hydrateLock, /collapseDuplicateModuleSummaries/);
+  assert.match(hydrateLock, /One Module Summary per module/);
 });
 
 test('Edit menu exposes Move up / Move down for authoring slides', () => {

@@ -1,5 +1,6 @@
 import type { TerminalObjectiveGroup } from '../types/course';
 import {
+  collapseDuplicateModuleSummaries,
   isKnowledgeCheckSlide,
   isSummarySlide,
   isTeachingSlide,
@@ -276,5 +277,5 @@ export function ensureKnowledgeCheckBudget<T extends {
     };
   });
 
-  return { ...outline, modules: nextModules };
+  return collapseDuplicateModuleSummaries({ ...outline, modules: nextModules });
 }

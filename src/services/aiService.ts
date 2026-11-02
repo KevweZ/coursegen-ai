@@ -1,6 +1,6 @@
 import { CourseOutline, TerminalObjectiveGroup, ExamConfig, ExamQuestion } from "../types/course";
 import { coerceCarouselColor } from "../lib/colorContrast";
-import { ensureEnablingSlideCoverage, preserveEnablingIndex, normalizeTerminalGroups, slideSkipsNarration, stripSlideNarration, isKnowledgeCheckSlide } from "../lib/enablingCoverage";
+import { ensureEnablingSlideCoverage, preserveEnablingIndex, normalizeTerminalGroups, slideSkipsNarration, stripSlideNarration, isKnowledgeCheckSlide, isSummarySlide, collapseDuplicateModuleSummaries } from "../lib/enablingCoverage";
 import { allocateKnowledgeCheckSlots, alignHydratedSlidesToOutline, ensureKnowledgeCheckBudget } from "../lib/knowledgeCheckBudget";
 import { finalizeHydratedSlide, teachingSlideNeedsRetry, normalizeKeyTakeaways } from "../lib/hydrateGuards";
 import { sanitizeMasteryExamQuestions, examQuestionIsMeta } from "../lib/masteryExam";
@@ -634,7 +634,7 @@ export async function generateCourseOutline(
   const gloss = extractAcronymGlossary(configParams.sourceContent, parsedOutline.description, parsedOutline.title);
   if (parsedOutline.title) parsedOutline.title = shortenCourseTitle(parsedOutline.title, { glossary: gloss });
   if (sourceMode === 'storyboard') {
-    return sanitizeCourseTitles(parsedOutline, { glossary: gloss });
+    return sanitizeCourseTitles(collapseDuplicateModuleSummaries(parsedOutline), { glossary: gloss });
   }
   const withCoverage = ensureEnablingSlideCoverage(parsedOutline, objectives);
   if (Array.isArray(withCoverage.modules)) {
@@ -1073,7 +1073,7 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
   }
 
   // --- Helper: validate and normalize a parsed slide ---
-  function processSlide(slide: any): any[] {
+  function processSlide(slide: any, outlineSlide?: any): any[] {
     if (sourceMode === 'storyboard') {
       slide = remapStoryboardScenarioSlide(slide);
     }
@@ -1175,8 +1175,10 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     }
     // Scenario slides — data will be populated async; skip sync validation here
 
-    // Key-takeaways / module summaries: always use the numbered-card LearningObjectivesSlide format
-    if (slide.type === 'summary' || /module\s+summary|key\s*takeaways?/i.test(slide.title || '')) {
+    // Key-takeaways / module summaries: numbered cards only when the outline
+    // already reserved this slot. Do not retitle a teaching slide into a second recap.
+    const outlineWantsSummary = isSummarySlide(outlineSlide);
+    if (slide.type === 'summary' || slide.type === 'key-takeaways' || outlineWantsSummary) {
       slide.type = 'key-takeaways';
     }
 
@@ -1302,7 +1304,7 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
         return {
           moduleIndex,
           chunkIndex,
-          slides: aligned.flatMap((s, i) => processSlide(preserveEnablingIndex(s, chunk, i))),
+          slides: aligned.flatMap((s, i) => processSlide(preserveEnablingIndex(s, chunk, i), chunk[i])),
         };
       }
     }
@@ -1312,7 +1314,7 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     return {
       moduleIndex,
       chunkIndex,
-      slides: rawSlides.flatMap((s, i) => processSlide(preserveEnablingIndex(s, chunk, i))),
+      slides: rawSlides.flatMap((s, i) => processSlide(preserveEnablingIndex(s, chunk, i), chunk[i])),
     };
   }
 
@@ -1417,7 +1419,7 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     mod.slides = slides;
   }
 
-  return sanitizeCourseTitles(fullCourse, { glossary: gloss });
+  return sanitizeCourseTitles(collapseDuplicateModuleSummaries(fullCourse), { glossary: gloss });
 }
 
 // --- Mastery Quiz Generator ---
@@ -1797,7 +1799,7 @@ Rules:
 - ${auto ? `Return between ${minSlides} and ${maxSlides} slides in slides[].` : `Return exactly ${count} slides in slides[].`}
 - Teaching slides need on-screen bullets AND voiceOverText, both grounded in the SOURCE.
 - Knowledge checks have no narration (voiceOverText "").
-- Do not include cover, module-overview, key-takeaways, or mastery-exam slides.
+- Do not include cover, module-overview, key-takeaways, summary, or mastery-exam slides.
 - Do not include knowledge checks unless quiz is listed in Allowed interaction types.
 - Prefer content / click-reveal / tabbed-horizontal unless the source needs a check.
 - For content slides you may use "bullets": ["..."] instead of content.
@@ -1827,6 +1829,7 @@ Rules:
   if (!allowQuiz) {
     slides = slides.filter((s: any) => !isKnowledgeCheckSlide(s));
   }
+  slides = slides.filter((s: any) => !isSummarySlide(s) && s?.type !== 'cover' && s?.type !== 'module-overview');
   if (!slides.length) {
     throw new Error('The generator did not return any new teaching slides. Paste more of the source text and try again.');
   }

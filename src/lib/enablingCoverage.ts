@@ -78,6 +78,53 @@ export function isSummarySlide(slide: { type?: string; title?: string } | null |
   return /module\s+summary|key\s*takeaways?/i.test(String(slide.title || ''));
 }
 
+function takeawayBlob(slide: any): string {
+  const objs = Array.isArray(slide?.data?.objectives)
+    ? slide.data.objectives
+    : (Array.isArray(slide?.interactions) ? slide.interactions : []);
+  const fromObjs = objs
+    .map((o: any) => `${o?.label || ''} ${o?.content || ''}`)
+    .join(' ');
+  return `${fromObjs} ${slide?.content || ''}`.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/** Prefer the 1–3 sentence Module Summary over a leftover 5–8 word recap. Later wins ties. */
+export function summaryRichness(slide: any): number {
+  const text = takeawayBlob(slide);
+  const words = text ? text.split(' ').filter(Boolean).length : 0;
+  const sentences = (text.match(/[.!?]/g) || []).length;
+  const typed = SUMMARY_TYPES.has(String(slide?.type || '')) ? 100 : 0;
+  return typed + sentences * 1000 + words;
+}
+
+/**
+ * One Module Summary per module. Hydrate / a source recap / Add content can emit a
+ * thin "Module Summary: …" beside the real numbered cards; keep the richer one.
+ * Distinct knowledge checks are not touched.
+ */
+export function collapseDuplicateModuleSummaries<T extends {
+  modules?: Array<{ slides?: any[]; [k: string]: any }>;
+  [k: string]: any;
+}>(course: T): T {
+  if (!course?.modules) return course;
+  let changed = false;
+  const modules = course.modules.map((m: any) => {
+    const slides = Array.isArray(m?.slides) ? m.slides : [];
+    const idxs = slides
+      .map((s: any, i: number) => (isSummarySlide(s) ? i : -1))
+      .filter((i: number) => i >= 0);
+    if (idxs.length <= 1) return m;
+    const best = idxs.reduce((a: number, b: number) => (
+      summaryRichness(slides[b]) >= summaryRichness(slides[a]) ? b : a
+    ));
+    const drop = new Set(idxs.filter((i: number) => i !== best));
+    changed = true;
+    return { ...m, slides: slides.filter((_: any, i: number) => !drop.has(i)) };
+  });
+  if (!changed) return course;
+  return { ...course, modules };
+}
+
 export function isTeachingSlide(slide: { type?: string; title?: string } | null | undefined): boolean {
   if (!slide) return false;
   const type = String(slide.type || '');
