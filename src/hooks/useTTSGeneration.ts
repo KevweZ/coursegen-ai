@@ -57,6 +57,7 @@ function applyJobResults(
   results: TtsJobResultItem[],
   setCourse: SetCourse,
   setSyntheticAudioMap?: (updater: (prev: Record<string, string>) => Record<string, string>) => void,
+  spokenById?: Map<string, string>,
 ) {
   if (!results?.length) return;
 
@@ -96,7 +97,10 @@ function applyJobResults(
             const sid = String(s.id);
             for (const { r, url } of slidePatches) {
               if (String(r.id) === sid || String(r.slideId || '') === sid) {
-                slide = { ...slide, voiceOverUrl: url };
+                const spoken = spokenById?.get(r.id) || spokenById?.get(sid);
+                slide = spoken
+                  ? { ...slide, voiceOverUrl: url, voiceOverText: spoken }
+                  : { ...slide, voiceOverUrl: url };
               }
             }
             for (const { r, url } of tabPatches) {
@@ -115,7 +119,10 @@ function applyJobResults(
               const tabId = String(r.tabId || r.id.split('::tab::')[1] || '');
               const idx = list.findIndex((t: any) => String(t.id) === tabId);
               if (idx < 0) continue;
-              list[idx] = { ...list[idx], voiceOverUrl: url };
+              const spoken = spokenById?.get(r.id) || spokenById?.get(`${sid}::tab::${tabId}`);
+              list[idx] = spoken
+                ? { ...list[idx], voiceOverUrl: url, voiceOverText: spoken }
+                : { ...list[idx], voiceOverUrl: url };
               slide = { ...slide, data: { ...data, [listKey]: list } };
             }
             return slide;
@@ -271,6 +278,7 @@ export function useTTSGeneration() {
         return { queued: items.length, applied: appliedCount, skippedNoText: skipped };
       }
       activeJobIdRef.current = created.jobId;
+      const spokenById = new Map(items.map(i => [i.id, i.text]));
 
       // Poll until terminal state
       while (isActive(runId)) {
@@ -282,7 +290,7 @@ export function useTTSGeneration() {
 
         const batch = snap.results || [];
         if (batch.length) {
-          applyJobResults(batch, setCourse, opts?.setSyntheticAudioMap);
+          applyJobResults(batch, setCourse, opts?.setSyntheticAudioMap, spokenById);
           appliedCount += batch.length;
           for (const r of batch) {
             if (r.target === 'synthetic' || (r.id.startsWith('__') && r.id.endsWith('__'))) {

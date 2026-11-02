@@ -2,8 +2,17 @@
  * Per-item on-screen text editors for clickable interactions
  * (timeline, flashcards, carousel, folder, hotspot, quiz options).
  */
-import React from 'react';
+import React, { useState } from 'react';
 import { coerceOstText, sanitizeOstText } from '../../lib/formatTabIntroOst';
+import {
+  MAX_DIAGRAM_NODES,
+  appendFlowchartNode,
+  isFlowchartMermaid,
+  parseFlowchartNodes,
+  removeFlowchartNode,
+  rewriteFlowchartNodeLabel,
+  type FlowchartShape,
+} from '../../lib/mermaidNodes';
 import { CAROUSEL_CARD_HEX, carouselCardHex } from '../../lib/colorContrast';
 import {
   applyKnowledgeCheckEdits,
@@ -657,7 +666,147 @@ export function EditSlideItemFields({ slide, onPatch, getSlide }: Props) {
     );
   }
 
+  if (type === 'diagram') {
+    return <DiagramEditFields slide={slide} onPatch={onPatch} getSlide={getSlide} />;
+  }
+
   return null;
+}
+
+function DiagramEditFields({ slide, onPatch, getSlide }: Props) {
+  const live = () => getSlide?.() ?? slide;
+  const code = String(slide.data?.mermaidCode || slide.data?.code || '');
+  const caption = String(slide.data?.caption || slide.content || '');
+  const flowchart = isFlowchartMermaid(code);
+  const nodes = flowchart ? parseFlowchartNodes(code) : [];
+  const [addLabel, setAddLabel] = useState('');
+  const [addShape, setAddShape] = useState<FlowchartShape>('rect');
+  const [addFrom, setAddFrom] = useState('');
+  const fromId = addFrom || nodes[nodes.length - 1]?.id || '';
+
+  const writeCode = (nextCode: string) => {
+    const base = live();
+    onPatch({
+      ...base,
+      data: { ...(base.data || {}), mermaidCode: nextCode, code: nextCode, diagramHidden: false },
+    });
+  };
+
+  return (
+    <div className="space-y-3">
+      <label className={labelClass}>Caption</label>
+      <textarea
+        rows={2}
+        value={caption}
+        onChange={(e) => {
+          const next = e.target.value;
+          const base = live();
+          onPatch({
+            ...base,
+            content: next,
+            data: { ...(base.data || {}), caption: next },
+          });
+        }}
+        className={areaClass}
+        placeholder="Short line under the title that describes the diagram"
+      />
+
+      {flowchart ? (
+        <>
+          <label className={labelClass}>Shapes</label>
+          <p className="text-[11px] text-slate-500 leading-relaxed">
+            Change wording in a box, remove a shape, or add one. Layout stays as generated.
+          </p>
+          {nodes.length === 0 ? (
+            <p className="text-xs text-slate-500">No shapes found in this flowchart.</p>
+          ) : nodes.map((node) => (
+            <div key={node.id} className="rounded-xl border border-slate-700 bg-slate-950 p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  {node.shape === 'diamond' ? 'Decision' : node.shape === 'stadium' || node.shape === 'round' ? 'Start / end' : 'Box'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => writeCode(removeFlowchartNode(live().data?.mermaidCode || code, node.id))}
+                  className="text-[10px] font-bold text-rose-300 hover:text-rose-100"
+                >
+                  Remove
+                </button>
+              </div>
+              <textarea
+                rows={2}
+                value={node.label}
+                onChange={(e) => writeCode(rewriteFlowchartNodeLabel(live().data?.mermaidCode || code, node.id, e.target.value))}
+                className={areaClass}
+              />
+            </div>
+          ))}
+          {nodes.length < MAX_DIAGRAM_NODES ? (
+            <div className="rounded-xl border border-dashed border-indigo-500/40 bg-indigo-500/5 p-3 space-y-2">
+              <span className={labelClass}>Add a shape</span>
+              <select
+                value={fromId}
+                onChange={(e) => setAddFrom(e.target.value)}
+                className={fieldClass}
+              >
+                {nodes.map(n => (
+                  <option key={n.id} value={n.id}>Connect from: {n.label.replace(/\n/g, ' ').slice(0, 48) || n.id}</option>
+                ))}
+              </select>
+              <select
+                value={addShape}
+                onChange={(e) => setAddShape(e.target.value as FlowchartShape)}
+                className={fieldClass}
+              >
+                <option value="rect">Box</option>
+                <option value="diamond">Decision</option>
+                <option value="stadium">Start / end</option>
+              </select>
+              <input
+                value={addLabel}
+                onChange={(e) => setAddLabel(e.target.value)}
+                className={fieldClass}
+                placeholder="Shape text"
+              />
+              <button
+                type="button"
+                disabled={!addLabel.trim() || !fromId}
+                onClick={() => {
+                  const next = appendFlowchartNode(live().data?.mermaidCode || code, {
+                    fromId,
+                    label: addLabel.trim(),
+                    shape: addShape,
+                  });
+                  writeCode(next);
+                  setAddLabel('');
+                }}
+                className="w-full rounded-xl border border-dashed border-indigo-500/50 bg-indigo-500/10 px-3 py-2.5 text-[12px] font-bold text-indigo-200 hover:bg-indigo-500/20 disabled:opacity-40"
+              >
+                Add a shape
+              </button>
+            </div>
+          ) : (
+            <p className="text-[11px] text-slate-500">Maximum {MAX_DIAGRAM_NODES} shapes on this diagram.</p>
+          )}
+        </>
+      ) : (
+        <p className="text-[11px] text-slate-500 leading-relaxed">
+          This isn’t a flowchart, so edit the Mermaid source below.
+        </p>
+      )}
+
+      <details className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+        <summary className="text-[11px] font-bold text-slate-400 cursor-pointer">Advanced: Mermaid source</summary>
+        <textarea
+          rows={8}
+          value={code}
+          onChange={(e) => writeCode(e.target.value)}
+          className={`${areaClass} mt-2 font-mono text-[11px]`}
+          placeholder="flowchart TD"
+        />
+      </details>
+    </div>
+  );
 }
 
 export function sanitizeInteractionOstOnSave(slide: any): any {

@@ -1,0 +1,23 @@
+---
+description: Originally generated spoken audio must match Edit Audio and Review; background QC must not rewrite the recorded script.
+alwaysApply: true
+---
+
+# Narration align lock (do not regress)
+
+Anthony (2026-11-02): Steam Cracker spoken audio often did not match Edit Slide → Audio or the Review script on slides he had not edited. Regenerating the slide re-recorded from the box and “fixed” it.
+
+`npm test` must stay green (`src/lib/narrationAudio.test.ts`).
+
+## Invariants (code, not comments)
+
+- **TTS speaks the Audio box.** [`slideNarrationScript`](src/lib/narrationAudio.ts) / [`tabNarrationScript`](src/lib/narrationAudio.ts) use `voiceOverText || narration` only. Do not fall back to OST, nested item copy, or a title placeholder — that records a clip the Audio box does not show.
+- **Applying a clip stamps the script.** [`applyJobResults`](src/hooks/useTTSGeneration.ts) writes `voiceOverUrl` **and** the job `text` onto the slide/tab.
+- **Background QC cannot rewrite narration.** [`autoFixCourse`](src/services/qcService.ts) skips issues where [`qcFieldTouchesNarration`](src/lib/qcTextFix.ts). Manual QC still can, and still prompts to regenerate audio.
+- **Merge keeps clip + script.** [`mergeCoursePreservingAudio`](src/lib/narrationAudio.ts) keeps `voiceOverUrl` **and** `voiceOverText` when a later imagery/QC commit has no new clip. Do not restore “keep URL, take the new script.”
+- **Chrome VO is one string.** Player tour / objectives / hub / cover defaults in [`App.tsx`](src/App.tsx) match the TTS synthetic job via `PLAYER_TOUR_NARRATION`, `COURSE_OBJECTIVES_NARRATION`, `HUB_MENU_NARRATION`, `defaultCoverNarration`.
+- **Manual edits still need Generate.** Changing the Audio box does not re-speak until the author clicks Regenerate audio.
+
+## How to change this
+
+Change the helpers and add a failing test first. Do not “fix” drift by hiding the Audio box or delaying first preview.

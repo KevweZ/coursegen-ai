@@ -87,11 +87,19 @@ import {
   isQuizKnowledgeCheckType,
 } from './lib/knowledgeCheckOst';
 import { isKeyTakeawaysType } from './lib/keyTakeawayOst';
+import { isDiagramType } from './lib/mermaidNodes';
 import { slideSkipsNarration } from './lib/enablingCoverage';
 import { collapseChoiceCardsOst, ensureSelectChoicePrompt, normalizeKeyTakeaways } from './lib/hydrateGuards';
 import { choiceCardsPromptForMode } from './lib/choiceCardCopy';
 import { parseOstSectionGroups } from './lib/ostSectionGroups';
-import { hasLiveNarrationUrl } from './lib/narrationAudio';
+import {
+  COURSE_OBJECTIVES_NARRATION,
+  HUB_MENU_NARRATION,
+  PLAYER_TOUR_NARRATION,
+  defaultCoverNarration,
+  hasLiveNarrationUrl,
+  mergeCoursePreservingAudio,
+} from './lib/narrationAudio';
 import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft, generateMasteryExam, generateInsertedContent } from './services/aiService';
 import { sanitizeMasteryExamQuestions } from './lib/masteryExam';
 import { createScormPackage, ScormVersion } from './services/scormService';
@@ -2685,7 +2693,7 @@ export default function App() {
       })
     : [];
   // Item 12: Title slides — OST is title only; description is narration/CC, not on-screen
-  const coverDefaultVo = course ? `Welcome to ${course.title}. ${course.description || ''}`.trim() : '';
+  const coverDefaultVo = course ? defaultCoverNarration(course.title, course.description) : '';
   const coverSlide: Slide = course ? {
     id: '__cover__',
     title: course.title,
@@ -2710,7 +2718,7 @@ export default function App() {
     closingVirtualSlide,
   ] : [closingVirtualSlide];
   // Cover slide + 2 synthetic pre-content slides (Player Tour + Course Objectives)
-  const playerTourDefaultVo = 'Before we begin, take a moment to explore the player controls. Hover over each card to see the corresponding element highlighted.';
+  const playerTourDefaultVo = PLAYER_TOUR_NARRATION;
   const playerTourSlide: Slide = course ? {
     id: '__player-tour__',
     title: 'Player Navigation Guide',
@@ -2720,7 +2728,7 @@ export default function App() {
     voiceOverText: syntheticSlideOverrides['__player-tour__']?.voiceOverText ?? playerTourDefaultVo,
     voiceOverUrl: syntheticAudioMap['__player-tour__'] || undefined,
   } as Slide : null as any;
-  const courseObjectivesDefaultVo = 'These are the objectives for this course. Review each one so you know what you will be able to do when you finish.';
+  const courseObjectivesDefaultVo = COURSE_OBJECTIVES_NARRATION;
   const courseObjectivesSlide: Slide = course ? {
     id: '__course-objectives__',
     title: 'Course Objectives',
@@ -2735,7 +2743,7 @@ export default function App() {
     _objectives: learningObjectives || [],
   } as Slide : null as any;
   const hubMode = isHubNavigation(navigationMode);
-  const hubDefaultVo = 'Select a module from the main menu. Completed modules show a checkmark. The mastery quiz unlocks after every module is finished.';
+  const hubDefaultVo = HUB_MENU_NARRATION;
   const hubMenuSlide: Slide | null = course && hubMode ? {
     id: HUB_SLIDE_ID,
     title: 'Main Menu',
@@ -4271,54 +4279,6 @@ export default function App() {
       };
     };
 
-    /** After TTS starts, never replace course wholesale — keep slide + tab voiceOverUrls. */
-    const mergeCoursePreservingAudio = (prev: any, next: any) => {
-      if (!prev) return next;
-      if (!next) return prev;
-      const prevById: Record<string, any> = {};
-      for (const m of prev.modules || []) {
-        for (const s of m.slides || []) {
-          if (s?.id) prevById[s.id] = s;
-        }
-      }
-      const mergeTabAudio = (baseList: any[] | undefined, prevList: any[] | undefined) => {
-        if (!Array.isArray(baseList)) return baseList;
-        if (!Array.isArray(prevList) || !prevList.length) return baseList;
-        const prevTabById = new Map(prevList.filter((t: any) => t?.id).map((t: any) => [t.id, t]));
-        return baseList.map((item: any) => {
-          const fromPrev = item?.id ? prevTabById.get(item.id) : null;
-          if (!fromPrev?.voiceOverUrl || item?.voiceOverUrl) return item;
-          return { ...item, voiceOverUrl: fromPrev.voiceOverUrl };
-        });
-      };
-      return {
-        ...next,
-        coverImage: next.coverImage || prev.coverImage,
-        modules: (next.modules || []).map((m: any) => ({
-          ...m,
-          slides: (m.slides || []).map((s: any) => {
-            const p = prevById[s.id];
-            if (!p) return s;
-            const data = s.data || p.data
-              ? {
-                  ...(s.data || {}),
-                  tabs: mergeTabAudio(s.data?.tabs, p.data?.tabs),
-                  items: mergeTabAudio(s.data?.items, p.data?.items),
-                }
-              : s.data;
-            return {
-              ...s,
-              voiceOverUrl: s.voiceOverUrl || p.voiceOverUrl,
-              audioUrl: s.audioUrl || p.audioUrl,
-              backgroundImage: s.backgroundImage || p.backgroundImage,
-              backgroundDim: s.backgroundDim ?? p.backgroundDim,
-              data,
-            };
-          }),
-        })),
-      };
-    };
-
     const commitCourse = (next: any) => {
       working = next;
       setCourse(prev => mergeCoursePreservingAudio(prev, next));
@@ -4485,22 +4445,28 @@ export default function App() {
         {
           id: '__cover__',
           title: 'Course cover',
-          text: (ov['__cover__']?.voiceOverText || `Welcome to ${courseForTts.title}. ${courseForTts.description || ''}`).trim(),
+          text: (ov['__cover__']?.voiceOverText || defaultCoverNarration(courseForTts.title, courseForTts.description)).trim(),
         },
         {
           id: '__player-tour__',
           title: 'Player tour',
-          text: (ov['__player-tour__']?.voiceOverText
-            || 'Before we begin, take a moment to explore the player controls. Hover over each card to see the corresponding element highlighted in the player preview.').trim(),
+          text: (ov['__player-tour__']?.voiceOverText || PLAYER_TOUR_NARRATION).trim(),
         },
         {
           id: '__course-objectives__',
           title: 'Course objectives',
           text: (ov['__course-objectives__']?.voiceOverText
             || ov['__objectives__']?.voiceOverText
-            || 'These are the learning objectives for this course. Review each one so you know what you will be able to do when you finish.').trim(),
+            || COURSE_OBJECTIVES_NARRATION).trim(),
         },
       ];
+      if (isHubNavigation(navigationModeSnap)) {
+        syntheticJobs.push({
+          id: HUB_SLIDE_ID,
+          title: 'Main Menu',
+          text: (ov[HUB_SLIDE_ID]?.voiceOverText || HUB_MENU_NARRATION).trim(),
+        });
+      }
       const moduleSynthetics: Array<{ id: string; text: string; title?: string }> = (courseForTts.modules || []).flatMap(
         (m: any, idx: number) => {
           const modNum = idx + 1;
@@ -9512,7 +9478,7 @@ export default function App() {
                             <Plus className="w-3.5 h-3.5" /> Add parent objective
                           </button>
                         </div>
-                      ) : isQuizKnowledgeCheckType(editingSlide.type) ? null : isKeyTakeawaysType(editingSlide.type) ? null : (
+                      ) : isQuizKnowledgeCheckType(editingSlide.type) ? null : isKeyTakeawaysType(editingSlide.type) ? null : isDiagramType(editingSlide.type) ? null : (
                       <div className="space-y-2">
                         <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest flex items-center justify-between">
                           <span>

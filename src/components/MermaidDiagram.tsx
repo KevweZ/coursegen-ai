@@ -7,6 +7,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { AlertCircle } from 'lucide-react';
+import { sanitizeMermaidCode } from '../lib/mermaidNodes';
 
 function cn(...classes: (string | false | undefined | null)[]): string {
   return classes.filter(Boolean).join(' ');
@@ -24,38 +25,6 @@ let _idCounter = 0;
 function nextId(): string {
   _idCounter += 1;
   return `mermaid-diagram-${_idCounter}`;
-}
-
-/**
- * Best-effort auto-repair for the #1 cause of "Diagram rendering failed": the AI
- * writes an UNQUOTED node label (e.g. `A[Check Suite Availability (fast path)]`)
- * that contains characters mermaid's flowchart parser treats as syntax --
- * parentheses, quotes, colons, semicolons, braces. Quoting the label text fixes
- * this without changing what it says. Applied automatically as a retry when the
- * first render attempt fails, so a single stray character never blanks a slide.
- */
-function sanitizeMermaidCode(code: string): string {
-  let out = code
-    // Normalize smart quotes/dashes the AI sometimes emits -- also invalid here
-    .replace(/[\u2018\u2019]/g, "'")
-    .replace(/[\u201C\u201D]/g, '"')
-    .replace(/[\u2013\u2014]/g, '-');
-
-  const wrapLabel = (label: string): string => {
-    const inner = label.trim();
-    if (!inner || /^".*"$/.test(inner)) return label; // empty or already quoted
-    if (/[()":;{}]/.test(inner)) {
-      return `"${inner.replace(/"/g, '#quot;')}"`;
-    }
-    return label;
-  };
-
-  // Node shape labels: [square], {curly/decision}, (round/terminal)
-  out = out.replace(/\[([^\[\]]*)\]/g, (_m, label) => `[${wrapLabel(label)}]`);
-  out = out.replace(/\{([^{}]*)\}/g, (_m, label) => `{${wrapLabel(label)}}`);
-  out = out.replace(/\(([^()]*)\)/g, (_m, label) => `(${wrapLabel(label)})`);
-
-  return out;
 }
 
 export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({

@@ -1,0 +1,21 @@
+---
+description: Diagram slides let authors edit shape labels, add/remove shapes, and a caption — not raw mermaid only, and not leftover OST.
+alwaysApply: true
+---
+
+# Diagram edit lock (do not regress)
+
+Anthony (2026-11-02): generated Mermaid diagrams had no way to fix a misspelled shape or add/remove a box without regenerating the whole slide.
+
+`npm test` must stay green (`src/lib/mermaidNodes.test.ts`).
+
+## Invariants (code, not comments)
+
+- **Edit Text shows shapes.** For `diagram`, Edit Slide does **not** render leftover OST RichTextEditor. [`isDiagramType`](src/lib/mermaidNodes.ts) gates that in [`App.tsx`](src/App.tsx).
+- **Caption + node list.** [`EditSlideItemFields`](src/components/builder/EditSlideItemFields.tsx) writes `content` and `data.caption` together. Flowchart nodes come from [`parseFlowchartNodes`](src/lib/mermaidNodes.ts); rewrite/remove/append keep ids, arrows, and `classDef`. Cap add at `MAX_DIAGRAM_NODES`.
+- **Not a canvas builder.** No drag-drop, edge routing, or color picker. Advanced Mermaid source stays collapsed. Align/delete on the player canvas stay.
+- **Sanitize stays shared.** [`sanitizeMermaidCode`](src/lib/mermaidNodes.ts) is what [`MermaidDiagram`](src/components/MermaidDiagram.tsx) uses. Do not fork a second quote-wrapper in the component.
+
+## How to change this
+
+Change the helpers and add a failing test first. Do not “fix” Edit by dumping mermaid into on-screen text.

@@ -6,7 +6,7 @@
 
 import { QCIssue, QCReport, IssueSeverity, IssueType, FixAction, validateCourse, applyFixes } from './structuralValidator';
 import { coerceOstText, toShortOstBullets } from '../lib/formatTabIntroOst';
-import { cleanQcSuggestion } from '../lib/qcTextFix';
+import { cleanQcSuggestion, qcFieldTouchesNarration } from '../lib/qcTextFix';
 import { parseHeadingBulletSections, resolveClickRevealSlide } from '../lib/parseHeadingSections';
 import { coerceCarouselColor } from '../lib/colorContrast';
 import { slideSkipsNarration, stripSlideNarration } from '../lib/enablingCoverage';
@@ -262,7 +262,7 @@ export function runStructuralQC(course: any, narrationEnabled = false): QCReport
 
 /** Auto-fix pass: applies all autoFixable issues and returns the cleaned course. */
 export function autoFixCourse(course: any, report: QCReport): { course: any; fixedCount: number } {
-  const autoFixable = report.issues.filter(i => i.autoFixable);
+  const autoFixable = report.issues.filter(i => i.autoFixable && !qcFieldTouchesNarration(i.field));
   if (autoFixable.length === 0) return { course, fixedCount: 0 };
   return { course: applyFixes(course, autoFixable), fixedCount: autoFixable.length };
 }
