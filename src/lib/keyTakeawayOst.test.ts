@@ -39,6 +39,26 @@ test('Edit Slide reads takeaway cards from objectives, not leftover OST bullets'
   assert.doesNotMatch(items[0].text, /Ethylene and propylene are primary steam-cracking products/);
 });
 
+test('short leftover OST does not replace a detailed objective card', () => {
+  const items = keyTakeawayEditItems({
+    type: 'key-takeaways',
+    content: '- Ethylene and propylene are primary steam cracking products',
+    data: {
+      objectives: [{
+        id: '1',
+        label: 'Ethylene end-use applications',
+        content: 'Ethylene is the foundation for polyethylene, ethylene oxide, vinyl chloride, and a broad range of downstream petrochemicals spanning packaging, textiles, and construction.',
+      }, {
+        id: '2',
+        label: 'Petrochemical vs. fuel margins',
+        content: 'Petrochemical margins exceed fuel margins because chemical derivatives command higher value-added pricing relative to commodity fuels.',
+      }],
+    },
+  });
+  assert.match(items[0].text, /foundation for polyethylene/);
+  assert.doesNotMatch(items[0].text, /primary steam cracking products/);
+});
+
 test('Save writes takeaway edits onto objectives so the player updates', () => {
   const slide = {
     type: 'key-takeaways',
@@ -69,4 +89,6 @@ test('Edit Slide hides leftover takeaway OST and binds numbered card fields', ()
   assert.match(fields, /keyTakeawayEditItems/);
   assert.match(fields, /applyKeyTakeawayEdits/);
   assert.match(fields, /numbered cards/);
+  assert.match(fields, /\+ Add takeaway/);
+  assert.match(fields, /items\.length < MAX_KEY_TAKEAWAYS/);
 });

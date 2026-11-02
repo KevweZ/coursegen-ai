@@ -8,6 +8,7 @@ import { isKnowledgeCheckSlide, slideSkipsNarration } from './enablingCoverage';
 import { collapseChoiceCardsOst } from './hydrateGuards';
 import { tocNumberByIndex } from './playerToc';
 import { stripSlideTypePrefix } from './stripSlideTypePrefix';
+import { isKeyTakeawaysType, keyTakeawayEditItems } from './keyTakeawayOst';
 
 type AnySlide = Record<string, any>;
 
@@ -516,6 +517,17 @@ export function buildReviewScriptModel(
         blocks.splice(1, 0, { label: opts.label, lines: opts.lines, style: 'ost' });
       }
       sections.push({ heading: 'Question', blocks });
+    } else if (isKeyTakeawaysType(type)) {
+      const statements = keyTakeawayEditItems(slide).map(i => i.text).filter(Boolean);
+      const takeawayOst = statements.map((text, i) => ({
+        text: `${i + 1}. ${text}`,
+        level: 0,
+        kind: 'number' as const,
+      }));
+      sections.push({
+        heading: 'Slide',
+        blocks: ostAndNarrationBlocks(takeawayOst, introNarr, false),
+      });
     } else if (silent) {
       sections.push({
         heading: 'Slide',

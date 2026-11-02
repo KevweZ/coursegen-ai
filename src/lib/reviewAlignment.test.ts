@@ -50,6 +50,41 @@ test('review script for a content slide ignores leftover tab/prompt data', () =>
   assert.equal(row.sections.length, 1);
 });
 
+test('review script for key takeaways matches the numbered cards, not leftover OST', () => {
+  const slides = [{
+    id: 'sum',
+    type: 'key-takeaways',
+    title: 'Module Summary',
+    content: [
+      '- Ethylene and propylene are primary steam cracking products',
+      '- Petrochemical derivatives unlock higher margins than fuels',
+    ].join('\n'),
+    voiceOverText: 'Lower olefins are the foundation of everyday products.',
+    data: {
+      objectives: [
+        {
+          id: '1',
+          label: 'Ethylene end-use applications',
+          content: 'Ethylene is the foundation for polyethylene, ethylene oxide, vinyl chloride, and a broad range of downstream petrochemicals spanning packaging, textiles, and construction.',
+        },
+        {
+          id: '2',
+          label: 'Petrochemical vs. fuel margins',
+          content: 'Petrochemical margins exceed fuel margins because chemical derivatives command higher value-added pricing relative to commodity fuels.',
+        },
+      ],
+    },
+  }];
+  const row = buildReviewScriptModel(slides)[0];
+  const ost = row.sections.flatMap(s => s.blocks.filter(b => b.style === 'ost').flatMap(b => b.lines.map(l => l.text))).join('\n');
+  const headings = row.sections.map(s => s.heading).join('\n');
+  assert.match(ost, /foundation for polyethylene/);
+  assert.doesNotMatch(ost, /primary steam cracking products/);
+  assert.doesNotMatch(headings, /Introduction/);
+  assert.doesNotMatch(headings, /Takeaway:/);
+  assert.equal(row.sections.length, 1);
+});
+
 test('content regen drops leftover instructional data but keeps image', () => {
   const existing = {
     id: 's1',

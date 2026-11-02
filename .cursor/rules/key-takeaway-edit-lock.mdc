@@ -13,7 +13,9 @@ Anthony (2026-11-02): Edit on Module Summary still showed leftover short OST bul
 
 - **Edit Text shows the cards.** For `key-takeaways`, Edit Slide does **not** render the leftover OST RichTextEditor. [`isKeyTakeawaysType`](src/lib/keyTakeawayOst.ts) gates that in [`App.tsx`](src/App.tsx).
 - **Numbered statements are the fields.** [`keyTakeawayEditItems`](src/lib/keyTakeawayOst.ts) reads `normalizeKeyTakeaways(...).data.objectives` (player source), not leftover `content`. [`applyKeyTakeawayEdits`](src/lib/keyTakeawayOst.ts) writes **objectives plus numbered content** so Save updates the slide the learner sees.
-- **Layout stays numbered.** The player uses numbered badges. The editor shows numbered fields 1–4, not a bullet/numbered list toggle. Do not require Regenerate to change a takeaway sentence.
+- **Layout stays numbered.** The player uses numbered badges. The editor shows numbered fields, not a bullet/numbered list toggle. Do not require Regenerate to change a takeaway sentence.
+- **Add is available.** Authors can add takeaways up to `MAX_KEY_TAKEAWAYS` (8). Hydrate still generates 2–4. Do not hide Add just because four cards already exist.
+- **One version everywhere.** [`keyTakeawayEditItems`](src/lib/keyTakeawayOst.ts) / [`takeawayCardStatement`](src/lib/keyTakeawayOst.ts) is the player card text. Review (`buildReviewScriptModel`) uses that list only — no leftover `content` intro and no duplicate per-objective sections. `npm test` must stay green (`src/lib/reviewAlignment.test.ts`).
 - **Keep the player layout.** Do not put leftover short OST bullets back on the Module Summary canvas.
 
 ## How to change this

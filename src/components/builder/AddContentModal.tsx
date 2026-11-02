@@ -4,6 +4,16 @@ import { Loader2, Plus, X } from 'lucide-react';
 import type { InsertPlacement } from '../../lib/courseSlideEdits';
 
 export type AddContentScope = 'slide' | 'slides' | 'module';
+export type AddContentAuthoring = 'generate' | 'specify';
+
+export const ADD_CONTENT_TYPE_OPTIONS = [
+  { id: 'content', label: 'Plain content' },
+  { id: 'tabbed-horizontal', label: 'Process' },
+  { id: 'tabbed-vertical', label: 'Tabs' },
+  { id: 'click-reveal', label: 'Click & Reveal' },
+  { id: 'choice-cards', label: 'Choice cards' },
+  { id: 'quiz', label: 'Knowledge check' },
+] as const;
 
 export type AddContentForm = {
   scope: AddContentScope;
@@ -13,6 +23,10 @@ export type AddContentForm = {
   placement: InsertPlacement;
   slideCount: number;
   autoSlideCount: boolean;
+  authoring: AddContentAuthoring;
+  ostText: string;
+  narrationText: string;
+  preferredTypes: string[];
 };
 
 interface Props {
@@ -47,6 +61,10 @@ export function AddContentModal({
   const [placement, setPlacement] = useState<InsertPlacement>('after');
   const [slideCount, setSlideCount] = useState(3);
   const [autoSlideCount, setAutoSlideCount] = useState(true);
+  const [authoring, setAuthoring] = useState<AddContentAuthoring>('generate');
+  const [ostText, setOstText] = useState('');
+  const [narrationText, setNarrationText] = useState('');
+  const [preferredTypes, setPreferredTypes] = useState<string[]>([]);
 
   useEffect(() => {
     if (!open) return;
@@ -57,14 +75,26 @@ export function AddContentModal({
     setPlacement(currentIsChrome ? 'end-module' : 'after');
     setSlideCount(3);
     setAutoSlideCount(true);
+    setAuthoring('generate');
+    setOstText('');
+    setNarrationText('');
+    setPreferredTypes([]);
   }, [open, currentIsChrome]);
 
   useEffect(() => {
     if (scope === 'module') setPlacement('new-module');
+    if (scope !== 'slide') setAuthoring('generate');
   }, [scope]);
 
-  const canSubmit = brief.trim().length >= 8 && !busy;
+  const specify = scope === 'slide' && authoring === 'specify';
+  const canSubmit = specify
+    ? (ostText.trim().length >= 4 || narrationText.trim().length >= 8) && !busy
+    : brief.trim().length >= 8 && !busy;
   const effectivePlacement: InsertPlacement = scope === 'module' ? 'new-module' : placement;
+
+  const toggleType = (id: string) => {
+    setPreferredTypes(prev => prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]);
+  };
 
   return (
     <AnimatePresence>
@@ -132,6 +162,55 @@ export function AddContentModal({
               </div>
               <p className="text-[11px] text-slate-500 leading-relaxed">{SCOPE_HELP[scope]}</p>
 
+              {scope === 'slide' && (
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    ['generate', 'App writes the slide'],
+                    ['specify', 'I will write OST + audio'],
+                  ] as const).map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      disabled={busy}
+                      onClick={() => setAuthoring(id)}
+                      className={`px-2 py-2 rounded-xl text-[11px] font-bold border transition-colors ${
+                        authoring === id
+                          ? 'border-indigo-500 bg-indigo-500/15 text-indigo-200'
+                          : 'border-slate-700 text-slate-400 hover:border-slate-500 hover:text-slate-200'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {specify ? (
+                <>
+                  <label className="block space-y-1.5">
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">On-screen text</span>
+                    <textarea
+                      value={ostText}
+                      onChange={e => setOstText(e.target.value)}
+                      disabled={busy}
+                      rows={6}
+                      placeholder="The bullets or sentences learners see on the slide."
+                      className="w-full rounded-xl bg-slate-950 border border-slate-700 text-sm text-slate-100 placeholder:text-slate-600 px-3 py-2.5 focus:outline-none focus:border-indigo-500 resize-y min-h-[7rem]"
+                    />
+                  </label>
+                  <label className="block space-y-1.5">
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Audio narration</span>
+                    <textarea
+                      value={narrationText}
+                      onChange={e => setNarrationText(e.target.value)}
+                      disabled={busy}
+                      rows={5}
+                      placeholder="Spoken script for this slide. Leave blank for a silent slide."
+                      className="w-full rounded-xl bg-slate-950 border border-slate-700 text-sm text-slate-100 placeholder:text-slate-600 px-3 py-2.5 focus:outline-none focus:border-indigo-500 resize-y min-h-[6rem]"
+                    />
+                  </label>
+                </>
+              ) : (
               <label className="block space-y-1.5">
                 <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Source content</span>
                 <p className="text-[11px] text-slate-500 leading-relaxed">
@@ -146,6 +225,7 @@ export function AddContentModal({
                   className="w-full rounded-xl bg-slate-950 border border-slate-700 text-sm text-slate-100 placeholder:text-slate-600 px-3 py-2.5 focus:outline-none focus:border-indigo-500 resize-y min-h-[8rem]"
                 />
               </label>
+              )}
 
               <label className="block space-y-1.5">
                 <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
@@ -171,6 +251,39 @@ export function AddContentModal({
                     className="w-full rounded-xl bg-slate-950 border border-slate-700 text-sm text-slate-100 placeholder:text-slate-600 px-3 py-2 focus:outline-none focus:border-indigo-500"
                   />
                 </label>
+              )}
+
+              {!specify && (
+                <div className="space-y-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                    {scope === 'slide' ? 'Interaction type (optional)' : 'Interaction types to choose from (optional)'}
+                  </span>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    {scope === 'slide'
+                      ? 'Leave empty and the app picks. Select one or more to steer this slide.'
+                      : 'Leave empty and the app uses Course Settings. Select types it may choose from.'}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {ADD_CONTENT_TYPE_OPTIONS.map(opt => {
+                      const on = preferredTypes.includes(opt.id);
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          disabled={busy}
+                          onClick={() => toggleType(opt.id)}
+                          className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-colors ${
+                            on
+                              ? 'border-indigo-500 bg-indigo-500/20 text-indigo-200'
+                              : 'border-slate-700 text-slate-400 hover:border-slate-500'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
 
               {scope !== 'slide' && (
@@ -253,6 +366,10 @@ export function AddContentModal({
                   placement: effectivePlacement,
                   slideCount,
                   autoSlideCount: scope !== 'slide' && autoSlideCount,
+                  authoring: specify ? 'specify' : 'generate',
+                  ostText: ostText.trim(),
+                  narrationText: narrationText.trim(),
+                  preferredTypes,
                 })}
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >

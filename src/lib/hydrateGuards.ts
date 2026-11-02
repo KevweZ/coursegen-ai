@@ -394,10 +394,15 @@ export function toTakeawayStatement(raw: string): string {
   return t;
 }
 
-export function normalizeKeyTakeaways(slide: any): any {
+/** Hydrate still aims for 2–4. Authors may add more in Edit (up to 8). */
+export const GENERATED_KEY_TAKEAWAY_MAX = 4;
+export const AUTHORED_KEY_TAKEAWAY_MAX = 8;
+
+export function normalizeKeyTakeaways(slide: any, opts?: { max?: number }): any {
   if (!slide || (slide.type !== 'key-takeaways' && slide.type !== 'summary' && !/key\s*takeaways?/i.test(slide.title || ''))) {
     return slide;
   }
+  const max = Number.isFinite(opts?.max) ? Math.max(2, Number(opts?.max)) : AUTHORED_KEY_TAKEAWAY_MAX;
 
   const next = { ...slide, type: 'key-takeaways' };
   const existing = Array.isArray(next.data?.objectives)
@@ -434,14 +439,17 @@ export function normalizeKeyTakeaways(slide: any): any {
     next.content = objectives.map(o => `- ${o.label}`).join('\n');
   }
 
+  const capped = objectives.slice(0, max).map((o, i) => ({
+    id: o.id || String(i + 1),
+    label: o.label,
+    content: o.content || '',
+  }));
   next.data = {
     ...(next.data || {}),
-    objectives: objectives.slice(0, 4).map((o, i) => ({
-      id: o.id || String(i + 1),
-      label: o.label,
-      content: o.content || '',
-    })),
+    objectives: capped,
   };
+  // Keep leftover short OST from drifting apart from the numbered cards.
+  next.content = capped.map((o, i) => `${i + 1}. ${o.label}`).join('\n');
   return next;
 }
 
@@ -517,7 +525,7 @@ export function finalizeHydratedSlide(slide: any, moduleTitle = ''): any {
   }
 
   next = degradeIncompleteInteraction(next, moduleTitle);
-  next = normalizeKeyTakeaways(next);
+  next = normalizeKeyTakeaways(next, { max: GENERATED_KEY_TAKEAWAY_MAX });
   next = ensureKnowledgeCheckPayload(next, moduleTitle);
 
   if ((next.type === 'content' || next.type === 'summary') && isThinTeachingContent(next.content)) {

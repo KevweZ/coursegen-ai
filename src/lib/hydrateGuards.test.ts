@@ -257,7 +257,8 @@ test('key takeaways keep 2-4 points and retry Bloom gerund titles', () => {
       })),
     },
   });
-  assert.equal(slide.data.objectives.length, 4);
+  assert.equal(slide.data.objectives.length, 6);
+  assert.equal(normalizeKeyTakeaways(slide, { max: 4 }).data.objectives.length, 4);
   assert.equal(
     teachingSlideNeedsRetry({
       type: 'key-takeaways',

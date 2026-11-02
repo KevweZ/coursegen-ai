@@ -165,6 +165,7 @@ import {
 import { clearNarrationCache, stashAudioUrl, setLiveNarrationScope } from './lib/narrationCache';
 import { mergeRegenIntoSlide, patchCourseSlideById, slidesMatchId } from './lib/slideRegenMerge';
 import {
+  buildSpecifiedContentSlide,
   countRealModuleSlides,
   deleteSlideById,
   insertSlidesIntoCourse,
@@ -5366,17 +5367,30 @@ export default function App() {
 
   const handleGenerateAddedContent = async (form: AddContentForm) => {
     if (!course || isLearnerPlayer) return;
+    const specify = form.scope === 'slide' && form.authoring === 'specify';
     const brief = form.brief.trim();
-    if (brief.length < 8) {
+    if (!specify && brief.length < 8) {
       showDraftMessage('Paste the source content to teach, then generate.');
       return;
     }
+    if (specify && !form.ostText.trim() && !form.narrationText.trim()) {
+      showDraftMessage('Enter on-screen text or narration for the new slide.');
+      return;
+    }
     setIsAddingContent(true);
-    showDraftMessage('Generating new content…');
+    showDraftMessage(specify ? 'Adding slide…' : 'Generating new content…');
     try {
       const moduleIdx = resolveInsertModuleIndex(course, currentSlide);
       const hostModule = course.modules?.[moduleIdx];
-      const result = await generateInsertedContent({
+      const result = specify
+        ? {
+            slides: [buildSpecifiedContentSlide({
+              title: form.titleHint,
+              ost: form.ostText,
+              narration: form.narrationText,
+            })],
+          }
+        : await generateInsertedContent({
         courseTitle: course.title || 'Course',
         courseDescription: course.description || courseDescription,
         moduleTitle: hostModule?.title || `Module ${moduleIdx + 1}`,
@@ -5387,7 +5401,7 @@ export default function App() {
         scope: form.scope,
         slideCount: form.slideCount,
         autoSlideCount: form.autoSlideCount,
-        allowedInteractionTypes: interactionTypes,
+        allowedInteractionTypes: form.preferredTypes?.length ? form.preferredTypes : interactionTypes,
       });
       if (!result.slides.length) throw new Error('No slides were generated.');
       pushUndo();
@@ -10000,20 +10014,75 @@ export default function App() {
                              </p>
                              {tabs.map((tab: any, ti: number) => (
                                <div key={tab.id || ti} className="space-y-1.5">
+                                 <div className="flex items-center justify-between gap-2">
                                  <label className="text-xs font-bold text-emerald-300/90">
                                    Tab: {tab.label || `Tab ${ti + 1}`}
                                  </label>
+                                 {voiceOverEnabled && (
+                                   <button
+                                     type="button"
+                                     disabled={!!regenSlideId}
+                                     onClick={async () => {
+                                       const live = editingSlideRef.current ?? editingSlide;
+                                       const key = Array.isArray(live.data?.tabs) ? 'tabs' : 'items';
+                                       const liveTabs: any[] = [...(live.data?.[key] || [])];
+                                       const text = String(liveTabs[ti]?.voiceOverText || '').trim();
+                                       if (!text) {
+                                         alert('No narration text for this tab.');
+                                         return;
+                                       }
+                                       const tabKey = `tab:${liveTabs[ti]?.id || ti}`;
+                                       setRegenSlideId(tabKey);
+                                       try {
+                                         const { generateSlideTTS: genTTS, urlToDataUrl } = await import('./services/ttsService');
+                                         let durable = await genTTS(text, { voice: ttsVoice as any });
+                                         try { durable = await urlToDataUrl(durable); } catch { /* keep blob url */ }
+                                         liveTabs[ti] = { ...liveTabs[ti], voiceOverText: text, voiceOverUrl: durable };
+                                         void stashAudioUrl(`tab:${live.id}:${key}:${liveTabs[ti].id}`, durable);
+                                         const updated = { ...live, data: { ...(live.data || {}), [key]: liveTabs } };
+                                         editingSlideRef.current = updated;
+                                         setEditingSlide(updated);
+                                         setCourse(prev => {
+                                           if (!prev) return prev;
+                                           return {
+                                             ...prev,
+                                             modules: prev.modules.map((m: any) => ({
+                                               ...m,
+                                               slides: m.slides.map((s: any) =>
+                                                 s.id === live.id ? { ...s, data: updated.data } : s
+                                               ),
+                                             })),
+                                           };
+                                         });
+                                         showDraftMessage(`Audio regenerated for “${liveTabs[ti].label || `Tab ${ti + 1}`}” ✓`);
+                                       } catch (err: any) {
+                                         alert(`TTS error: ${err.message}`);
+                                       } finally {
+                                         setRegenSlideId(null);
+                                       }
+                                     }}
+                                     className="shrink-0 text-[10px] font-bold text-emerald-300 hover:text-emerald-100 disabled:opacity-50"
+                                   >
+                                     {regenSlideId === `tab:${tab.id || ti}` ? 'Generating…' : 'Generate this tab'}
+                                   </button>
+                                 )}
+                                 </div>
                                  <textarea
                                    rows={3}
                                    value={tab.voiceOverText || ''}
                                    onChange={(e) => {
-                                     const nextTabs = tabs.map((t: any, i: number) =>
+                                     const live = editingSlideRef.current ?? editingSlide;
+                                     const key = Array.isArray(live.data?.tabs) ? 'tabs' : 'items';
+                                     const liveTabs = live.data?.[key] || [];
+                                     const nextTabs = liveTabs.map((t: any, i: number) =>
                                        i === ti ? { ...t, voiceOverText: e.target.value } : t
                                      );
-                                     setEditingSlide({
-                                       ...editingSlide,
-                                       data: { ...(editingSlide.data || {}), [listKey]: nextTabs },
-                                     });
+                                     const updated = {
+                                       ...live,
+                                       data: { ...(live.data || {}), [key]: nextTabs },
+                                     };
+                                     editingSlideRef.current = updated;
+                                     setEditingSlide(updated);
                                    }}
                                    className="w-full bg-slate-950 border border-emerald-700/30 rounded-xl px-3 py-2 text-emerald-100/90 focus:border-emerald-500 outline-none text-sm resize-none"
                                    placeholder={`Narration when learner opens “${tab.label || `Tab ${ti + 1}`}”…`}

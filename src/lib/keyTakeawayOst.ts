@@ -4,9 +4,9 @@
  * is a different, shorter list and must not be the edit surface.
  */
 
-import { normalizeKeyTakeaways } from './hydrateGuards';
+import { AUTHORED_KEY_TAKEAWAY_MAX, normalizeKeyTakeaways } from './hydrateGuards';
 
-export const MAX_KEY_TAKEAWAYS = 4;
+export const MAX_KEY_TAKEAWAYS = AUTHORED_KEY_TAKEAWAY_MAX;
 export const MIN_KEY_TAKEAWAYS = 2;
 
 export function isKeyTakeawaysType(type?: string): boolean {
@@ -22,8 +22,18 @@ export function takeawayCardStatement(obj: any): string {
 
 export type KeyTakeawayEditItem = { id: string; text: string };
 
-/** Player source first: normalized objectives, not leftover OST bullets. */
+/** Player source first: card statements on data.objectives, not leftover OST bullets. */
 export function keyTakeawayEditItems(slide: any): KeyTakeawayEditItem[] {
+  const raw = Array.isArray(slide?.data?.objectives) && slide.data.objectives.length
+    ? slide.data.objectives
+    : (Array.isArray(slide?.interactions) ? slide.interactions : []);
+  const fromRaw = raw
+    .map((obj: any, i: number) => ({
+      id: String(obj?.id || i + 1),
+      text: takeawayCardStatement(obj),
+    }))
+    .filter((row: KeyTakeawayEditItem) => row.text);
+  if (fromRaw.length) return fromRaw.slice(0, MAX_KEY_TAKEAWAYS);
   const objectives = normalizeKeyTakeaways(slide)?.data?.objectives;
   if (!Array.isArray(objectives) || !objectives.length) {
     return [{ id: '1', text: '' }, { id: '2', text: '' }];

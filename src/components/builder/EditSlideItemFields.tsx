@@ -435,14 +435,16 @@ export function EditSlideItemFields({ slide, onPatch, getSlide }: Props) {
             />
           </div>
         ))}
-        {items.length < MAX_KEY_TAKEAWAYS && (
+        {items.length < MAX_KEY_TAKEAWAYS ? (
           <button
             type="button"
-            onClick={() => commit([...items, { id: String(items.length + 1), text: '' }])}
-            className="text-[11px] font-bold text-indigo-300 hover:text-indigo-200"
+            onClick={() => commit([...items, { id: String(Date.now()), text: '' }])}
+            className="w-full rounded-xl border border-dashed border-indigo-500/50 bg-indigo-500/10 px-3 py-2.5 text-[12px] font-bold text-indigo-200 hover:bg-indigo-500/20"
           >
             + Add takeaway
           </button>
+        ) : (
+          <p className="text-[11px] text-slate-500">Maximum {MAX_KEY_TAKEAWAYS} takeaways on this slide.</p>
         )}
       </div>
     );
