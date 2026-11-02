@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import {
   COURSE_OBJECTIVES_NARRATION,
   PLAYER_TOUR_NARRATION,
+  mergeBackgroundCourseSnapshot,
   mergeCoursePreservingAudio,
   slideNarrationScript,
   tabNarrationScript,
@@ -64,6 +65,34 @@ test('merge keeps recorded clip and script when QC rewrites voiceOverText', () =
   assert.match(slide.voiceOverUrl, /s1\.mp3/);
   assert.equal(slide.voiceOverText, 'Hydrate script that was recorded.');
   assert.equal(slide.data.tabs[0].voiceOverText, 'Tab recorded.');
+});
+
+test('background snapshot keeps author-added slides and does not append stale copies', () => {
+  const live = {
+    coverImage: null,
+    modules: [{
+      slides: [
+        { id: 'ds', title: 'Dilution Steam', content: '- Boiler steam', voiceOverUrl: 'https://example.com/audio/ds.mp3'.padEnd(48, 'x') },
+        { id: 'new', title: 'Very High Pressure Steam Generation', content: '- VHP steam drives the compressor' },
+      ],
+    }],
+  };
+  const stale = {
+    coverImage: 'https://example.com/cover.png',
+    modules: [{
+      slides: [
+        { id: 'ds', title: 'Dilution Steam', content: '- Boiler steam', imageUrl: 'https://example.com/ds.png' },
+        { id: 'ds-copy', title: 'Dilution Steam', content: '- Boiler steam' },
+        { id: 'ds-copy-2', title: 'Dilution Steam', content: '- Boiler steam' },
+      ],
+    }],
+  };
+  const merged = mergeBackgroundCourseSnapshot(live, stale);
+  const titles = merged.modules[0].slides.map((s: any) => s.title);
+  assert.deepEqual(titles, ['Dilution Steam', 'Very High Pressure Steam Generation']);
+  assert.equal(merged.modules[0].slides[0].imageUrl, 'https://example.com/ds.png');
+  assert.match(merged.modules[0].slides[0].voiceOverUrl, /ds\.mp3/);
+  assert.equal(merged.coverImage, 'https://example.com/cover.png');
 });
 
 test('background auto-fix skips narration fields', () => {

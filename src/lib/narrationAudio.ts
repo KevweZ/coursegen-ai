@@ -103,6 +103,68 @@ function mergeTabAudio(baseList: any[] | undefined, prevList: any[] | undefined)
   });
 }
 
+function mergeSnapshotDataOntoLive(liveData: any, snapData: any) {
+  if (!snapData || typeof snapData !== 'object') return liveData;
+  if (!liveData || typeof liveData !== 'object') return snapData;
+  const out = { ...liveData };
+  if (snapData.imageUrl && !out.imageUrl) out.imageUrl = snapData.imageUrl;
+  if (snapData.introImageUrl && !out.introImageUrl) out.introImageUrl = snapData.introImageUrl;
+  for (const key of ['tabs', 'items'] as const) {
+    if (!Array.isArray(out[key]) || !Array.isArray(snapData[key])) continue;
+    out[key] = out[key].map((item: any, i: number) => {
+      const from = snapData[key][i];
+      if (!from) return item;
+      const withAudio = keepRecordedClip(item, from);
+      if (!from.imageUrl || withAudio?.imageUrl) return withAudio;
+      return { ...withAudio, imageUrl: from.imageUrl };
+    });
+  }
+  return out;
+}
+
+/**
+ * Background image/QC snapshots must not replace the author's slide list.
+ * Keep live order and extras (Add content); copy new media onto matching ids;
+ * ignore leftover copies that only exist on the stale snapshot.
+ */
+export function mergeBackgroundCourseSnapshot(prev: any, next: any) {
+  if (!prev) return next;
+  if (!next) return prev;
+  const nextById: Record<string, any> = {};
+  for (const m of next.modules || []) {
+    for (const s of m.slides || []) {
+      if (s?.id) nextById[String(s.id)] = s;
+    }
+  }
+  return {
+    ...prev,
+    coverImage: prev.coverImage || next.coverImage,
+    modules: (prev.modules || []).map((m: any) => ({
+      ...m,
+      slides: (m.slides || []).map((s: any) => {
+        const n = s?.id ? nextById[String(s.id)] : null;
+        if (!n) return s;
+        const withMedia = {
+          ...s,
+          imageUrl: s.imageUrl || n.imageUrl,
+          coverImage: s.coverImage || n.coverImage,
+          backgroundImage: s.backgroundImage || n.backgroundImage,
+          backgroundDim: s.backgroundDim ?? n.backgroundDim,
+          floatingMedia: (s.floatingMedia?.length ? s.floatingMedia : n.floatingMedia) || s.floatingMedia,
+          data: mergeSnapshotDataOntoLive(s.data, n.data),
+        };
+        const merged = keepRecordedClip(withMedia, n);
+        return {
+          ...merged,
+          audioUrl: s.audioUrl || n.audioUrl,
+          voiceOverUrl: hasLiveNarrationUrl(s.voiceOverUrl) ? s.voiceOverUrl : (merged.voiceOverUrl || n.voiceOverUrl),
+          voiceOverText: s.voiceOverText ?? merged.voiceOverText,
+        };
+      }),
+    })),
+  };
+}
+
 /** After TTS starts, keep recorded clips and the script those clips were read from. */
 export function mergeCoursePreservingAudio(prev: any, next: any) {
   if (!prev) return next;

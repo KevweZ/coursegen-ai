@@ -88,7 +88,7 @@ import {
 } from './lib/knowledgeCheckOst';
 import { isKeyTakeawaysType } from './lib/keyTakeawayOst';
 import { isDiagramType } from './lib/mermaidNodes';
-import { slideSkipsNarration } from './lib/enablingCoverage';
+import { slideSkipsNarration, isKnowledgeCheckSlide as isQuizishSlideType } from './lib/enablingCoverage';
 import { collapseChoiceCardsOst, ensureSelectChoicePrompt, normalizeKeyTakeaways } from './lib/hydrateGuards';
 import { choiceCardsPromptForMode } from './lib/choiceCardCopy';
 import { parseOstSectionGroups } from './lib/ostSectionGroups';
@@ -98,6 +98,7 @@ import {
   PLAYER_TOUR_NARRATION,
   defaultCoverNarration,
   hasLiveNarrationUrl,
+  mergeBackgroundCourseSnapshot,
   mergeCoursePreservingAudio,
 } from './lib/narrationAudio';
 import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft, generateMasteryExam, generateInsertedContent } from './services/aiService';
@@ -178,6 +179,7 @@ import {
   deleteSlideById,
   insertSlidesIntoCourse,
   ensureUniqueSlideIds,
+  dedupeIdenticalModuleSlides,
   isChromePlayerSlide,
   isDeletableCourseSlide,
   moduleIndexFromVirtualSlideId,
@@ -1633,6 +1635,7 @@ export default function App() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [addContentOpen, setAddContentOpen] = useState(false);
   const [isAddingContent, setIsAddingContent] = useState(false);
+  const addingContentRef = useRef(false);
   const [pendingSlideFocusId, setPendingSlideFocusId] = useState<string | null>(null);
   /** Ref so runAnalysis (defined earlier) can call finalize after hydrate */
   const finalizeGeneratedCourseRef = useRef<
@@ -3196,7 +3199,7 @@ export default function App() {
   // and rewrite PE/PP-style cover/module titles on existing drafts.
   useEffect(() => {
     if (step !== 'preview' || !course?.modules || isLearnerPlayer) return;
-    const cleaned = sanitizeCourseTitles(stripCourseAutoPromotedFloating(course));
+    const cleaned = sanitizeCourseTitles(stripCourseAutoPromotedFloating(dedupeIdenticalModuleSlides(course)));
     const hadPromoInCourse = cleaned !== course;
 
     setFloatingImagesMap(prev => {
@@ -4286,8 +4289,8 @@ export default function App() {
 
     const commitCourse = (next: any) => {
       working = next;
-      setCourse(prev => mergeCoursePreservingAudio(prev, next));
-      setOriginalCourse(prev => mergeCoursePreservingAudio(prev, next));
+      setCourse(prev => mergeBackgroundCourseSnapshot(prev, next));
+      setOriginalCourse(prev => mergeBackgroundCourseSnapshot(prev, next));
     };
 
     let working: any = stamped;
@@ -5338,6 +5341,7 @@ export default function App() {
 
   const handleGenerateAddedContent = async (form: AddContentForm) => {
     if (!course || isLearnerPlayer) return;
+    if (addingContentRef.current) return;
     const specify = form.scope === 'slide' && form.authoring === 'specify';
     const brief = form.brief.trim();
     if (!specify && brief.length < 8) {
@@ -5348,11 +5352,15 @@ export default function App() {
       showDraftMessage('Enter on-screen text or narration for the new slide.');
       return;
     }
+    addingContentRef.current = true;
     setIsAddingContent(true);
     showDraftMessage(specify ? 'Adding slide…' : 'Generating new content…');
     try {
-      const moduleIdx = resolveInsertModuleIndex(course, currentSlide);
-      const hostModule = course.modules?.[moduleIdx];
+      const live = courseRef.current || course;
+      const moduleIdx = resolveInsertModuleIndex(live, currentSlide);
+      const hostModule = live.modules?.[moduleIdx];
+      const allowQuiz = (form.preferredTypes || []).some(t => isQuizishSlideType({ type: t }));
+      const typePool = form.preferredTypes?.length ? form.preferredTypes : (interactionTypes || []);
       const result = specify
         ? {
             slides: [buildSpecifiedContentSlide({
@@ -5362,8 +5370,8 @@ export default function App() {
             })],
           }
         : await generateInsertedContent({
-        courseTitle: course.title || 'Course',
-        courseDescription: course.description || courseDescription,
+        courseTitle: live.title || 'Course',
+        courseDescription: live.description || courseDescription,
         moduleTitle: hostModule?.title || `Module ${moduleIdx + 1}`,
         existingSlideTitles: (hostModule?.slides || []).map((s: any) => String(s?.title || '')).filter(Boolean),
         brief,
@@ -5372,18 +5380,22 @@ export default function App() {
         scope: form.scope,
         slideCount: form.slideCount,
         autoSlideCount: form.autoSlideCount,
-        allowedInteractionTypes: form.preferredTypes?.length ? form.preferredTypes : interactionTypes,
+        allowedInteractionTypes: allowQuiz
+          ? typePool
+          : typePool.filter(t => !isQuizishSlideType({ type: t })),
       });
       if (!result.slides.length) throw new Error('No slides were generated.');
       pushUndo();
-      const spliced = insertSlidesIntoCourse(course, result.slides, {
+      const insertOpts = {
         placement: form.placement,
         currentSlide,
         newModule: form.placement === 'new-module'
           ? { title: result.moduleTitle || form.titleHint || 'New module', description: result.objective || form.newObjective || '' }
           : undefined,
-      });
-      if (!spliced) throw new Error('Could not insert the new slides.');
+      };
+      const baseNow = courseRef.current || live;
+      const spliced = insertSlidesIntoCourse(baseNow, result.slides, insertOpts);
+      if (!spliced) throw new Error('Those slides already exist in this module.');
       setCourse(spliced.course);
       if (form.placement === 'new-module') {
         const terminal = result.objective || form.newObjective || result.moduleTitle || 'New module';
@@ -5394,7 +5406,7 @@ export default function App() {
       }
       setPendingSlideFocusId(spliced.firstId);
       setAddContentOpen(false);
-      const n = result.slides.length;
+      const n = spliced.inserted.length;
       showDraftMessage(n === 1 ? 'Slide added. Use Undo if this isn’t what you wanted.' : `${n} slides added. Use Undo if this isn’t what you wanted.`);
 
       if (voiceOverEnabled) {
@@ -5403,7 +5415,7 @@ export default function App() {
           const toDurable = async (blobUrl: string) => {
             try { return await urlToDataUrl(blobUrl); } catch { return blobUrl; }
           };
-          for (const slide of result.slides) {
+          for (const slide of spliced.inserted) {
             const script = String(slide.voiceOverText || '').trim();
             if (!script || slideSkipsNarration(slide)) continue;
             const durable = await toDurable(await genTTS(script, { voice: ttsVoice as any }));
@@ -5418,6 +5430,7 @@ export default function App() {
     } catch (e: any) {
       showDraftMessage(e?.message || 'Could not generate the new content.');
     } finally {
+      addingContentRef.current = false;
       setIsAddingContent(false);
     }
   };

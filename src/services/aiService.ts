@@ -1748,9 +1748,10 @@ export async function generateInsertedContent(opts: {
     : Math.min(maxSlides, Math.max(minSlides, opts.slideCount || (opts.scope === 'module' ? 4 : 3)));
   const allowed = (opts.allowedInteractionTypes || [])
     .filter(t => t && t !== 'hotspot' && t !== 'game-template' && t !== 'accordion');
+  const allowQuiz = allowed.some(t => isKnowledgeCheckSlide({ type: t }));
   const typeList = allowed.length
     ? allowed.join(', ')
-    : 'content, click-reveal, tabbed-horizontal, choice-cards, quiz';
+    : 'content, click-reveal, tabbed-horizontal, choice-cards';
   const existing = (opts.existingSlideTitles || []).filter(Boolean).slice(0, 24);
   const source = String(opts.brief || '').slice(0, 12000);
   const scopeLine = opts.scope === 'slide'
@@ -1797,6 +1798,7 @@ Rules:
 - Teaching slides need on-screen bullets AND voiceOverText, both grounded in the SOURCE.
 - Knowledge checks have no narration (voiceOverText "").
 - Do not include cover, module-overview, key-takeaways, or mastery-exam slides.
+- Do not include knowledge checks unless quiz is listed in Allowed interaction types.
 - Prefer content / click-reveal / tabbed-horizontal unless the source needs a check.
 - For content slides you may use "bullets": ["..."] instead of content.
 - Pure JSON only.`;
@@ -1818,10 +1820,16 @@ Rules:
   );
   const wrapped = coerceInteractionTypes(
     [{ slides }],
-    allowed.length ? allowed : ['content', 'click-reveal', 'tabbed-horizontal', 'choice-cards', 'quiz'],
+    allowed.length ? allowed : ['content', 'click-reveal', 'tabbed-horizontal', 'choice-cards'],
   );
   slides = wrapped[0]?.slides || slides;
   slides = slides.map((s: any) => finalizeHydratedSlide(s, opts.moduleTitle || opts.courseTitle));
+  if (!allowQuiz) {
+    slides = slides.filter((s: any) => !isKnowledgeCheckSlide(s));
+  }
+  if (!slides.length) {
+    throw new Error('The generator did not return any new teaching slides. Paste more of the source text and try again.');
+  }
   return {
     moduleTitle: String(parsed?.moduleTitle || opts.titleHint || '').trim() || undefined,
     objective: String(parsed?.objective || opts.newObjective || '').trim() || undefined,

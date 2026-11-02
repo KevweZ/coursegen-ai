@@ -41,4 +41,5 @@ test('Add content modal offers specify fields, type chips, and per-tab audio reg
   assert.match(app, /buildSpecifiedContentSlide/);
   assert.match(app, /Generate this tab/);
   assert.match(app, /form\.preferredTypes/);
+  assert.match(app, /addingContentRef/);
 });
