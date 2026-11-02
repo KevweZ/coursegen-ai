@@ -58,20 +58,102 @@ export function dedupeIdenticalModuleSlides(course: any): any {
   return collapseDuplicateModuleSummaries(fingerprinted);
 }
 
+export const MAX_SPECIFY_TABS = 6;
+export const MIN_SPECIFY_TABS = 2;
+
+export type SpecifySlideType = 'content' | 'tabbed-horizontal' | 'tabbed-vertical';
+
+export type SpecifyTabDraft = {
+  id?: string;
+  label?: string;
+  content?: string;
+  narration?: string;
+};
+
+export function plainSpecifyText(raw: unknown): string {
+  return String(raw || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function isSpecifyTabbedType(type: unknown): type is 'tabbed-horizontal' | 'tabbed-vertical' {
+  return type === 'tabbed-horizontal' || type === 'tabbed-vertical';
+}
+
+export function blankSpecifyTab(): SpecifyTabDraft {
+  return { id: newCourseEntityId('tab'), label: '', content: '', narration: '' };
+}
+
+export function filledSpecifyTabCount(tabs: SpecifyTabDraft[] | undefined): number {
+  return (tabs || []).filter(t =>
+    plainSpecifyText(t?.label) || plainSpecifyText(t?.content) || plainSpecifyText(t?.narration)
+  ).length;
+}
+
+export function buildSpecifiedSlide(opts: {
+  title?: string;
+  ost?: string;
+  narration?: string;
+  type?: string;
+  tabs?: SpecifyTabDraft[];
+}): {
+  id: string;
+  type: SpecifySlideType;
+  title: string;
+  content: string;
+  voiceOverText: string;
+  data?: { tabs: Array<{ id: string; label: string; content: string; voiceOverText: string }> };
+} {
+  const type: SpecifySlideType = isSpecifyTabbedType(opts.type) ? opts.type : 'content';
+  const title = String(opts.title || '').trim() || 'New slide';
+  const content = sanitizeOstText(opts.ost || '');
+  const voiceOverText = String(opts.narration || '').trim();
+  if (type === 'content') {
+    return {
+      id: newCourseEntityId(),
+      type: 'content',
+      title,
+      content: content || `- ${title}`,
+      voiceOverText,
+    };
+  }
+  const stepWord = type === 'tabbed-horizontal' ? 'Step' : 'Tab';
+  const tabs = (opts.tabs || [])
+    .filter(t => plainSpecifyText(t?.label) || plainSpecifyText(t?.content) || plainSpecifyText(t?.narration))
+    .slice(0, MAX_SPECIFY_TABS)
+    .map((t, i) => {
+      const label = String(t.label || '').trim() || `${stepWord} ${i + 1}`;
+      const tabContent = sanitizeOstText(t.content || '');
+      return {
+        id: String(t.id || '').trim() || newCourseEntityId('tab'),
+        label,
+        content: tabContent || `- ${label}`,
+        voiceOverText: String(t.narration || '').trim(),
+      };
+    });
+  return {
+    id: newCourseEntityId(),
+    type,
+    title,
+    content: content || `- ${title}`,
+    voiceOverText,
+    data: { tabs },
+  };
+}
+
 export function buildSpecifiedContentSlide(opts: {
   title?: string;
   ost: string;
   narration?: string;
 }): { id: string; type: 'content'; title: string; content: string; voiceOverText: string } {
-  const title = String(opts.title || '').trim() || 'New slide';
-  const content = sanitizeOstText(opts.ost);
-  const voiceOverText = String(opts.narration || '').trim();
-  return {
-    id: newCourseEntityId(),
-    type: 'content',
-    title,
-    content: content || `- ${title}`,
-    voiceOverText,
+  return buildSpecifiedSlide({ ...opts, type: 'content' }) as {
+    id: string;
+    type: 'content';
+    title: string;
+    content: string;
+    voiceOverText: string;
   };
 }
 

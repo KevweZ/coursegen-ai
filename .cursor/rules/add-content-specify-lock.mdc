@@ -1,5 +1,5 @@
 ---
-description: Add content “I will write OST + audio” keeps a slide title field and a rich OST editor.
+description: Add content “I will write OST + audio” keeps a slide title, rich OST, and Process / Tabs fields.
 alwaysApply: true
 ---
 
@@ -7,15 +7,18 @@ alwaysApply: true
 
 Anthony (2026-11-02): the specify tab only had plain OST/narration textareas; slide title sat below the fold as an optional generate-mode field, and on-screen text had no bold/italic/underline/lists.
 
+Anthony (2026-11-03): specify could not recreate a missing process/tabs slide (Steam Cracker 4.14) because it always inserted `type: content`.
+
 `npm test` must stay green (`src/lib/addContent.test.ts`).
 
 ## Invariants (code, not comments)
 
 - **Slide title is on the specify tab.** [`AddContentModal`](src/components/builder/AddContentModal.tsx) `authoring === 'specify'` shows **Slide title** as the first field (same `titleHint` as generate). Do not leave specify with only OST + audio.
 - **OST is the Edit Slide editor.** Specify on-screen text uses [`RichTextEditor`](src/components/player/RichTextEditor.tsx) (bold, italic, underline, bullets, numbered list, headings, color). Do not restore a plain `<textarea>` for specify OST.
-- **HTML is sanitized.** [`buildSpecifiedContentSlide`](src/lib/courseSlideEdits.ts) runs `sanitizeOstText` so TipTap lists keep discs after insert. Audio narration stays a plain script box.
-- **Submit ignores empty tags.** Specify `canSubmit` uses stripped OST text (`ostPlain`), not raw `<p></p>` length.
+- **Process / Tabs are authorable.** Specify shows Plain content, Process, and Tabs. Process/Tabs include Overview OST + Overview narration plus labeled step/tab cards (heading, OST, narration) with Add/Remove. [`buildSpecifiedSlide`](src/lib/courseSlideEdits.ts) writes `tabbed-horizontal` / `tabbed-vertical` and `data.tabs`. Do not force specify back to `type: content`.
+- **HTML is sanitized.** [`buildSpecifiedSlide`](src/lib/courseSlideEdits.ts) runs `sanitizeOstText` on intro and each tab so TipTap lists keep discs after insert. Audio narration stays a plain script box.
+- **Submit ignores empty tags.** Specify `canSubmit` uses stripped OST text (`plainSpecifyText`), not raw `<p></p>` length. Process/Tabs need at least two filled steps/tabs.
 
 ## How to change this
 
-Change the modal / `buildSpecifiedContentSlide` and add a failing test first. Do not “simplify” specify OST back to a textarea.
+Change the modal / `buildSpecifiedSlide` and add a failing test first. Do not “simplify” specify OST back to a textarea.

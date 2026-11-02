@@ -104,6 +104,7 @@ import {
   mergeCoursePreservingAudio,
   playbackNarrationKey,
   tabAudioOnSlide,
+  tabNarrationScript,
 } from './lib/narrationAudio';
 import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft, generateMasteryExam, generateInsertedContent } from './services/aiService';
 import { sanitizeMasteryExamQuestions } from './lib/masteryExam';
@@ -178,14 +179,17 @@ import {
 import { clearNarrationCache, stashAudioUrl, setLiveNarrationScope } from './lib/narrationCache';
 import { mergeRegenIntoSlide, patchCourseSlideById, slidesMatchId } from './lib/slideRegenMerge';
 import {
-  buildSpecifiedContentSlide,
+  buildSpecifiedSlide,
   countRealModuleSlides,
   deleteSlideById,
+  filledSpecifyTabCount,
   insertSlidesIntoCourse,
   ensureUniqueSlideIds,
   dedupeIdenticalModuleSlides,
   isChromePlayerSlide,
   isDeletableCourseSlide,
+  isSpecifyTabbedType,
+  MIN_SPECIFY_TABS,
   moveSlideInCourse,
   slideReorderState,
   moduleIndexFromVirtualSlideId,
@@ -5379,7 +5383,12 @@ export default function App() {
       showDraftMessage('Paste the source content to teach, then generate.');
       return;
     }
-    if (specify && !form.ostText.trim() && !form.narrationText.trim()) {
+    if (specify && isSpecifyTabbedType(form.specifyType)) {
+      if (filledSpecifyTabCount(form.specifyTabs) < MIN_SPECIFY_TABS) {
+        showDraftMessage('Add at least two steps or tabs with a heading or on-screen text.');
+        return;
+      }
+    } else if (specify && !form.ostText.trim() && !form.narrationText.trim()) {
       showDraftMessage('Enter on-screen text or narration for the new slide.');
       return;
     }
@@ -5394,10 +5403,12 @@ export default function App() {
       const typePool = form.preferredTypes?.length ? form.preferredTypes : (interactionTypes || []);
       const result = specify
         ? {
-            slides: [buildSpecifiedContentSlide({
+            slides: [buildSpecifiedSlide({
               title: form.titleHint,
               ost: form.ostText,
               narration: form.narrationText,
+              type: form.specifyType,
+              tabs: form.specifyTabs,
             })],
           }
         : await generateInsertedContent({
@@ -5447,11 +5458,34 @@ export default function App() {
             try { return await urlToDataUrl(blobUrl); } catch { return blobUrl; }
           };
           for (const slide of spliced.inserted) {
+            let next = slide;
             const script = String(slide.voiceOverText || '').trim();
-            if (!script || slideSkipsNarration(slide)) continue;
-            const durable = await toDurable(await genTTS(script, { voice: ttsVoice as any }));
-            void stashAudioUrl(`slide:${slide.id}`, durable);
-            handleUpdateSlideMedia(slide.id, { voiceOverUrl: durable });
+            if (script && !slideSkipsNarration(slide)) {
+              const durable = await toDurable(await genTTS(script, { voice: ttsVoice as any }));
+              void stashAudioUrl(`slide:${slide.id}`, durable);
+              next = { ...next, voiceOverUrl: durable };
+            }
+            if (isTabbedNarrationType(slide.type)) {
+              const listKey = Array.isArray(slide.data?.tabs) ? 'tabs' : 'items';
+              const tabs = [...(slide.data?.[listKey] || [])];
+              let changed = false;
+              for (let i = 0; i < tabs.length; i++) {
+                const tabText = tabNarrationScript(tabs[i]);
+                if (!tabText) continue;
+                const tabUrl = await toDurable(await genTTS(tabText, { voice: ttsVoice as any }));
+                tabs[i] = { ...tabs[i], voiceOverUrl: tabUrl };
+                void stashAudioUrl(`tab:${slide.id}:${listKey}:${tabs[i].id}`, tabUrl);
+                changed = true;
+                await new Promise(r => setTimeout(r, 200));
+              }
+              if (changed) next = { ...next, data: { ...(next.data || {}), [listKey]: tabs } };
+            }
+            if (next !== slide) {
+              handleUpdateSlideMedia(slide.id, {
+                voiceOverUrl: next.voiceOverUrl,
+                data: next.data,
+              });
+            }
             await new Promise(r => setTimeout(r, 200));
           }
         } catch (e) {

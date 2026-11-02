@@ -1,7 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, Plus, X } from 'lucide-react';
-import type { InsertPlacement } from '../../lib/courseSlideEdits';
+import type { InsertPlacement, SpecifySlideType, SpecifyTabDraft } from '../../lib/courseSlideEdits';
+import {
+  blankSpecifyTab,
+  filledSpecifyTabCount,
+  isSpecifyTabbedType,
+  MAX_SPECIFY_TABS,
+  MIN_SPECIFY_TABS,
+  plainSpecifyText,
+} from '../../lib/courseSlideEdits';
 import { RichTextEditor } from '../player/RichTextEditor';
 import { sanitizeOstText } from '../../lib/formatTabIntroOst';
 
@@ -17,6 +25,12 @@ export const ADD_CONTENT_TYPE_OPTIONS = [
   { id: 'quiz', label: 'Knowledge check' },
 ] as const;
 
+export const SPECIFY_TYPE_OPTIONS = [
+  { id: 'content', label: 'Plain content' },
+  { id: 'tabbed-horizontal', label: 'Process' },
+  { id: 'tabbed-vertical', label: 'Tabs' },
+] as const;
+
 export type AddContentForm = {
   scope: AddContentScope;
   brief: string;
@@ -29,6 +43,8 @@ export type AddContentForm = {
   ostText: string;
   narrationText: string;
   preferredTypes: string[];
+  specifyType: SpecifySlideType;
+  specifyTabs: SpecifyTabDraft[];
 };
 
 interface Props {
@@ -67,6 +83,8 @@ export function AddContentModal({
   const [ostText, setOstText] = useState('');
   const [narrationText, setNarrationText] = useState('');
   const [preferredTypes, setPreferredTypes] = useState<string[]>([]);
+  const [specifyType, setSpecifyType] = useState<SpecifySlideType>('content');
+  const [specifyTabs, setSpecifyTabs] = useState<SpecifyTabDraft[]>(() => [blankSpecifyTab(), blankSpecifyTab(), blankSpecifyTab()]);
 
   useEffect(() => {
     if (!open) return;
@@ -81,6 +99,8 @@ export function AddContentModal({
     setOstText('');
     setNarrationText('');
     setPreferredTypes([]);
+    setSpecifyType('content');
+    setSpecifyTabs([blankSpecifyTab(), blankSpecifyTab(), blankSpecifyTab()]);
   }, [open, currentIsChrome]);
 
   useEffect(() => {
@@ -89,10 +109,19 @@ export function AddContentModal({
   }, [scope]);
 
   const specify = scope === 'slide' && authoring === 'specify';
-  const ostPlain = ostText.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim();
+  const tabbed = specify && isSpecifyTabbedType(specifyType);
+  const ostPlain = plainSpecifyText(ostText);
+  const filledTabs = filledSpecifyTabCount(specifyTabs);
   const canSubmit = specify
-    ? (ostPlain.length >= 4 || narrationText.trim().length >= 8) && !busy
+    ? (tabbed
+      ? filledTabs >= MIN_SPECIFY_TABS
+      : (ostPlain.length >= 4 || narrationText.trim().length >= 8)) && !busy
     : brief.trim().length >= 8 && !busy;
+  const stepWord = specifyType === 'tabbed-horizontal' ? 'step' : 'tab';
+
+  const patchSpecifyTab = (index: number, patch: Partial<SpecifyTabDraft>) => {
+    setSpecifyTabs(prev => prev.map((tab, i) => i === index ? { ...tab, ...patch } : tab));
+  };
   const effectivePlacement: InsertPlacement = scope === 'module' ? 'new-module' : placement;
 
   const toggleType = (id: string) => {
@@ -116,7 +145,7 @@ export function AddContentModal({
             initial={{ opacity: 0, scale: 0.96, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 12 }}
-            className={`relative w-full ${specify ? 'max-w-xl' : 'max-w-lg'} bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden`}
+            className={`relative w-full ${tabbed ? 'max-w-2xl' : specify ? 'max-w-xl' : 'max-w-lg'} bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden`}
           >
             <div className="flex items-start justify-between gap-3 p-5 border-b border-slate-800">
               <div className="flex items-start gap-3 min-w-0">
@@ -200,27 +229,123 @@ export function AddContentModal({
                       className="w-full rounded-xl bg-slate-950 border border-slate-700 text-sm text-slate-100 placeholder:text-slate-600 px-3 py-2 focus:outline-none focus:border-indigo-500"
                     />
                   </label>
+                  <div className="space-y-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Slide type</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {SPECIFY_TYPE_OPTIONS.map(opt => {
+                        const on = specifyType === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            disabled={busy}
+                            onClick={() => setSpecifyType(opt.id)}
+                            className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-colors ${
+                              on
+                                ? 'border-indigo-500 bg-indigo-500/20 text-indigo-200'
+                                : 'border-slate-700 text-slate-400 hover:border-slate-500'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {tabbed && (
+                      <p className="text-[11px] text-slate-500 leading-relaxed">
+                        Overview is the left intro. Each {stepWord} needs a heading and on-screen text — same fields as Edit Slide.
+                        {specifyType === 'tabbed-horizontal' ? ' Process works best with 3–4 steps.' : ''}
+                      </p>
+                    )}
+                  </div>
                   <div className={`space-y-1.5 ${busy ? 'pointer-events-none opacity-60' : ''}`}>
-                    <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">On-screen text</span>
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                      {tabbed ? 'Overview' : 'On-screen text'}
+                    </span>
                     <RichTextEditor
-                      key={open ? 'add-ost-open' : 'add-ost-closed'}
+                      key={open ? `add-ost-${specifyType}` : 'add-ost-closed'}
                       value={ostText}
                       onChange={(html) => setOstText(sanitizeOstText(html))}
-                      placeholder="The bullets or sentences learners see on the slide."
-                      minRows={6}
+                      placeholder={tabbed
+                        ? 'Short bullets learners see in the Overview column before they open a step.'
+                        : 'The bullets or sentences learners see on the slide.'}
+                      minRows={tabbed ? 4 : 6}
                     />
                   </div>
                   <label className="block space-y-1.5">
-                    <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Audio narration</span>
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                      {tabbed ? 'Overview narration' : 'Audio narration'}
+                    </span>
                     <textarea
                       value={narrationText}
                       onChange={e => setNarrationText(e.target.value)}
                       disabled={busy}
-                      rows={5}
-                      placeholder="Spoken script for this slide. Leave blank for a silent slide."
-                      className="w-full rounded-xl bg-slate-950 border border-slate-700 text-sm text-slate-100 placeholder:text-slate-600 px-3 py-2.5 focus:outline-none focus:border-indigo-500 resize-y min-h-[6rem]"
+                      rows={tabbed ? 3 : 5}
+                      placeholder={tabbed
+                        ? 'Spoken when the slide opens, before a step is selected. Leave blank for a silent intro.'
+                        : 'Spoken script for this slide. Leave blank for a silent slide.'}
+                      className="w-full rounded-xl bg-slate-950 border border-slate-700 text-sm text-slate-100 placeholder:text-slate-600 px-3 py-2.5 focus:outline-none focus:border-indigo-500 resize-y min-h-[5rem]"
                     />
                   </label>
+                  {tabbed && (
+                    <div className="space-y-3">
+                      <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                        {specifyType === 'tabbed-horizontal' ? 'Process steps' : 'Tabs'}
+                      </span>
+                      {specifyTabs.map((tab, ti) => (
+                        <div key={tab.id || ti} className="rounded-xl border border-slate-700 bg-slate-950 p-3 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <input
+                              value={tab.label || ''}
+                              onChange={e => patchSpecifyTab(ti, { label: e.target.value })}
+                              disabled={busy}
+                              placeholder={`${specifyType === 'tabbed-horizontal' ? 'Step' : 'Tab'} ${ti + 1} heading`}
+                              className="flex-1 rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-sm font-bold text-white outline-none focus:border-indigo-500"
+                            />
+                            {specifyTabs.length > MIN_SPECIFY_TABS && (
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() => setSpecifyTabs(prev => prev.filter((_, i) => i !== ti))}
+                                className="shrink-0 p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800"
+                                aria-label={`Remove ${stepWord} ${ti + 1}`}
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                          <div className={busy ? 'pointer-events-none opacity-60' : ''}>
+                            <RichTextEditor
+                              key={`${tab.id || ti}-ost`}
+                              value={tab.content || ''}
+                              onChange={(html) => patchSpecifyTab(ti, { content: sanitizeOstText(html) })}
+                              placeholder={`On-screen text for this ${stepWord}…`}
+                              minRows={3}
+                            />
+                          </div>
+                          <textarea
+                            value={tab.narration || ''}
+                            onChange={e => patchSpecifyTab(ti, { narration: e.target.value })}
+                            disabled={busy}
+                            rows={3}
+                            placeholder={`Narration when the learner opens this ${stepWord}…`}
+                            className="w-full rounded-lg bg-slate-900 border border-slate-700 text-sm text-slate-100 placeholder:text-slate-600 px-3 py-2 outline-none focus:border-indigo-500 resize-y"
+                          />
+                        </div>
+                      ))}
+                      {specifyTabs.length < MAX_SPECIFY_TABS && (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => setSpecifyTabs(prev => [...prev, blankSpecifyTab()])}
+                          className="inline-flex items-center gap-1.5 text-[11px] font-bold text-indigo-300 hover:text-indigo-100"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          {specifyType === 'tabbed-horizontal' ? 'Add step' : 'Add tab'}
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </>
               ) : (
               <label className="block space-y-1.5">
@@ -384,6 +509,8 @@ export function AddContentModal({
                   ostText: ostText.trim(),
                   narrationText: narrationText.trim(),
                   preferredTypes,
+                  specifyType,
+                  specifyTabs,
                 })}
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
