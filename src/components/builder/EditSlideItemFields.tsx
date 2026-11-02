@@ -10,6 +10,12 @@ import {
   knowledgeCheckEditQuestions,
   setKnowledgeCheckCorrect,
 } from '../../lib/knowledgeCheckOst';
+import {
+  applyKeyTakeawayEdits,
+  keyTakeawayEditItems,
+  MAX_KEY_TAKEAWAYS,
+  MIN_KEY_TAKEAWAYS,
+} from '../../lib/keyTakeawayOst';
 import { inferChoiceCardsMode } from '../interactions/ChoiceCardsInteraction';
 
 interface Props {
@@ -387,6 +393,61 @@ export function EditSlideItemFields({ slide, onPatch, getSlide }: Props) {
     );
   }
 
+  if (type === 'key-takeaways') {
+    const current = live();
+    const items = keyTakeawayEditItems(current);
+    const commit = (nextItems: typeof items) => {
+      onPatch(applyKeyTakeawayEdits(live(), nextItems));
+    };
+    return (
+      <div className="space-y-3">
+        <label className={labelClass}>Key takeaways</label>
+        <p className="text-[11px] text-slate-500 leading-relaxed">
+          These numbered cards are what learners see on the Module Summary. The layout stays numbered — edit the statements below.
+        </p>
+        {items.map((item, i) => (
+          <div key={item.id || i} className="rounded-xl border border-slate-700 bg-slate-950 p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-black bg-indigo-500/20 text-indigo-300">
+                {i + 1}
+              </span>
+              {items.length > MIN_KEY_TAKEAWAYS && (
+                <button
+                  type="button"
+                  onClick={() => commit(items.filter((_, j) => j !== i))}
+                  className="text-[10px] font-bold text-rose-400 hover:text-rose-300"
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+            <textarea
+              rows={3}
+              value={item.text}
+              onChange={(e) => {
+                const next = items.map((row, idx) =>
+                  idx === i ? { ...row, text: e.target.value } : row
+                );
+                commit(next);
+              }}
+              className={areaClass}
+              placeholder={`Takeaway ${i + 1}`}
+            />
+          </div>
+        ))}
+        {items.length < MAX_KEY_TAKEAWAYS && (
+          <button
+            type="button"
+            onClick={() => commit([...items, { id: String(items.length + 1), text: '' }])}
+            className="text-[11px] font-bold text-indigo-300 hover:text-indigo-200"
+          >
+            + Add takeaway
+          </button>
+        )}
+      </div>
+    );
+  }
+
   if (QUIZ_TYPES.has(type) || type === 'knowledge-check') {
     const current = live();
     const questions = knowledgeCheckEditQuestions(current);
@@ -641,6 +702,13 @@ export function sanitizeInteractionOstOnSave(slide: any): any {
     d.options = d.options.map((o: any) => ({ ...o, text: o.text != null ? clean(o.text) : o.text }));
   }
   if (d.questionText != null) d.questionText = clean(d.questionText);
+  if (Array.isArray(d.objectives)) {
+    d.objectives = d.objectives.map((o: any) => ({
+      ...o,
+      label: o.label != null ? clean(o.label) : o.label,
+      content: o.content != null ? clean(o.content) : o.content,
+    }));
+  }
   if (Array.isArray(s.interactions) && s.interactions[0] && typeof s.interactions[0] === 'object') {
     const ix = { ...s.interactions[0] };
     if (ix.questionText != null) ix.questionText = clean(ix.questionText);

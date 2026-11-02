@@ -86,6 +86,7 @@ import {
   optionsWithCorrectFlags,
   isQuizKnowledgeCheckType,
 } from './lib/knowledgeCheckOst';
+import { isKeyTakeawaysType } from './lib/keyTakeawayOst';
 import { slideSkipsNarration } from './lib/enablingCoverage';
 import { collapseChoiceCardsOst, ensureSelectChoicePrompt, normalizeKeyTakeaways } from './lib/hydrateGuards';
 import { choiceCardsPromptForMode } from './lib/choiceCardCopy';
@@ -9497,7 +9498,7 @@ export default function App() {
                             <Plus className="w-3.5 h-3.5" /> Add parent objective
                           </button>
                         </div>
-                      ) : isQuizKnowledgeCheckType(editingSlide.type) ? null : (
+                      ) : isQuizKnowledgeCheckType(editingSlide.type) ? null : isKeyTakeawaysType(editingSlide.type) ? null : (
                       <div className="space-y-2">
                         <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest flex items-center justify-between">
                           <span>

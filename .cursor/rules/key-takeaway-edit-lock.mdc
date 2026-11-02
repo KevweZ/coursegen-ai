@@ -1,0 +1,21 @@
+---
+description: Edit Slide for Key Takeaways must edit the numbered cards, not leftover OST bullets.
+alwaysApply: true
+---
+
+# Key Takeaway Edit Slide lock (do not regress)
+
+Anthony (2026-11-02): Edit on Module Summary still showed leftover short OST bullets that are not on the slide, while the four numbered takeaway cards could not be changed. Switching the editor from bullets to a numbered list also did nothing.
+
+`npm test` must stay green (`src/lib/keyTakeawayOst.test.ts`).
+
+## Invariants (code, not comments)
+
+- **Edit Text shows the cards.** For `key-takeaways`, Edit Slide does **not** render the leftover OST RichTextEditor. [`isKeyTakeawaysType`](src/lib/keyTakeawayOst.ts) gates that in [`App.tsx`](src/App.tsx).
+- **Numbered statements are the fields.** [`keyTakeawayEditItems`](src/lib/keyTakeawayOst.ts) reads `normalizeKeyTakeaways(...).data.objectives` (player source), not leftover `content`. [`applyKeyTakeawayEdits`](src/lib/keyTakeawayOst.ts) writes **objectives plus numbered content** so Save updates the slide the learner sees.
+- **Layout stays numbered.** The player uses numbered badges. The editor shows numbered fields 1–4, not a bullet/numbered list toggle. Do not require Regenerate to change a takeaway sentence.
+- **Keep the player layout.** Do not put leftover short OST bullets back on the Module Summary canvas.
+
+## How to change this
+
+Change the helpers and add a failing test first. Do not “fix” Edit by putting the cards into on-screen text.
