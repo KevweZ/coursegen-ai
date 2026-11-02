@@ -99,8 +99,11 @@ import {
   PLAYER_TOUR_NARRATION,
   defaultCoverNarration,
   hasLiveNarrationUrl,
+  isTabbedNarrationType,
   mergeBackgroundCourseSnapshot,
   mergeCoursePreservingAudio,
+  playbackNarrationKey,
+  tabAudioOnSlide,
 } from './lib/narrationAudio';
 import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft, generateMasteryExam, generateInsertedContent } from './services/aiService';
 import { sanitizeMasteryExamQuestions } from './lib/masteryExam';
@@ -3016,7 +3019,9 @@ export default function App() {
       setActiveTabNarrationText(null);
       return;
     }
-    const tabs = currentSlide.data?.tabs || currentSlide.data?.items || [];
+    const tabs = isTabbedNarrationType(currentSlide.type)
+      ? (currentSlide.data?.tabs || currentSlide.data?.items || [])
+      : [];
     const tab = (tabs || []).find((t: any) => t.id === tabId);
     if (hasLiveNarrationUrl(tab?.voiceOverUrl)) {
       setActiveTabAudioUrl(tab.voiceOverUrl);
@@ -3035,9 +3040,13 @@ export default function App() {
     currentSlideIdRef.current = currentSlide.id || null;
     currentSlideVoiceOverUrlRef.current = currentSlide.voiceOverUrl || null;
     const restoredUrl = restoredBySlideRef.current[currentSlide.id];
+    const tabPlayUrl = tabAudioOnSlide(currentSlide, activeTabAudioUrl)
+      && hasLiveNarrationUrl(activeTabAudioUrl)
+        ? activeTabAudioUrl
+        : null;
     const playUrl = voiceOverEnabled && !slideSkipsNarration(currentSlide)
       ? (
-          (hasLiveNarrationUrl(activeTabAudioUrl) ? activeTabAudioUrl : null)
+          tabPlayUrl
           || (hasLiveNarrationUrl(currentSlide.voiceOverUrl) ? currentSlide.voiceOverUrl : null)
           || (hasLiveNarrationUrl((currentSlide as any).audioUrl) ? (currentSlide as any).audioUrl : null)
           || (hasLiveNarrationUrl(currentSyntheticUrl) ? currentSyntheticUrl : null)
@@ -3045,10 +3054,13 @@ export default function App() {
         )
       : null;
     if (playUrl && currentSlide.id) {
-      const key = currentSyntheticUrl && playUrl === currentSyntheticUrl
-        ? `synth:${currentSlide.id}`
-        : `slide:${currentSlide.id}`;
-      void stashAudioUrl(key, playUrl);
+      void stashAudioUrl(
+        playbackNarrationKey(currentSlide, playUrl, {
+          syntheticUrl: currentSyntheticUrl,
+          tabAudioUrl: tabPlayUrl,
+        }),
+        playUrl,
+      );
     }
     player.loadSlide(
       currentSlide.id,
@@ -5285,7 +5297,7 @@ export default function App() {
       const tabJobs = tabs
         .map((t, i) => ({ t, i, text: String(t?.voiceOverText || '').trim() }))
         .filter(j => j.text);
-      if (listKey && tabJobs.length) {
+      if (isTabbedNarrationType(result.type) && listKey && tabJobs.length) {
         const nextTabs = [...tabs];
         for (let n = 0; n < tabJobs.length; n++) {
           const job = tabJobs[n];
@@ -5523,7 +5535,7 @@ export default function App() {
               });
             }
             const listKey = Array.isArray(found.data?.tabs) ? 'tabs' : Array.isArray(found.data?.items) ? 'items' : null;
-            if (listKey) {
+            if (isTabbedNarrationType(found.type) && listKey) {
               const tabs = [...(found.data[listKey] || [])];
               let changed = false;
               for (let i = 0; i < tabs.length; i++) {

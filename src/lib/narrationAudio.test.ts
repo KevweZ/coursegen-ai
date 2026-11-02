@@ -7,11 +7,13 @@ import {
   PLAYER_TOUR_NARRATION,
   mergeBackgroundCourseSnapshot,
   mergeCoursePreservingAudio,
+  playbackNarrationKey,
   slideNarrationScript,
+  tabAudioOnSlide,
   tabNarrationScript,
 } from './narrationAudio.ts';
 import { autoFixCourse } from '../services/qcService.ts';
-import { buildCourseNarrationItems } from '../hooks/useTTSGeneration.ts';
+import { buildCourseNarrationItems, slideTtsPatchAppliesTo, ttsResultIsTab } from '../hooks/useTTSGeneration.ts';
 import { qcFieldTouchesNarration } from './qcTextFix.ts';
 
 test('TTS speaks the Audio box script, not leftover OST', () => {
@@ -133,4 +135,54 @@ test('player tour and objectives TTS copy matches the Audio box', () => {
   assert.match(app, /COURSE_OBJECTIVES_NARRATION/);
   assert.equal(PLAYER_TOUR_NARRATION.includes('player preview'), false);
   assert.equal(COURSE_OBJECTIVES_NARRATION.includes('learning objectives'), false);
+});
+
+test('a leftover tab clip does not stamp the next slide’s cache key', () => {
+  const heatUrl = 'https://example.com/audio/heat-integration.mp3'.padEnd(48, 'x');
+  const introUrl = 'https://example.com/audio/utility-points-intro.mp3'.padEnd(48, 'x');
+  const processSlide = {
+    id: 'utility-systems',
+    type: 'tabbed-horizontal',
+    voiceOverUrl: introUrl,
+    data: {
+      tabs: [{ id: 'heat', label: 'Heat Integration Strategy', voiceOverUrl: heatUrl }],
+    },
+  };
+  const clickReveal = {
+    id: 'utility-points',
+    type: 'click-reveal',
+    voiceOverUrl: introUrl,
+    data: {
+      items: [{ id: 'furnace', term: 'Furnace Exhaust', voiceOverUrl: heatUrl }],
+    },
+  };
+
+  assert.equal(tabAudioOnSlide(processSlide, heatUrl)?.tab.id, 'heat');
+  assert.equal(tabAudioOnSlide(clickReveal, heatUrl), null);
+  assert.equal(
+    playbackNarrationKey(processSlide, heatUrl, { tabAudioUrl: heatUrl }),
+    'tab:utility-systems:tabs:heat',
+  );
+  assert.equal(
+    playbackNarrationKey(clickReveal, introUrl, { tabAudioUrl: heatUrl }),
+    'slide:utility-points',
+  );
+
+  const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+  assert.match(app, /tabAudioOnSlide\(currentSlide, activeTabAudioUrl\)/);
+  assert.match(app, /playbackNarrationKey\(currentSlide, playUrl/);
+  assert.match(app, /isTabbedNarrationType\(result\.type\)/);
+});
+
+test('TTS tab results cannot overwrite a slide-level voiceOverUrl', () => {
+  const sid = 'utility-points';
+  assert.equal(ttsResultIsTab({ target: 'tab', slideId: sid, tabId: 'heat', id: `${sid}::tab::heat` }), true);
+  assert.equal(ttsResultIsTab({ id: `${sid}::tab::heat`, slideId: sid }), true);
+  assert.equal(ttsResultIsTab({ target: 'slide', id: sid, slideId: sid }), false);
+  assert.equal(slideTtsPatchAppliesTo({ target: 'slide', id: sid, slideId: sid }, sid), true);
+  assert.equal(slideTtsPatchAppliesTo({ target: 'tab', id: `${sid}::tab::heat`, slideId: sid, tabId: 'heat' }, sid), false);
+  assert.equal(slideTtsPatchAppliesTo({ id: `${sid}::tab::heat`, slideId: sid }, sid), false);
+  const hook = readFileSync(resolve(process.cwd(), 'src/hooks/useTTSGeneration.ts'), 'utf8');
+  assert.match(hook, /slideTtsPatchAppliesTo\(r, sid\)/);
+  assert.doesNotMatch(hook, /String\(r\.id\) === sid \|\| String\(r\.slideId/);
 });

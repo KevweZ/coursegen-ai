@@ -82,6 +82,45 @@ export function tabNarrationScript(tab: any): string {
   return usableNarrationText(tab?.voiceOverText || tab?.narration);
 }
 
+/** Per-tab TTS / playback only exists on process and vertical tabs — not click-reveal rows. */
+export function isTabbedNarrationType(type: unknown): boolean {
+  const t = String(type || '');
+  return t === 'tabbed-horizontal' || t === 'tabbed-vertical';
+}
+
+/** True when `url` is a tab clip that belongs to this tabbed slide. */
+export function tabAudioOnSlide(
+  slide: any,
+  url: string | null | undefined,
+): { listKey: 'tabs' | 'items'; tab: any } | null {
+  if (!url || !isTabbedNarrationType(slide?.type)) return null;
+  const u = String(url);
+  for (const listKey of ['tabs', 'items'] as const) {
+    const list = slide?.data?.[listKey];
+    if (!Array.isArray(list)) continue;
+    const tab = list.find((t: any) => t && String(t.voiceOverUrl || '') === u && String(t.id || '').trim());
+    if (tab) return { listKey, tab };
+  }
+  return null;
+}
+
+/**
+ * Cache key for the clip currently playing. A tab MP3 must not be written as
+ * `slide:{id}` — jumping to the next slide would pack that tab onto the new row.
+ */
+export function playbackNarrationKey(
+  slide: any,
+  playUrl: string,
+  opts?: { syntheticUrl?: string | null; tabAudioUrl?: string | null },
+): string {
+  const id = String(slide?.id || '').trim();
+  if (opts?.syntheticUrl && playUrl === opts.syntheticUrl) return `synth:${id}`;
+  const tabUrl = opts?.tabAudioUrl && playUrl === opts.tabAudioUrl ? playUrl : null;
+  const match = tabAudioOnSlide(slide, tabUrl);
+  if (match) return `tab:${id}:${match.listKey}:${match.tab.id}`;
+  return `slide:${id}`;
+}
+
 function keepRecordedClip(nextItem: any, prevItem: any): any {
   if (!prevItem) return nextItem;
   if (hasLiveNarrationUrl(nextItem?.voiceOverUrl)) return nextItem;

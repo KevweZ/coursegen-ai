@@ -3,7 +3,7 @@
  * then re-attach images after the preview is visible.
  */
 
-import { hasLiveNarrationUrl } from './narrationAudio';
+import { hasLiveNarrationUrl, isTabbedNarrationType } from './narrationAudio';
 
 const HEAVY_RE = /^data:/i;
 const HEAVY_MIN = 1500; // chars — skip tiny placeholders
@@ -446,6 +446,7 @@ export async function collectNarrationRecords(
       if (s?.id && isPackableAudioUrl(s.voiceOverUrl)) {
         jobs.push({ key: `slide:${String(s.id)}`, url: s.voiceOverUrl });
       }
+      if (!isTabbedNarrationType(s?.type)) continue;
       for (const listKey of ['tabs', 'items'] as const) {
         for (const item of s?.data?.[listKey] || []) {
           if (item?.id && isPackableAudioUrl(item.voiceOverUrl)) {
@@ -506,6 +507,7 @@ export function applyNarrationUrls(
         const su = s?.id ? slideUrl.get(String(s.id)) : undefined;
         if (su) slide = { ...slide, voiceOverUrl: su };
         if (!slide.data || typeof slide.data !== 'object') return slide;
+        if (!isTabbedNarrationType(s?.type)) return slide;
         let data = slide.data;
         let changed = false;
         for (const listKey of ['tabs', 'items'] as const) {

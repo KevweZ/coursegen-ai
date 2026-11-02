@@ -189,6 +189,36 @@ test('duplicate slide ids are uniqued so two slides cannot share a clip key', ()
   assert.notEqual(course.modules[0].slides[1].id, 'dup');
 });
 
+test('leftover tab audio is not restored onto a click-reveal slide', () => {
+  const heat = 'https://example.com/audio/heat-integration.mp3'.padEnd(48, 'x');
+  const intro = 'https://example.com/audio/utility-points-intro.mp3'.padEnd(48, 'x');
+  const course = {
+    modules: [{
+      slides: [{
+        id: 'utility-points',
+        type: 'click-reveal',
+        voiceOverUrl: intro,
+        data: {
+          items: [{ id: 'furnace', term: 'Furnace Exhaust', voiceOverUrl: null }],
+          tabs: [{ id: 'heat', label: 'Heat Integration Strategy', voiceOverUrl: null }],
+        },
+      }],
+    }],
+  };
+  const applied = applyNarrationUrls(course, {
+    'slide:utility-points': intro,
+    'tab:utility-points:items:furnace': heat,
+    'tab:utility-points:tabs:heat': heat,
+  });
+  const slide = applied.course.modules[0].slides[0];
+  assert.equal(slide.voiceOverUrl, intro);
+  assert.equal(slide.data.items[0].voiceOverUrl, null);
+  assert.equal(slide.data.tabs[0].voiceOverUrl, null);
+
+  const srcText = src('src/lib/draftMedia.ts');
+  assert.match(srcText, /isTabbedNarrationType\(s\?\.type\)/);
+});
+
 test('harvest only keeps the clip that is actually this slide’s src', () => {
   assert.equal(harvestClipBelongsToSlide('blob:summary', 'blob:summary'), true);
   assert.equal(harvestClipBelongsToSlide('blob:summary', 'blob:diagram'), false);

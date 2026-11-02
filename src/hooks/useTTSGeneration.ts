@@ -7,7 +7,21 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { slideSkipsNarration } from '../lib/enablingCoverage';
-import { hasPlayableNarrationUrl, slideNarrationScript, tabNarrationScript } from '../lib/narrationAudio';
+import { hasPlayableNarrationUrl, isTabbedNarrationType, slideNarrationScript, tabNarrationScript } from '../lib/narrationAudio';
+
+/** Tab jobs must not stamp slide.voiceOverUrl even if the server drops `target`. */
+export function ttsResultIsTab(r: { target?: string | null; tabId?: string | null; id?: string }): boolean {
+  if (r?.target === 'tab' || r?.tabId) return true;
+  return String(r?.id || '').includes('::tab::');
+}
+
+export function slideTtsPatchAppliesTo(
+  r: { target?: string | null; tabId?: string | null; id?: string; slideId?: string | null },
+  slideId: string,
+): boolean {
+  if (ttsResultIsTab(r)) return false;
+  return String(r?.id || '') === String(slideId);
+}
 import { stashJobResultAudio } from '../lib/narrationCache';
 import {
   createTtsJob,
@@ -70,7 +84,7 @@ function applyJobResults(
     if (!url) continue;
     if (r.target === 'synthetic' || (String(r.id).startsWith('__') && String(r.id).endsWith('__'))) {
       syntheticPatches.push({ r, url });
-    } else if (r.target === 'tab' || r.tabId) {
+    } else if (ttsResultIsTab(r)) {
       tabPatches.push({ r, url });
     } else {
       slidePatches.push({ r, url });
@@ -96,12 +110,11 @@ function applyJobResults(
             let slide = s;
             const sid = String(s.id);
             for (const { r, url } of slidePatches) {
-              if (String(r.id) === sid || String(r.slideId || '') === sid) {
-                const spoken = spokenById?.get(r.id) || spokenById?.get(sid);
-                slide = spoken
-                  ? { ...slide, voiceOverUrl: url, voiceOverText: spoken }
-                  : { ...slide, voiceOverUrl: url };
-              }
+              if (!slideTtsPatchAppliesTo(r, sid)) continue;
+              const spoken = spokenById?.get(r.id) || spokenById?.get(sid);
+              slide = spoken
+                ? { ...slide, voiceOverUrl: url, voiceOverText: spoken }
+                : { ...slide, voiceOverUrl: url };
             }
             for (const { r, url } of tabPatches) {
               const slideId = String(r.slideId || r.id.split('::tab::')[0] || '');
@@ -166,7 +179,7 @@ export function buildCourseNarrationItems(
         skipped += 1;
       }
 
-      const isTabbed = slide.type === 'tabbed-horizontal' || slide.type === 'tabbed-vertical';
+      const isTabbed = isTabbedNarrationType(slide.type);
       const listKey = Array.isArray(slide.data?.tabs) ? 'tabs' : Array.isArray(slide.data?.items) ? 'items' : null;
       const tabs: any[] = listKey ? (slide.data?.[listKey] || []) : [];
       if (isTabbed && tabs.length) {
