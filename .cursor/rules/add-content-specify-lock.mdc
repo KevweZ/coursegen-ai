@@ -1,0 +1,21 @@
+---
+description: Add content “I will write OST + audio” keeps a slide title field and a rich OST editor.
+alwaysApply: true
+---
+
+# Add content specify lock (do not regress)
+
+Anthony (2026-11-02): the specify tab only had plain OST/narration textareas; slide title sat below the fold as an optional generate-mode field, and on-screen text had no bold/italic/underline/lists.
+
+`npm test` must stay green (`src/lib/addContent.test.ts`).
+
+## Invariants (code, not comments)
+
+- **Slide title is on the specify tab.** [`AddContentModal`](src/components/builder/AddContentModal.tsx) `authoring === 'specify'` shows **Slide title** as the first field (same `titleHint` as generate). Do not leave specify with only OST + audio.
+- **OST is the Edit Slide editor.** Specify on-screen text uses [`RichTextEditor`](src/components/player/RichTextEditor.tsx) (bold, italic, underline, bullets, numbered list, headings, color). Do not restore a plain `<textarea>` for specify OST.
+- **HTML is sanitized.** [`buildSpecifiedContentSlide`](src/lib/courseSlideEdits.ts) runs `sanitizeOstText` so TipTap lists keep discs after insert. Audio narration stays a plain script box.
+- **Submit ignores empty tags.** Specify `canSubmit` uses stripped OST text (`ostPlain`), not raw `<p></p>` length.
+
+## How to change this
+
+Change the modal / `buildSpecifiedContentSlide` and add a failing test first. Do not “simplify” specify OST back to a textarea.

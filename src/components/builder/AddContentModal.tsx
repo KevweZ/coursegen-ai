@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, Plus, X } from 'lucide-react';
 import type { InsertPlacement } from '../../lib/courseSlideEdits';
+import { RichTextEditor } from '../player/RichTextEditor';
+import { sanitizeOstText } from '../../lib/formatTabIntroOst';
 
 export type AddContentScope = 'slide' | 'slides' | 'module';
 export type AddContentAuthoring = 'generate' | 'specify';
@@ -87,8 +89,9 @@ export function AddContentModal({
   }, [scope]);
 
   const specify = scope === 'slide' && authoring === 'specify';
+  const ostPlain = ostText.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim();
   const canSubmit = specify
-    ? (ostText.trim().length >= 4 || narrationText.trim().length >= 8) && !busy
+    ? (ostPlain.length >= 4 || narrationText.trim().length >= 8) && !busy
     : brief.trim().length >= 8 && !busy;
   const effectivePlacement: InsertPlacement = scope === 'module' ? 'new-module' : placement;
 
@@ -113,7 +116,7 @@ export function AddContentModal({
             initial={{ opacity: 0, scale: 0.96, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 12 }}
-            className="relative w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden"
+            className={`relative w-full ${specify ? 'max-w-xl' : 'max-w-lg'} bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden`}
           >
             <div className="flex items-start justify-between gap-3 p-5 border-b border-slate-800">
               <div className="flex items-start gap-3 min-w-0">
@@ -138,7 +141,7 @@ export function AddContentModal({
               </button>
             </div>
 
-            <div className="p-5 space-y-4 max-h-[min(70vh,32rem)] overflow-y-auto">
+            <div className="p-5 space-y-4 max-h-[min(78vh,42rem)] overflow-y-auto">
               <div className="grid grid-cols-3 gap-2">
                 {([
                   ['slide', 'One slide'],
@@ -188,16 +191,25 @@ export function AddContentModal({
               {specify ? (
                 <>
                   <label className="block space-y-1.5">
-                    <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">On-screen text</span>
-                    <textarea
-                      value={ostText}
-                      onChange={e => setOstText(e.target.value)}
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Slide title</span>
+                    <input
+                      value={titleHint}
+                      onChange={e => setTitleHint(e.target.value)}
                       disabled={busy}
-                      rows={6}
-                      placeholder="The bullets or sentences learners see on the slide."
-                      className="w-full rounded-xl bg-slate-950 border border-slate-700 text-sm text-slate-100 placeholder:text-slate-600 px-3 py-2.5 focus:outline-none focus:border-indigo-500 resize-y min-h-[7rem]"
+                      placeholder="Title shown at the top of the slide"
+                      className="w-full rounded-xl bg-slate-950 border border-slate-700 text-sm text-slate-100 placeholder:text-slate-600 px-3 py-2 focus:outline-none focus:border-indigo-500"
                     />
                   </label>
+                  <div className={`space-y-1.5 ${busy ? 'pointer-events-none opacity-60' : ''}`}>
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">On-screen text</span>
+                    <RichTextEditor
+                      key={open ? 'add-ost-open' : 'add-ost-closed'}
+                      value={ostText}
+                      onChange={(html) => setOstText(sanitizeOstText(html))}
+                      placeholder="The bullets or sentences learners see on the slide."
+                      minRows={6}
+                    />
+                  </div>
                   <label className="block space-y-1.5">
                     <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Audio narration</span>
                     <textarea
@@ -227,6 +239,7 @@ export function AddContentModal({
               </label>
               )}
 
+              {!specify && (
               <label className="block space-y-1.5">
                 <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
                   {scope === 'module' ? 'Module title (optional)' : 'Slide title (optional)'}
@@ -239,6 +252,7 @@ export function AddContentModal({
                   className="w-full rounded-xl bg-slate-950 border border-slate-700 text-sm text-slate-100 placeholder:text-slate-600 px-3 py-2 focus:outline-none focus:border-indigo-500"
                 />
               </label>
+              )}
 
               {scope === 'module' && (
                 <label className="block space-y-1.5">

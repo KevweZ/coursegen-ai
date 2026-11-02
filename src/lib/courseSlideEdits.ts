@@ -1,4 +1,5 @@
 import { slidesMatchId } from './slideRegenMerge';
+import { sanitizeOstText } from './formatTabIntroOst';
 
 export function buildSpecifiedContentSlide(opts: {
   title?: string;
@@ -6,7 +7,7 @@ export function buildSpecifiedContentSlide(opts: {
   narration?: string;
 }): { id: string; type: 'content'; title: string; content: string; voiceOverText: string } {
   const title = String(opts.title || '').trim() || 'New slide';
-  const content = String(opts.ost || '').trim();
+  const content = sanitizeOstText(opts.ost);
   const voiceOverText = String(opts.narration || '').trim();
   return {
     id: newCourseEntityId(),
