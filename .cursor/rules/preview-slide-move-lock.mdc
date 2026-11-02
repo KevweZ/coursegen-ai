@@ -1,0 +1,21 @@
+---
+description: Preview Edit menu can move a teaching slide up or down in its module.
+alwaysApply: true
+---
+
+# Preview slide move lock (do not regress)
+
+Anthony (2026-11-02): extra knowledge checks in module 4 needed to sit with the other check at the end of the module, without a TOC drag rewrite.
+
+`npm test` must stay green (`src/lib/courseSlideEdits.test.ts`).
+
+## Invariants (code, not comments)
+
+- **Edit → Move up / Move down.** [`handleMoveCurrentSlide`](src/App.tsx) is in the preview Edit menu. The menu stays open so authors can tap several times. Do not add TOC click-and-drag or an unlocked-contents mode.
+- **Same module only.** [`moveSlideInCourse`](src/lib/courseSlideEdits.ts) swaps with the neighbor in `modules[i].slides`. It does not cross modules or move injected chrome (cover, overview, hub, exam).
+- **Stay on the slide.** After a move, [`pendingSlideFocusId`](src/App.tsx) keeps the author on that slide’s new player index. Undo still restores the previous order.
+- **Same gate as Delete.** Only [`isDeletableCourseSlide`](src/lib/courseSlideEdits.ts) rows move. System slides stay put.
+
+## How to change this
+
+Change `moveSlideInCourse` / the Edit menu items and add a failing test first. Do not “fix” order by regenerating the module.

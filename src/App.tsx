@@ -47,6 +47,7 @@ import {
   Settings2 as PlayerIcon,
   Shield,
   ChevronDown,
+  ChevronUp,
   Ear,
   CreditCard,
   Save,
@@ -182,6 +183,8 @@ import {
   dedupeIdenticalModuleSlides,
   isChromePlayerSlide,
   isDeletableCourseSlide,
+  moveSlideInCourse,
+  slideReorderState,
   moduleIndexFromVirtualSlideId,
   resolveInsertModuleIndex,
 } from './lib/courseSlideEdits';
@@ -5307,6 +5310,22 @@ export default function App() {
     }
   }
 
+  const handleMoveCurrentSlide = (delta: -1 | 1) => {
+    if (!course || !currentSlide || isLearnerPlayer) return;
+    const id = String(currentSlide.id || '').trim();
+    if (!id) return;
+    const moved = moveSlideInCourse(courseRef.current || course, id, delta);
+    if (!moved) {
+      showDraftMessage(delta < 0 ? 'Already at the start of this module.' : 'Already at the end of this module.');
+      return;
+    }
+    pushUndo();
+    setCourse(moved);
+    setPendingSlideFocusId(id);
+  };
+
+  const slideMove = slideReorderState(course, currentSlide?.id);
+
   const handleDeleteCurrentSlide = () => {
     if (!course || !currentSlide || isLearnerPlayer) return;
     if (!isDeletableCourseSlide(currentSlide)) {
@@ -7156,6 +7175,38 @@ export default function App() {
                               <span>
                                 <span className="font-semibold block">Add content</span>
                                 <span className="text-slate-500 text-[10px]">One slide, a few slides, or a new module</span>
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!slideMove.canUp}
+                              onClick={() => handleMoveCurrentSlide(-1)}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-800 text-sky-200 disabled:opacity-40 disabled:hover:bg-transparent flex items-start gap-2"
+                            >
+                              <ChevronUp className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                              <span>
+                                <span className="font-semibold block">Move up</span>
+                                <span className="text-slate-500 text-[10px]">
+                                  {isDeletableCourseSlide(currentSlide)
+                                    ? 'Swap with the previous slide in this module'
+                                    : 'System slides stay in place'}
+                                </span>
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!slideMove.canDown}
+                              onClick={() => handleMoveCurrentSlide(1)}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-800 text-sky-200 disabled:opacity-40 disabled:hover:bg-transparent flex items-start gap-2"
+                            >
+                              <ChevronDown className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                              <span>
+                                <span className="font-semibold block">Move down</span>
+                                <span className="text-slate-500 text-[10px]">
+                                  {isDeletableCourseSlide(currentSlide)
+                                    ? 'Swap with the next slide in this module'
+                                    : 'System slides stay in place'}
+                                </span>
                               </span>
                             </button>
                             <button

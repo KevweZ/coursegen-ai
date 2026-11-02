@@ -1,5 +1,6 @@
 import { slidesMatchId } from './slideRegenMerge';
 import { sanitizeOstText } from './formatTabIntroOst';
+import { moveArrayItem } from './objectiveOrder';
 
 function slideBodyText(slide: any): string {
   const question = String(
@@ -156,6 +157,39 @@ export function findSlideLocation(
     if (si >= 0) return { moduleIndex: mi, slideIndex: si };
   }
   return null;
+}
+
+export function slideReorderState(
+  course: any,
+  slideId: unknown,
+): { canUp: boolean; canDown: boolean } {
+  const loc = findSlideLocation(course, slideId);
+  if (!loc) return { canUp: false, canDown: false };
+  const slides = course.modules[loc.moduleIndex]?.slides || [];
+  const target = slides[loc.slideIndex];
+  if (!isDeletableCourseSlide(target)) return { canUp: false, canDown: false };
+  return {
+    canUp: loc.slideIndex > 0,
+    canDown: loc.slideIndex < slides.length - 1,
+  };
+}
+
+/** Swap one teaching slide with its neighbor in the same module. */
+export function moveSlideInCourse(course: any, slideId: unknown, delta: -1 | 1): any | null {
+  const loc = findSlideLocation(course, slideId);
+  if (!loc) return null;
+  const slides = course.modules[loc.moduleIndex]?.slides || [];
+  const target = slides[loc.slideIndex];
+  if (!isDeletableCourseSlide(target)) return null;
+  const to = loc.slideIndex + delta;
+  const nextSlides = moveArrayItem(slides, loc.slideIndex, to);
+  if (nextSlides === slides) return null;
+  return {
+    ...course,
+    modules: course.modules.map((m: any, mi: number) => (
+      mi !== loc.moduleIndex ? m : { ...m, slides: nextSlides }
+    )),
+  };
 }
 
 export function deleteSlideById(course: any, slideId: unknown): any | null {

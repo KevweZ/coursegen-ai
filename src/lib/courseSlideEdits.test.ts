@@ -6,6 +6,8 @@ import {
   dedupeIdenticalModuleSlides,
   ensureUniqueSlideIds,
   insertSlidesIntoCourse,
+  moveSlideInCourse,
+  slideReorderState,
 } from './courseSlideEdits.ts';
 
 const DS_CONTENT = '- Generated from high-pressure boiler steam\n- Reduces cracking temperature locally\n- Prevents coke build up in the radiant coils';
@@ -104,6 +106,28 @@ test('ensureUniqueSlideIds also drops identical content copies', () => {
   assert.equal(course.modules[0].slides[0].id, 'same');
 });
 
+test('moveSlideInCourse swaps within the module and leaves chrome / other modules alone', () => {
+  const course = {
+    modules: [{
+      id: 'm4',
+      slides: [
+        { id: 'teach', type: 'content', title: 'Heat Integration', content: '- Pinch analysis sets exchanger duties' },
+        { id: 'kc-a', type: 'quiz', title: 'Knowledge Check: Quench Systems', data: { questionText: 'What does quench oil remove?' } },
+        { id: 'kc-b', type: 'quiz', title: 'Knowledge Check: Utility Systems', data: { questionText: 'Which header is shared?' } },
+        { id: 'kc-end', type: 'quiz', title: 'Knowledge Check: Auxiliary Systems', data: { questionText: 'Why inject dilution steam?' } },
+      ],
+    }],
+  };
+  const down = moveSlideInCourse(course, 'kc-a', 1);
+  assert.deepEqual(down!.modules[0].slides.map((s: any) => s.id), ['teach', 'kc-b', 'kc-a', 'kc-end']);
+  const toEnd = moveSlideInCourse(down, 'kc-a', 1);
+  assert.deepEqual(toEnd!.modules[0].slides.map((s: any) => s.id), ['teach', 'kc-b', 'kc-end', 'kc-a']);
+  assert.equal(moveSlideInCourse(toEnd, 'kc-a', 1), null);
+  assert.deepEqual(slideReorderState(toEnd, 'kc-a'), { canUp: true, canDown: false });
+  assert.deepEqual(slideReorderState(toEnd, 'teach'), { canUp: false, canDown: true });
+  assert.equal(moveSlideInCourse(course, '__module-overview-4__', 1), null);
+});
+
 test('App insert path heals duplicates, blocks a second Generate, and does not inherit quiz types', () => {
   const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
   assert.match(app, /addingContentRef/);
@@ -118,4 +142,15 @@ test('App insert path heals duplicates, blocks a second Generate, and does not i
   const lock = readFileSync(resolve(process.cwd(), '.cursor/rules/add-content-dedupe-lock.mdc'), 'utf8');
   assert.match(lock, /slideIdentityFingerprint/);
   assert.match(lock, /mergeBackgroundCourseSnapshot/);
+});
+
+test('Edit menu exposes Move up / Move down for authoring slides', () => {
+  const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+  assert.match(app, /handleMoveCurrentSlide/);
+  assert.match(app, /Move up/);
+  assert.match(app, /Move down/);
+  assert.match(app, /slideReorderState/);
+  const lock = readFileSync(resolve(process.cwd(), '.cursor/rules/preview-slide-move-lock.mdc'), 'utf8');
+  assert.match(lock, /moveSlideInCourse/);
+  assert.match(lock, /Same module only/);
 });
