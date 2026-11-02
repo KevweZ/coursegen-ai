@@ -177,6 +177,7 @@ import {
   countRealModuleSlides,
   deleteSlideById,
   insertSlidesIntoCourse,
+  ensureUniqueSlideIds,
   isChromePlayerSlide,
   isDeletableCourseSlide,
   moduleIndexFromVirtualSlideId,
@@ -900,6 +901,7 @@ export default function App() {
   const draftMessageTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [activeDraftId, setActiveDraftId] = React.useState<string | null>(null);
   const currentSlideIdRef = React.useRef<string | null>(null);
+  const currentSlideVoiceOverUrlRef = React.useRef<string | null>(null);
   const [isSavingDraft, setIsSavingDraft] = React.useState(false);
   const [draftSaveKind, setDraftSaveKind] = React.useState<'update' | 'replace' | 'save' | null>(null);
   const [draftSaveId, setDraftSaveId] = React.useState<string | null>(null);
@@ -939,6 +941,7 @@ export default function App() {
     syntheticAudioMap: syntheticAudioMapRef.current,
     examQuestions,
     currentSlideId: currentSlideIdRef.current,
+    currentVoiceOverUrl: currentSlideVoiceOverUrlRef.current,
     navigationMode,
     requireInteractionsComplete,
     ...(onProgress ? { onProgress } : {}),
@@ -1213,6 +1216,7 @@ export default function App() {
       }
     }
     restoredBySlideRef.current = bySlide;
+    applied.course = ensureUniqueSlideIds(applied.course);
     console.log(
       `[Drafts] Restored ${Object.keys(narrUrls).length} clip key(s), ` +
       `${Object.keys(applied.synthetic).length} chrome, ` +
@@ -3023,6 +3027,7 @@ export default function App() {
     // Only load/play audio while the course player is visible — never during generate/upload
     if (step !== 'preview' || !currentSlide) return;
     currentSlideIdRef.current = currentSlide.id || null;
+    currentSlideVoiceOverUrlRef.current = currentSlide.voiceOverUrl || null;
     const restoredUrl = restoredBySlideRef.current[currentSlide.id];
     const playUrl = voiceOverEnabled && !slideSkipsNarration(currentSlide)
       ? (
@@ -3047,7 +3052,7 @@ export default function App() {
       null  // ttsText always null: slides are silent while AI audio loads, then auto-play
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, currentSlide?.id, currentSlide?.voiceOverUrl, voiceOverEnabled, currentSyntheticUrl, activeTabAudioUrl]);
+  }, [step, currentSlideIndex, currentSlide?.id, currentSlide?.voiceOverUrl, voiceOverEnabled, currentSyntheticUrl, activeTabAudioUrl]);
 
 
   // Extract images
@@ -4115,7 +4120,7 @@ export default function App() {
       ? rawObjectives
       : reformatObjectivesClientSide(rawObjectives, objectiveFormatSnap);
     setLearningObjectives(formattedObjectives);
-    const stamped = applyVerticalTabPresentation({
+    const stamped = ensureUniqueSlideIds(applyVerticalTabPresentation({
       ...finalCourse,
       examConfig: examConfigSnap,
       navigationMode: navigationModeSnap,
@@ -4133,7 +4138,7 @@ export default function App() {
       wellColor: verticalTabWellColorSnap,
       processSkin: processSkinSnap,
       processShowStepLabels: processShowStepLabelsSnap,
-    });
+    }));
     setCourse(stamped);
     setOriginalCourse(stamped);
     clearNarrationCache();

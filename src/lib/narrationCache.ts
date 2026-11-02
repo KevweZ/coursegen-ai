@@ -151,12 +151,22 @@ export function playerElementHasAudio(): boolean {
   });
 }
 
-export async function harvestPlayerAudio(slideId?: string | null): Promise<Record<string, NarrationRecord>> {
+/** Only harvest when the <audio> src is this slide's clip — never the previous slide. */
+export function harvestClipBelongsToSlide(src: string, expectedUrl?: string | null): boolean {
+  const a = String(src || '').trim();
+  const b = String(expectedUrl || '').trim();
+  return a.length >= 12 && b.length >= 12 && a === b;
+}
+
+export async function harvestPlayerAudio(
+  slideId?: string | null,
+  expectedUrl?: string | null,
+): Promise<Record<string, NarrationRecord>> {
   const out: Record<string, NarrationRecord> = {};
-  if (typeof document === 'undefined' || !slideId) return out;
+  if (typeof document === 'undefined' || !slideId || !expectedUrl) return out;
   for (const el of Array.from(document.querySelectorAll('audio'))) {
     const src = String((el as HTMLAudioElement).currentSrc || (el as HTMLAudioElement).src || '');
-    if (src.length < 20) continue;
+    if (!harvestClipBelongsToSlide(src, expectedUrl)) continue;
     try {
       const rec = await audioUrlToRecord(src);
       if (rec) {

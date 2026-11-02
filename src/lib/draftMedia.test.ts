@@ -3,14 +3,19 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
+  applyNarrationUrls,
   attachHeavyMedia,
   countAudioAssetKeys,
   countImageAssetKeys,
   courseHasEmptyVisualSlots,
+  durableAudioKeyFromCoursePath,
   hasOwnMediaPath,
+  isIndexKeyedAudioPath,
   mergeDraftAssetPaths,
   needsCloudImageDownload,
 } from './draftMedia.ts';
+import { ensureUniqueSlideIds } from './courseSlideEdits.ts';
+import { harvestClipBelongsToSlide } from './narrationCache.ts';
 import { omitUndefinedDeep } from './promoteSlideImages.ts';
 
 function src(rel: string): string {
@@ -112,11 +117,12 @@ test('attachHeavyMedia does not duplicate a promoted tab image behind the float'
   assert.equal(course.modules[0].slides[0].floatingMedia[0].url, 'blob:enlarged');
 });
 
-test('mergeDraftAssetPaths drops stale images and keeps leftover audio', () => {
+test('mergeDraftAssetPaths drops stale images and index-keyed leftover audio', () => {
   const paths = mergeDraftAssetPaths(
     [
       'modules[0].slides[0].imageUrl',
       'modules[0].slides[0].voiceOverUrl',
+      'slide:abc',
       'coverImage',
     ],
     [
@@ -129,10 +135,69 @@ test('mergeDraftAssetPaths drops stale images and keeps leftover audio', () => {
     [
       'coverImage',
       'modules[0].slides[0].floatingMedia[0].url',
-      'modules[0].slides[0].voiceOverUrl',
+      'slide:abc',
     ].sort(),
   );
   assert.ok(!paths.includes('modules[0].slides[0].imageUrl'));
+  assert.ok(!paths.includes('modules[0].slides[0].voiceOverUrl'));
+});
+
+test('index-keyed leftover audio does not overwrite a slide-id clip', () => {
+  assert.equal(isIndexKeyedAudioPath('modules[2].slides[8].voiceOverUrl'), true);
+  assert.equal(isIndexKeyedAudioPath('slide:diagram-9'), false);
+  const course = {
+    modules: [{
+      slides: [
+        { id: 'diagram-9', title: 'Cracked Gas Processing Flow', voiceOverUrl: null },
+        { id: 'summary-12', title: 'Module Summary', voiceOverUrl: null },
+      ],
+    }],
+  };
+  assert.equal(
+    durableAudioKeyFromCoursePath(course, 'modules[0].slides[0].voiceOverUrl'),
+    'slide:diagram-9',
+  );
+  const applied = applyNarrationUrls(course, {
+    'slide:diagram-9': 'blob:correct-diagram',
+    'slide:summary-12': 'blob:correct-summary',
+    'modules[0].slides[0].voiceOverUrl': 'blob:stale-summary-in-old-slot',
+  });
+  assert.equal(applied.course.modules[0].slides[0].voiceOverUrl, 'blob:correct-diagram');
+  assert.equal(applied.course.modules[0].slides[1].voiceOverUrl, 'blob:correct-summary');
+
+  const attachCourse = {
+    modules: [{ slides: [{ id: 'diagram-9', voiceOverUrl: 'blob:correct-diagram' }] }],
+  };
+  attachHeavyMedia(attachCourse, new Map([
+    ['modules[0].slides[0].voiceOverUrl', 'blob:stale-summary-in-old-slot'],
+  ]));
+  assert.equal(attachCourse.modules[0].slides[0].voiceOverUrl, 'blob:correct-diagram');
+});
+
+test('duplicate slide ids are uniqued so two slides cannot share a clip key', () => {
+  const course = ensureUniqueSlideIds({
+    modules: [{
+      slides: [
+        { id: 'dup', title: 'Diagram', voiceOverText: 'Diagram script' },
+        { id: 'dup', title: 'Module Summary', voiceOverText: 'Summary script' },
+      ],
+    }],
+  });
+  const ids = course.modules[0].slides.map((s: any) => s.id);
+  assert.equal(new Set(ids).size, 2);
+  assert.equal(course.modules[0].slides[0].id, 'dup');
+  assert.notEqual(course.modules[0].slides[1].id, 'dup');
+});
+
+test('harvest only keeps the clip that is actually this slide’s src', () => {
+  assert.equal(harvestClipBelongsToSlide('blob:summary', 'blob:summary'), true);
+  assert.equal(harvestClipBelongsToSlide('blob:summary', 'blob:diagram'), false);
+  assert.equal(harvestClipBelongsToSlide('blob:summary', null), false);
+  const save = src('src/lib/useDraftCourses.ts');
+  assert.match(save, /harvestPlayerAudio\(extras\?\.currentSlideId, extras\?\.currentVoiceOverUrl\)/);
+  const app = src('src/App.tsx');
+  assert.match(app, /currentSlideIndex, currentSlide\?\.id, currentSlide\?\.voiceOverUrl/);
+  assert.match(app, /ensureUniqueSlideIds/);
 });
 
 test('draft save uses mergeDraftAssetPaths and writes even when incoming assets are empty', () => {

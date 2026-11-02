@@ -17,6 +17,7 @@ Anthony (2026-11-02): Steam Cracker spoken audio often did not match Edit Slide 
 - **Merge keeps clip + script.** [`mergeCoursePreservingAudio`](src/lib/narrationAudio.ts) keeps `voiceOverUrl` **and** `voiceOverText` when a later imagery/QC commit has no new clip. Do not restore “keep URL, take the new script.”
 - **Chrome VO is one string.** Player tour / objectives / hub / cover defaults in [`App.tsx`](src/App.tsx) match the TTS synthetic job via `PLAYER_TOUR_NARRATION`, `COURSE_OBJECTIVES_NARRATION`, `HUB_MENU_NARRATION`, `defaultCoverNarration`.
 - **Manual edits still need Generate.** Changing the Audio box does not re-speak until the author clicks Regenerate audio.
+- **A clip follows its slide id.** Persist and restore narration as `slide:{id}` / `tab:{slideId}:…` / `synth:{id}`. Do **not** attach leftover `modules[i].slides[j].voiceOverUrl` blobs — after Add content those slots belong to a different slide (3.9 was playing 3.12). [`applyNarrationUrls`](src/lib/draftMedia.ts) / [`attachHeavyMedia`](src/lib/draftMedia.ts) skip [`isIndexKeyedAudioPath`](src/lib/draftMedia.ts). [`mergeDraftAssetPaths`](src/lib/draftMedia.ts) drops leftover index audio. [`harvestPlayerAudio`](src/lib/narrationCache.ts) only saves when the `<audio>` src equals that slide’s URL. [`ensureUniqueSlideIds`](src/lib/courseSlideEdits.ts) on generate and draft open. `npm test` must stay green (`src/lib/draftMedia.test.ts`).
 
 ## How to change this
 

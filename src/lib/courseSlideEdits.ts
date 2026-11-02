@@ -25,6 +25,28 @@ export function newCourseEntityId(prefix = 'slide'): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+/** Later copies of a reused id get a new id so clips cannot land on two slides. */
+export function ensureUniqueSlideIds(course: any): any {
+  if (!course?.modules) return course;
+  const seen = new Set<string>();
+  return {
+    ...course,
+    modules: course.modules.map((m: any) => ({
+      ...m,
+      slides: (m.slides || []).map((s: any) => {
+        const id = String(s?.id || '').trim();
+        if (id && !seen.has(id)) {
+          seen.add(id);
+          return s;
+        }
+        const nextId = newCourseEntityId();
+        seen.add(nextId);
+        return { ...s, id: nextId };
+      }),
+    })),
+  };
+}
+
 const CHROME_TYPES = new Set([
   'cover',
   'player-tour',

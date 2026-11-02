@@ -750,6 +750,7 @@ export interface UseDraftCoursesReturn {
       syntheticAudioMap?: Record<string, string>;
       examQuestions?: any[];
       currentSlideId?: string | null;
+      currentVoiceOverUrl?: string | null;
       navigationMode?: string;
       requireInteractionsComplete?: boolean;
       /** Force a distinct library name (e.g. "Course (1)") without renaming the live editor title. */
@@ -784,6 +785,7 @@ export interface UseDraftCoursesReturn {
       syntheticAudioMap?: Record<string, string>;
       examQuestions?: any[];
       currentSlideId?: string | null;
+      currentVoiceOverUrl?: string | null;
       navigationMode?: string;
       requireInteractionsComplete?: boolean;
       onProgress?: (msg: string) => void;
@@ -952,6 +954,7 @@ export function useDraftCourses(
       syntheticAudioMap?: Record<string, string>;
       examQuestions?: any[];
       currentSlideId?: string | null;
+      currentVoiceOverUrl?: string | null;
       navigationMode?: string;
       requireInteractionsComplete?: boolean;
       onProgress?: (msg: string) => void;
@@ -970,12 +973,12 @@ export function useDraftCourses(
     for (const scope of liveScopes) {
       Object.assign(fromLiveDb, await readLiveNarration(scope));
     }
-    const harvested = await harvestPlayerAudio(extras?.currentSlideId);
+    const harvested = await harvestPlayerAudio(extras?.currentSlideId, extras?.currentVoiceOverUrl);
     const narrationRecords = {
-      ...collected,
+      ...harvested,
       ...fromLiveDb,
       ...getNarrationCache(),
-      ...harvested,
+      ...collected,
     };
 
     // structuredClone keeps us from mutating the live editor course
@@ -1183,6 +1186,7 @@ export function useDraftCourses(
       syntheticAudioMap?: Record<string, string>;
       examQuestions?: any[];
       currentSlideId?: string | null;
+      currentVoiceOverUrl?: string | null;
       titleOverride?: string;
       onProgress?: (msg: string) => void;
     }
@@ -1541,6 +1545,7 @@ export function useDraftCourses(
       syntheticAudioMap?: Record<string, string>;
       examQuestions?: any[];
       currentSlideId?: string | null;
+      currentVoiceOverUrl?: string | null;
       onProgress?: (msg: string) => void;
     }
   ) => {

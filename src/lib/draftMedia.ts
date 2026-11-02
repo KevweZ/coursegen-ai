@@ -75,7 +75,12 @@ export function hasOwnMediaPath(root: any, path: string): boolean {
 export function mergeDraftAssetPaths(prevPaths: string[], incomingPaths: string[]): string[] {
   const incoming = incomingPaths.filter(p => typeof p === 'string' && p.length > 0);
   const incomingSet = new Set(incoming);
-  const keepAudio = prevPaths.filter(p => typeof p === 'string' && isAudioAssetPath(p) && !incomingSet.has(p));
+  const keepAudio = prevPaths.filter(p =>
+    typeof p === 'string'
+    && isAudioAssetPath(p)
+    && !incomingSet.has(p)
+    && !isIndexKeyedAudioPath(p)
+  );
   return [...new Set([...keepAudio, ...incoming])];
 }
 
@@ -83,6 +88,9 @@ export function mergeDraftAssetPaths(prevPaths: string[], incomingPaths: string[
 export function attachHeavyMedia(course: any, map: MediaMap): void {
   if (!course || !map.size) return;
   for (const [path, url] of map) {
+    // Index-keyed leftover audio lands on whoever sits at that slot after
+    // Add content / delete — never attach those. Use slide:/tab:/synth: keys.
+    if (isIndexKeyedAudioPath(path)) continue;
     // Audio keys can land on slides that never stored a null placeholder.
     // Image keys must already exist on the shell — leftover IndexedDB/cloud
     // blobs must not resurrect a deleted or Crop/Move-promoted imageUrl.
@@ -164,6 +172,30 @@ export function isAudioAssetPath(path: string): boolean {
     || path.startsWith('tab:')
     || path.startsWith('synth:')
   );
+}
+
+const INDEX_AUDIO_PATH =
+  /^modules\[(\d+)\]\.slides\[(\d+)\](?:\.data\.(tabs|items)\[(\d+)\])?\.(voiceOverUrl|audioUrl)$/i;
+
+/** Legacy save key: audio stored by array index. Unsafe after insert/delete. */
+export function isIndexKeyedAudioPath(path: string): boolean {
+  return INDEX_AUDIO_PATH.test(String(path || ''));
+}
+
+/** Prefer slide:/tab: keys so a clip follows its slide, not a TOC slot. */
+export function durableAudioKeyFromCoursePath(course: any, path: string): string | null {
+  const m = String(path || '').match(INDEX_AUDIO_PATH);
+  if (!m) return null;
+  const slide = course?.modules?.[Number(m[1])]?.slides?.[Number(m[2])];
+  const slideId = String(slide?.id || '').trim();
+  if (!slideId) return null;
+  if (m[3] != null) {
+    const item = slide?.data?.[m[3]]?.[Number(m[4])];
+    const itemId = String(item?.id || '').trim();
+    if (!itemId) return null;
+    return `tab:${slideId}:${m[3]}:${itemId}`;
+  }
+  return `slide:${slideId}`;
 }
 
 export function mimeForAssetPath(path: string, type?: string): string {
@@ -491,6 +523,7 @@ export function applyNarrationUrls(
     })),
   };
   for (const [path, url] of pathUrl) {
+    if (isIndexKeyedAudioPath(path)) continue;
     if (!isAudioAssetPath(path) && !hasOwnMediaPath(next, path)) continue;
     setByPath(next, path, url);
   }
@@ -558,7 +591,8 @@ export async function extractHeavyMediaToBlobs(
       await new Promise<void>(r => setTimeout(r, 0));
     }
     try {
-      out[path] = withAssetMime(path, await dataUrlToBlob(url));
+      const assetKey = durableAudioKeyFromCoursePath(course, path) || path;
+      out[assetKey] = withAssetMime(assetKey, await dataUrlToBlob(url));
       obj[key] = null;
     } catch {
       /* leave in place for later detach / strip */
