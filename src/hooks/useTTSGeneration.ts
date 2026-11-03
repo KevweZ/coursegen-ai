@@ -7,7 +7,7 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { slideSkipsNarration } from '../lib/enablingCoverage';
-import { hasPlayableNarrationUrl, isTabbedNarrationType, slideNarrationScript, tabNarrationScript } from '../lib/narrationAudio';
+import { hasPlayableNarrationUrl, isTabbedNarrationType, slideNarrationScript, stampSpokenClip, tabNarrationScript } from '../lib/narrationAudio';
 
 /** Tab jobs must not stamp slide.voiceOverUrl even if the server drops `target`. */
 export function ttsResultIsTab(r: { target?: string | null; tabId?: string | null; id?: string }): boolean {
@@ -113,7 +113,7 @@ function applyJobResults(
               if (!slideTtsPatchAppliesTo(r, sid)) continue;
               const spoken = spokenById?.get(r.id) || spokenById?.get(sid);
               slide = spoken
-                ? { ...slide, voiceOverUrl: url, voiceOverText: spoken }
+                ? stampSpokenClip(slide, url, spoken)
                 : { ...slide, voiceOverUrl: url };
             }
             for (const { r, url } of tabPatches) {
@@ -134,7 +134,7 @@ function applyJobResults(
               if (idx < 0) continue;
               const spoken = spokenById?.get(r.id) || spokenById?.get(`${sid}::tab::${tabId}`);
               list[idx] = spoken
-                ? { ...list[idx], voiceOverUrl: url, voiceOverText: spoken }
+                ? stampSpokenClip(list[idx], url, spoken)
                 : { ...list[idx], voiceOverUrl: url };
               slide = { ...slide, data: { ...data, [listKey]: list } };
             }

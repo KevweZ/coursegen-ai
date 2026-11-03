@@ -103,7 +103,9 @@ import {
   mergeBackgroundCourseSnapshot,
   mergeCoursePreservingAudio,
   playbackNarrationKey,
-  tabAudioOnSlide,
+  playbackUrlForSlide,
+  stampSpokenClip,
+  unbindStolenSlideAudio,
 } from './lib/narrationAudio';
 import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft, generateMasteryExam, generateInsertedContent } from './services/aiService';
 import { sanitizeMasteryExamQuestions } from './lib/masteryExam';
@@ -1227,7 +1229,7 @@ export default function App() {
       }
     }
     restoredBySlideRef.current = bySlide;
-    applied.course = ensureUniqueSlideIds(applied.course);
+    applied.course = unbindStolenSlideAudio(ensureUniqueSlideIds(applied.course));
     console.log(
       `[Drafts] Restored ${Object.keys(narrUrls).length} clip key(s), ` +
       `${Object.keys(applied.synthetic).length} chrome, ` +
@@ -3026,8 +3028,12 @@ export default function App() {
       ? (currentSlide.data?.tabs || currentSlide.data?.items || [])
       : [];
     const tab = (tabs || []).find((t: any) => t.id === tabId);
-    if (hasLiveNarrationUrl(tab?.voiceOverUrl)) {
-      setActiveTabAudioUrl(tab.voiceOverUrl);
+    const tabPlay = playbackUrlForSlide(currentSlide, {
+      tabAudioUrl: tab?.voiceOverUrl,
+      course,
+    });
+    if (tabPlay) {
+      setActiveTabAudioUrl(tabPlay);
       const script = String(tab.voiceOverText || tab.narration || '').trim();
       setActiveTabNarrationText(script || null);
     } else {
@@ -3043,24 +3049,19 @@ export default function App() {
     currentSlideIdRef.current = currentSlide.id || null;
     currentSlideVoiceOverUrlRef.current = currentSlide.voiceOverUrl || null;
     const restoredUrl = restoredBySlideRef.current[currentSlide.id];
-    const tabPlayUrl = tabAudioOnSlide(currentSlide, activeTabAudioUrl)
-      && hasLiveNarrationUrl(activeTabAudioUrl)
-        ? activeTabAudioUrl
-        : null;
     const playUrl = voiceOverEnabled && !slideSkipsNarration(currentSlide)
-      ? (
-          tabPlayUrl
-          || (hasLiveNarrationUrl(currentSlide.voiceOverUrl) ? currentSlide.voiceOverUrl : null)
-          || (hasLiveNarrationUrl((currentSlide as any).audioUrl) ? (currentSlide as any).audioUrl : null)
-          || (hasLiveNarrationUrl(currentSyntheticUrl) ? currentSyntheticUrl : null)
-          || (hasLiveNarrationUrl(restoredUrl) ? restoredUrl : null)
-        )
+      ? playbackUrlForSlide(currentSlide, {
+          tabAudioUrl: activeTabAudioUrl,
+          syntheticUrl: currentSyntheticUrl,
+          restoredUrl,
+          course: courseRef.current || course,
+        })
       : null;
     if (playUrl && currentSlide.id) {
       void stashAudioUrl(
         playbackNarrationKey(currentSlide, playUrl, {
           syntheticUrl: currentSyntheticUrl,
-          tabAudioUrl: tabPlayUrl,
+          tabAudioUrl: activeTabAudioUrl,
         }),
         playUrl,
       );
@@ -5293,7 +5294,7 @@ export default function App() {
       };
       const durable = await toDurable(await genTTS(newScript, { voice: ttsVoice as any }));
       void stashAudioUrl(`slide:${id}`, durable);
-      handleUpdateSlideMedia(id, { voiceOverUrl: durable });
+      handleUpdateSlideMedia(id, stampSpokenClip({}, durable, newScript));
 
       const listKey = Array.isArray(result.data?.tabs) ? 'tabs' : Array.isArray(result.data?.items) ? 'items' : null;
       const tabs: any[] = listKey ? [...(result.data?.[listKey] || [])] : [];
@@ -5306,7 +5307,7 @@ export default function App() {
           const job = tabJobs[n];
           showDraftMessage(`Generating tab audio ${n + 1}/${tabJobs.length}…`);
           const tabUrl = await toDurable(await genTTS(job.text, { voice: ttsVoice as any }));
-          nextTabs[job.i] = { ...nextTabs[job.i], voiceOverUrl: tabUrl };
+          nextTabs[job.i] = stampSpokenClip(nextTabs[job.i], tabUrl, job.text);
           void stashAudioUrl(`tab:${id}:${listKey}:${job.t?.id}`, tabUrl);
           await new Promise(r => setTimeout(r, 200));
         }
@@ -5536,11 +5537,10 @@ export default function App() {
             if (script) {
               const durable = await toDurable(await genTTS(script, { voice: ttsVoice as any }));
               void stashAudioUrl(`slide:${slideId}`, durable);
-              handleUpdateSlideMedia(slideId, {
-                voiceOverUrl: durable,
+              handleUpdateSlideMedia(slideId, stampSpokenClip({
                 voiceOverText: found.voiceOverText,
                 narration: found.narration,
-              });
+              }, durable, script));
             }
             const listKey = Array.isArray(found.data?.tabs) ? 'tabs' : Array.isArray(found.data?.items) ? 'items' : null;
             if (isTabbedNarrationType(found.type) && listKey) {
@@ -5550,7 +5550,7 @@ export default function App() {
                 const text = String(tabs[i]?.voiceOverText || '').trim();
                 if (!text) continue;
                 const tabUrl = await toDurable(await genTTS(text, { voice: ttsVoice as any }));
-                tabs[i] = { ...tabs[i], voiceOverUrl: tabUrl };
+                tabs[i] = stampSpokenClip(tabs[i], tabUrl, text);
                 void stashAudioUrl(`tab:${slideId}:${listKey}:${tabs[i].id}`, tabUrl);
                 changed = true;
               }
@@ -10063,7 +10063,7 @@ export default function App() {
                                          const { generateSlideTTS: genTTS, urlToDataUrl } = await import('./services/ttsService');
                                          let durable = await genTTS(text, { voice: ttsVoice as any });
                                          try { durable = await urlToDataUrl(durable); } catch { /* keep blob url */ }
-                                         liveTabs[ti] = { ...liveTabs[ti], voiceOverText: text, voiceOverUrl: durable };
+                                         liveTabs[ti] = stampSpokenClip({ ...liveTabs[ti], voiceOverText: text }, durable, text);
                                          void stashAudioUrl(`tab:${live.id}:${key}:${liveTabs[ti].id}`, durable);
                                          const updated = { ...live, data: { ...(live.data || {}), [key]: liveTabs } };
                                          editingSlideRef.current = updated;
@@ -10187,7 +10187,7 @@ export default function App() {
                                     showDraftMessage('Generating main slide audio…');
                                     const blobUrl = await genTTS(mainText, { voice: ttsVoice as any });
                                     const durable = await toDurable(blobUrl);
-                                    nextSlide = { ...nextSlide, voiceOverUrl: durable };
+                                    nextSlide = stampSpokenClip(nextSlide, durable, mainText);
                                     void stashAudioUrl(
                                       synthetic ? `synth:${editingSlide.id}` : `slide:${editingSlide.id}`,
                                       durable,
@@ -10204,7 +10204,7 @@ export default function App() {
                                         },
                                       }));
                                     } else {
-                                      handleUpdateSlideMedia(editingSlide.id, { voiceOverUrl: durable });
+                                      handleUpdateSlideMedia(editingSlide.id, stampSpokenClip({}, durable, mainText));
                                     }
                                   }
                                   if (!synthetic && listKey && tabJobs.length) {
@@ -10213,7 +10213,7 @@ export default function App() {
                                       const job = tabJobs[n];
                                       showDraftMessage(`Generating tab audio ${n + 1}/${tabJobs.length}…`);
                                       const tabUrl = await toDurable(await genTTS(job.text, { voice: ttsVoice as any }));
-                                      nextTabs[job.i] = { ...nextTabs[job.i], voiceOverUrl: tabUrl };
+                                      nextTabs[job.i] = stampSpokenClip(nextTabs[job.i], tabUrl, job.text);
                                       void stashAudioUrl(
                                         `tab:${editingSlide.id}:${listKey}:${job.t.id}`,
                                         tabUrl,

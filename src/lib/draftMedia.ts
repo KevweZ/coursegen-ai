@@ -3,7 +3,7 @@
  * then re-attach images after the preview is visible.
  */
 
-import { hasLiveNarrationUrl, isTabbedNarrationType } from './narrationAudio';
+import { hasLiveNarrationUrl, isTabbedNarrationType, unbindStolenSlideAudio } from './narrationAudio';
 
 const HEAVY_RE = /^data:/i;
 const HEAVY_MIN = 1500; // chars — skip tiny placeholders
@@ -434,6 +434,67 @@ export async function audioUrlToRecord(url: string): Promise<NarrationRecord | n
   }
 }
 
+export function narrationRecordFingerprint(rec: NarrationRecord): string {
+  const u8 = rec?.data instanceof Uint8Array ? rec.data : new Uint8Array(rec?.data || []);
+  const n = u8.byteLength;
+  let h = n >>> 0;
+  const step = Math.max(1, Math.floor(n / 48));
+  for (let i = 0; i < n; i += step) h = (Math.imul(h, 33) ^ u8[i]) >>> 0;
+  for (let i = 0; i < Math.min(48, n); i++) h = (Math.imul(h, 33) ^ u8[i]) >>> 0;
+  for (let i = Math.max(0, n - 48); i < n; i++) h = (Math.imul(h, 33) ^ u8[i]) >>> 0;
+  return `${n}:${h.toString(16)}`;
+}
+
+/**
+ * A tab MP3 packed as `slide:{otherId}` must not reload onto that other slide.
+ * Byte-identical copies (4.14 Heat Integration → 4.16 Key Utility Integration) are dropped.
+ */
+export function unbindStolenNarrationRecords(
+  records: Record<string, NarrationRecord>,
+): Record<string, NarrationRecord> {
+  const out: Record<string, NarrationRecord> = { ...records };
+  const fpToKeys = new Map<string, string[]>();
+  for (const [k, rec] of Object.entries(out)) {
+    if (!k.startsWith('slide:') && !k.startsWith('tab:')) continue;
+    if (!rec?.data || rec.data.byteLength < 64) continue;
+    const fp = narrationRecordFingerprint(rec);
+    const list = fpToKeys.get(fp) || [];
+    list.push(k);
+    fpToKeys.set(fp, list);
+  }
+  for (const keys of fpToKeys.values()) {
+    if (keys.length < 2) continue;
+    const tabKeys = keys.filter(k => k.startsWith('tab:'));
+    const slideKeys = keys.filter(k => k.startsWith('slide:'));
+    if (tabKeys.length) {
+      for (const sk of slideKeys) delete out[sk];
+      continue;
+    }
+    for (const sk of slideKeys.slice(1)) delete out[sk];
+  }
+  return out;
+}
+
+export async function unbindStolenNarrationBlobs(
+  blobs: Record<string, Blob>,
+): Promise<Record<string, Blob>> {
+  const records: Record<string, NarrationRecord> = {};
+  for (const [k, blob] of Object.entries(blobs || {})) {
+    if (!(blob instanceof Blob) || blob.size < 64) continue;
+    if (!k.startsWith('slide:') && !k.startsWith('tab:')) continue;
+    try {
+      records[k] = { mime: blob.type || 'audio/mpeg', data: await blob.arrayBuffer() };
+    } catch { /* skip */ }
+  }
+  const cleaned = unbindStolenNarrationRecords(records);
+  const out: Record<string, Blob> = {};
+  for (const [k, blob] of Object.entries(blobs || {})) {
+    if ((k.startsWith('slide:') || k.startsWith('tab:')) && !cleaned[k]) continue;
+    out[k] = blob;
+  }
+  return out;
+}
+
 /** Collect narration by slide/tab/synthetic id — independent of JSON path attach. */
 export async function collectNarrationRecords(
   course: any,
@@ -466,7 +527,7 @@ export async function collectNarrationRecords(
     const rec = await audioUrlToRecord(jobs[i].url);
     if (rec) out[jobs[i].key] = rec;
   }
-  return out;
+  return unbindStolenNarrationRecords(out);
 }
 
 export function applyNarrationUrls(
@@ -529,7 +590,7 @@ export function applyNarrationUrls(
     if (!isAudioAssetPath(path) && !hasOwnMediaPath(next, path)) continue;
     setByPath(next, path, url);
   }
-  return { course: next, synthetic };
+  return { course: unbindStolenSlideAudio(next), synthetic };
 }
 
 export function addPlayableUrls(draftId: string, blobs: Record<string, Blob>): Record<string, string> {

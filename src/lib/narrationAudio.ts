@@ -82,6 +82,119 @@ export function tabNarrationScript(tab: any): string {
   return usableNarrationText(tab?.voiceOverText || tab?.narration);
 }
 
+/** Stamp the Audio box the clip was recorded from so playback can refuse a mismatch. */
+export function stampSpokenClip<T extends Record<string, any>>(item: T, url: string, text: string): T {
+  const script = usableNarrationText(text) || String(text || '').trim();
+  return {
+    ...item,
+    voiceOverUrl: url,
+    ...(script ? { voiceOverText: script, voiceOverClipText: script } : {}),
+  };
+}
+
+function clipMatchesScript(item: any, script: string): boolean {
+  if (!script) return false;
+  const recorded = usableNarrationText(item?.voiceOverClipText);
+  if (!recorded) return true;
+  return recorded === script;
+}
+
+/** True when this URL is a process/tab clip — it must not play as another slide’s intro. */
+export function foreignTabOwnsUrl(course: any, slide: any, url: string | null | undefined): boolean {
+  const u = String(url || '');
+  if (!u) return false;
+  for (const m of course?.modules || []) {
+    for (const s of m?.slides || []) {
+      if (!isTabbedNarrationType(s?.type)) continue;
+      for (const listKey of ['tabs', 'items'] as const) {
+        for (const t of s?.data?.[listKey] || []) {
+          if (String(t?.voiceOverUrl || '') === u) return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Drop a slide-level (or click-reveal row) URL that is actually a tab MP3.
+ * Existing Steam Cracker drafts packed 4.14 Heat Integration onto 4.16.
+ */
+export function unbindStolenSlideAudio(course: any): any {
+  if (!course?.modules) return course;
+  const tabUrls = new Set<string>();
+  for (const m of course.modules) {
+    for (const s of m?.slides || []) {
+      if (!isTabbedNarrationType(s?.type)) continue;
+      for (const listKey of ['tabs', 'items'] as const) {
+        for (const t of s?.data?.[listKey] || []) {
+          const u = String(t?.voiceOverUrl || '');
+          if (hasLiveNarrationUrl(u)) tabUrls.add(u);
+        }
+      }
+    }
+  }
+  const seenSlideUrls = new Set<string>();
+  return {
+    ...course,
+    modules: course.modules.map((m: any) => ({
+      ...m,
+      slides: (m.slides || []).map((s: any) => {
+        let slide = s;
+        const url = String(s?.voiceOverUrl || '');
+        if (url && (tabUrls.has(url) || seenSlideUrls.has(url))) {
+          slide = { ...slide, voiceOverUrl: null };
+        } else if (hasLiveNarrationUrl(url)) {
+          seenSlideUrls.add(url);
+        }
+        if (isTabbedNarrationType(s?.type) || !slide.data || typeof slide.data !== 'object') return slide;
+        let data = slide.data;
+        let changed = false;
+        for (const listKey of ['tabs', 'items'] as const) {
+          if (!Array.isArray(data[listKey])) continue;
+          let listChanged = false;
+          const list = data[listKey].map((item: any) => {
+            if (!item?.voiceOverUrl) return item;
+            listChanged = true;
+            return { ...item, voiceOverUrl: null };
+          });
+          if (listChanged) {
+            data = { ...data, [listKey]: list };
+            changed = true;
+          }
+        }
+        return changed ? { ...slide, data } : slide;
+      }),
+    })),
+  };
+}
+
+/** Player URL for this slide: Audio box script only — never another slide’s tab MP3. */
+export function playbackUrlForSlide(
+  slide: any,
+  opts?: {
+    tabAudioUrl?: string | null;
+    syntheticUrl?: string | null;
+    restoredUrl?: string | null;
+    course?: any;
+  },
+): string | null {
+  const tabUrl = opts?.tabAudioUrl;
+  const tabHit = tabAudioOnSlide(slide, tabUrl);
+  if (tabHit && hasLiveNarrationUrl(tabUrl) && clipMatchesScript(tabHit.tab, tabNarrationScript(tabHit.tab))) {
+    return tabUrl as string;
+  }
+  const script = slideNarrationScript(slide);
+  const candidates = [slide?.voiceOverUrl, slide?.audioUrl, opts?.syntheticUrl, opts?.restoredUrl];
+  for (const url of candidates) {
+    if (!hasLiveNarrationUrl(url)) continue;
+    if (opts?.course && foreignTabOwnsUrl(opts.course, slide, url)) continue;
+    if (!clipMatchesScript(slide, script)) continue;
+    return url as string;
+  }
+  return null;
+}
+
 /** Per-tab TTS / playback only exists on process and vertical tabs — not click-reveal rows. */
 export function isTabbedNarrationType(type: unknown): boolean {
   const t = String(type || '');
@@ -129,6 +242,7 @@ function keepRecordedClip(nextItem: any, prevItem: any): any {
     ...nextItem,
     voiceOverUrl: prevItem.voiceOverUrl,
     voiceOverText: prevItem.voiceOverText ?? nextItem?.voiceOverText,
+    voiceOverClipText: prevItem.voiceOverClipText ?? nextItem?.voiceOverClipText,
   };
 }
 

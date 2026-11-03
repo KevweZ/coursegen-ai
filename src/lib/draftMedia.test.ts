@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   applyNarrationUrls,
+  unbindStolenNarrationRecords,
   attachHeavyMedia,
   countAudioAssetKeys,
   countImageAssetKeys,
@@ -187,6 +188,26 @@ test('duplicate slide ids are uniqued so two slides cannot share a clip key', ()
   assert.equal(new Set(ids).size, 2);
   assert.equal(course.modules[0].slides[0].id, 'dup');
   assert.notEqual(course.modules[0].slides[1].id, 'dup');
+});
+
+test('identical tab MP3 bytes are not restored as the next slide’s clip', () => {
+  const heat = new Uint8Array(80);
+  for (let i = 0; i < heat.length; i++) heat[i] = i + 3;
+  const intro = new Uint8Array(80);
+  for (let i = 0; i < intro.length; i++) intro[i] = 200 - i;
+  const rec = { mime: 'audio/mpeg', data: heat.buffer };
+  const cleaned = unbindStolenNarrationRecords({
+    'tab:utility-systems:tabs:heat': rec,
+    'slide:utility-points': rec,
+    'slide:utility-systems': { mime: 'audio/mpeg', data: intro.buffer },
+  });
+  assert.ok(cleaned['tab:utility-systems:tabs:heat']);
+  assert.ok(cleaned['slide:utility-systems']);
+  assert.equal(cleaned['slide:utility-points'], undefined);
+  const save = src('src/lib/useDraftCourses.ts');
+  assert.match(save, /unbindStolenNarrationRecords/);
+  const load = src('src/lib/useDraftCourses.ts');
+  assert.match(load, /unbindStolenNarrationBlobs/);
 });
 
 test('leftover tab audio is not restored onto a click-reveal slide', () => {

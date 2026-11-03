@@ -8,9 +8,12 @@ import {
   mergeBackgroundCourseSnapshot,
   mergeCoursePreservingAudio,
   playbackNarrationKey,
+  playbackUrlForSlide,
   slideNarrationScript,
+  stampSpokenClip,
   tabAudioOnSlide,
   tabNarrationScript,
+  unbindStolenSlideAudio,
 } from './narrationAudio.ts';
 import { autoFixCourse } from '../services/qcService.ts';
 import { buildCourseNarrationItems, slideTtsPatchAppliesTo, ttsResultIsTab } from '../hooks/useTTSGeneration.ts';
@@ -144,18 +147,26 @@ test('a leftover tab clip does not stamp the next slide’s cache key', () => {
     id: 'utility-systems',
     type: 'tabbed-horizontal',
     voiceOverUrl: introUrl,
+    voiceOverText: 'The steam cracker is not a standalone furnace.',
     data: {
-      tabs: [{ id: 'heat', label: 'Heat Integration Strategy', voiceOverUrl: heatUrl }],
+      tabs: [{
+        id: 'heat',
+        label: 'Heat Integration Strategy',
+        voiceOverUrl: heatUrl,
+        voiceOverText: 'All these systems are linked thermodynamically in the complex.',
+      }],
     },
   };
   const clickReveal = {
     id: 'utility-points',
     type: 'click-reveal',
-    voiceOverUrl: introUrl,
+    voiceOverUrl: heatUrl,
+    voiceOverText: 'The steam cracker operates as a tightly coupled energy system.',
     data: {
       items: [{ id: 'furnace', term: 'Furnace Exhaust', voiceOverUrl: heatUrl }],
     },
   };
+  const course = { modules: [{ slides: [processSlide, clickReveal] }] };
 
   assert.equal(tabAudioOnSlide(processSlide, heatUrl)?.tab.id, 'heat');
   assert.equal(tabAudioOnSlide(clickReveal, heatUrl), null);
@@ -168,10 +179,31 @@ test('a leftover tab clip does not stamp the next slide’s cache key', () => {
     'slide:utility-points',
   );
 
+  assert.equal(playbackUrlForSlide(clickReveal, { course }), null);
+  assert.equal(playbackUrlForSlide(processSlide, { course }), introUrl);
+  assert.equal(playbackUrlForSlide(processSlide, { course, tabAudioUrl: heatUrl }), heatUrl);
+  const healed = unbindStolenSlideAudio(course);
+  assert.equal(healed.modules[0].slides[1].voiceOverUrl, null);
+  assert.equal(healed.modules[0].slides[1].data.items[0].voiceOverUrl, null);
+  assert.match(healed.modules[0].slides[0].data.tabs[0].voiceOverUrl, /heat-integration/);
+
+  const stamped = stampSpokenClip(clickReveal, introUrl, clickReveal.voiceOverText);
+  assert.equal(stamped.voiceOverClipText, clickReveal.voiceOverText);
+  assert.equal(
+    playbackUrlForSlide(
+      { ...stamped, voiceOverText: 'Edited box that was never re-recorded at all.' },
+      { course: { modules: [{ slides: [stamped] }] } },
+    ),
+    null,
+  );
+
   const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
-  assert.match(app, /tabAudioOnSlide\(currentSlide, activeTabAudioUrl\)/);
+  assert.match(app, /playbackUrlForSlide\(currentSlide/);
   assert.match(app, /playbackNarrationKey\(currentSlide, playUrl/);
   assert.match(app, /isTabbedNarrationType\(result\.type\)/);
+  const lock = readFileSync(resolve(process.cwd(), '.cursor/rules/narration-align-lock.mdc'), 'utf8');
+  assert.match(lock, /unbindStolenSlideAudio/);
+  assert.match(lock, /voiceOverClipText/);
 });
 
 test('TTS tab results cannot overwrite a slide-level voiceOverUrl', () => {

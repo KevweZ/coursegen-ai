@@ -34,6 +34,8 @@ import {
   narrationRecordsToBlobs,
   revokeDraftPlayableUrls,
   collectNarrationRecords,
+  unbindStolenNarrationBlobs,
+  unbindStolenNarrationRecords,
   isAudioAssetPath,
   coerceStoredAudioBlob,
   cloneStandaloneBlob,
@@ -974,12 +976,12 @@ export function useDraftCourses(
       Object.assign(fromLiveDb, await readLiveNarration(scope));
     }
     const harvested = await harvestPlayerAudio(extras?.currentSlideId, extras?.currentVoiceOverUrl);
-    const narrationRecords = {
+    const narrationRecords = unbindStolenNarrationRecords({
       ...harvested,
       ...fromLiveDb,
       ...getNarrationCache(),
       ...collected,
-    };
+    });
 
     // structuredClone keeps us from mutating the live editor course
     let working: any;
@@ -1479,11 +1481,12 @@ export function useDraftCourses(
       }
     }
     console.log(`[DraftCourses] Restored ${Object.keys(blobs).length} narration blob(s) for ${id}`);
+    const cleanedBlobs = await unbindStolenNarrationBlobs(blobs);
     try {
-      await stashNarrationBlobs(blobs);
+      await stashNarrationBlobs(cleanedBlobs);
     } catch { /* play this session even if live stash fails */ }
     revokeDraftPlayableUrls(id);
-    return addPlayableUrls(id, blobs);
+    return addPlayableUrls(id, cleanedBlobs);
   }, [userId]);
 
   /** Sync API — only returns cached payloads (kept for legacy callers) */
