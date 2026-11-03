@@ -68,6 +68,15 @@ export default {
       if (url.pathname.startsWith('/scorm-player/')) {
         return assetResponse;
       }
+      // Never serve index.html for hashed bundles — Mermaid's dynamic import
+      // fails with "Failed to fetch dynamically imported module" if a missing
+      // /assets/*.js is rewritten to HTML.
+      if (
+        url.pathname.startsWith('/assets/')
+        || /\.(js|mjs|css|map|woff2?|png|jpe?g|gif|webp|svg|json)$/i.test(url.pathname)
+      ) {
+        return assetResponse;
+      }
       const indexUrl = new URL('/', url);
       return env.ASSETS.fetch(new Request(indexUrl.toString(), request));
     }

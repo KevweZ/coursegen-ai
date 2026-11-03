@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import {
   buildSpecifiedContentSlide,
   buildSpecifiedSlide,
+  ensureGeneratedTabSlide,
   filledSpecifyTabCount,
   MAX_SPECIFY_TABS,
   MIN_SPECIFY_TABS,
@@ -70,6 +71,37 @@ test('specified Add content process/tabs write intro plus per-tab OST and narrat
   ]), 2);
   assert.equal(MIN_SPECIFY_TABS, 2);
   assert.equal(MAX_SPECIFY_TABS, 6);
+});
+
+test('generated Add content tabs get ids, intro OST, and per-tab narration fields', () => {
+  const slide = ensureGeneratedTabSlide({
+    type: 'tabbed-vertical',
+    title: 'Olefins Recovery',
+    content: 'Explore the separation stages.',
+    voiceOverText: 'Explore the separation and purification stages for ethylene, propylene, and hydrogen.',
+    data: {
+      tabs: [
+        { label: 'Gas Processing Train', content: '- Cryogenic isolation', voiceOverText: 'The gas processing train uses cryogenic separation.' },
+        { label: 'Deethanizer', content: '- Split C2 and C3', voiceOverText: 'The deethanizer splits C2 and C3 streams.' },
+      ],
+    },
+  });
+  assert.equal(slide.type, 'tabbed-vertical');
+  assert.ok(slide.data.tabs[0].id);
+  assert.ok(slide.data.tabs[1].id);
+  assert.match(slide.data.tabs[0].voiceOverText, /cryogenic/);
+  assert.match(slide.content, /separation|Explore/i);
+  const empty = ensureGeneratedTabSlide({
+    type: 'tabbed-vertical',
+    title: 'Thin',
+    content: '- One bullet about this topic',
+    voiceOverText: 'Spoken intro only.',
+    data: { tabs: [] },
+  });
+  assert.equal(empty.type, 'content');
+  const ai = src('src/services/aiService.ts');
+  assert.match(ai, /ensureGeneratedTabSlide/);
+  assert.match(ai, /data\.tabs MUST have/);
 });
 
 test('Add content modal offers specify fields, type chips, and per-tab audio regen', () => {

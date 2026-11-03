@@ -1,5 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   isProtectedPath,
   parseAppPath,
@@ -20,6 +22,12 @@ test('terms, privacy, and report-a-bug are public marketing paths', () => {
 test('/account aliases My Account for Stripe portal return', () => {
   assert.deepEqual(parseAppPath('/account'), { kind: 'myAccount' });
   assert.equal(isProtectedPath('/account'), true);
+});
+
+test('worker does not SPA-fallback hashed /assets bundles to index.html', () => {
+  const worker = readFileSync(resolve(process.cwd(), 'worker.js'), 'utf8');
+  assert.match(worker, /url\.pathname\.startsWith\('\/assets\/'\)/);
+  assert.match(worker, /Failed to fetch dynamically imported module/);
 });
 
 test('team invite query survives /account and /MyAccount path parsing', () => {

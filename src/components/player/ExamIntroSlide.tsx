@@ -20,6 +20,8 @@ interface Props {
   actualQuestionCount?: number;
   /** When set, Begin stays disabled (hub: finish every module first). */
   lockedReason?: string | null;
+  /** Course Preview/Build only — leave the quiz and return to slides. */
+  onAuthorExit?: () => void;
 }
 
 const typeLabelMap: Record<string, string> = {
@@ -38,6 +40,7 @@ export const ExamIntroSlide: React.FC<Props> = ({
   moduleCount = 0,
   actualQuestionCount = 0,
   lockedReason = null,
+  onAuthorExit,
 }) => {
   const totalQuestions = resolveMasteryQuizQuestionCount(
     examConfig,
@@ -139,6 +142,15 @@ export const ExamIntroSlide: React.FC<Props> = ({
         )}
         {questionsReady && (
           <p className="text-center text-xs text-emerald-600 font-semibold">Quiz ready — questions were prepared with your course.</p>
+        )}
+        {onAuthorExit && (
+          <button
+            type="button"
+            onClick={onAuthorExit}
+            className="w-full py-3 rounded-2xl border-2 border-slate-300 text-slate-700 hover:border-slate-900 hover:text-slate-900 font-bold text-sm transition-colors"
+          >
+            Exit quiz — back to slides
+          </button>
         )}
       </div>
     </motion.div>

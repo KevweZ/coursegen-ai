@@ -4,6 +4,7 @@
  */
 import React, { useState } from 'react';
 import { coerceOstText, sanitizeOstText } from '../../lib/formatTabIntroOst';
+import { ensureTabListIds } from '../../lib/narrationAudio';
 import {
   MAX_DIAGRAM_NODES,
   appendFlowchartNode,
@@ -923,7 +924,8 @@ function DiagramEditFields({ slide, onPatch, getSlide }: Props) {
 }
 
 export function sanitizeInteractionOstOnSave(slide: any): any {
-  const s = { ...slide, data: { ...(slide.data || {}) } };
+  const stamped = ensureTabListIds(slide);
+  const s = { ...stamped, data: { ...(stamped.data || {}) } };
   const d = s.data;
   const clean = (v: unknown) => (v == null ? v : sanitizeOstText(v));
   if (Array.isArray(d.tabs)) {

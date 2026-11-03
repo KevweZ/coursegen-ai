@@ -1,7 +1,8 @@
 import { slidesMatchId } from './slideRegenMerge';
-import { sanitizeOstText } from './formatTabIntroOst';
+import { formatTabIntroOst, sanitizeOstText } from './formatTabIntroOst';
 import { moveArrayItem } from './objectiveOrder';
 import { collapseDuplicateModuleSummaries } from './enablingCoverage';
+import { ensureTabListIds, isTabbedNarrationType } from './narrationAudio';
 
 function slideBodyText(slide: any): string {
   const question = String(
@@ -161,6 +162,51 @@ export function buildSpecifiedContentSlide(opts: {
     title: string;
     content: string;
     voiceOverText: string;
+  };
+}
+
+/**
+ * Add content → generate must persist tab ids, intro OST, and per-tab OST/narration
+ * so the canvas, Edit Text, and tab audio line up. Empty tab shells become content.
+ */
+export function ensureGeneratedTabSlide(slide: any): any {
+  if (!slide || !isTabbedNarrationType(slide.type)) return slide;
+  const stamped = ensureTabListIds(slide);
+  const data = { ...(stamped.data || {}) };
+  const listKey = Array.isArray(data.tabs) ? 'tabs' : Array.isArray(data.items) ? 'items' : 'tabs';
+  const rawList = Array.isArray(data[listKey]) ? data[listKey] : [];
+  const tabs = rawList
+    .map((t: any, i: number) => {
+      const label = String(t?.label || t?.title || '').trim() || `Topic ${i + 1}`;
+      const content = sanitizeOstText(t?.content || t?.body || '');
+      const voiceOverText = String(t?.voiceOverText || t?.narration || '').trim();
+      if (!plainSpecifyText(label) && !plainSpecifyText(content) && !voiceOverText) return null;
+      return {
+        ...t,
+        id: String(t?.id || '').trim() || `tab-${i + 1}`,
+        label,
+        content: content || `- ${label}`,
+        voiceOverText,
+      };
+    })
+    .filter(Boolean);
+  if (tabs.length < MIN_SPECIFY_TABS) {
+    return {
+      ...stamped,
+      type: 'content',
+      content: sanitizeOstText(stamped.content || '') || `- ${stamped.title || 'New slide'}`,
+      data: undefined,
+    };
+  }
+  const intro = formatTabIntroOst({
+    introContent: stamped.content,
+    voiceOverText: stamped.voiceOverText,
+    title: stamped.title,
+  });
+  return {
+    ...stamped,
+    content: intro,
+    data: { ...data, [listKey]: tabs, tabs },
   };
 }
 

@@ -169,11 +169,53 @@ export function unbindStolenSlideAudio(course: any): any {
   };
 }
 
+/**
+ * Stamp stable ids on process/tab rows. Generated Add content slides often
+ * omit them; the player then cannot bind tab audio or CC.
+ */
+export function ensureTabListIds(slide: any): any {
+  if (!slide || !isTabbedNarrationType(slide.type) || !slide.data || typeof slide.data !== 'object') return slide;
+  let data = slide.data;
+  let changed = false;
+  for (const listKey of ['tabs', 'items'] as const) {
+    const list = data[listKey];
+    if (!Array.isArray(list) || !list.length) continue;
+    let listChanged = false;
+    const next = list.map((t: any, i: number) => {
+      const id = String(t?.id || '').trim();
+      if (id) return t;
+      listChanged = true;
+      return { ...t, id: `tab-${i + 1}` };
+    });
+    if (listChanged) {
+      data = { ...data, [listKey]: next };
+      changed = true;
+    }
+  }
+  return changed ? { ...slide, data } : slide;
+}
+
+/** Resolve the tab the player just selected, including synthesized `tab-N` ids. */
+export function resolveTabForAudio(slide: any, tabId: string): any | null {
+  if (!tabId || tabId === '__intro__') return null;
+  const wanted = String(tabId);
+  for (const listKey of ['tabs', 'items'] as const) {
+    const list = slide?.data?.[listKey];
+    if (!Array.isArray(list)) continue;
+    const byId = list.find((t: any) => String(t?.id || '') === wanted);
+    if (byId) return byId;
+    const synth = list.find((t: any, i: number) => `tab-${i}` === wanted || `tab-${i + 1}` === wanted);
+    if (synth) return synth;
+  }
+  return null;
+}
+
 /** Player URL for this slide: Audio box script only — never another slide’s tab MP3. */
 export function playbackUrlForSlide(
   slide: any,
   opts?: {
     tabAudioUrl?: string | null;
+    tabExclusive?: boolean;
     syntheticUrl?: string | null;
     restoredUrl?: string | null;
     course?: any;
@@ -184,6 +226,8 @@ export function playbackUrlForSlide(
   if (tabHit && hasLiveNarrationUrl(tabUrl) && clipMatchesScript(tabHit.tab, tabNarrationScript(tabHit.tab))) {
     return tabUrl as string;
   }
+  // A selected topic tab must never fall through to Introduction audio/CC.
+  if (opts?.tabExclusive) return null;
   const script = slideNarrationScript(slide);
   const candidates = [slide?.voiceOverUrl, slide?.audioUrl, opts?.syntheticUrl, opts?.restoredUrl];
   for (const url of candidates) {

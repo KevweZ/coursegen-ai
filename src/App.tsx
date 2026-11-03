@@ -104,9 +104,11 @@ import {
   mergeCoursePreservingAudio,
   playbackNarrationKey,
   playbackUrlForSlide,
+  resolveTabForAudio,
   stampSpokenClip,
   unbindStolenSlideAudio,
 } from './lib/narrationAudio';
+import { examNavTargetFromSlide, examNavigationAllowed, previousAllowedIndex } from './lib/examPreviewNav';
 import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft, generateMasteryExam, generateInsertedContent } from './services/aiService';
 import {
   attachMasteryExamForEdit,
@@ -2889,17 +2891,12 @@ export default function App() {
 
   const canNavigateTo = (targetIdx: number): boolean => {
     const target = allSlides[targetIdx];
-    const isExamIntro    = targetIdx === examIntroIndex;
-    const isExamQuestion = targetIdx === examQIndex;
-    const isExamResults  = targetIdx === examResultsIndex;
-    if (isHubMenuSlide(target)) return examPhase !== 'active';
-    if (isExamIntro) {
-      if (hubMode && !modulesComplete) return false;
-      return true;
-    }
-    if (isExamQuestion) return examPhase !== 'idle' && (!hubMode || modulesComplete);
-    if (isExamResults)  return examPhase === 'complete';
-    if (examPhase === 'active') return false;
+    const examTarget = examNavTargetFromSlide(target);
+    if (hubMode && examTarget === 'exam-intro' && !modulesComplete) return false;
+    if (hubMode && examTarget === 'mastery-exam' && !modulesComplete) return false;
+    if (!examNavigationAllowed({ examPhase, isLearner: isLearnerPlayer, target: examTarget })) return false;
+    if (examTarget !== 'content' && examTarget !== 'hub') return true;
+    if (isHubMenuSlide(target)) return true;
     switch (navigationMode) {
       case 'free':       return true;
       case 'linear':     return false;
@@ -2966,7 +2963,13 @@ export default function App() {
   };
 
   const handlePrev = () => {
-    setCurrentSlideIndex(prev => Math.max(0, prev - 1));
+    setCurrentSlideIndex(prev => previousAllowedIndex(prev, canNavigateTo));
+  };
+
+  const handleAuthorExitQuiz = () => {
+    setExamPhase('idle');
+    const dest = Math.max(0, examIntroIndex > 0 ? examIntroIndex - 1 : 0);
+    setCurrentSlideIndex(dest);
   };
 
   // Orientation / compact-viewport listener
@@ -3029,23 +3032,16 @@ export default function App() {
       setActiveTabNarrationText(null);
       return;
     }
-    const tabs = isTabbedNarrationType(currentSlide.type)
-      ? (currentSlide.data?.tabs || currentSlide.data?.items || [])
-      : [];
-    const tab = (tabs || []).find((t: any) => t.id === tabId);
+    const tab = resolveTabForAudio(currentSlide, tabId);
+    const script = String(tab?.voiceOverText || tab?.narration || '').trim();
     const tabPlay = playbackUrlForSlide(currentSlide, {
       tabAudioUrl: tab?.voiceOverUrl,
+      tabExclusive: true,
       course,
     });
-    if (tabPlay) {
-      setActiveTabAudioUrl(tabPlay);
-      const script = String(tab.voiceOverText || tab.narration || '').trim();
-      setActiveTabNarrationText(script || null);
-    } else {
-      player.pause();
-      setActiveTabAudioUrl(null);
-      setActiveTabNarrationText(null);
-    }
+    setActiveTabAudioUrl(tabPlay || '');
+    setActiveTabNarrationText(script || null);
+    if (!tabPlay) player.pause();
   };
 
   useEffect(() => {
@@ -3054,9 +3050,11 @@ export default function App() {
     currentSlideIdRef.current = currentSlide.id || null;
     currentSlideVoiceOverUrlRef.current = currentSlide.voiceOverUrl || null;
     const restoredUrl = restoredBySlideRef.current[currentSlide.id];
+    const tabExclusive = activeTabAudioUrl !== null;
     const playUrl = voiceOverEnabled && !slideSkipsNarration(currentSlide)
       ? playbackUrlForSlide(currentSlide, {
-          tabAudioUrl: activeTabAudioUrl,
+          tabAudioUrl: activeTabAudioUrl || undefined,
+          tabExclusive,
           syntheticUrl: currentSyntheticUrl,
           restoredUrl,
           course: courseRef.current || course,
@@ -8781,6 +8779,7 @@ export default function App() {
                                    questionsReady={examQuestions.length > 0}
                                    errorMessage={examError}
                                    lockedReason={hubQuizLocked ? 'Complete every module from the Main Menu to unlock the quiz.' : null}
+                                   onAuthorExit={!isLearnerPlayer ? handleAuthorExitQuiz : undefined}
                                    onBegin={async () => {
                                      if (hubQuizLocked) return;
                                      setExamError(null);
@@ -8860,6 +8859,7 @@ export default function App() {
                                      questions={examSession.questions.length > 0 ? examSession.questions : examQuestions}
                                      examConfig={examConfig}
                                      sessionState={examSession}
+                                     onAuthorExit={!isLearnerPlayer ? handleAuthorExitQuiz : undefined}
                                      onAnswer={(qId, answer) => setExamSession(prev => ({ ...prev, answers: { ...prev.answers, [qId]: answer } }))}
                                      onSubmit={(newState) => {
                                        if (newState.submitted) {
@@ -9119,7 +9119,7 @@ export default function App() {
                       {!dockPlayerBarOutside && showCC && player.hasAudio && !player.isEnded && (
                         <ClosedCaptionOverlay
                           narrationText={
-                            activeTabAudioUrl
+                            activeTabAudioUrl !== null
                               ? activeTabNarrationText
                               : (currentSlide?.voiceOverText || (currentSlide as any)?.narration || null)
                           }
@@ -9157,7 +9157,11 @@ export default function App() {
                           !isCurrentSlideInteractionsComplete()
                         }
                         disableNextReason={interactionProgressLabel}
-                        disablePrev={currentSlide?.type === 'mastery-exam' || currentSlide?.type === 'exam-results'}
+                        disablePrev={
+                          currentSlide?.type === 'mastery-exam'
+                          || currentSlide?.type === 'exam-results'
+                          || (isLearnerPlayer && examPhase === 'active' && currentSlide?.type === 'exam-intro')
+                        }
                         volume={player.volume}
                         onVolumeChange={player.setVolume}
                         showCC={showCC}
@@ -9223,7 +9227,7 @@ export default function App() {
                         <ClosedCaptionOverlay
                           placement="docked"
                           narrationText={
-                            activeTabAudioUrl
+                            activeTabAudioUrl !== null
                               ? activeTabNarrationText
                               : (currentSlide?.voiceOverText || (currentSlide as any)?.narration || null)
                           }
@@ -9255,7 +9259,11 @@ export default function App() {
                           !isCurrentSlideInteractionsComplete()
                         }
                         disableNextReason={interactionProgressLabel}
-                        disablePrev={currentSlide?.type === 'mastery-exam' || currentSlide?.type === 'exam-results'}
+                        disablePrev={
+                          currentSlide?.type === 'mastery-exam'
+                          || currentSlide?.type === 'exam-results'
+                          || (isLearnerPlayer && examPhase === 'active' && currentSlide?.type === 'exam-intro')
+                        }
                         volume={player.volume}
                         onVolumeChange={player.setVolume}
                         showCC={showCC}
@@ -10088,6 +10096,10 @@ export default function App() {
                                              })),
                                            };
                                          });
+                                         if (activeTabForImages && String(liveTabs[ti].id) === String(activeTabForImages)) {
+                                           setActiveTabAudioUrl(durable);
+                                           setActiveTabNarrationText(text);
+                                         }
                                          showDraftMessage(`Audio regenerated for “${liveTabs[ti].label || `Tab ${ti + 1}`}” ✓`);
                                        } catch (err: any) {
                                          alert(`TTS error: ${err.message}`);

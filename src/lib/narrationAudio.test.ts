@@ -8,7 +8,9 @@ import {
   mergeBackgroundCourseSnapshot,
   mergeCoursePreservingAudio,
   playbackNarrationKey,
+  ensureTabListIds,
   playbackUrlForSlide,
+  resolveTabForAudio,
   slideNarrationScript,
   stampSpokenClip,
   tabAudioOnSlide,
@@ -182,6 +184,21 @@ test('a leftover tab clip does not stamp the next slide’s cache key', () => {
   assert.equal(playbackUrlForSlide(clickReveal, { course }), null);
   assert.equal(playbackUrlForSlide(processSlide, { course }), introUrl);
   assert.equal(playbackUrlForSlide(processSlide, { course, tabAudioUrl: heatUrl }), heatUrl);
+  assert.equal(
+    playbackUrlForSlide(processSlide, { course, tabAudioUrl: heatUrl, tabExclusive: true }),
+    heatUrl,
+  );
+  assert.equal(
+    playbackUrlForSlide(processSlide, { course, tabExclusive: true }),
+    null,
+    'a selected tab must not replay Introduction audio',
+  );
+  const untitled = {
+    ...processSlide,
+    data: { tabs: [{ label: 'Heat', voiceOverUrl: heatUrl, voiceOverText: processSlide.data.tabs[0].voiceOverText }] },
+  };
+  const resolved = resolveTabForAudio(ensureTabListIds(untitled), 'tab-1');
+  assert.equal(resolved?.label, 'Heat');
   const healed = unbindStolenSlideAudio(course);
   assert.equal(healed.modules[0].slides[1].voiceOverUrl, null);
   assert.equal(healed.modules[0].slides[1].data.items[0].voiceOverUrl, null);

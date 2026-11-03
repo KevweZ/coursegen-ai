@@ -10,6 +10,8 @@ interface Props {
   sessionState: ExamSessionState;
   onAnswer: (questionId: string, answer: number | number[]) => void;
   onSubmit: (finalState: ExamSessionState) => void;
+  /** Course Preview/Build only — leave the quiz and return to slides. */
+  onAuthorExit?: () => void;
 }
 
 function isAnswered(q: ExamQuestion, answer: number | number[] | null | undefined): boolean {
@@ -184,7 +186,7 @@ const QuestionCard: React.FC<{
 // ─── Main component ────────────────────────────────────────────────────────────
 
 export const MasteryExamSlide: React.FC<Props> = ({
-  questions, examConfig, sessionState, onAnswer, onSubmit,
+  questions, examConfig, sessionState, onAnswer, onSubmit, onAuthorExit,
 }) => {
   const { answers, currentQuestionIdx, submitted } = sessionState;
   const [confirming, setConfirming] = useState(false);
@@ -318,7 +320,16 @@ export const MasteryExamSlide: React.FC<Props> = ({
         )}
 
         {/* Submit bar — inside slide frame (not viewport-fixed) so it isn't cropped */}
-        <div className="shrink-0 border-t border-slate-200 bg-white/95 backdrop-blur-sm p-3 flex justify-center">
+        <div className="shrink-0 border-t border-slate-200 bg-white/95 backdrop-blur-sm p-3 flex flex-col sm:flex-row items-center justify-center gap-2">
+          {onAuthorExit && (
+            <button
+              type="button"
+              onClick={onAuthorExit}
+              className="px-6 py-3 rounded-xl border-2 border-slate-300 text-slate-700 hover:border-slate-900 hover:text-slate-900 font-bold text-sm"
+            >
+              Exit quiz — back to slides
+            </button>
+          )}
           <button
             disabled={!allAnswered || submitted}
             onClick={() => setConfirming(true)}
@@ -406,7 +417,16 @@ export const MasteryExamSlide: React.FC<Props> = ({
         </div>
       )}
 
-      <div className="border-t border-slate-200 p-4 flex justify-end bg-white">
+      <div className="border-t border-slate-200 p-4 flex flex-wrap items-center justify-end gap-2 bg-white">
+        {onAuthorExit && (
+          <button
+            type="button"
+            onClick={onAuthorExit}
+            className="mr-auto px-5 py-2.5 rounded-xl border-2 border-slate-300 text-slate-700 hover:border-slate-900 hover:text-slate-900 font-bold text-sm"
+          >
+            Exit quiz — back to slides
+          </button>
+        )}
         {isLast ? (
           <button
             disabled={currentAnswer === null || (Array.isArray(currentAnswer) && currentAnswer.length === 0) || submitted}

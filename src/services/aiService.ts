@@ -3,6 +3,7 @@ import { coerceCarouselColor } from "../lib/colorContrast";
 import { ensureEnablingSlideCoverage, preserveEnablingIndex, normalizeTerminalGroups, slideSkipsNarration, stripSlideNarration, isKnowledgeCheckSlide, isSummarySlide, collapseDuplicateModuleSummaries } from "../lib/enablingCoverage";
 import { allocateKnowledgeCheckSlots, alignHydratedSlidesToOutline, ensureKnowledgeCheckBudget } from "../lib/knowledgeCheckBudget";
 import { finalizeHydratedSlide, teachingSlideNeedsRetry, normalizeKeyTakeaways } from "../lib/hydrateGuards";
+import { ensureGeneratedTabSlide } from "../lib/courseSlideEdits";
 import { sanitizeMasteryExamQuestions, examQuestionIsMeta } from "../lib/masteryExam";
 import { extractAcronymGlossary, sanitizeCourseTitles, shortenCourseTitle, shortenModuleTitle } from "../lib/splitCourseTitle";
 import {
@@ -1803,6 +1804,7 @@ Rules:
 - Do not include knowledge checks unless quiz is listed in Allowed interaction types.
 - Prefer content / click-reveal / tabbed-horizontal unless the source needs a check.
 - For content slides you may use "bullets": ["..."] instead of content.
+- If the allowed types include tabbed-vertical or tabbed-horizontal and this slide is tabs/process, data.tabs MUST have 2–6 objects: { "id": "tab-1", "label": "short heading", "content": "markdown short bullets for that tab only", "voiceOverText": "2–3 spoken sentences for that tab only" }. content (intro/Overview) and voiceOverText (intro narration) are the Instruction/Overview only — do not dump every tab's text into content.
 - Pure JSON only.`;
 
   const raw = await executeAnthropicAI('bulk', system, user, 8192);
@@ -1825,7 +1827,7 @@ Rules:
     allowed.length ? allowed : ['content', 'click-reveal', 'tabbed-horizontal', 'choice-cards'],
   );
   slides = wrapped[0]?.slides || slides;
-  slides = slides.map((s: any) => finalizeHydratedSlide(s, opts.moduleTitle || opts.courseTitle));
+  slides = slides.map((s: any) => ensureGeneratedTabSlide(finalizeHydratedSlide(s, opts.moduleTitle || opts.courseTitle)));
   if (!allowQuiz) {
     slides = slides.filter((s: any) => !isKnowledgeCheckSlide(s));
   }

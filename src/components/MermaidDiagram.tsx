@@ -127,7 +127,12 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
         }
       } catch (err: any) {
         if (!cancelled) {
-          setError(err?.message ?? 'Failed to render diagram');
+          const msg = String(err?.message || 'Failed to render diagram');
+          setError(
+            /failed to fetch dynamically imported module/i.test(msg)
+              ? `${msg}\nHard-refresh this page (Ctrl+Shift+R) if the course was open during a deploy.`
+              : msg,
+          );
         }
       }
     })();
