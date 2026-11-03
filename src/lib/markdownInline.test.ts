@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { ensureAuthoredListMarkers, markdownToHtml, stampListItemColorFromText } from './markdownInline.ts';
+import { ensureAuthoredListMarkers, leftoverMarkdownInHtml, markdownToHtml, stampListItemColorFromText } from './markdownInline.ts';
 import { formatTabIntroOst, sanitizeOstText } from './formatTabIntroOst.ts';
 
 test('markdown lists still render with md-list discs', () => {
@@ -75,6 +75,23 @@ test('inline text color is copied onto list items so markers can inherit it', ()
   );
   assert.match(rendered, /<li style="color: #34d399">/);
   assert.match(rendered, /<ul class="md-list">/);
+});
+
+test('leftover **bold** inside HTML lists becomes real bold, in the editor too', () => {
+  const html = leftoverMarkdownInHtml(
+    '<ul><li>**High-pressure steam generation** for turbine drivers</li></ul>',
+  );
+  assert.match(html, /<strong>High-pressure steam generation<\/strong>/);
+  assert.doesNotMatch(html, /\*\*High-pressure/);
+  const rendered = markdownToHtml(
+    '<ul><li>**Cascaded refrigerant circuits** for cold separation</li></ul>',
+  );
+  assert.match(rendered, /<strong>Cascaded refrigerant circuits<\/strong>/);
+  const editor = readFileSync(resolve(process.cwd(), 'src/components/player/RichTextEditor.tsx'), 'utf8');
+  assert.match(editor, /from ['\"][^'\"]*markdownInline['\"]/);
+  assert.match(editor, /content: markdownToHtml\(value\)/);
+  const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+  assert.match(app, /tabbed-horizontal[\s\S]*RichTextEditor[\s\S]*On-screen text for this/);
 });
 
 test('dark editor remaps Black/Dark so authored slide-black stays readable', () => {

@@ -21,7 +21,7 @@ import {
   List, ListOrdered, Minus, ChevronDown,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { stampListItemColorFromText } from '../../lib/markdownInline';
+import { markdownToHtml, stampListItemColorFromText } from '../../lib/markdownInline';
 
 const COLORS = [
   { label: 'White',   value: '#ffffff' },
@@ -41,51 +41,6 @@ const HEADING_OPTIONS = [
   { label: 'Heading 3', value: 3 },
 ] as const;
 
-function markdownToHtml(md: string): string {
-  if (!md) return '';
-  if (/<[a-z][\s\S]*>/i.test(md.trim())) return md;
-
-  // Drop empty / symbol-only bullet lines before conversion (prevents "• -" in Edit)
-  const cleaned = md
-    .split(/\n/)
-    .filter(line => {
-      const t = line.trim();
-      if (!t) return true; // keep blank lines for paragraph breaks
-      if (!/^[-*•]/.test(t) && !/^\d+[.)]/.test(t)) return true;
-      const body = t.replace(/^[-*•]\s*/, '').replace(/^\d+[.)]\s*/, '').trim();
-      if (!body) return false;
-      return /[A-Za-z0-9\u00C0-\u024F]/.test(body);
-    })
-    .join('\n');
-
-  let html = cleaned
-    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/^---$/gm, '<hr />')
-    .replace(/^[*-] (.+)$/gm, '<li>$1</li>')
-    .replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
-
-  html = html.replace(/(<li>[\s\S]+?<\/li>)(\n<li>[\s\S]+?<\/li>)*/g,
-    (match) => `<ul>${match}</ul>`);
-
-  html = html
-    .split('\n')
-    .map(line => {
-      const trimmed = line.trim();
-      if (!trimmed) return '';
-      if (/^<(h[1-6]|ul|ol|li|hr|p|blockquote)/i.test(trimmed)) return trimmed;
-      return `<p>${trimmed}</p>`;
-    })
-    .filter(Boolean)
-    .join('\n');
-
-  return html || `<p>${cleaned}</p>`;
-}
-
 interface Props {
   value: string;
   onChange: (html: string) => void;
@@ -104,7 +59,7 @@ export function RichTextEditor({ value, onChange, placeholder = 'Edit slide cont
     },
     editorProps: {
       attributes: {
-        class: 'outline-none min-h-[12rem] text-sm leading-relaxed prose prose-invert max-w-none focus:outline-none',
+        class: 'outline-none text-sm leading-relaxed prose prose-invert max-w-none focus:outline-none',
         'data-placeholder': placeholder,
       },
     },

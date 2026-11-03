@@ -42,7 +42,7 @@ async function authedFetch(path: string, init: RequestInit = {}): Promise<Respon
 }
 
 export async function isCloudDraftsAvailable(): Promise<boolean> {
-  if (cloudReady != null) return cloudReady;
+  if (cloudReady === true) return true;
   try {
     // Prefer server route (works even when browser RLS is misconfigured)
     const token = await getAccessToken();
@@ -63,14 +63,12 @@ export async function isCloudDraftsAvailable(): Promise<boolean> {
     const { error } = await supabase.from('course_drafts').select('id').limit(1);
     if (error) {
       console.warn('[DraftCloud] Table not ready:', error.message);
-      cloudReady = false;
       return false;
     }
     cloudReady = true;
     return true;
   } catch (e) {
     console.warn('[DraftCloud] Probe failed:', e);
-    cloudReady = false;
     return false;
   }
 }
@@ -319,11 +317,12 @@ export async function upsertCloudDraft(
   assets?: Record<string, string | Blob>,
   workspaceId?: string | null
 ): Promise<{ ok: boolean; error?: string }> {
-  if (!(await isCloudDraftsAvailable())) {
-    return { ok: false, error: 'Cloud drafts unavailable. Sign in and try again.' };
-  }
-
   try {
+    const token = await getAccessToken();
+    if (!token) {
+      return { ok: false, error: 'Not signed in — cloud draft sync requires an active session.' };
+    }
+
     const lean = leanSnapshotForUpload(snapshot);
     let body = JSON.stringify({ meta, snapshot: lean, workspaceId: workspaceId || null });
     // Keep well under Worker/proxy limits
@@ -356,8 +355,10 @@ export async function upsertCloudDraft(
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
+      if (res.status === 401) cloudReady = false;
       return { ok: false, error: data.error || data.message || `Cloud save failed (${res.status})` };
     }
+    cloudReady = true;
 
     try {
       await uploadAssets(userId, meta.id, assets);

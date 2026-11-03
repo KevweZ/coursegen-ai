@@ -54,13 +54,30 @@ function escapeHtml(s: string): string {
 }
 
 function inlineFormat(text: string): string {
-  return escapeHtml(text)
+  return leftoverMarkdownMarks(escapeHtml(text)).replace(/ \u2014 /g, '\u00a0\u2014 ');
+}
+
+/** Turn leftover `**bold**` / `*italic*` into tags. Safe on HTML text nodes. */
+export function leftoverMarkdownMarks(text: string): string {
+  return String(text || '')
     .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/__(.+?)__/g, '<strong>$1</strong>')
     .replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/ \u2014 /g, '\u00a0\u2014 ');
+    .replace(/`([^`]+)`/g, '<code>$1</code>');
+}
+
+/** Convert `**bold**` sitting inside already-authored HTML lists. */
+export function leftoverMarkdownInHtml(html: string): string {
+  return String(html || '').replace(/>([^<]+)</g, (_m, text: string) => `>${leftoverMarkdownMarks(text)}<`);
+}
+
+/** Bold/italic only — no wrapping <p>, so parent color (e.g. tab titles) is inherited. */
+export function markdownToInlineHtml(text: string | unknown): string {
+  const src = coerceOstText(text).trim();
+  if (!src) return '';
+  if (isHTML(src)) return leftoverMarkdownInHtml(src).replace(/<\/?p[^>]*>/gi, '');
+  return inlineFormat(src.replace(/\s*\n+\s*/g, ' '));
 }
 
 /**
@@ -68,18 +85,13 @@ function inlineFormat(text: string): string {
  * Avoid putting left padding on <ul> that fights parent CSS — markers are
  * drawn by the host component (e.g. VerticalTimeline accent squares).
  */
-/** Bold/italic only — no wrapping <p>, so parent color (e.g. tab titles) is inherited. */
-export function markdownToInlineHtml(text: string | unknown): string {
-  const src = coerceOstText(text).trim();
-  if (!src) return '';
-  if (isHTML(src)) return src.replace(/<\/?p[^>]*>/gi, '');
-  return inlineFormat(src.replace(/\s*\n+\s*/g, ' '));
-}
 
 export function markdownToHtml(text: string | unknown): string {
   const src = coerceOstText(text);
   if (!src) return '';
-  if (isHTML(src)) return ensureAuthoredListMarkers(stampListItemColorFromText(src));
+  if (isHTML(src)) {
+    return ensureAuthoredListMarkers(stampListItemColorFromText(leftoverMarkdownInHtml(src)));
+  }
 
   const lines = src.replace(/\r\n/g, '\n').split('\n');
   const out: string[] = [];

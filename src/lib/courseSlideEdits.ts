@@ -98,13 +98,17 @@ export function buildSpecifiedSlide(opts: {
   narration?: string;
   type?: string;
   tabs?: SpecifyTabDraft[];
+  showProcessStepLabels?: boolean;
 }): {
   id: string;
   type: SpecifySlideType;
   title: string;
   content: string;
   voiceOverText: string;
-  data?: { tabs: Array<{ id: string; label: string; content: string; voiceOverText: string }> };
+  data?: {
+    tabs: Array<{ id: string; label: string; content: string; voiceOverText: string }>;
+    showProcessStepLabels?: boolean;
+  };
 } {
   const type: SpecifySlideType = isSpecifyTabbedType(opts.type) ? opts.type : 'content';
   const title = String(opts.title || '').trim() || 'New slide';
@@ -139,7 +143,10 @@ export function buildSpecifiedSlide(opts: {
     title,
     content: content || `- ${title}`,
     voiceOverText,
-    data: { tabs },
+    data: {
+      tabs,
+      ...(type === 'tabbed-horizontal' ? { showProcessStepLabels: opts.showProcessStepLabels !== false } : {}),
+    },
   };
 }
 

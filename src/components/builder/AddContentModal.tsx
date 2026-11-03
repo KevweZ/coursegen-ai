@@ -45,6 +45,7 @@ export type AddContentForm = {
   preferredTypes: string[];
   specifyType: SpecifySlideType;
   specifyTabs: SpecifyTabDraft[];
+  showProcessStepLabels: boolean;
 };
 
 interface Props {
@@ -53,6 +54,7 @@ interface Props {
   currentSlideTitle?: string;
   currentIsChrome?: boolean;
   afterInsertLabel?: string;
+  defaultProcessShowStepLabels?: boolean;
   onClose: () => void;
   onGenerate: (form: AddContentForm) => void;
 }
@@ -69,6 +71,7 @@ export function AddContentModal({
   currentSlideTitle,
   currentIsChrome = false,
   afterInsertLabel,
+  defaultProcessShowStepLabels = true,
   onClose,
   onGenerate,
 }: Props) {
@@ -85,6 +88,7 @@ export function AddContentModal({
   const [preferredTypes, setPreferredTypes] = useState<string[]>([]);
   const [specifyType, setSpecifyType] = useState<SpecifySlideType>('content');
   const [specifyTabs, setSpecifyTabs] = useState<SpecifyTabDraft[]>(() => [blankSpecifyTab(), blankSpecifyTab(), blankSpecifyTab()]);
+  const [showProcessStepLabels, setShowProcessStepLabels] = useState(defaultProcessShowStepLabels !== false);
 
   useEffect(() => {
     if (!open) return;
@@ -101,7 +105,8 @@ export function AddContentModal({
     setPreferredTypes([]);
     setSpecifyType('content');
     setSpecifyTabs([blankSpecifyTab(), blankSpecifyTab(), blankSpecifyTab()]);
-  }, [open, currentIsChrome]);
+    setShowProcessStepLabels(defaultProcessShowStepLabels !== false);
+  }, [open, currentIsChrome, defaultProcessShowStepLabels]);
 
   useEffect(() => {
     if (scope === 'module') setPlacement('new-module');
@@ -256,6 +261,20 @@ export function AddContentModal({
                         Overview is the left intro. Each {stepWord} needs a heading and on-screen text — same fields as Edit Slide.
                         {specifyType === 'tabbed-horizontal' ? ' Process works best with 3–4 steps.' : ''}
                       </p>
+                    )}
+                    {specifyType === 'tabbed-horizontal' && (
+                      <label className="flex items-start gap-2.5 cursor-pointer pt-1">
+                        <input
+                          type="checkbox"
+                          checked={showProcessStepLabels}
+                          disabled={busy}
+                          onChange={e => setShowProcessStepLabels(e.target.checked)}
+                          className="mt-0.5 w-4 h-4 rounded border-slate-600 text-indigo-500"
+                        />
+                        <span className="text-[11px] text-slate-300 leading-relaxed">
+                          Show STEP 01, STEP 02 labels. Turn off when the circles are topics or places, not a sequence.
+                        </span>
+                      </label>
                     )}
                   </div>
                   <div className={`space-y-1.5 ${busy ? 'pointer-events-none opacity-60' : ''}`}>
@@ -511,6 +530,7 @@ export function AddContentModal({
                   preferredTypes,
                   specifyType,
                   specifyTabs,
+                  showProcessStepLabels,
                 })}
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >

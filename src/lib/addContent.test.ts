@@ -52,6 +52,17 @@ test('specified Add content process/tabs write intro plus per-tab OST and narrat
   assert.equal(slide.data?.tabs[0].label, 'High-Pressure Steam Generation');
   assert.match(slide.data?.tabs[0].content, /<li>/);
   assert.match(slide.data?.tabs[1].voiceOverText, /linked thermodynamically/);
+  assert.equal(slide.data?.showProcessStepLabels, true);
+  const unlabeled = buildSpecifiedSlide({
+    title: 'Places',
+    type: 'tabbed-horizontal',
+    tabs: [
+      { label: 'Furnace', content: '- Heat', narration: 'Heat.' },
+      { label: 'Quench', content: '- Cool', narration: 'Cool.' },
+    ],
+    showProcessStepLabels: false,
+  });
+  assert.equal(unlabeled.data?.showProcessStepLabels, false);
   assert.equal(filledSpecifyTabCount([
     { label: 'A', content: '', narration: '' },
     { label: '', content: '<p></p>', narration: '' },
@@ -71,6 +82,8 @@ test('Add content modal offers specify fields, type chips, and per-tab audio reg
   assert.match(modal, /ADD_CONTENT_TYPE_OPTIONS/);
   assert.match(modal, /SPECIFY_TYPE_OPTIONS/);
   assert.match(modal, /Add step|Add tab/);
+  assert.match(modal, /Show STEP 01, STEP 02 labels/);
+  assert.match(modal, /showProcessStepLabels/);
   const lock = src('.cursor/rules/add-content-specify-lock.mdc');
   assert.match(lock, /RichTextEditor/);
   assert.match(lock, /Slide title is on the specify tab/);
@@ -78,7 +91,9 @@ test('Add content modal offers specify fields, type chips, and per-tab audio reg
   const app = src('src/App.tsx');
   assert.match(app, /buildSpecifiedSlide/);
   assert.match(app, /form\.specifyTabs/);
-  assert.match(app, /tabNarrationScript/);
+  assert.match(app, /form\.showProcessStepLabels/);
+  assert.match(app, /generateTTS\(\{\s*modules:\s*\[\{\s*slides:\s*spliced\.inserted\s*\}\]\s*\}/);
+  assert.match(app, /z-\[10100\]/);
   assert.match(app, /Generate this tab/);
   assert.match(app, /form\.preferredTypes/);
   assert.match(app, /addingContentRef/);

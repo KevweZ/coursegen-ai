@@ -104,7 +104,6 @@ import {
   mergeCoursePreservingAudio,
   playbackNarrationKey,
   tabAudioOnSlide,
-  tabNarrationScript,
 } from './lib/narrationAudio';
 import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft, generateMasteryExam, generateInsertedContent } from './services/aiService';
 import { sanitizeMasteryExamQuestions } from './lib/masteryExam';
@@ -5409,6 +5408,7 @@ export default function App() {
               narration: form.narrationText,
               type: form.specifyType,
               tabs: form.specifyTabs,
+              showProcessStepLabels: form.showProcessStepLabels,
             })],
           }
         : await generateInsertedContent({
@@ -5450,46 +5450,20 @@ export default function App() {
       setAddContentOpen(false);
       const n = spliced.inserted.length;
       showDraftMessage(n === 1 ? 'Slide added. Use Undo if this isn’t what you wanted.' : `${n} slides added. Use Undo if this isn’t what you wanted.`);
+      addingContentRef.current = false;
+      setIsAddingContent(false);
 
       if (voiceOverEnabled) {
-        try {
-          const { generateSlideTTS: genTTS, urlToDataUrl } = await import('./services/ttsService');
-          const toDurable = async (blobUrl: string) => {
-            try { return await urlToDataUrl(blobUrl); } catch { return blobUrl; }
-          };
-          for (const slide of spliced.inserted) {
-            let next = slide;
-            const script = String(slide.voiceOverText || '').trim();
-            if (script && !slideSkipsNarration(slide)) {
-              const durable = await toDurable(await genTTS(script, { voice: ttsVoice as any }));
-              void stashAudioUrl(`slide:${slide.id}`, durable);
-              next = { ...next, voiceOverUrl: durable };
-            }
-            if (isTabbedNarrationType(slide.type)) {
-              const listKey = Array.isArray(slide.data?.tabs) ? 'tabs' : 'items';
-              const tabs = [...(slide.data?.[listKey] || [])];
-              let changed = false;
-              for (let i = 0; i < tabs.length; i++) {
-                const tabText = tabNarrationScript(tabs[i]);
-                if (!tabText) continue;
-                const tabUrl = await toDurable(await genTTS(tabText, { voice: ttsVoice as any }));
-                tabs[i] = { ...tabs[i], voiceOverUrl: tabUrl };
-                void stashAudioUrl(`tab:${slide.id}:${listKey}:${tabs[i].id}`, tabUrl);
-                changed = true;
-                await new Promise(r => setTimeout(r, 200));
-              }
-              if (changed) next = { ...next, data: { ...(next.data || {}), [listKey]: tabs } };
-            }
-            if (next !== slide) {
-              handleUpdateSlideMedia(slide.id, {
-                voiceOverUrl: next.voiceOverUrl,
-                data: next.data,
-              });
-            }
-            await new Promise(r => setTimeout(r, 200));
+        if (ttsProgress.isRunning) {
+          showDraftMessage('Slide added. Narration is already generating…');
+        } else {
+          try {
+            await generateTTS({ modules: [{ slides: spliced.inserted }] }, setCourse, ttsVoice);
+          } catch (e: any) {
+            console.warn('[add content] TTS failed', e);
+            const { formatTtsErrorForUser } = await import('./services/ttsService');
+            showDraftMessage(`${formatTtsErrorForUser(e)} — use Edit → Regenerate audio to retry.`);
           }
-        } catch (e) {
-          console.warn('[add content] TTS failed', e);
         }
       }
     } catch (e: any) {
@@ -9877,21 +9851,6 @@ export default function App() {
                                   value={introTitleHex}
                                   onPick={(hex) => patchTabs(tabs.map((t: any) => ({ ...t, labelColor: hex })), { introLabelColor: hex })}
                                 />
-                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{editingSlide.type === 'tabbed-vertical' ? 'Instruction tab text' : 'Overview text'}</label>
-                                <textarea
-                                  rows={5}
-                                  value={coerceOstText(editingSlide.content)}
-                                  onChange={(e) => {
-                                    const updated = {
-                                      ...(editingSlideRef.current ?? editingSlide),
-                                      content: sanitizeOstText(e.target.value),
-                                    };
-                                    editingSlideRef.current = updated;
-                                    setEditingSlide(updated);
-                                  }}
-                                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 resize-none"
-                                  placeholder="Short bullets for the Instruction tab (one idea per line)…"
-                                />
                               </div>
                             )}
                             {!unify && (
@@ -9905,21 +9864,6 @@ export default function App() {
                                 <TitleDots
                                   value={introTitleHex}
                                   onPick={(hex) => patchTabs(tabs, { introLabelColor: hex })}
-                                />
-                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Tab text</label>
-                                <textarea
-                                  rows={5}
-                                  value={coerceOstText(editingSlide.content)}
-                                  onChange={(e) => {
-                                    const updated = {
-                                      ...(editingSlideRef.current ?? editingSlide),
-                                      content: sanitizeOstText(e.target.value),
-                                    };
-                                    editingSlideRef.current = updated;
-                                    setEditingSlide(updated);
-                                  }}
-                                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 resize-none"
-                                  placeholder="Short bullets for the Instruction tab (one idea per line)…"
                                 />
                               </div>
                             )}
@@ -9959,16 +9903,16 @@ export default function App() {
                                     />
                                     </>
                                   )}
-                                  <textarea
-                                    rows={4}
+                                  <RichTextEditor
+                                    key={`${editingSlide.id}-${tab.id || ti}-ost`}
                                     value={coerceOstText(tab.content)}
-                                    onChange={(e) => {
+                                    onChange={(html) => {
                                       const next = [...tabs];
-                                      next[ti] = { ...next[ti], content: e.target.value };
+                                      next[ti] = { ...next[ti], content: sanitizeOstText(html) };
                                       patchTabs(next);
                                     }}
-                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 resize-none"
                                     placeholder="On-screen text for this tab…"
+                                    minRows={4}
                                   />
                                 </div>
                               );
@@ -10001,13 +9945,14 @@ export default function App() {
                                   className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm font-bold text-white outline-none focus:border-indigo-500"
                                   placeholder={`Item ${ii + 1} title`}
                                 />
-                                <textarea
-                                  rows={3}
-                                  value={it.definition || it.content || ''}
-                                  onChange={(e) => {
+                                <RichTextEditor
+                                  key={`${editingSlide.id}-${it.id || ii}-def`}
+                                  value={coerceOstText(it.definition || it.content)}
+                                  onChange={(html) => {
+                                    const sanitized = sanitizeOstText(html);
                                     const base = editingSlideRef.current ?? editingSlide;
                                     const next = [...(base.data?.items || items)];
-                                    next[ii] = { ...next[ii], definition: e.target.value, content: e.target.value };
+                                    next[ii] = { ...next[ii], definition: sanitized, content: sanitized };
                                     const updated = {
                                       ...base,
                                       data: { ...(base.data || {}), items: next },
@@ -10015,8 +9960,8 @@ export default function App() {
                                     editingSlideRef.current = updated;
                                     setEditingSlide(updated);
                                   }}
-                                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 resize-none"
                                   placeholder="Short bullets shown on reveal (one per line). Put spoken explanation in Narration, not here."
+                                  minRows={3}
                                 />
                               </div>
                             ))}
@@ -10747,26 +10692,6 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {/* Media progress — bottom-center; stack visuals above audio */}
-        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[9999] flex flex-col-reverse gap-3 items-stretch pointer-events-none w-[min(20rem,calc(100vw-2rem))]">
-          <div className="pointer-events-auto">
-            <TTSProgressToast
-              layout="inline"
-              progress={ttsProgress}
-              onDismiss={clearTTSProgress}
-              onRequestStop={() => setStopJobKind('audio')}
-              onRetry={() => void retryMissingNarration()}
-            />
-          </div>
-          <div className="pointer-events-auto">
-            <ImageProgressToast
-              layout="inline"
-              progress={imageProgress}
-              onDismiss={clearImageProgress}
-              onRequestStop={() => setStopJobKind('images')}
-            />
-          </div>
-        </div>
 
         {/* Interaction Preview Modal */}
 
@@ -11015,7 +10940,7 @@ export default function App() {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[900] max-w-lg w-[min(92vw,32rem)] pointer-events-none"
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[10100] max-w-lg w-[min(92vw,32rem)] pointer-events-none"
             role="status"
             aria-live="polite"
           >
@@ -11038,6 +10963,27 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* Status toasts sit above Add content / Edit / Generate Images overlays */}
+      <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[10100] flex flex-col-reverse gap-3 items-stretch pointer-events-none w-[min(20rem,calc(100vw-2rem))]">
+        <div className="pointer-events-auto">
+          <TTSProgressToast
+            layout="inline"
+            progress={ttsProgress}
+            onDismiss={clearTTSProgress}
+            onRequestStop={() => setStopJobKind('audio')}
+            onRetry={() => void retryMissingNarration()}
+          />
+        </div>
+        <div className="pointer-events-auto">
+          <ImageProgressToast
+            layout="inline"
+            progress={imageProgress}
+            onDismiss={clearImageProgress}
+            onRequestStop={() => setStopJobKind('images')}
+          />
+        </div>
+      </div>
+
       {!isLearnerPlayer && (
         <>
       <ConfirmDialog
@@ -11057,6 +11003,7 @@ export default function App() {
       <AddContentModal
         open={addContentOpen}
         busy={isAddingContent}
+        defaultProcessShowStepLabels={processShowStepLabels}
         currentSlideTitle={stripSlideTypePrefix(String(currentSlide?.title || ''))}
         currentIsChrome={isChromePlayerSlide(currentSlide)}
         afterInsertLabel={
