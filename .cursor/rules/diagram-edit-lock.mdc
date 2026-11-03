@@ -15,6 +15,7 @@ Anthony (2026-11-02): generated Mermaid diagrams had no way to fix a misspelled 
 - **Caption + node list.** [`EditSlideItemFields`](src/components/builder/EditSlideItemFields.tsx) writes `content` and `data.caption` together. Flowchart nodes come from [`parseFlowchartNodes`](src/lib/mermaidNodes.ts); rewrite/remove/append keep ids, arrows, and `classDef`. Cap add at `MAX_DIAGRAM_NODES`.
 - **Not a canvas builder.** No drag-drop, edge routing, or color picker. Advanced Mermaid source stays collapsed. Align/delete on the player canvas stay.
 - **Sanitize stays shared.** [`sanitizeMermaidCode`](src/lib/mermaidNodes.ts) is what [`MermaidDiagram`](src/components/MermaidDiagram.tsx) uses. Do not fork a second quote-wrapper in the component.
+- **Saved diagrams are durable.** After a successful render, [`stampDiagramSnapshot`](src/lib/mermaidNodes.ts) writes `data.diagramSvg` onto the slide JSON. Opening a draft shows that SVG immediately ([`cachedSvg`](src/components/MermaidDiagram.tsx)); a mermaid.core fetch miss must not blank a diagram that already existed. Delete still uses [`clearDiagramSnapshot`](src/lib/mermaidNodes.ts).
 
 ## How to change this
 

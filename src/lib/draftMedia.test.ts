@@ -17,7 +17,7 @@ import {
 } from './draftMedia.ts';
 import { ensureUniqueSlideIds } from './courseSlideEdits.ts';
 import { harvestClipBelongsToSlide } from './narrationCache.ts';
-import { omitUndefinedDeep } from './promoteSlideImages.ts';
+import { omitUndefinedDeep, stampFloatingMediaOnCourse } from './promoteSlideImages.ts';
 
 function src(rel: string): string {
   return readFileSync(resolve(process.cwd(), rel), 'utf8');
@@ -256,6 +256,21 @@ test('draft save uses mergeDraftAssetPaths and writes even when incoming assets 
   assert.match(srcText, /mergeDraftAssetPaths\(prevPaths, incomingPaths\)/);
   assert.match(srcText, /if \(assets\) \{\s*await writeDraftAssets/s);
   assert.doesNotMatch(srcText, /\[\.\.\.prevPaths, \.\.\.converted\.map/);
+});
+
+test('SCORM export stamps live float x/y/size onto the slide JSON', () => {
+  const course = {
+    modules: [{ slides: [{ id: 's14', title: 'Margins', floatingMedia: [] }] }],
+  };
+  const stamped = stampFloatingMediaOnCourse(course, {
+    s14: [{ id: 'fi-1', url: 'media/001.png', x: 640, y: 280, width: 420, height: 260 }],
+  });
+  const img = stamped.modules[0].slides[0].floatingMedia[0];
+  assert.equal(img.x, 640);
+  assert.equal(img.width, 420);
+  const app = src('src/App.tsx');
+  assert.match(app, /stampFloatingMediaOnCourse/);
+  assert.match(app, /isScormPlayer \|\| isReviewPlayer/);
 });
 
 test('omitUndefinedDeep drops deleted imageUrl so JSON will not keep the slot', () => {

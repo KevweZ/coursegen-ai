@@ -300,7 +300,7 @@ export default function TabbedContentVertical({
                       <EnlargeableImage
                         src={introImageUrl}
                         wrapperClassName="max-w-2xl mx-auto"
-                        className="max-h-[28rem] bg-transparent"
+                        className="max-h-[36rem] w-full bg-transparent"
                         onLoad={resetScrollTop}
                         onRemove={onRemoveIntroImage}
                         onCrop={onCropIntroImage}
@@ -328,7 +328,7 @@ export default function TabbedContentVertical({
                       <EnlargeableImage
                         src={activeTab!.imageUrl}
                         wrapperClassName="max-w-2xl mx-auto"
-                        className="max-h-[28rem] bg-transparent"
+                        className="max-h-[36rem] w-full bg-transparent"
                         onLoad={resetScrollTop}
                         onRemove={onRemoveTabImage && activeTab?.id ? () => onRemoveTabImage(activeTab.id) : undefined}
                         onCrop={onCropTabImage && activeTab?.id ? (url) => onCropTabImage(activeTab.id, url) : undefined}
@@ -578,7 +578,7 @@ function VerticalTabsBlocksSkin({
                   <EnlargeableImage
                     src={imageUrl}
                     wrapperClassName="w-full"
-                    className="w-full h-auto max-h-[28rem] object-contain object-top bg-transparent"
+                    className="w-full h-auto max-h-[36rem] object-contain object-top bg-transparent"
                     onLoad={resetScrollTop}
                     onRemove={onRemoveImage}
                     onCrop={onCropImage}

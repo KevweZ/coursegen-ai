@@ -19,6 +19,9 @@ interface MermaidDiagramProps {
   theme?: 'dark' | 'light' | 'unified';
   /** Extra CSS classes on the wrapper div */
   className?: string;
+  /** Last successful SVG from the draft — shown immediately so a mermaid.core miss cannot blank the slide. */
+  cachedSvg?: string;
+  onRendered?: (svg: string) => void;
 }
 
 let _idCounter = 0;
@@ -31,11 +34,16 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
   code,
   theme = 'dark',
   className = '',
+  cachedSvg = '',
+  onRendered,
 }) => {
-  const [svg, setSvg] = useState<string>('');
+  const [svg, setSvg] = useState<string>(() => String(cachedSvg || '').trim());
   const [error, setError] = useState<string | null>(null);
   const idRef = useRef<string>(nextId());
   const wrapRef = useRef<HTMLDivElement>(null);
+  const onRenderedRef = useRef(onRendered);
+  onRenderedRef.current = onRendered;
+  const cached = String(cachedSvg || '').trim();
 
   useEffect(() => {
     if (!svg || !wrapRef.current) return;
@@ -50,10 +58,19 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
   }, [svg]);
 
   useEffect(() => {
-    if (!code?.trim()) return;
+    const source = String(code || '').trim();
+    if (!source) {
+      if (cached) {
+        setSvg(cached);
+        setError(null);
+      }
+      return;
+    }
 
-    setSvg('');
-    setError(null);
+    if (!cached) {
+      setSvg('');
+      setError(null);
+    }
 
     let cancelled = false;
 
@@ -116,17 +133,30 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
         const renderId = `${idRef.current}-${Date.now()}`;
         try {
           const { svg: renderedSvg } = await mermaid.render(renderId, sanitized);
-          if (!cancelled) setSvg(renderedSvg);
+          if (!cancelled) {
+            setSvg(renderedSvg);
+            setError(null);
+            onRenderedRef.current?.(renderedSvg);
+          }
         } catch (firstErr: any) {
           // Last-chance retry with the unsanitized original (in case our
           // quote-wrapping accidentally broke a rare valid construct).
           if (sanitized === raw) throw firstErr;
           const retryId = `${idRef.current}-${Date.now()}-retry`;
           const { svg: retrySvg } = await mermaid.render(retryId, raw);
-          if (!cancelled) setSvg(retrySvg);
+          if (!cancelled) {
+            setSvg(retrySvg);
+            setError(null);
+            onRenderedRef.current?.(retrySvg);
+          }
         }
       } catch (err: any) {
         if (!cancelled) {
+          if (cached) {
+            setSvg(cached);
+            setError(null);
+            return;
+          }
           const msg = String(err?.message || 'Failed to render diagram');
           setError(
             /failed to fetch dynamically imported module/i.test(msg)
@@ -140,7 +170,7 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [code, theme]);
+  }, [code, theme, cached]);
 
   const isLight = theme === 'light';
 

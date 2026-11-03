@@ -4,12 +4,15 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   appendFlowchartNode,
+  clearDiagramSnapshot,
+  diagramIsSaved,
   isDiagramType,
   isFlowchartMermaid,
   parseFlowchartNodes,
   removeFlowchartNode,
   rewriteFlowchartNodeLabel,
   sanitizeMermaidCode,
+  stampDiagramSnapshot,
 } from './mermaidNodes.ts';
 
 const SAMPLE = `flowchart TD
@@ -66,4 +69,44 @@ test('Edit Slide hides leftover diagram OST and binds shape fields', () => {
   assert.match(app, /isDiagramType\(editingSlide\.type\) \? null/);
   assert.match(fields, /parseFlowchartNodes/);
   assert.match(fields, /Add a shape/);
+});
+
+test('a saved diagram SVG is still present without re-running mermaid', () => {
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg"><g>Cracked gas</g></svg>';
+  const course = {
+    modules: [{
+      slides: [{
+        id: 'diagram-9',
+        type: 'diagram',
+        data: { mermaidCode: SAMPLE, diagramSvg: svg },
+      }],
+    }],
+  };
+  assert.equal(diagramIsSaved(course.modules[0].slides[0].data), true);
+  assert.equal(diagramIsSaved({ mermaidCode: '', diagramSvg: svg }), true);
+  assert.equal(diagramIsSaved({ mermaidCode: SAMPLE, diagramHidden: true }), false);
+
+  const stamped = stampDiagramSnapshot(
+    { modules: [{ slides: [{ id: 'diagram-9', type: 'diagram', data: { mermaidCode: SAMPLE } }] }] },
+    'diagram-9',
+    svg,
+  );
+  assert.equal(stamped.modules[0].slides[0].data.diagramSvg, svg);
+  assert.equal(stamped.modules[0].slides[0].data.mermaidCode, SAMPLE);
+
+  const cleared = clearDiagramSnapshot(stamped.modules[0].slides[0].data);
+  assert.equal(diagramIsSaved(cleared), false);
+  assert.equal(cleared.diagramSvg, '');
+});
+
+test('draft load shows the saved SVG even if mermaid.core cannot be fetched', () => {
+  const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+  const mermaid = readFileSync(resolve(process.cwd(), 'src/components/MermaidDiagram.tsx'), 'utf8');
+  const frame = readFileSync(resolve(process.cwd(), 'src/components/DiagramAlignFrame.tsx'), 'utf8');
+  assert.match(app, /diagramIsSaved/);
+  assert.match(app, /stampDiagramSnapshot/);
+  assert.match(app, /cachedSvg/);
+  assert.match(frame, /cachedSvg/);
+  assert.match(mermaid, /cachedSvg/);
+  assert.match(mermaid, /onRendered/);
 });

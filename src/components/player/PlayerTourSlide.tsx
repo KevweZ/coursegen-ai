@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 
 type Theme = 'light' | 'dark' | 'unified';
-interface Props { theme: Theme; onSkip: () => void; }
+interface Props { theme: Theme; onSkip: () => void; onShowMe?: () => void; }
 
 /* ── Feature zones ─────────────────────────────────────────────────────────── */
 const ZONES = [
@@ -393,7 +393,7 @@ const TEXT:    Record<Theme,string> = { dark:'#e2e8f0', light:'#1e293b', unified
 const SUB:     Record<Theme,string> = { dark:'#94a3b8', light:'#475569', unified:'#a5b4fc' };
 const BORDER:  Record<Theme,string> = { dark:'rgba(255,255,255,0.12)', light:'rgba(15,23,42,0.12)', unified:'rgba(167,139,250,0.2)' };
 
-export const PlayerTourSlide: React.FC<Props> = ({ theme, onSkip }) => {
+export const PlayerTourSlide: React.FC<Props> = ({ theme, onSkip, onShowMe }) => {
   const [showModal, setShowModal] = useState(true);
   const [hovered,   setHovered]   = useState<string | null>(null);
   const [clicked,   setClicked]   = useState<string | null>(null);
@@ -487,7 +487,10 @@ export const PlayerTourSlide: React.FC<Props> = ({ theme, onSkip }) => {
                   style={{ borderColor:borderClr, color:subClr }}>
                   Skip
                 </button>
-                <button onClick={() => setShowModal(false)}
+                <button onClick={() => {
+                  onShowMe?.();
+                  setShowModal(false);
+                }}
                   className="flex-1 px-4 py-2.5 rounded-xl font-bold text-sm text-white"
                   style={{ background:'#6366f1' }}>
                   Show Me

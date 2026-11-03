@@ -14,6 +14,8 @@ interface Props {
   theme?: 'dark' | 'light' | 'unified';
   align?: DiagramAlign;
   isAuthoring?: boolean;
+  cachedSvg?: string;
+  onRendered?: (svg: string) => void;
   onAlignChange?: (align: DiagramAlign) => void;
   onDelete?: () => void;
 }
@@ -27,6 +29,8 @@ export function DiagramAlignFrame({
   theme = 'light',
   align = 'center',
   isAuthoring = false,
+  cachedSvg,
+  onRendered,
   onAlignChange,
   onDelete,
 }: Props) {
@@ -131,6 +135,8 @@ export function DiagramAlignFrame({
           <MermaidDiagram
             code={code}
             theme={theme}
+            cachedSvg={cachedSvg}
+            onRendered={onRendered}
             className="!w-auto max-w-full"
           />
         </div>

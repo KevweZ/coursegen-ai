@@ -20,7 +20,7 @@ Do **not** start unless he explicitly restarts this:
 - Thinning or dropping objectives to hit a time budget.
 
 SME length (e.g. 45–60 min from a 123-slide PPT) is a source/ID problem. Authors cut or add slides in Course development instead. Delete slide, then Add content, ship first.
-- **One module per terminal** (hard).
+- **One module per terminal** (hard). After generate, adding/reordering/removing a terminal on Course objectives prompts ([`planObjectiveModuleSync`](src/lib/objectiveModuleSync.ts)): placeholder module (recommended on add), reorder modules with their slides, update titles/overviews only, or objectives slide only. Do not auto-hydrate a full new module from a one-line objective.
 - **1–2 teaching slides per enabling** (hard). One slide minimum; second slide only to chunk. Do not put two enablings on one slide. If a listed enabling is not taught, QC `coverage` error.
 - Chrome (titles, overviews, summaries, KCs, exam) still comes from Course Settings toggles.
 - Leftover `slideCount` in saved Course Settings is storage-only and is **not** passed into the outline prompt.

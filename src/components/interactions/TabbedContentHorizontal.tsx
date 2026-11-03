@@ -288,7 +288,7 @@ export default function TabbedContentHorizontal({
                 <EnlargeableImage
                   src={imageUrl}
                   wrapperClassName="w-full"
-                  className="w-full h-auto max-h-[28rem] object-contain object-top bg-transparent"
+                  className="w-full h-auto max-h-[36rem] object-contain object-top bg-transparent"
                   onLoad={resetScrollTop}
                   onRemove={onRemoveImage}
                   onCrop={onCropImage}

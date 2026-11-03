@@ -9,6 +9,7 @@ import { collapseChoiceCardsOst } from './hydrateGuards';
 import { tocNumberByIndex } from './playerToc';
 import { stripSlideTypePrefix } from './stripSlideTypePrefix';
 import { isKeyTakeawaysType, keyTakeawayEditItems } from './keyTakeawayOst';
+import { knowledgeCheckEditQuestions } from './knowledgeCheckOst';
 
 type AnySlide = Record<string, any>;
 
@@ -510,13 +511,25 @@ export function buildReviewScriptModel(
         });
       }
     } else if (isKnowledgeCheckSlide(slide)) {
-      const qOst = ost.length ? ost : toOstLines(firstText(data.question, data.questionText, data.prompt, slide.content));
-      const opts = quizOptionBlock(data);
-      const blocks = ostAndNarrationBlocks(qOst, [], true);
-      if (opts) {
-        blocks.splice(1, 0, { label: opts.label, lines: opts.lines, style: 'ost' });
+      const questions = knowledgeCheckEditQuestions(slide).filter(q => String(q.questionText || '').trim());
+      if (!questions.length) {
+        const qOst = ost.length ? ost : toOstLines(firstText(data.question, data.questionText, data.prompt, slide.content));
+        const opts = quizOptionBlock(slide.interactions?.[0] || data);
+        const blocks = ostAndNarrationBlocks(qOst, [], true);
+        if (opts) blocks.splice(1, 0, { label: opts.label, lines: opts.lines, style: 'ost' });
+        sections.push({ heading: 'Question', blocks });
+      } else {
+        questions.forEach((q, qi) => {
+          const qOst = toOstLines([q.questionText]);
+          const opts = quizOptionBlock({ options: q.options });
+          const blocks = ostAndNarrationBlocks(qOst, [], true);
+          if (opts) blocks.splice(1, 0, { label: opts.label, lines: opts.lines, style: 'ost' });
+          sections.push({
+            heading: questions.length > 1 ? `Question ${qi + 1}` : 'Question',
+            blocks,
+          });
+        });
       }
-      sections.push({ heading: 'Question', blocks });
     } else if (isKeyTakeawaysType(type)) {
       const statements = keyTakeawayEditItems(slide).map(i => i.text).filter(Boolean);
       const takeawayOst = statements.map((text, i) => ({

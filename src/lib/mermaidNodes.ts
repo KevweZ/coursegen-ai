@@ -218,3 +218,49 @@ export function sanitizeMermaidCode(code: string): string {
 
   return out;
 }
+
+/** Last successful SVG plus mermaid source — both live on the slide JSON like imageUrl. */
+export function diagramSourceCode(data: any): string {
+  return String(data?.mermaidCode || data?.code || '').trim();
+}
+
+export function diagramSavedSvg(data: any): string {
+  return String(data?.diagramSvg || '').trim();
+}
+
+export function diagramIsHidden(data: any): boolean {
+  return !!data?.diagramHidden;
+}
+
+/** True when a saved draft must still show a diagram (source and/or rendered SVG). */
+export function diagramIsSaved(data: any): boolean {
+  if (diagramIsHidden(data)) return false;
+  return Boolean(diagramSourceCode(data) || diagramSavedSvg(data));
+}
+
+export function stampDiagramSnapshot(course: any, slideId: string, svg: string): any {
+  const id = String(slideId || '').trim();
+  const nextSvg = String(svg || '').trim();
+  if (!course?.modules || !id || !nextSvg) return course;
+  let changed = false;
+  const modules = course.modules.map((m: any) => ({
+    ...m,
+    slides: (m.slides || []).map((s: any) => {
+      if (String(s?.id || '') !== id) return s;
+      if (String(s?.data?.diagramSvg || '') === nextSvg) return s;
+      changed = true;
+      return { ...s, data: { ...(s.data || {}), diagramSvg: nextSvg } };
+    }),
+  }));
+  return changed ? { ...course, modules } : course;
+}
+
+export function clearDiagramSnapshot(data: any): any {
+  return {
+    ...(data || {}),
+    mermaidCode: '',
+    code: '',
+    diagramSvg: '',
+    diagramHidden: true,
+  };
+}

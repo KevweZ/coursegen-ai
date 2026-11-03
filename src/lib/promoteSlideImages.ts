@@ -61,6 +61,25 @@ export function stripCourseAutoPromotedFloating(course: any): any {
   return { ...course, modules };
 }
 
+/** Copy live float geometry onto each slide so SCORM JSON matches preview. */
+export function stampFloatingMediaOnCourse(
+  course: any,
+  map: Record<string, FloatingImage[]> | null | undefined,
+): any {
+  if (!course?.modules || !map || typeof map !== 'object') return course;
+  let changed = false;
+  const modules = course.modules.map((m: any) => ({
+    ...m,
+    slides: (m.slides || []).map((s: any) => {
+      const floats = map[s?.id];
+      if (!Array.isArray(floats) || !floats.length) return s;
+      changed = true;
+      return { ...s, floatingMedia: floats };
+    }),
+  }));
+  return changed ? { ...course, modules } : course;
+}
+
 /** Build floatingImagesMap from course slides (user floats only after strip). */
 export function floatingMapFromCourse(course: any): Record<string, FloatingImage[]> {
   const map: Record<string, FloatingImage[]> = {};

@@ -85,6 +85,31 @@ test('review script for key takeaways matches the numbered cards, not leftover O
   assert.equal(row.sections.length, 1);
 });
 
+test('review script for a knowledge check lists the stem and choices', () => {
+  const slides = [{
+    id: 'kc1',
+    type: 'quiz',
+    title: 'Knowledge Check: Olefins',
+    content: 'Test your understanding of this module.',
+    data: { prompt: 'leftover prompt' },
+    interactions: [{
+      questionText: 'Which product is a lower olefin?',
+      options: [
+        { id: 'a', text: 'Ethylene', isCorrect: true },
+        { id: 'b', text: 'Naphtha', isCorrect: false },
+        { id: 'c', text: 'Bitumen', isCorrect: false },
+      ],
+    }],
+  }];
+  const row = buildReviewScriptModel(slides)[0];
+  const ost = row.sections.flatMap(s => s.blocks.filter(b => b.style === 'ost').flatMap(b => b.lines.map(l => l.text))).join('\n');
+  assert.match(ost, /Which product is a lower olefin/);
+  assert.match(ost, /Ethylene/);
+  assert.match(ost, /Naphtha/);
+  assert.match(ost, /✓ Correct/);
+  assert.doesNotMatch(ost, /Test your understanding/);
+});
+
 test('content regen drops leftover instructional data but keeps image', () => {
   const existing = {
     id: 's1',

@@ -233,6 +233,7 @@ function splitScormPlayerBundle(html: string, title: string): { shellHtml: strin
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${safeTitle}</title>
+    <style>html,body,#root{height:100%;margin:0;overflow:hidden;}</style>
     <script src="scorm_bridge.js"></script>
     <script src="course_data.js"></script>
     <script type="module" src="player.js"></script>

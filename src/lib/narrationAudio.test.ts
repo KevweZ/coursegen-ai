@@ -142,6 +142,20 @@ test('player tour and objectives TTS copy matches the Audio box', () => {
   assert.equal(COURSE_OBJECTIVES_NARRATION.includes('learning objectives'), false);
 });
 
+test('player tour narration waits for Show Me', () => {
+  const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+  const tour = readFileSync(resolve(process.cwd(), 'src/components/player/PlayerTourSlide.tsx'), 'utf8');
+  assert.match(tour, /onShowMe/);
+  assert.match(app, /playerTourUnlocked/);
+  assert.match(app, /onShowMe=/);
+});
+
+test('process and tabs can generate main slide audio without regenerating tabs', () => {
+  const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+  assert.match(app, /Generate Overview audio|Generate Instruction audio|Generate main slide audio/);
+  assert.match(app, /main:\$\{/);
+});
+
 test('a leftover tab clip does not stamp the next slide’s cache key', () => {
   const heatUrl = 'https://example.com/audio/heat-integration.mp3'.padEnd(48, 'x');
   const introUrl = 'https://example.com/audio/utility-points-intro.mp3'.padEnd(48, 'x');

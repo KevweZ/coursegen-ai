@@ -88,7 +88,22 @@ import {
   isQuizKnowledgeCheckType,
 } from './lib/knowledgeCheckOst';
 import { isKeyTakeawaysType } from './lib/keyTakeawayOst';
-import { isDiagramType } from './lib/mermaidNodes';
+import {
+  isDiagramType,
+  diagramIsSaved,
+  stampDiagramSnapshot,
+  clearDiagramSnapshot,
+  diagramSourceCode,
+  diagramSavedSvg,
+} from './lib/mermaidNodes';
+import {
+  applyObjectiveModuleSync,
+  needsObjectiveSyncPrompt,
+  objectiveSyncDialogCopy,
+  planObjectiveModuleSync,
+  type ObjectiveSyncChoice,
+  type ObjectiveSyncPlan,
+} from './lib/objectiveModuleSync';
 import { slideSkipsNarration, isKnowledgeCheckSlide as isQuizishSlideType } from './lib/enablingCoverage';
 import { collapseChoiceCardsOst, ensureSelectChoicePrompt, normalizeKeyTakeaways } from './lib/hydrateGuards';
 import { choiceCardsPromptForMode } from './lib/choiceCardCopy';
@@ -251,7 +266,7 @@ import { TrialInvitePanel } from './components/TrialInvitePanel';
 
 import { FloatingImage } from './types/course';
 import { floatingFromFile } from './lib/floatingMedia';
-import { stripCourseAutoPromotedFloating, floatingMapFromCourse, omitUndefinedDeep } from './lib/promoteSlideImages';
+import { stripCourseAutoPromotedFloating, floatingMapFromCourse, omitUndefinedDeep, stampFloatingMediaOnCourse } from './lib/promoteSlideImages';
 import { sanitizeCourseTitles } from './lib/splitCourseTitle';
 import {
   HUB_SLIDE_ID,
@@ -1755,6 +1770,11 @@ export default function App() {
 
   const [showSettings, setShowSettings] = useState(false);
   const [editingSlide, setEditingSlide] = useState<any>(null);
+  const [playerTourUnlocked, setPlayerTourUnlocked] = useState(false);
+  const [objectiveSyncPending, setObjectiveSyncPending] = useState<null | {
+    cleaned: any[];
+    plan: ObjectiveSyncPlan;
+  }>(null);
   const [showImageGalleryForSlide, setShowImageGalleryForSlide] = useState<string | null>(null);
   const [sourceImages, setSourceImages] = useState<SourceImage[]>([]);
   const sourceImagesRef = useRef<SourceImage[]>([]);
@@ -2342,7 +2362,7 @@ export default function App() {
   const measureScaleToFit =
     step === 'preview' &&
     playerConfig?.playerResolution !== 'full' &&
-    (isPhoneViewport || viewMode === 'desktop');
+    (isScormPlayer || isReviewPlayer || isPhoneViewport || viewMode === 'desktop');
   const scaler = useScaleToFit(
     playerConfig?.playerResolution ?? '16:9',
     measureScaleToFit
@@ -3022,6 +3042,7 @@ export default function App() {
     setActiveTabNarrationText(null);
     setActiveTabForImages(null);
     setDragOverTabId(null);
+    if ((currentSlide as any)?.type !== 'player-tour') setPlayerTourUnlocked(false);
   }, [currentSlide?.id]);
 
   /** Switch tab audio + CC together so captions never lag on intro script. */
@@ -3051,7 +3072,8 @@ export default function App() {
     currentSlideVoiceOverUrlRef.current = currentSlide.voiceOverUrl || null;
     const restoredUrl = restoredBySlideRef.current[currentSlide.id];
     const tabExclusive = activeTabAudioUrl !== null;
-    const playUrl = voiceOverEnabled && !slideSkipsNarration(currentSlide)
+    const tourLocked = (currentSlide as any)?.type === 'player-tour' && !playerTourUnlocked;
+    const playUrl = voiceOverEnabled && !slideSkipsNarration(currentSlide) && !tourLocked
       ? playbackUrlForSlide(currentSlide, {
           tabAudioUrl: activeTabAudioUrl || undefined,
           tabExclusive,
@@ -3077,7 +3099,7 @@ export default function App() {
       null  // ttsText always null: slides are silent while AI audio loads, then auto-play
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, currentSlideIndex, currentSlide?.id, currentSlide?.voiceOverUrl, voiceOverEnabled, currentSyntheticUrl, activeTabAudioUrl]);
+  }, [step, currentSlideIndex, currentSlide?.id, currentSlide?.voiceOverUrl, voiceOverEnabled, currentSyntheticUrl, activeTabAudioUrl, playerTourUnlocked]);
 
 
   // Extract images
@@ -4679,9 +4701,11 @@ export default function App() {
             mermaid.initialize({ startOnLoad: false, theme: 'base', securityLevel: 'loose' });
             for (const s of diagramSlides.slice(0, 8)) {
               try {
-                await mermaid.render(`prewarm-${s.id}-${Date.now()}`, String(s.data.mermaidCode));
+                const { svg } = await mermaid.render(`prewarm-${s.id}-${Date.now()}`, String(s.data.mermaidCode));
+                if (svg) working = stampDiagramSnapshot(working, s.id, svg);
               } catch { /* non-fatal */ }
             }
+            if (stillActive()) commitCourse(working);
           }
         } catch { /* mermaid optional */ }
 
@@ -5193,7 +5217,10 @@ export default function App() {
     setExportProgress(0);
     try {
       const { persistCourseAudioUrls, persistSyntheticAudioMap } = await import('./services/ttsService');
-      const packagedCourse = await persistCourseAudioUrls(course);
+      const packagedCourse = stampFloatingMediaOnCourse(
+        await persistCourseAudioUrls(course),
+        floatingImagesMap,
+      );
       const packagedSynth = await persistSyntheticAudioMap(syntheticAudioMap || {});
       const blob = await createScormPackage(packagedCourse, {
         version: scormVersion,
@@ -5251,6 +5278,17 @@ export default function App() {
     } finally {
       setIsExportingReviewScript(false);
     }
+  };
+
+  const commitCourseObjectives = (cleaned: any[], choice: ObjectiveSyncChoice | null, plan: ObjectiveSyncPlan | null) => {
+    setLearningObjectives(cleaned as any);
+    if (choice && plan) {
+      setCourse(prev => {
+        if (!prev) return prev;
+        return applyObjectiveModuleSync(prev, learningObjectives, cleaned, plan, choice);
+      });
+    }
+    setObjectiveSyncPending(null);
   };
 
   const handleUpdateSlideMedia = (slideId: string, updates: any) => {
@@ -8015,10 +8053,10 @@ export default function App() {
                                      {headerBlock}
                                      <div className="w-full flex flex-row gap-6 items-start">
                                        <div className="min-w-0 flex-1">{bodyBlock}</div>
-                                       <div className="hidden md:block relative w-[46%] max-w-[480px] shrink-0 mt-1 group/slideimg">
+                                       <div className="relative w-[46%] max-w-[520px] shrink-0 mt-1 group/slideimg">
                                          <EnlargeableImage
                                            src={slideImg}
-                                           className="max-h-[28rem] bg-transparent"
+                                           className="max-h-[36rem] w-full bg-transparent"
                                            onRemove={!isLearnerPlayer ? () => {
                                              pushUndo();
                                              handleUpdateSlideMedia(currentSlide.id, { imageUrl: undefined });
@@ -8068,7 +8106,11 @@ export default function App() {
                                {/* PLAYER TOUR SLIDE */}
                                {(currentSlide as any)?.type === 'player-tour' && (
                                  <div className="w-full h-full">
-                                   <PlayerTourSlide theme={theme} onSkip={() => setCurrentSlideIndex((si: number) => Math.min(allSlides.length - 1, si + 1))} />
+                                   <PlayerTourSlide
+                                     theme={theme}
+                                     onSkip={() => setCurrentSlideIndex((si: number) => Math.min(allSlides.length - 1, si + 1))}
+                                     onShowMe={() => setPlayerTourUnlocked(true)}
+                                   />
                                  </div>
                                )}
                                {/* COURSE OBJECTIVES SLIDE — course-level, no module number */}
@@ -8446,10 +8488,11 @@ export default function App() {
 
                                {/* MERMAID PROCESS DIAGRAM */}
                                {currentSlide?.type === 'diagram' && (() => {
-                                  const mermaidCode: string = currentSlide.data?.mermaidCode || currentSlide.data?.code || '';
+                                  const mermaidCode: string = diagramSourceCode(currentSlide.data);
                                   const caption: string = currentSlide.data?.caption || currentSlide.content || '';
-                                  const diagramHidden = !!(currentSlide.data?.diagramHidden);
+                                  const diagramHidden = !diagramIsSaved(currentSlide.data) && !!(currentSlide.data?.diagramHidden);
                                   const diagramAlign = (currentSlide.data?.diagramAlign as DiagramAlign) || 'center';
+                                  const cachedSvg = diagramSavedSvg(currentSlide.data);
                                   return (
                                     <div className="space-y-5 w-full">
                                       <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
@@ -8460,12 +8503,17 @@ export default function App() {
                                           className={cn('prose max-w-none text-sm', theme !== 'light' ? 'prose-invert text-slate-400' : 'text-slate-600')}
                                         />
                                       )}
-                                      {mermaidCode && !diagramHidden ? (
+                                      {diagramIsSaved(currentSlide.data) ? (
                                         <DiagramAlignFrame
                                           code={mermaidCode}
+                                          cachedSvg={cachedSvg}
                                           theme={theme as any}
                                           align={diagramAlign}
                                           isAuthoring={!isLearnerPlayer}
+                                          onRendered={(svg) => {
+                                            if (!currentSlide?.id || isLearnerPlayer) return;
+                                            setCourse(prev => stampDiagramSnapshot(prev, currentSlide.id, svg));
+                                          }}
                                           onAlignChange={(align) => {
                                             if (!currentSlide?.id) return;
                                             pushUndo();
@@ -8477,12 +8525,7 @@ export default function App() {
                                             if (!currentSlide?.id) return;
                                             pushUndo();
                                             handleUpdateSlideMedia(currentSlide.id, {
-                                              data: {
-                                                ...(currentSlide.data || {}),
-                                                diagramHidden: true,
-                                                mermaidCode: '',
-                                                code: '',
-                                              },
+                                              data: clearDiagramSnapshot(currentSlide.data),
                                             });
                                           }}
                                         />
@@ -10014,10 +10057,49 @@ export default function App() {
                         <p className="text-amber-200/90"><strong>Note:</strong> Editing this script does not change the spoken audio until you click <em>Regenerate audio</em> below (or Edit → Regenerate all narration). Use <em>Save</em> before refreshing so your draft is not lost.</p>
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest flex items-center justify-between">
+                        <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest flex items-center justify-between gap-2">
                           <span>Main Slide Audio Narration</span>
-                          <span className={`normal-case font-normal ${voiceOverEnabled ? 'text-emerald-400' : 'text-slate-600'}`}>
-                            {voiceOverEnabled ? '🔊 Voice-Over Enabled' : '🔇 Voice-Over Off'}
+                          <span className="flex items-center gap-2 shrink-0">
+                            {voiceOverEnabled && isTabbedNarrationType(editingSlide.type) && (
+                              <button
+                                type="button"
+                                disabled={!!regenSlideId}
+                                onClick={async () => {
+                                  const live = editingSlideRef.current ?? editingSlide;
+                                  const mainText = (live.voiceOverText || live.narration || '').trim();
+                                  if (!mainText) {
+                                    alert('No narration text for the main slide.');
+                                    return;
+                                  }
+                                  setRegenSlideId(`main:${live.id}`);
+                                  try {
+                                    const { generateSlideTTS: genTTS, urlToDataUrl } = await import('./services/ttsService');
+                                    let durable = await genTTS(mainText, { voice: ttsVoice as any });
+                                    try { durable = await urlToDataUrl(durable); } catch { /* keep blob url */ }
+                                    const stamped = stampSpokenClip({ ...live, voiceOverText: mainText }, durable, mainText);
+                                    void stashAudioUrl(`slide:${live.id}`, durable);
+                                    editingSlideRef.current = stamped;
+                                    setEditingSlide(stamped);
+                                    handleUpdateSlideMedia(live.id, stampSpokenClip({}, durable, mainText));
+                                    showDraftMessage('Main slide audio regenerated ✓');
+                                  } catch (err: any) {
+                                    alert(`TTS error: ${err.message}`);
+                                  } finally {
+                                    setRegenSlideId(null);
+                                  }
+                                }}
+                                className="normal-case text-[10px] font-bold text-emerald-300 hover:text-emerald-100 disabled:opacity-50"
+                              >
+                                {regenSlideId === `main:${editingSlide.id}`
+                                  ? 'Generating…'
+                                  : (editingSlide.type === 'tabbed-horizontal'
+                                    ? 'Generate Overview audio'
+                                    : 'Generate Instruction audio')}
+                              </button>
+                            )}
+                            <span className={`normal-case font-normal ${voiceOverEnabled ? 'text-emerald-400' : 'text-slate-600'}`}>
+                              {voiceOverEnabled ? '🔊 Voice-Over Enabled' : '🔇 Voice-Over Off'}
+                            </span>
                           </span>
                         </label>
                         <textarea
@@ -10579,7 +10661,16 @@ export default function App() {
                                 return { terminalObjective: term, enablingObjectives: en };
                               })
                               .filter(Boolean);
-                            setLearningObjectives(cleaned as any);
+                            const plan = planObjectiveModuleSync(
+                              learningObjectives,
+                              cleaned,
+                              course?.modules?.length || 0,
+                            );
+                            if (needsObjectiveSyncPrompt(plan)) {
+                              setObjectiveSyncPending({ cleaned, plan });
+                            } else {
+                              commitCourseObjectives(cleaned, null, null);
+                            }
                           }
                           if (isMasteryExamType(latest.type) && Array.isArray((latest as any)._examQuestions)) {
                             const qs = persistMasteryExamQuestions((latest as any)._examQuestions);
@@ -11021,6 +11112,32 @@ export default function App() {
 
       {!isLearnerPlayer && (
         <>
+      {(() => {
+        const copy = objectiveSyncPending ? objectiveSyncDialogCopy(objectiveSyncPending.plan) : null;
+        return (
+      <ConfirmDialog
+        open={!!objectiveSyncPending && !!copy}
+        title={copy?.title || ''}
+        body={copy?.body || ''}
+        primaryLabel={copy?.primaryLabel || 'Continue'}
+        secondaryLabel={copy?.secondaryLabel}
+        cancelLabel={copy?.cancelLabel || 'Objectives slide only'}
+        onPrimary={() => {
+          if (!objectiveSyncPending || !copy) return;
+          commitCourseObjectives(objectiveSyncPending.cleaned, copy.primaryChoice, objectiveSyncPending.plan);
+        }}
+        onSecondary={() => {
+          if (!objectiveSyncPending || !copy) return;
+          commitCourseObjectives(objectiveSyncPending.cleaned, copy.secondaryChoice, objectiveSyncPending.plan);
+        }}
+        onCancel={() => {
+          if (!objectiveSyncPending) return;
+          commitCourseObjectives(objectiveSyncPending.cleaned, 'objectives-only', objectiveSyncPending.plan);
+        }}
+      />
+        );
+      })()}
+
       <ConfirmDialog
         open={deleteConfirmOpen}
         title="Delete this slide?"
