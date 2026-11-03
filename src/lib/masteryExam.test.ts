@@ -1,9 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
+  applyMasteryExamEdits,
   examQuestionIsMeta,
   generateContentGroundedExamQuestions,
+  masteryExamEditQuestions,
+  persistMasteryExamQuestions,
   sanitizeMasteryExamQuestions,
+  setMasteryExamCorrect,
+  setMasteryExamOption,
+  setMasteryExamStem,
 } from './masteryExam.ts';
 
 const polymerCourse = {
@@ -92,4 +100,52 @@ test('grounded exam questions come from teaching facts, not titles', () => {
   assert.ok(qs.length >= 8);
   assert.ok(qs.every(q => !examQuestionIsMeta(q)));
   assert.ok(qs.some(q => /linear|radical|branch|density|monomer|peroxide/i.test(`${q.question} ${q.options.join(' ')}`)));
+});
+
+test('Edit Slide binds Mastery Quiz stems and choices from examQuestions', () => {
+  const qs = masteryExamEditQuestions([
+    {
+      id: 'q-1',
+      type: 'mc',
+      question: 'Which product is the primary C2 olefin from steam cracking?',
+      options: ['Ethylene', 'Propylene', 'Benzene', 'Fuel oil'],
+      correctAnswer: 0,
+    },
+    {
+      id: 'q-2',
+      type: 'ma',
+      question: 'Select all furnace-section duties.',
+      options: ['Cracking', 'Quench', 'Compression', 'Fractionation'],
+      correctAnswer: [0, 1],
+    },
+  ]);
+  assert.match(qs[0].question, /C2 olefin/);
+  assert.equal(qs[0].options[0], 'Ethylene');
+  const stem = setMasteryExamStem(qs, 0, qs[0].question.replace('C2 olefin', 'C2 product'));
+  const option = setMasteryExamOption(stem, 0, 0, 'Lower olefins');
+  const flipped = setMasteryExamCorrect(option, 0, 1);
+  assert.match(flipped[0].question, /C2 product/);
+  assert.equal(flipped[0].options[0], 'Lower olefins');
+  assert.equal(flipped[0].correctAnswer, 1);
+  const ma = setMasteryExamCorrect(qs, 1, 3);
+  assert.deepEqual(ma[1].correctAnswer, [0, 1, 3]);
+  const saved = applyMasteryExamEdits(
+    { id: '__mastery-exam__', type: 'mastery-exam', content: 'Answer each question.' },
+    flipped,
+  );
+  assert.equal(saved.content, 'Answer each question.');
+  assert.equal(saved._examQuestions[0].correctAnswer, 1);
+  assert.equal(persistMasteryExamQuestions(saved._examQuestions)[0].options[0], 'Lower olefins');
+});
+
+test('Edit Slide hides leftover Mastery Quiz OST and saves examQuestions', () => {
+  const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+  assert.match(app, /isMasteryExamType\(editingSlide\.type\) \? null/);
+  assert.match(app, /attachMasteryExamForEdit/);
+  assert.match(app, /persistMasteryExamQuestions/);
+  assert.match(app, /setExamQuestions\(qs\)/);
+  const fields = readFileSync(resolve(process.cwd(), 'src/components/builder/EditSlideItemFields.tsx'), 'utf8');
+  assert.match(fields, /masteryExamEditQuestions/);
+  assert.match(fields, /applyMasteryExamEdits/);
+  assert.match(fields, /setMasteryExamCorrect/);
 });

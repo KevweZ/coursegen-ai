@@ -108,7 +108,12 @@ import {
   unbindStolenSlideAudio,
 } from './lib/narrationAudio';
 import { suggestLearningObjectives, generateCourseOutline, hydrateCourseContent, analyzeUploadedFile, FileAnalysisResult, CourseOutlineDraft, generateMasteryExam, generateInsertedContent } from './services/aiService';
-import { sanitizeMasteryExamQuestions } from './lib/masteryExam';
+import {
+  attachMasteryExamForEdit,
+  isMasteryExamType,
+  persistMasteryExamQuestions,
+  sanitizeMasteryExamQuestions,
+} from './lib/masteryExam';
 import { createScormPackage, ScormVersion } from './services/scormService';
 import { FlashcardGrid } from './components/FlashcardGrid';
 import { ScenarioEngine } from './components/interactions/ScenarioEngine';
@@ -4778,11 +4783,11 @@ export default function App() {
 
   /** Open Edit Slide drawer on Regenerate tab with intended type preselected. */
   const openRegenerateSlideDrawer = (slide?: Slide | null) => {
-    const s = slide || currentSlide;
+    const s = attachMasteryExamForEdit(slide || currentSlide, examQuestions);
     if (!s) return;
     const normalized = normalizeRegenSlideType(s);
     editingSlideRef.current = s;
-    editingSlideSourceRef.current = s;
+    editingSlideSourceRef.current = slide || currentSlide;
     setEditingSlide(s);
     setEditDrawerOpen(true);
     setEditDrawerTab('regenerate');
@@ -6635,12 +6640,12 @@ export default function App() {
                 const f = String(field || '').toLowerCase();
                 const openAudio = /voiceover|narration|audio/.test(f) && !slideSkipsNarration(targetSlide);
                 editingSlideSourceRef.current = targetSlide;
-                editingSlideRef.current = {
+                editingSlideRef.current = attachMasteryExamForEdit({
                   ...targetSlide,
                   _objectives: targetSlide.id === '__course-objectives__'
                     ? JSON.parse(JSON.stringify(learningObjectives || []))
                     : (targetSlide as any)._objectives,
-                };
+                }, examQuestions);
                 setEditingSlide(editingSlideRef.current);
                 setEditDrawerTab(openAudio ? 'audio' : 'text');
                 showDraftMessage(
@@ -7155,12 +7160,15 @@ export default function App() {
                               type="button"
                               onClick={() => {
                                 setShowEditMenu(false);
-                                const seeded = currentSlide?.id === '__course-objectives__'
-                                  ? {
-                                      ...currentSlide,
-                                      _objectives: JSON.parse(JSON.stringify(learningObjectives || [])),
-                                    }
-                                  : currentSlide;
+                                const seeded = attachMasteryExamForEdit(
+                                  currentSlide?.id === '__course-objectives__'
+                                    ? {
+                                        ...currentSlide,
+                                        _objectives: JSON.parse(JSON.stringify(learningObjectives || [])),
+                                      }
+                                    : currentSlide,
+                                  examQuestions,
+                                );
                                 // Sanitize so Edit Slide OST matches what the player shows (no orphan "-" bullets)
                                 const cleaned = seeded
                                   ? { ...seeded, content: sanitizeOstText(String(seeded.content || '')) }
@@ -9567,7 +9575,7 @@ export default function App() {
                             <Plus className="w-3.5 h-3.5" /> Add parent objective
                           </button>
                         </div>
-                      ) : isQuizKnowledgeCheckType(editingSlide.type) ? null : isKeyTakeawaysType(editingSlide.type) ? null : isDiagramType(editingSlide.type) ? null : (
+                      ) : isQuizKnowledgeCheckType(editingSlide.type) ? null : isMasteryExamType(editingSlide.type) ? null : isKeyTakeawaysType(editingSlide.type) ? null : isDiagramType(editingSlide.type) ? null : (
                       <div className="space-y-2">
                         <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest flex items-center justify-between">
                           <span>
@@ -10560,6 +10568,21 @@ export default function App() {
                               })
                               .filter(Boolean);
                             setLearningObjectives(cleaned as any);
+                          }
+                          if (isMasteryExamType(latest.type) && Array.isArray((latest as any)._examQuestions)) {
+                            const qs = persistMasteryExamQuestions((latest as any)._examQuestions);
+                            if (qs.length) {
+                              setExamQuestions(qs);
+                              setCourse(prev => prev ? { ...prev, examQuestions: qs } : prev);
+                              setExamSession(prev => ({
+                                ...prev,
+                                questions: qs,
+                                answers: Object.fromEntries(qs.map(q => [q.id, prev.answers?.[q.id] ?? null])),
+                                submitted: false,
+                                score: null,
+                                passed: null,
+                              }));
+                            }
                           }
                         } else {
                           if (isQuizKnowledgeCheckType(latest.type)) {

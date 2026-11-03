@@ -260,3 +260,137 @@ export function sanitizeMasteryExamQuestions(
   }
   return out;
 }
+
+export const MAX_MASTERY_EXAM_OPTIONS = 6;
+
+export function isMasteryExamType(type?: string): boolean {
+  return String(type || '') === 'mastery-exam';
+}
+
+function clampCorrectIndex(n: number, optionCount: number): number {
+  if (!optionCount) return 0;
+  return Math.max(0, Math.min(Math.floor(n), optionCount - 1));
+}
+
+/** Stem + choices for Edit Slide — player source is `examQuestions`, not leftover OST. */
+export function masteryExamEditQuestions(questions: ExamQuestion[] | null | undefined): ExamQuestion[] {
+  if (!Array.isArray(questions) || !questions.length) return [];
+  return questions.map((q, i) => {
+    const type: ExamQuestion['type'] = q?.type === 'ma' || q?.type === 'tf' ? q.type : 'mc';
+    const options = type === 'tf'
+      ? ['True', 'False']
+      : (Array.isArray(q?.options) ? q.options.map(o => String(o ?? '')) : []).slice();
+    while (type !== 'tf' && options.length < 2) options.push('');
+    let correctAnswer: number | number[];
+    if (type === 'ma') {
+      const arr = (Array.isArray(q?.correctAnswer) ? q.correctAnswer : [q?.correctAnswer])
+        .map(n => Number(n))
+        .filter(n => Number.isFinite(n) && n >= 0 && n < options.length);
+      correctAnswer = arr.length ? Array.from(new Set(arr)).sort((a, b) => a - b) : [0];
+    } else {
+      const n = typeof q?.correctAnswer === 'number' ? q.correctAnswer : 0;
+      correctAnswer = clampCorrectIndex(n, options.length);
+    }
+    return {
+      ...q,
+      id: q?.id || `q-${i + 1}`,
+      type,
+      question: String(q?.question || ''),
+      options,
+      correctAnswer,
+      explanation: q?.explanation != null ? String(q.explanation) : undefined,
+    };
+  });
+}
+
+export function attachMasteryExamForEdit(slide: any, questions: ExamQuestion[] | null | undefined): any {
+  if (!slide || !isMasteryExamType(slide.type)) return slide;
+  return { ...slide, _examQuestions: masteryExamEditQuestions(questions) };
+}
+
+export function applyMasteryExamEdits(slide: any, questions: ExamQuestion[]): any {
+  return {
+    ...slide,
+    _examQuestions: masteryExamEditQuestions(questions),
+  };
+}
+
+export function persistMasteryExamQuestions(questions: ExamQuestion[] | null | undefined): ExamQuestion[] {
+  return masteryExamEditQuestions(questions);
+}
+
+export function setMasteryExamCorrect(
+  questions: ExamQuestion[],
+  questionIndex: number,
+  optionIndex: number,
+): ExamQuestion[] {
+  return questions.map((q, qi) => {
+    if (qi !== questionIndex) return q;
+    if (q.type === 'ma') {
+      const current = Array.isArray(q.correctAnswer) ? q.correctAnswer.map(Number) : [];
+      const has = current.includes(optionIndex);
+      const next = has
+        ? current.filter(n => n !== optionIndex)
+        : [...current, optionIndex].sort((a, b) => a - b);
+      return { ...q, correctAnswer: next.length ? next : [optionIndex] };
+    }
+    return { ...q, correctAnswer: optionIndex };
+  });
+}
+
+export function setMasteryExamStem(
+  questions: ExamQuestion[],
+  questionIndex: number,
+  text: string,
+): ExamQuestion[] {
+  return questions.map((q, qi) => (qi === questionIndex ? { ...q, question: text } : q));
+}
+
+export function setMasteryExamOption(
+  questions: ExamQuestion[],
+  questionIndex: number,
+  optionIndex: number,
+  text: string,
+): ExamQuestion[] {
+  return questions.map((q, qi) => {
+    if (qi !== questionIndex) return q;
+    if (q.type === 'tf') return q;
+    const options = [...(q.options || [])];
+    options[optionIndex] = text;
+    return { ...q, options };
+  });
+}
+
+export function addMasteryExamOption(questions: ExamQuestion[], questionIndex: number): ExamQuestion[] {
+  return questions.map((q, qi) => {
+    if (qi !== questionIndex) return q;
+    if (q.type === 'tf') return q;
+    const options = [...(q.options || [])];
+    if (options.length >= MAX_MASTERY_EXAM_OPTIONS) return q;
+    return { ...q, options: [...options, ''] };
+  });
+}
+
+export function removeMasteryExamOption(
+  questions: ExamQuestion[],
+  questionIndex: number,
+  optionIndex: number,
+): ExamQuestion[] {
+  return questions.map((q, qi) => {
+    if (qi !== questionIndex) return q;
+    if (q.type === 'tf') return q;
+    const options = (q.options || []).filter((_, j) => j !== optionIndex);
+    if (options.length < 2) return q;
+    if (q.type === 'ma') {
+      const arr = (Array.isArray(q.correctAnswer) ? q.correctAnswer : [])
+        .filter(n => n !== optionIndex)
+        .map(n => (n > optionIndex ? n - 1 : n));
+      return { ...q, options, correctAnswer: arr.length ? arr : [0] };
+    }
+    const cur = typeof q.correctAnswer === 'number' ? q.correctAnswer : 0;
+    let next = cur;
+    if (cur === optionIndex) next = 0;
+    else if (cur > optionIndex) next = cur - 1;
+    return { ...q, options, correctAnswer: clampCorrectIndex(next, options.length) };
+  });
+}

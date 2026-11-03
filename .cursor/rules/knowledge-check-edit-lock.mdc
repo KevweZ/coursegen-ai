@@ -7,13 +7,14 @@ alwaysApply: true
 
 Anthony (2026-11-01): Edit on a Knowledge Check still showed leftover “Test your understanding…” on-screen text that is not on the slide, while the stem and choices (e.g. “Base olefins” → “Lower olefins”) could not be changed without regenerate.
 
-`npm test` must stay green (`src/lib/knowledgeCheckOst.test.ts`).
+`npm test` must stay green (`src/lib/knowledgeCheckOst.test.ts`, `src/lib/masteryExam.test.ts`).
 
 ## Invariants (code, not comments)
 
 - **Edit Text shows the question.** For quiz / multiple-choice / multiple-answers / true-false / `knowledge-check`, Edit Slide does **not** render the leftover OST RichTextEditor. [`isQuizKnowledgeCheckType`](src/lib/knowledgeCheckOst.ts) gates that in [`App.tsx`](src/App.tsx).
 - **Stem and choices are the fields.** [`knowledgeCheckEditQuestions`](src/lib/knowledgeCheckOst.ts) reads `interactions[0]` first (player source), then `data`. [`applyKnowledgeCheckEdits`](src/lib/knowledgeCheckOst.ts) writes **both** so Save updates the slide the learner sees.
 - **Correct answers are togglable.** Radio for single-select; checkbox for multiple-answers (`setKnowledgeCheckCorrect`). Do not require Regenerate to change a word or the keyed answer.
+- **Mastery Quiz is the same.** Edit Slide on `mastery-exam` hides leftover OST ([`isMasteryExamType`](src/lib/masteryExam.ts)). Stem and choices come from `examQuestions` via [`masteryExamEditQuestions`](src/lib/masteryExam.ts). Save writes [`persistMasteryExamQuestions`](src/lib/masteryExam.ts) onto `examQuestions` / `course.examQuestions` so the quiz the learner sees updates. Do not shuffle options in the editor. Do not require Regenerate to change a word or the keyed answer.
 - **Keep the player layout.** Do not put “Test your understanding” back on the KC canvas.
 
 ## How to change this

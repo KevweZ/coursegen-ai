@@ -20,6 +20,17 @@ import {
   setKnowledgeCheckCorrect,
 } from '../../lib/knowledgeCheckOst';
 import {
+  MAX_MASTERY_EXAM_OPTIONS,
+  addMasteryExamOption,
+  applyMasteryExamEdits,
+  isMasteryExamType,
+  masteryExamEditQuestions,
+  removeMasteryExamOption,
+  setMasteryExamCorrect,
+  setMasteryExamOption,
+  setMasteryExamStem,
+} from '../../lib/masteryExam';
+import {
   applyKeyTakeawayEdits,
   keyTakeawayEditItems,
   MAX_KEY_TAKEAWAYS,
@@ -455,6 +466,108 @@ export function EditSlideItemFields({ slide, onPatch, getSlide }: Props) {
         ) : (
           <p className="text-[11px] text-slate-500">Maximum {MAX_KEY_TAKEAWAYS} takeaways on this slide.</p>
         )}
+      </div>
+    );
+  }
+
+  if (isMasteryExamType(type)) {
+    const current = live();
+    const questions = masteryExamEditQuestions(
+      Array.isArray(current._examQuestions) ? current._examQuestions : current.data?.examQuestions,
+    );
+    const commit = (nextQuestions: typeof questions) => {
+      onPatch(applyMasteryExamEdits(live(), nextQuestions));
+    };
+    return (
+      <div className="space-y-3">
+        <label className={labelClass}>Quiz questions &amp; answers</label>
+        <p className="text-[11px] text-slate-500 leading-relaxed">
+          These are the stems and choices on the Mastery Quiz. Mark the correct answer — no need to regenerate.
+        </p>
+        {questions.length === 0 ? (
+          <p className="text-xs text-slate-500">
+            Quiz questions are still generating. Close Edit Slide and open it again once the quiz is ready.
+          </p>
+        ) : questions.map((q, qi) => {
+          const multi = q.type === 'ma';
+          const isTf = q.type === 'tf';
+          const correctSet = new Set(
+            Array.isArray(q.correctAnswer) ? q.correctAnswer : [q.correctAnswer],
+          );
+          return (
+            <div key={q.id || qi} className="space-y-2 rounded-xl border border-slate-700 bg-slate-950 p-3">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-300">
+                Question {qi + 1} of {questions.length}
+                {multi ? ' · select all' : isTf ? ' · true / false' : ''}
+              </p>
+              <textarea
+                rows={3}
+                value={q.question || ''}
+                onChange={(e) => commit(setMasteryExamStem(questions, qi, e.target.value))}
+                className={areaClass}
+                placeholder="Question text"
+              />
+              {(q.options || []).map((opt, i) => {
+                const correct = correctSet.has(i);
+                return (
+                  <div key={`${q.id || qi}-${i}`} className="rounded-xl border border-slate-700 bg-slate-900 p-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type={multi ? 'checkbox' : 'radio'}
+                        name={`mastery-correct-${qi}`}
+                        checked={correct}
+                        onChange={() => commit(setMasteryExamCorrect(questions, qi, i))}
+                        className="w-4 h-4 accent-emerald-500"
+                        title={multi ? 'Mark as a correct answer' : 'Mark as the correct answer'}
+                      />
+                      <span className="text-[10px] font-bold text-slate-500 uppercase">
+                        {correct ? 'Correct' : 'Choice'}
+                      </span>
+                      {!isTf && (q.options || []).length > 2 && (
+                        <button
+                          type="button"
+                          onClick={() => commit(removeMasteryExamOption(questions, qi, i))}
+                          className="ml-auto text-[10px] font-bold text-rose-400 hover:text-rose-300"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    <textarea
+                      rows={2}
+                      value={opt}
+                      onChange={(e) => commit(setMasteryExamOption(questions, qi, i, e.target.value))}
+                      className={areaClass}
+                      placeholder={`Answer ${i + 1}`}
+                      disabled={isTf}
+                    />
+                  </div>
+                );
+              })}
+              {!isTf && (q.options || []).length < MAX_MASTERY_EXAM_OPTIONS && (
+                <button
+                  type="button"
+                  onClick={() => commit(addMasteryExamOption(questions, qi))}
+                  className="text-[11px] font-bold text-indigo-300 hover:text-indigo-200"
+                >
+                  + Add answer choice
+                </button>
+              )}
+              <textarea
+                rows={2}
+                value={q.explanation || ''}
+                onChange={(e) => {
+                  const next = questions.map((item, idx) =>
+                    idx === qi ? { ...item, explanation: e.target.value } : item,
+                  );
+                  commit(next);
+                }}
+                className={areaClass}
+                placeholder="Explanation after submit (optional)"
+              />
+            </div>
+          );
+        })}
       </div>
     );
   }
