@@ -3,6 +3,7 @@ import { coerceCarouselColor } from "../lib/colorContrast";
 import { ensureEnablingSlideCoverage, preserveEnablingIndex, normalizeTerminalGroups, slideSkipsNarration, stripSlideNarration, isKnowledgeCheckSlide, isSummarySlide, collapseDuplicateModuleSummaries } from "../lib/enablingCoverage";
 import { allocateKnowledgeCheckSlots, alignHydratedSlidesToOutline, ensureKnowledgeCheckBudget } from "../lib/knowledgeCheckBudget";
 import { finalizeHydratedSlide, teachingSlideNeedsRetry, normalizeKeyTakeaways } from "../lib/hydrateGuards";
+import { groundModuleKnowledgeChecks } from "../lib/knowledgeCheckGround";
 import { ensureGeneratedTabSlide } from "../lib/courseSlideEdits";
 import { sanitizeMasteryExamQuestions, examQuestionIsMeta } from "../lib/masteryExam";
 import { extractAcronymGlossary, sanitizeCourseTitles, shortenCourseTitle, shortenModuleTitle } from "../lib/splitCourseTitle";
@@ -798,6 +799,7 @@ export async function hydrateCourseContent(
   QUIZ:
   - questionText MUST be a complete question sentence ending with "?"
   - Test the CONTENT (definition, cause, condition, outcome). NEVER ask whether a topic "is a core idea in this module", "is covered in this module", "appears in this course", or similar meta / course-structure questions. Options must not be "not part of this module" / "none of these ideas appear".
+  - NEVER use the stem "Which statement about [topic] is most accurate?" with placeholder options such as "The primary role or definition of…", "A common mix-up with a different process than…", "A condition that does not apply to…", or "A result that … never produces". Those are incomplete. Options must be complete technical claims from the source — the same thoroughness as Mastery Quiz items.
   - Optional scenarioText: a short situation paragraph the learner reads BEFORE the question (carrier alert, workplace vignette, yellow-box story). Not the question itself. Omit when there is no situation.
   - Must have EXACTLY 4 options: 1 correct (isCorrect: true) + 3 plausible distractors. STORYBOARD EXCEPTION: copy the spec's option count (3 is valid). Do not invent extra distractors to reach 4.
   - When THIS slide is already a Knowledge Check and the storyboard lists 2+ numbered questions on one screen, emit data.questions: [{ questionText, options, feedback }] — one object per numbered question, exact stems and Keys. Do not invent a different wrapping question. Do not collapse them into one multiple-answers item.
@@ -1417,7 +1419,7 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
       }
       slides[i] = finalizeHydratedSlide(slides[i], mod.title);
     }
-    mod.slides = slides;
+    mod.slides = groundModuleKnowledgeChecks({ ...mod, slides }).slides;
   }
 
   return sanitizeCourseTitles(collapseDuplicateModuleSummaries(fullCourse), { glossary: gloss });
@@ -1828,6 +1830,7 @@ Rules:
   );
   slides = wrapped[0]?.slides || slides;
   slides = slides.map((s: any) => ensureGeneratedTabSlide(finalizeHydratedSlide(s, opts.moduleTitle || opts.courseTitle)));
+  slides = groundModuleKnowledgeChecks({ title: opts.moduleTitle || opts.courseTitle, slides }).slides;
   if (!allowQuiz) {
     slides = slides.filter((s: any) => !isKnowledgeCheckSlide(s));
   }

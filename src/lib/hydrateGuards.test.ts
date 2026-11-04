@@ -274,15 +274,16 @@ test('key takeaways keep 2-4 points and retry Bloom gerund titles', () => {
   );
 });
 
-test('blank knowledge checks keep quiz type and gain a learner payload', () => {
-  const next = finalizeHydratedSlide({
+test('blank knowledge checks keep quiz type and retry until teaching facts can ground them', () => {
+  const blank = finalizeHydratedSlide({
     type: 'quiz',
     title: 'Knowledge Check: Polymer Basics',
     content: 'Test your understanding of polymer concepts',
   }, 'Polymer Science Fundamentals');
-  assert.equal(next.type, 'quiz');
-  assert.equal(quizHasLearnerPayload(next), true);
-  assert.equal(teachingSlideNeedsRetry(next), false);
+  assert.equal(blank.type, 'quiz');
+  assert.equal(quizHasLearnerPayload(blank), false);
+  assert.equal(teachingSlideNeedsRetry(blank), true);
+  assert.doesNotMatch(JSON.stringify(blank.data || {}), /primary role or definition of|most accurate/i);
 });
 
 test('content ALL-CAPS parents become headings, not bullets', () => {
@@ -370,7 +371,7 @@ test('click-reveal instruction-only OST is dropped so items are the only on-scre
   assert.equal(String(next.content || '').trim(), '');
 });
 
-test('meta knowledge-check stems are banned and rewritten', () => {
+test('meta knowledge-check stems are banned and stripped, not rewritten as role/mix-up placeholders', () => {
   assert.equal(isMetaKnowledgeCheckText('Initiation is a core idea in this module.'), true);
   assert.equal(isMetaKnowledgeCheckText('Which PE grade is densest?'), false);
   const meta = {
@@ -388,9 +389,9 @@ test('meta knowledge-check stems are banned and rewritten', () => {
   assert.equal(teachingSlideNeedsRetry(meta), true);
   const next = finalizeHydratedSlide(meta, 'Polymerization Chemistry');
   assert.equal(knowledgeCheckHasMetaStem(next), false);
-  assert.doesNotMatch(String(next.data.questionText), /core idea in this module/i);
-  assert.doesNotMatch(JSON.stringify(next.data.options), /not part of this module|none of these ideas appear/i);
-  assert.equal(teachingSlideNeedsRetry(next), false);
+  assert.doesNotMatch(String(next.data?.questionText || ''), /core idea in this module/i);
+  assert.doesNotMatch(JSON.stringify(next.data || {}), /primary role or definition of|not part of this module|none of these ideas appear/i);
+  assert.equal(teachingSlideNeedsRetry(next), true);
 });
 
 test('process slides with 5+ steps remap to vertical tabs', () => {

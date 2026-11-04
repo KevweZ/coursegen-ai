@@ -140,9 +140,27 @@ export function quizHasLearnerPayload(slide: any): boolean {
 const META_KC_RE =
   /\[draft\]|\b(?:is|as)\s+a\s+(?:core|key)\s+(?:idea|topic|concept)\s+in\s+this\s+(?:module|course)\b|\bcore\s+idea\s+in\s+this\s+module\b|\bkey\s+(?:idea|topic)\s+in\s+this\s+(?:module|course)\b|\bkey\s+idea\s+covered\s+in\b|\bcovered\s+in\s+(?:this|the)\s+(?:module|course)\b|\bnot\s+part\s+of\s+this\s+module\b|\bnone\s+of\s+these\s+ideas\s+appear\b|\bappears?\s+in\s+(?:this|the)\s+(?:module|course)\b|\bunrelated\s+fact\s+from\s+outside\b|\ban unrelated topic\b|\ba concept from another (?:module|domain)\b|\bprimary focus of\s*["“']|\bwhich are discussed in\b|\bkey learning point from this course\b/i;
 
+const SKELETON_KC_OPTION_RE =
+  /\bprimary role or definition of\b|\ba common mix-up with a different process than\b|\ba condition that does not apply to\b|\ba result that .+ never produces\b/i;
+
+const SKELETON_KC_STEM_RE = /which statement about .+ is most accurate/i;
+
 /** Ban course-structure KCs ("is this a core idea in this module"). */
 export function isMetaKnowledgeCheckText(text: unknown): boolean {
   return META_KC_RE.test(String(text || ''));
+}
+
+/** Ban "Which statement about X is most accurate?" with incomplete role/mix-up options. */
+export function isSkeletonKnowledgeCheckText(text: unknown): boolean {
+  const s = String(text || '');
+  if (!s.trim()) return false;
+  if (SKELETON_KC_OPTION_RE.test(s)) return true;
+  if (SKELETON_KC_STEM_RE.test(s) && SKELETON_KC_OPTION_RE.test(s)) return true;
+  return false;
+}
+
+function quizOptionTexts(q: { questionText?: string; options?: any[] }): string[] {
+  return (q.options || []).map((o: any) => (typeof o === 'string' ? o : o?.text || o?.label || ''));
 }
 
 export function knowledgeCheckHasMetaStem(slide: any): boolean {
@@ -150,8 +168,26 @@ export function knowledgeCheckHasMetaStem(slide: any): boolean {
   const questions = quizQuestionList(slide.interactions?.[0] || slide.data || slide);
   return questions.some((q) => {
     const stem = String(q.questionText || '');
-    const opts = (q.options || []).map((o: any) => (typeof o === 'string' ? o : o?.text || o?.label || ''));
-    return isMetaKnowledgeCheckText([stem, ...opts].join('\n'));
+    return isMetaKnowledgeCheckText([stem, ...quizOptionTexts(q)].join('\n'));
+  });
+}
+
+export function knowledgeCheckIsSkeleton(slide: any): boolean {
+  if (!isKnowledgeCheckSlide(slide)) return false;
+  const questions = quizQuestionList(slide.interactions?.[0] || slide.data || slide);
+  if (!questions.length) {
+    const data = slide?.data || {};
+    const stem = String(data.questionText || data.question || '');
+    const opts = Array.isArray(data.options) ? data.options : [];
+    const texts = opts.map((o: any) => (typeof o === 'string' ? o : o?.text || o?.label || ''));
+    return isSkeletonKnowledgeCheckText([stem, ...texts].join('\n'));
+  }
+  return questions.some((q) => {
+    const stem = String(q.questionText || '');
+    const texts = quizOptionTexts(q);
+    if (texts.some((t) => SKELETON_KC_OPTION_RE.test(t))) return true;
+    if (SKELETON_KC_STEM_RE.test(stem) && texts.some((t) => SKELETON_KC_OPTION_RE.test(t))) return true;
+    return isSkeletonKnowledgeCheckText([stem, ...texts].join('\n'));
   });
 }
 
@@ -185,49 +221,74 @@ export function remapOversizedChoiceCards(slide: any): any {
   };
 }
 
-export function fallbackKnowledgeCheckData(title: string, moduleTitle = ''): Record<string, unknown> {
+function stripQuizPlaceholderFields(data: any): any {
+  if (!data || typeof data !== 'object') return {};
+  const next = { ...data };
+  delete next.questionText;
+  delete next.question;
+  delete next.options;
+  delete next.feedback;
+  delete next.questions;
+  delete next.correctAnswer;
+  return next;
+}
+
+/** Last-mile MC from teaching facts — never the "most accurate" role/mix-up template. */
+export function fallbackKnowledgeCheckData(
+  title: string,
+  moduleTitle = '',
+  factStatements: string[] = [],
+): Record<string, unknown> | null {
   const topic = String(title || 'this topic').replace(/^knowledge\s*check:\s*/i, '').trim() || 'this topic';
-  const context = moduleTitle || topic;
+  const usable = factStatements
+    .map((s) => String(s || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())
+    .filter((s) => wordCount(s) >= 5 && !isSkeletonKnowledgeCheckText(s) && !isMetaKnowledgeCheckText(s));
+  if (usable.length < 2) return null;
+  const options = usable.slice(0, 4).map((text, i) => ({
+    id: String.fromCharCode(97 + i),
+    text,
+    isCorrect: i === 0,
+  }));
   return {
-    questionText: `Which statement about ${topic} is most accurate?`,
-    options: [
-      { id: 'a', text: `The primary role or definition of ${topic} in ${context}`, isCorrect: true },
-      { id: 'b', text: `A common mix-up with a different process than ${topic}`, isCorrect: false },
-      { id: 'c', text: `A condition that does not apply to ${topic}`, isCorrect: false },
-      { id: 'd', text: `A result that ${topic} never produces`, isCorrect: false },
-    ],
-    feedback: `Review ${topic} in ${context}, then continue.`,
+    questionText: `Which of the following is true of ${topic}?`,
+    options,
+    feedback: `Review ${topic} in ${moduleTitle || 'this module'}, then continue.`,
   };
 }
 
-export function ensureKnowledgeCheckPayload(slide: any, moduleTitle = ''): any {
+export function ensureKnowledgeCheckPayload(
+  slide: any,
+  moduleTitle = '',
+  factStatements: string[] = [],
+): any {
   if (!isKnowledgeCheckSlide(slide)) return slide;
-  if (quizHasLearnerPayload(slide) && !knowledgeCheckHasMetaStem(slide)) return slide;
+  const skeleton = knowledgeCheckIsSkeleton(slide);
+  const meta = knowledgeCheckHasMetaStem(slide);
+  if (quizHasLearnerPayload(slide) && !meta && !skeleton) return slide;
 
   const topic = String(slide.title || 'this topic').replace(/^knowledge\s*check:\s*/i, '').trim() || 'this topic';
   const type = String(slide.type || 'quiz');
   const framing = String(slide.content || '').trim() || `Check your understanding of ${topic}.`;
+  const grounded = fallbackKnowledgeCheckData(slide.title || topic, moduleTitle, factStatements);
 
-  if (quizHasLearnerPayload(slide) && knowledgeCheckHasMetaStem(slide)) {
+  if (grounded && (type === 'true-false' || type === 'quiz' || type === 'multiple-choice' || type === 'knowledge-check' || type === 'multiple-answers')) {
     return {
       ...slide,
       type: type === 'true-false' ? 'quiz' : type,
       content: framing,
       data: {
-        ...(slide.data && typeof slide.data === 'object' ? slide.data : {}),
-        ...fallbackKnowledgeCheckData(slide.title || topic, moduleTitle),
+        ...(slide.data && typeof slide.data === 'object' ? stripQuizPlaceholderFields(slide.data) : {}),
+        ...grounded,
       },
     };
   }
 
-  if (type === 'true-false') {
+  if (type === 'true-false' || type === 'quiz' || type === 'multiple-choice' || type === 'knowledge-check' || type === 'multiple-answers') {
     return {
       ...slide,
-      type: 'quiz',
+      type: type === 'true-false' ? 'quiz' : type,
       content: framing,
-      data: {
-        ...fallbackKnowledgeCheckData(slide.title || topic, moduleTitle),
-      },
+      data: stripQuizPlaceholderFields(slide.data),
     };
   }
 
@@ -283,10 +344,7 @@ export function ensureKnowledgeCheckPayload(slide: any, moduleTitle = ''): any {
     ...slide,
     type: type === 'multiple-answers' ? 'multiple-answers' : 'quiz',
     content: framing,
-    data: {
-      ...(slide.data && typeof slide.data === 'object' ? slide.data : {}),
-      ...fallbackKnowledgeCheckData(slide.title || topic, moduleTitle),
-    },
+    data: stripQuizPlaceholderFields(slide.data),
   };
 }
 
@@ -316,7 +374,7 @@ function interactionHasItems(slide: any, key: 'cards' | 'items' | 'tabs', min: n
 export function teachingSlideNeedsRetry(slide: any): boolean {
   if (!slide) return true;
   if (isKnowledgeCheckSlide(slide)) {
-    return !quizHasLearnerPayload(slide) || knowledgeCheckHasMetaStem(slide);
+    return !quizHasLearnerPayload(slide) || knowledgeCheckHasMetaStem(slide) || knowledgeCheckIsSkeleton(slide);
   }
   const type = String(slide.type || 'content');
   if (type === 'choice-cards') return !interactionHasItems(slide, 'cards', 2);

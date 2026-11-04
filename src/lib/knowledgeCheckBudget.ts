@@ -7,7 +7,7 @@ import {
   normalizeTerminalGroups,
   titleFromEnabling,
 } from './enablingCoverage';
-import { ensureKnowledgeCheckPayload } from './hydrateGuards';
+import { groundModuleKnowledgeChecks } from './knowledgeCheckGround';
 
 export type KnowledgeCheckMode = 'total' | 'per-module';
 
@@ -203,12 +203,12 @@ function makeKnowledgeCheckSlide(
 ): OutlineSlide {
   const type = quizTypes[index % Math.max(1, quizTypes.length)] || 'quiz';
   const label = titleFromEnabling(enablingText, enablingIndex);
-  return ensureKnowledgeCheckPayload({
+  return {
     id: newSlideId(),
     type,
     title: `Knowledge Check: ${label}`,
     enablingIndex,
-  }, label);
+  };
 }
 
 /**
@@ -266,7 +266,7 @@ export function ensureKnowledgeCheckBudget<T extends {
       kept.push(makeKnowledgeCheckSlide(quizTypes, kept.length, ens[ei] || mod.title || 'Practice', ei));
     }
 
-    return {
+    return groundModuleKnowledgeChecks({
       ...mod,
       slides: [
         ...teaching,
@@ -274,7 +274,7 @@ export function ensureKnowledgeCheckBudget<T extends {
         ...other.map(stripEnablingIndex),
         ...summaries.map(stripEnablingIndex),
       ],
-    };
+    });
   });
 
   return collapseDuplicateModuleSummaries({ ...outline, modules: nextModules });

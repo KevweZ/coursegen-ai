@@ -110,14 +110,24 @@ test('budget keeps one Module Summary and the richer takeaway cards', () => {
   assert.equal(next.modules[0].slides.at(-1).id, 'rich');
 });
 
-test('budget fill never inserts a knowledge check without a question payload', () => {
+test('budget fill grounds inserted knowledge checks from teaching-slide facts', () => {
   const next = ensureKnowledgeCheckBudget({
     learningObjectives: [{ terminalObjective: 'T', enablingObjectives: ['A'] }],
     modules: [{
       id: 'm1',
       title: 'Basics',
       slides: [
-        { id: 'a', type: 'content', title: 'What Is a Polymer' },
+        {
+          id: 'a',
+          type: 'content',
+          title: 'What Is a Polymer',
+          content: [
+            'A polymer is a long chain of repeating monomer units linked by covalent bonds.',
+            'Molecular weight distribution describes how chain lengths vary in a polymer sample.',
+            'Catalysts control whether chains stay linear or branch during polymerization.',
+            'Melt flow index rises when average molecular weight falls.',
+          ].join('\n'),
+        },
         { id: 'sum', type: 'key-takeaways', title: 'Module 1 Key Takeaways' },
       ],
     }],
@@ -133,5 +143,8 @@ test('budget fill never inserts a knowledge check without a question payload', (
   for (const kc of kcs) {
     assert.ok(Array.isArray(kc.data?.options) && kc.data.options.length >= 2);
     assert.ok(String(kc.data?.questionText || '').length > 8);
+    assert.doesNotMatch(String(kc.data?.questionText || ''), /which statement about .+ is most accurate/i);
+    assert.doesNotMatch(JSON.stringify(kc.data.options), /primary role or definition of|common mix-up with a different process/i);
+    assert.ok(kc.data.options.some((o: any) => /polymer|monomer|molecular weight|catalyst|melt flow/i.test(o.text)));
   }
 });

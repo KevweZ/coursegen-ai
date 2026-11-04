@@ -3,6 +3,7 @@ import { formatTabIntroOst, sanitizeOstText } from './formatTabIntroOst';
 import { moveArrayItem } from './objectiveOrder';
 import { collapseDuplicateModuleSummaries } from './enablingCoverage';
 import { ensureTabListIds, isTabbedNarrationType } from './narrationAudio';
+import { groundModuleKnowledgeChecks } from './knowledgeCheckGround';
 
 function slideBodyText(slide: any): string {
   const question = String(
@@ -224,7 +225,7 @@ export function ensureUniqueSlideIds(course: any): any {
   const seen = new Set<string>();
   return {
     ...deduped,
-    modules: deduped.modules.map((m: any) => ({
+    modules: deduped.modules.map((m: any) => groundModuleKnowledgeChecks({
       ...m,
       slides: (m.slides || []).map((s: any) => {
         const id = String(s?.id || '').trim();
