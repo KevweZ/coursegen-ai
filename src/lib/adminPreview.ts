@@ -87,3 +87,15 @@ export function demoCreditsForView(view: AdminAccountView): { ai: number; tts: n
 export function isTeamPreviewView(view: AdminAccountView): boolean {
   return view === 'team_owner' || view === 'team_member';
 }
+
+/**
+ * Account preview of Free / Creator / Team is UI-only.
+ * Never pass false here for a signed-in admin — that capped the library at 3
+ * Creator slots and blocked saving a real course.
+ */
+export function resolveDraftAdminQuota(
+  isAdmin: boolean,
+  _accountView?: AdminAccountView,
+): boolean {
+  return !!isAdmin;
+}

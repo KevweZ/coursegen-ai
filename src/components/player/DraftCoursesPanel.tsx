@@ -43,6 +43,19 @@ function formatDate(iso: string) {
 }
 
 function SlotBar({ used, total, theme }: { used: number; total: number; theme: string }) {
+  const track = theme === 'light' ? 'bg-slate-200' : 'bg-slate-700';
+  const label = cn('text-xs font-bold tabular-nums', theme === 'light' ? 'text-slate-500' : 'text-slate-400');
+  if (total > 12) {
+    const pct = total > 0 ? Math.min(100, (used / total) * 100) : 0;
+    return (
+      <div className="flex items-center gap-2">
+        <div className={cn('h-1.5 flex-1 rounded-full overflow-hidden', track)}>
+          <div className="h-full rounded-full bg-indigo-500 transition-all duration-300" style={{ width: `${pct}%` }} />
+        </div>
+        <span className={label}>{used}/{total}</span>
+      </div>
+    );
+  }
   return (
     <div className="flex items-center gap-2">
       <div className="flex gap-1 flex-1">
@@ -51,14 +64,12 @@ function SlotBar({ used, total, theme }: { used: number; total: number; theme: s
             key={i}
             className={cn(
               'h-1.5 flex-1 rounded-full transition-all duration-300',
-              i < used
-                ? 'bg-indigo-500'
-                : theme === 'light' ? 'bg-slate-200' : 'bg-slate-700'
+              i < used ? 'bg-indigo-500' : track
             )}
           />
         ))}
       </div>
-      <span className={cn('text-xs font-bold tabular-nums', theme === 'light' ? 'text-slate-500' : 'text-slate-400')}>
+      <span className={label}>
         {used}/{total}
       </span>
     </div>
@@ -197,7 +208,7 @@ export const DraftCoursesPanel: React.FC<Props> = ({
                     )}
                   >
                     {savingBusy && savingKind === 'save' && !onUpdateCurrent ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                    {canSave ? 'Save as new draft' : 'All slots used — delete one first'}
+                    {canSave ? 'Save as new draft' : 'All slots used — overwrite one below'}
                   </button>
 
                   {onUpdateCurrent && canSave && (

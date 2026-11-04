@@ -330,6 +330,7 @@ import {
   readAdminAccountView,
   planForAdminView,
   isTeamPreviewView,
+  resolveDraftAdminQuota,
   type AdminAccountView,
 } from './lib/adminPreview';
 import { useAuth } from './contexts/AuthContext';
@@ -908,7 +909,7 @@ export default function App() {
   const userPlan = isAdmin
     ? planForAdminView(adminAccountView, realUserPlan)
     : realUserPlan;
-  const draftsAsAdmin = isAdmin && adminAccountView === 'admin';
+  const draftsAsAdmin = resolveDraftAdminQuota(isAdmin, adminAccountView);
   const draftWorkspaceId =
     isAdmin && isTeamPreviewView(adminAccountView)
       ? workspaceId
@@ -999,7 +1000,7 @@ export default function App() {
       return;
     }
     if (!draftManager.canSave) {
-      showDraftMessage(`All ${draftManager.slotsTotal} draft slots are full — delete one before saving a new draft.`);
+      showDraftMessage(`All ${draftManager.slotsTotal} draft slots are full — overwrite a draft below, or delete one first.`);
       return;
     }
     setIsSavingDraft(true);
@@ -1061,7 +1062,7 @@ export default function App() {
       }
       // Active id isn’t a preview draft — create a new slot (do not nest handleSaveDraft busy state)
       if (!draftManager.canSave) {
-        showDraftMessage(`All ${draftManager.slotsTotal} draft slots are full — delete one before saving a new draft.`);
+        showDraftMessage(`All ${draftManager.slotsTotal} draft slots are full — overwrite a draft below, or delete one first.`);
         return;
       }
       showDraftMessage('Saving new draft…');

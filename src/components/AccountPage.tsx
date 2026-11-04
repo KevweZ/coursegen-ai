@@ -362,7 +362,8 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
                 <p className="font-bold text-white text-sm">Admin account views</p>
                 <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
                   Preview Free, Creator, Team Owner, and Team Seat Account pages — including billing,
-                  top-ups, and seats. Also drives voice unlocks and draft limits in the builder.
+                  top-ups, and seats. Voice unlocks follow this view in the builder. Draft slots
+                  always use the Admin library so a preview cannot block saving.
                 </p>
               </div>
             </div>

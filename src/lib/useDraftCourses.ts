@@ -53,10 +53,10 @@ import {
   uploadCloudAssets,
 } from './draftCloudService';
 import { getNarrationCache, stashNarrationBlobs, flushLiveNarration, readLiveNarration, harvestPlayerAudio, playerElementHasAudio, getLiveNarrationScope } from './narrationCache';
+import { getDraftLimitForPlan } from './draftSlots';
 
-export const MAX_PRO_DRAFTS = 3;
-export const MAX_TEAM_DRAFTS = 10;
-export const MAX_ADMIN_DRAFTS = 100;
+export { MAX_PRO_DRAFTS, MAX_TEAM_DRAFTS, MAX_ADMIN_DRAFTS, getDraftLimitForPlan } from './draftSlots';
+
 const STORAGE_PREFIX = 'nexcourse_drafts_v1_';
 const IDB_NAME = 'nexcourse_drafts_db';
 const IDB_VERSION = 7;
@@ -709,14 +709,6 @@ function stripEphemeralMedia(course: any): any {
       }),
     })),
   };
-}
-
-export function getDraftLimitForPlan(plan?: string | null, isAdmin?: boolean): number {
-  if (isAdmin) return MAX_ADMIN_DRAFTS;
-  if (!plan) return MAX_PRO_DRAFTS;
-  const p = plan.toLowerCase();
-  if (p.includes('enterprise') || p.includes('team') || p.includes('business')) return MAX_TEAM_DRAFTS;
-  return MAX_PRO_DRAFTS;
 }
 
 function mergeDraftLists(cloud: CourseDraft[], local: CourseDraft[]): CourseDraft[] {
