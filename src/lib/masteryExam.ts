@@ -4,7 +4,7 @@
  */
 
 import { isKnowledgeCheckSlide, isTeachingSlide } from './enablingCoverage';
-import { isMetaKnowledgeCheckText } from './hydrateGuards';
+import { isMetaKnowledgeCheckText, isNonAssessableFactText } from './hydrateGuards';
 import type { ExamConfig, ExamQuestion } from '../types/course';
 
 export type ExamFact = {
@@ -35,8 +35,23 @@ function isUsableFact(line: string): boolean {
   if (words.length < 5) return false;
   if (/^\[draft\]/i.test(line)) return false;
   if (isMetaKnowledgeCheckText(line)) return false;
+  if (isNonAssessableFactText(line)) return false;
   if (/^(select|choose|click|tap|explore|visit each)\b/i.test(line)) return false;
   return true;
+}
+
+function splitFactLines(raw: unknown): string[] {
+  const text = String(raw || '');
+  if (!text.trim()) return [];
+  const out: string[] = [];
+  for (const block of text.split(/\n+/)) {
+    const cleaned = cleanLine(block);
+    if (!cleaned) continue;
+    const sentences = cleaned.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean);
+    if (sentences.length > 1) out.push(...sentences);
+    else out.push(cleaned);
+  }
+  return out;
 }
 
 function pushFact(out: ExamFact[], seen: Set<string>, moduleIndex: number, topic: string, raw: unknown) {
@@ -53,20 +68,17 @@ function collectFromData(out: ExamFact[], seen: Set<string>, moduleIndex: number
   const tabs = Array.isArray(data.tabs) ? data.tabs : [];
   for (const tab of tabs) {
     const label = cleanLine(tab?.label || tab?.title) || topic;
-    pushFact(out, seen, moduleIndex, label, tab?.content);
-    String(tab?.content || '').split(/\n+/).forEach(line => pushFact(out, seen, moduleIndex, label, line));
+    splitFactLines(tab?.content).forEach(line => pushFact(out, seen, moduleIndex, label, line));
   }
   const cards = Array.isArray(data.cards) ? data.cards : [];
   for (const card of cards) {
     const label = cleanLine(card?.label || card?.title) || topic;
-    pushFact(out, seen, moduleIndex, label, card?.reveal || card?.body || card?.content);
-    String(card?.reveal || card?.body || '').split(/\n+/).forEach(line => pushFact(out, seen, moduleIndex, label, line));
+    splitFactLines(card?.reveal || card?.body || card?.content).forEach(line => pushFact(out, seen, moduleIndex, label, line));
   }
   const items = Array.isArray(data.items) ? data.items : [];
   for (const item of items) {
     const label = cleanLine(item?.term || item?.label || item?.title) || topic;
-    pushFact(out, seen, moduleIndex, label, item?.definition || item?.content);
-    String(item?.definition || item?.content || '').split(/\n+/).forEach(line => pushFact(out, seen, moduleIndex, label, line));
+    splitFactLines(item?.definition || item?.content).forEach(line => pushFact(out, seen, moduleIndex, label, line));
   }
   if (Array.isArray(data.objectives)) {
     for (const obj of data.objectives) {
@@ -87,8 +99,8 @@ export function extractTeachingFacts(course: any): ExamFact[] {
       if (CHROME_TYPES.has(type) || isKnowledgeCheckSlide(slide)) continue;
       if (!isTeachingSlide(slide) && type !== 'key-takeaways' && type !== 'summary') continue;
       const topic = cleanLine(slide?.title) || cleanLine(mod?.title) || 'this topic';
-      String(slide?.content || '').split(/\n+/).forEach(line => pushFact(out, seen, moduleIndex, topic, line));
-      pushFact(out, seen, moduleIndex, topic, slide?.voiceOverText);
+      // OST only — narration often starts with "In this module, you will…" and is not a quiz claim.
+      splitFactLines(slide?.content).forEach(line => pushFact(out, seen, moduleIndex, topic, line));
       collectFromData(out, seen, moduleIndex, topic, slide?.data);
     }
   });
@@ -110,6 +122,7 @@ export function examQuestionIsMeta(q: { question?: string; options?: string[] } 
   if (opts.some(o => /^an unrelated topic$/i.test(o.trim()))) return true;
   if (opts.some(o => /^a concept from another (module|domain)$/i.test(o.trim()))) return true;
   if (opts.some(o => /^a core concept from the course$/i.test(o.trim()))) return true;
+  if (isNonAssessableFactText(stem) || opts.some(o => isNonAssessableFactText(o))) return true;
   return false;
 }
 

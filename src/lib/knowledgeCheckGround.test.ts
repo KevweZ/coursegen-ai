@@ -1,10 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  isInstructionalObjectiveText,
+  isNonAssessableFactText,
   isSkeletonKnowledgeCheckText,
+  knowledgeCheckHasInstructionalOption,
   knowledgeCheckIsSkeleton,
   teachingSlideNeedsRetry,
 } from './hydrateGuards.ts';
+import { extractTeachingFacts, examQuestionIsMeta } from './masteryExam.ts';
 import { groundModuleKnowledgeChecks } from './knowledgeCheckGround.ts';
 import { ensureUniqueSlideIds } from './courseSlideEdits.ts';
 
@@ -90,4 +94,89 @@ test('opening a saved draft heals skeleton knowledge checks from teaching slides
   const kc = healed.modules[0].slides.find((s: any) => s.id === 'kc1');
   assert.equal(knowledgeCheckIsSkeleton(kc), false);
   assert.doesNotMatch(JSON.stringify(kc.data.options), /primary role or definition of/i);
+});
+
+const overviewVo = 'In this module, you will list the major process stages in a typical polyolefin plant. A polyolefin manufacturing facility runs as an integrated system where each stage feeds into the next. From the moment raw materials arrive at the plant gate through final pellet storage, seven key stages control quality, safety, and efficiency. Understanding how these stages connect helps you troubleshoot problems, optimize throughput, and recognize why each step matters for final product performance.';
+
+test('learning-objective and you-will-learn copy is not a quiz claim', () => {
+  assert.equal(isInstructionalObjectiveText('In this module, you will list the major process stages in a typical polyolefin plant.'), true);
+  assert.equal(isInstructionalObjectiveText('Understanding how these stages connect helps you troubleshoot problems.'), true);
+  assert.equal(isNonAssessableFactText(overviewVo), true);
+  assert.equal(isNonAssessableFactText('Flash tanks evaporate unreacted feed from the cracked-gas stream.'), false);
+  assert.equal(examQuestionIsMeta({
+    question: 'Which of the following is true of Major Process Stages Overview?',
+    options: [
+      'Flash tanks evaporate unreacted feed',
+      overviewVo,
+    ],
+  }), true);
+});
+
+test('knowledge checks do not use overview narration or glued application lists as options', () => {
+  const instructionalKc = {
+    id: 'kc-overview',
+    type: 'quiz',
+    title: 'Knowledge Check: Grade Applications',
+    data: {
+      questionText: 'Which of the following is true of Major Process Stages Overview?',
+      options: [
+        { id: 'a', text: 'Flexible tubing and hoses - Foam cushioning materials - Shoe soles and footwear - Hot-melt adhesives', isCorrect: false },
+        { id: 'b', text: 'Flash tanks evaporate unreacted feed', isCorrect: false },
+        { id: 'c', text: 'Melts and forms polymer into pellets - Removes residual monomer and volatiles - Stabilizes polymer for shipment', isCorrect: false },
+        { id: 'd', text: overviewVo, isCorrect: true },
+      ],
+    },
+  };
+  assert.equal(knowledgeCheckHasInstructionalOption(instructionalKc), true);
+  assert.equal(teachingSlideNeedsRetry(instructionalKc), true);
+
+  const facts = extractTeachingFacts({
+    modules: [{
+      title: 'Polyolefin Manufacturing Stages',
+      slides: [{
+        type: 'content',
+        title: 'Major Process Stages Overview',
+        content: overviewVo,
+        voiceOverText: overviewVo,
+      }, {
+        type: 'content',
+        title: 'Cracked-gas handling',
+        content: [
+          'Flash tanks evaporate unreacted feed from the cracked-gas stream.',
+          'Quench oil knocks out heavy tars before compression.',
+          'Demethanizer overhead is recycled as cracker fuel gas.',
+          'C2 splitters separate ethylene from ethane for polymer-grade feed.',
+        ].join('\n'),
+      }],
+    }],
+  });
+  assert.equal(facts.some(f => /in this module, you will/i.test(f.statement)), false);
+  assert.equal(facts.some(f => /helps you troubleshoot/i.test(f.statement)), false);
+  assert.ok(facts.some(f => /flash tanks evaporate/i.test(f.statement)));
+
+  const next = groundModuleKnowledgeChecks({
+    title: 'Polyolefin Manufacturing Stages',
+    slides: [
+      {
+        id: 't1',
+        type: 'content',
+        title: 'Cracked-gas handling',
+        content: [
+          'Flash tanks evaporate unreacted feed from the cracked-gas stream.',
+          'Quench oil knocks out heavy tars before compression.',
+          'Demethanizer overhead is recycled as cracker fuel gas.',
+          'C2 splitters separate ethylene from ethane for polymer-grade feed.',
+        ].join('\n'),
+      },
+      instructionalKc,
+    ],
+  });
+  const kc = next.slides.find((s: any) => s.id === 'kc-overview');
+  assert.ok(kc);
+  assert.equal(knowledgeCheckHasInstructionalOption(kc), false);
+  const optionBlob = kc.data.options.map((o: any) => o.text).join('\n');
+  assert.doesNotMatch(optionBlob, /in this module, you will/i);
+  assert.doesNotMatch(optionBlob, /helps you troubleshoot/i);
+  assert.doesNotMatch(optionBlob, /Flexible tubing and hoses - Foam/i);
+  assert.match(optionBlob, /flash tanks|quench oil|demethanizer|splitters/i);
 });

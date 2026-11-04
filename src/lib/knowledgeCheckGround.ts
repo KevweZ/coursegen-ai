@@ -5,6 +5,7 @@
 
 import { isKnowledgeCheckSlide } from './enablingCoverage';
 import {
+  knowledgeCheckHasInstructionalOption,
   knowledgeCheckHasMetaStem,
   knowledgeCheckIsSkeleton,
   quizHasLearnerPayload,
@@ -17,6 +18,7 @@ export function knowledgeCheckNeedsGrounding(slide: any): boolean {
   if (!quizHasLearnerPayload(slide)) return true;
   if (knowledgeCheckHasMetaStem(slide)) return true;
   if (knowledgeCheckIsSkeleton(slide)) return true;
+  if (knowledgeCheckHasInstructionalOption(slide)) return true;
   return false;
 }
 

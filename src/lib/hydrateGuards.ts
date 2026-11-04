@@ -159,6 +159,38 @@ export function isSkeletonKnowledgeCheckText(text: unknown): boolean {
   return false;
 }
 
+/**
+ * Learning-objective / "you will learn" copy is not a quiz claim.
+ * "In this module, you will list…" and "helps you troubleshoot…" belong on overviews, not options.
+ */
+export function isInstructionalObjectiveText(text: unknown): boolean {
+  const s = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!s) return false;
+  if (/\bin this (module|slide|course|lesson|unit),?\s+you will\b/i.test(s)) return true;
+  if (/\byou will (be able to )?(list|describe|explain|identify|apply|recognize|understand|learn|state|outline)\b/i.test(s)) return true;
+  if (/\b(this slide covers|in this slide we cover)\b/i.test(s)) return true;
+  if (/\bhelps you (troubleshoot|learn|understand|recognize|optimize|connect)\b/i.test(s)) return true;
+  if (/\bby the end of (this|the) (module|slide|course)\b/i.test(s)) return true;
+  if (/\blearning objective\b/i.test(s)) return true;
+  if (/\bwhat you will (be able to|learn|be able)\b/i.test(s)) return true;
+  if (/\b(you should|learners? (will|should)|the learner will)\b/i.test(s) && /\b(learn|understand|be able to)\b/i.test(s)) return true;
+  return false;
+}
+
+/** Too long, glued bullet lists, or objective framing — not a T/F-worthy claim. */
+export function isNonAssessableFactText(text: unknown): boolean {
+  const s = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!s) return false;
+  if (isInstructionalObjectiveText(s)) return true;
+  if (isMetaKnowledgeCheckText(s) || isSkeletonKnowledgeCheckText(s)) return true;
+  const words = s.split(/\s+/).filter(Boolean);
+  if (words.length > 40) return true;
+  const sentences = s.split(/(?<=[.!?])\s+/).filter(x => x.trim().length > 0);
+  if (sentences.length > 2) return true;
+  if ((s.match(/\s+-\s+/g) || []).length >= 2 && !/[.!?]$/.test(s)) return true;
+  return false;
+}
+
 function quizOptionTexts(q: { questionText?: string; options?: any[] }): string[] {
   return (q.options || []).map((o: any) => (typeof o === 'string' ? o : o?.text || o?.label || ''));
 }
@@ -170,6 +202,19 @@ export function knowledgeCheckHasMetaStem(slide: any): boolean {
     const stem = String(q.questionText || '');
     return isMetaKnowledgeCheckText([stem, ...quizOptionTexts(q)].join('\n'));
   });
+}
+
+export function knowledgeCheckHasInstructionalOption(slide: any): boolean {
+  if (!isKnowledgeCheckSlide(slide)) return false;
+  const questions = quizQuestionList(slide.interactions?.[0] || slide.data || slide);
+  const texts = questions.length
+    ? questions.flatMap((q) => [String(q.questionText || ''), ...quizOptionTexts(q)])
+    : [
+        String(slide?.data?.questionText || slide?.data?.question || ''),
+        ...((Array.isArray(slide?.data?.options) ? slide.data.options : []).map((o: any) =>
+          typeof o === 'string' ? o : o?.text || o?.label || '')),
+      ];
+  return texts.some((t) => isNonAssessableFactText(t));
 }
 
 export function knowledgeCheckIsSkeleton(slide: any): boolean {
@@ -242,7 +287,7 @@ export function fallbackKnowledgeCheckData(
   const topic = String(title || 'this topic').replace(/^knowledge\s*check:\s*/i, '').trim() || 'this topic';
   const usable = factStatements
     .map((s) => String(s || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())
-    .filter((s) => wordCount(s) >= 5 && !isSkeletonKnowledgeCheckText(s) && !isMetaKnowledgeCheckText(s));
+    .filter((s) => wordCount(s) >= 5 && !isNonAssessableFactText(s));
   if (usable.length < 2) return null;
   const options = usable.slice(0, 4).map((text, i) => ({
     id: String.fromCharCode(97 + i),
@@ -374,7 +419,10 @@ function interactionHasItems(slide: any, key: 'cards' | 'items' | 'tabs', min: n
 export function teachingSlideNeedsRetry(slide: any): boolean {
   if (!slide) return true;
   if (isKnowledgeCheckSlide(slide)) {
-    return !quizHasLearnerPayload(slide) || knowledgeCheckHasMetaStem(slide) || knowledgeCheckIsSkeleton(slide);
+    return !quizHasLearnerPayload(slide)
+      || knowledgeCheckHasMetaStem(slide)
+      || knowledgeCheckIsSkeleton(slide)
+      || knowledgeCheckHasInstructionalOption(slide);
   }
   const type = String(slide.type || 'content');
   if (type === 'choice-cards') return !interactionHasItems(slide, 'cards', 2);
