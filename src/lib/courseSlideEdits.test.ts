@@ -8,6 +8,7 @@ import {
   insertSlidesIntoCourse,
   moveSlideInCourse,
   slideReorderState,
+  applySyntheticChromeSave,
 } from './courseSlideEdits.ts';
 
 const DS_CONTENT = '- Generated from high-pressure boiler steam\n- Reduces cracking temperature locally\n- Prevents coke build up in the radiant coils';
@@ -187,6 +188,30 @@ test('App insert path heals duplicates, blocks a second Generate, and does not i
   const hydrateLock = readFileSync(resolve(process.cwd(), '.cursor/rules/hydrate-quality-lock.mdc'), 'utf8');
   assert.match(hydrateLock, /collapseDuplicateModuleSummaries/);
   assert.match(hydrateLock, /One Module Summary per module/);
+});
+
+test('Edit Slide Save writes the Course Introduction title onto course.title', () => {
+  const course = {
+    title: 'Polymers: Chemistry and Processes',
+    modules: [{ id: 'm1', title: 'Polyethylene Types', slides: [{ id: 's1', title: 'Keep' }] }],
+  };
+  const next = applySyntheticChromeSave(course, {
+    id: '__cover__',
+    title: 'Ethylene and Propylene Chemistry',
+  });
+  assert.equal(next.title, 'Ethylene and Propylene Chemistry');
+  assert.equal(next.modules[0].title, 'Polyethylene Types');
+
+  const moduleNext = applySyntheticChromeSave(course, {
+    id: '__module-cover-1__',
+    title: 'Chain Growth',
+  });
+  assert.equal(moduleNext.modules[0].title, 'Chain Growth');
+  assert.equal(moduleNext.title, course.title);
+
+  const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+  assert.match(app, /applySyntheticChromeSave/);
+  assert.match(app, /isSyntheticSlideId\(latest\.id\)/);
 });
 
 test('Edit menu exposes Move up / Move down for authoring slides', () => {

@@ -1,3 +1,4 @@
+import { COVER_SLIDE_ID } from './promoteSlideImages';
 import { slidesMatchId } from './slideRegenMerge';
 import { formatTabIntroOst, sanitizeOstText } from './formatTabIntroOst';
 import { moveArrayItem } from './objectiveOrder';
@@ -483,4 +484,34 @@ export function insertSlidesIntoCourse(
     firstId,
     inserted: incoming,
   };
+}
+
+/**
+ * Cover / module-title slides are injected chrome — they are not in modules[].slides.
+ * Edit Slide → Save must write the title onto the course (or module), not only OST overrides.
+ */
+export function applySyntheticChromeSave(
+  course: any,
+  slide: { id?: string; title?: string } | null | undefined,
+): any {
+  if (!course || !slide) return course;
+  const id = String(slide.id || '');
+  const title = String(slide.title || '').trim();
+  if (!id || !title) return course;
+  if (id === COVER_SLIDE_ID) {
+    if (course.title === title) return course;
+    return { ...course, title };
+  }
+  const moduleCover = /^__module-cover-(\d+)__$/.exec(id);
+  if (moduleCover) {
+    const idx = Number(moduleCover[1]) - 1;
+    const modules = course.modules || [];
+    if (idx < 0 || idx >= modules.length) return course;
+    if (String(modules[idx]?.title || '') === title) return course;
+    return {
+      ...course,
+      modules: modules.map((m: any, i: number) => (i === idx ? { ...m, title } : m)),
+    };
+  }
+  return course;
 }

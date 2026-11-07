@@ -217,6 +217,7 @@ import {
   slideReorderState,
   moduleIndexFromVirtualSlideId,
   resolveInsertModuleIndex,
+  applySyntheticChromeSave,
 } from './lib/courseSlideEdits';
 import {
   ROUTES,
@@ -10736,6 +10737,11 @@ export default function App() {
                             ...prev,
                             [latest.id]: { content: latest.content, voiceOverText: latest.voiceOverText },
                           }));
+                          setCourse((prev: any) => applySyntheticChromeSave(prev, latest));
+                          if (String(latest.id) === COVER_SLIDE_ID) {
+                            const nextTitle = String(latest.title || '').trim();
+                            if (nextTitle) setCourseTitle(nextTitle);
+                          }
                           if (latest.voiceOverUrl) {
                             setSyntheticAudioMap(prev => ({ ...prev, [latest.id]: latest.voiceOverUrl as string }));
                           }
