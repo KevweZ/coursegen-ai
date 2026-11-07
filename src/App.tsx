@@ -266,7 +266,7 @@ import { TrialInvitePanel } from './components/TrialInvitePanel';
 
 import { FloatingImage } from './types/course';
 import { floatingFromFile } from './lib/floatingMedia';
-import { stripCourseAutoPromotedFloating, floatingMapFromCourse, omitUndefinedDeep, stampFloatingMediaOnCourse } from './lib/promoteSlideImages';
+import { COVER_SLIDE_ID, applyCoverMediaPatch, isCoverAuthoringSlide, stripCourseAutoPromotedFloating, floatingMapFromCourse, omitUndefinedDeep, stampFloatingMediaOnCourse } from './lib/promoteSlideImages';
 import { sanitizeCourseTitles } from './lib/splitCourseTitle';
 import {
   HUB_SLIDE_ID,
@@ -2747,9 +2747,10 @@ export default function App() {
     content: syntheticSlideOverrides['__cover__']?.content ?? '',
     narration: syntheticSlideOverrides['__cover__']?.voiceOverText ?? coverDefaultVo,
     voiceOverText: syntheticSlideOverrides['__cover__']?.voiceOverText ?? coverDefaultVo,
-    voiceOverUrl: syntheticAudioMap['__cover__'] || undefined,
+    voiceOverUrl: syntheticAudioMap[COVER_SLIDE_ID] || undefined,
     // Only the AI/user cover — never stock photo archive (courseBg)
     coverImage: (course as any).coverImage || undefined,
+    floatingMedia: (course as any).coverFloatingMedia,
   } as Slide : null as any;
   const closingVirtualSlide: Slide = {
     id: '__closing__',
@@ -4955,10 +4956,11 @@ export default function App() {
   }) => {
     if (!course?.modules) return;
     const thisSlideOnly = !!opts?.slideId;
-    if (thisSlideOnly && slideTypeSkipsAiContentImages(currentSlide?.type)) {
+    const coverSlideOnly = thisSlideOnly && isCoverAuthoringSlide(currentSlide);
+    if (thisSlideOnly && slideTypeSkipsAiContentImages(currentSlide?.type) && !coverSlideOnly) {
       setShowEditMenu(false);
       showDraftMessage(
-        'This slide type does not get AI images (quizzes, objectives, covers). Use Upload Image, or Generate AI images to fill remaining content slides.'
+        'This slide type does not get AI images (quizzes, objectives). Use Upload media, or Generate AI images to fill remaining content slides.'
       );
       return;
     }
@@ -4975,8 +4977,12 @@ export default function App() {
       const { generateContentSlideImages, generateCourseCoverImage } = await import('./services/imageService');
       let working: any = course;
       let coverMade = false;
-      const wantCover = !thisSlideOnly && (opts?.includeCover !== false) && !working.coverImage
-        && (opts?.includeCover === true || opts?.jobs == null);
+      const coverEmpty = !working.coverImage
+        && !(Array.isArray(working.coverFloatingMedia) && working.coverFloatingMedia.length);
+      const wantCover = coverEmpty && (
+        coverSlideOnly
+        || (!thisSlideOnly && (opts?.includeCover !== false) && (opts?.includeCover === true || opts?.jobs == null))
+      );
       if (wantCover && imageGenTokenRef.current === token) {
         setImageJobStatus(prev => ({ ...prev, cover: 'generating' }));
         try {
@@ -5295,6 +5301,14 @@ export default function App() {
   const handleUpdateSlideMedia = (slideId: string, updates: any) => {
     const id = String(slideId || '').trim();
     if (!id) return;
+    if (id === COVER_SLIDE_ID) {
+      setCourse(prev => applyCoverMediaPatch(prev, {
+        ...('coverImage' in updates ? { coverImage: updates.coverImage } : {}),
+        ...('floatingMedia' in updates ? { floatingMedia: updates.floatingMedia } : {}),
+      }));
+      if ('coverImage' in updates) setCourseBg(updates.coverImage || null);
+      return;
+    }
     setCourse(prev => {
       if (!prev) return prev;
       return {
@@ -5640,7 +5654,16 @@ export default function App() {
       tabId,
     };
     pushUndo();
-    setFloatingImagesMap(prev => ({ ...prev, [slideId]: [...(prev[slideId] || []), newImg] }));
+    const floatId = isCoverAuthoringSlide(currentSlide) ? COVER_SLIDE_ID : slideId;
+    setFloatingImagesMap(prev => ({ ...prev, [floatId]: [...(prev[floatId] || []), newImg] }));
+    if (isCoverAuthoringSlide(currentSlide) || slideId === COVER_SLIDE_ID) {
+      setCourse(prev => applyCoverMediaPatch(prev, {
+        coverImage: undefined,
+        floatingMedia: [...(prev?.coverFloatingMedia || []), newImg],
+      }));
+      setCourseBg(null);
+      return;
+    }
     setCourse(prev => {
       if (!prev) return prev;
       return {
@@ -5662,6 +5685,14 @@ export default function App() {
     pushUndo();
     const next = (floatingImagesMap[slideId] || []).filter(i => i.id !== img.id);
     setFloatingImagesMap(prev => ({ ...prev, [slideId]: next }));
+    if (slideId === COVER_SLIDE_ID || isCoverAuthoringSlide(currentSlide)) {
+      setCourse(prev => applyCoverMediaPatch(prev, {
+        coverImage: img.url,
+        floatingMedia: next,
+      }));
+      setCourseBg(img.url);
+      return;
+    }
     setCourse(prev => {
       if (!prev) return prev;
       return {
@@ -7979,9 +8010,26 @@ export default function App() {
                                        !(currentSlide as any).coverImage &&
                                        !(course as any)?.coverImage
                                      }
+                                     hasFloatingCover={
+                                       (floatingImagesMap[COVER_SLIDE_ID] || (course as any)?.coverFloatingMedia || []).length > 0
+                                     }
                                      onImageUpload={!isLearnerPlayer ? (url) => {
-                                       setCourse((prev: any) => prev ? { ...prev, coverImage: url } : prev);
+                                       pushUndo();
+                                       setCourse((prev: any) => applyCoverMediaPatch(prev, { coverImage: url }));
                                        setCourseBg(url);
+                                     } : undefined}
+                                     onRemove={!isLearnerPlayer ? () => {
+                                       pushUndo();
+                                       setCourse((prev: any) => applyCoverMediaPatch(prev, { coverImage: undefined }));
+                                       setCourseBg(null);
+                                     } : undefined}
+                                     onCrop={!isLearnerPlayer ? (url) => {
+                                       pushUndo();
+                                       setCourse((prev: any) => applyCoverMediaPatch(prev, { coverImage: url }));
+                                       setCourseBg(url);
+                                     } : undefined}
+                                     onPromoteToFloat={!isLearnerPlayer ? (info) => {
+                                       promoteInFlowToFloat(info, null, (s) => ({ ...s, coverImage: undefined }));
                                      } : undefined}
                                    />
                                  </div>
@@ -10438,7 +10486,12 @@ export default function App() {
                                     slideSnapshot.content || course.description || ''
                                   );
                                   if (cover) {
-                                    setCourse((prev: any) => prev ? { ...prev, coverImage: cover } : prev);
+                                    setCourse((prev: any) => applyCoverMediaPatch(prev, { coverImage: cover, floatingMedia: [] }));
+                                    setFloatingImagesMap(prev => {
+                                      const next = { ...prev };
+                                      delete next[COVER_SLIDE_ID];
+                                      return next;
+                                    });
                                     setCourseBg(cover);
                                   }
                                   showDraftMessage('Title slide updated ✓');

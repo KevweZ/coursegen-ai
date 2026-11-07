@@ -17,7 +17,13 @@ import {
 } from './draftMedia.ts';
 import { ensureUniqueSlideIds } from './courseSlideEdits.ts';
 import { harvestClipBelongsToSlide } from './narrationCache.ts';
-import { omitUndefinedDeep, stampFloatingMediaOnCourse } from './promoteSlideImages.ts';
+import {
+  COVER_SLIDE_ID,
+  applyCoverMediaPatch,
+  floatingMapFromCourse,
+  omitUndefinedDeep,
+  stampFloatingMediaOnCourse,
+} from './promoteSlideImages.ts';
 
 function src(rel: string): string {
   return readFileSync(resolve(process.cwd(), rel), 'utf8');
@@ -288,4 +294,30 @@ test('player persist omits undefined imageUrl on media updates and Crop/Move pro
   const app = src('src/App.tsx');
   assert.match(app, /omitUndefinedDeep\(\{ \.\.\.s, \.\.\.updates \}\)/);
   assert.match(app, /omitUndefinedDeep\(clear\(\{ \.\.\.s, floatingMedia:/);
+});
+
+test('cover floats stamp onto course.coverFloatingMedia and restore on load', () => {
+  const course = {
+    coverImage: 'cover.png',
+    coverFloatingMedia: [],
+    modules: [{ slides: [{ id: 's1', floatingMedia: [] }] }],
+  };
+  const stamped = stampFloatingMediaOnCourse(course, {
+    [COVER_SLIDE_ID]: [{ id: 'fi-1', url: 'cover.png', x: 640, y: 0, width: 520, height: 720 }],
+    s1: [{ id: 'fi-2', url: 'slide.png', x: 10, y: 10, width: 80, height: 80 }],
+  });
+  assert.equal(stamped.coverFloatingMedia[0].width, 520);
+  assert.equal(stamped.modules[0].slides[0].floatingMedia[0].id, 'fi-2');
+
+  const map = floatingMapFromCourse(stamped);
+  assert.equal(map[COVER_SLIDE_ID][0].x, 640);
+  assert.equal(map.s1[0].id, 'fi-2');
+
+  const deleted = applyCoverMediaPatch(stamped, { coverImage: undefined, floatingMedia: [] });
+  assert.equal('coverImage' in deleted, false);
+  assert.equal('coverFloatingMedia' in deleted, false);
+
+  const app = src('src/App.tsx');
+  assert.match(app, /applyCoverMediaPatch/);
+  assert.match(app, /COVER_SLIDE_ID/);
 });

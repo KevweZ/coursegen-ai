@@ -259,3 +259,24 @@ test('image gen and authoring stay wired: remaining fill, this-slide, crop/move,
   assert.match(promote, /fi-ai-/);
   assert.match(promote, /stripCourseAutoPromotedFloating/);
 });
+
+test('cover photo uses the same Crop / Move / Delete chrome as other images', () => {
+  const title = src('src/components/player/CourseTitleSlide.tsx');
+  assert.match(title, /EnlargeableImage/);
+  assert.match(title, /onPromoteToFloat/);
+  assert.match(title, /onRemove/);
+  assert.match(title, /onCrop/);
+  assert.match(title, /object-cover/);
+  assert.doesNotMatch(title, /Click to replace image/);
+
+  const app = src('src/App.tsx');
+  assert.match(app, /CourseTitleSlide[\s\S]*onRemove=\{!isLearnerPlayer/);
+  assert.match(app, /CourseTitleSlide[\s\S]*onCrop=\{!isLearnerPlayer/);
+  assert.match(app, /CourseTitleSlide[\s\S]*onPromoteToFloat=\{!isLearnerPlayer/);
+  assert.match(app, /coverFloatingMedia/);
+  assert.match(app, /isCoverAuthoringSlide/);
+  assert.doesNotMatch(
+    app,
+    /This slide type does not get AI images \(quizzes, objectives, covers\)/,
+  );
+});

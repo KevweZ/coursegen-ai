@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Camera, Loader2, ImageOff } from 'lucide-react';
 import { shortenCourseTitle, splitCourseTitle } from '../../lib/splitCourseTitle';
+import { EnlargeableImage, type InFlowPromoteInfo } from './EnlargeableImage';
 
 type Theme = 'light' | 'dark' | 'unified';
 
@@ -18,6 +19,12 @@ interface CourseTitleSlideProps {
   isGeneratingCover?: boolean;
   /** When true, hide the right image panel and center the title text */
   hideImagePanel?: boolean;
+  /** Authoring: Crop / Move / Delete — same chrome as other in-flow images. */
+  onRemove?: () => void;
+  onCrop?: (dataUrl: string) => void;
+  onPromoteToFloat?: (info: InFlowPromoteInfo) => void;
+  /** A moved cover photo is already on the float canvas — don't show the empty CTA under it. */
+  hasFloatingCover?: boolean;
 }
 
 const THEME_ACCENT: Record<Theme, string> = {
@@ -59,6 +66,10 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
   onImageUpload,
   isGeneratingCover = false,
   hideImagePanel = false,
+  onRemove,
+  onCrop,
+  onPromoteToFloat,
+  hasFloatingCover = false,
 }) => {
   const accent   = accentColor || THEME_ACCENT[theme];
   const darkText = THEME_DARK_TEXT[theme];
@@ -68,17 +79,15 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
 
   const { primary, secondary, secondaryFirst } = splitCourseTitle(shortenCourseTitle(title));
   const [hovering, setHovering] = useState(false);
-  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
 
   const canReplace = typeof onImageUpload === 'function';
-  const displayImage = uploadedImage || coverImage || null;
+  const displayImage = coverImage || null;
   const showImagePanel = !hideImagePanel || !!displayImage;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const url = URL.createObjectURL(file);
-    setUploadedImage(url);
     onImageUpload?.(url);
   };
 
@@ -172,7 +181,7 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
 
       <div
         className="flex-1 relative overflow-hidden"
-        onMouseEnter={() => { if (canReplace) setHovering(true); }}
+        onMouseEnter={() => { if (canReplace && !displayImage) setHovering(true); }}
         onMouseLeave={() => setHovering(false)}
         style={{
           background: displayImage
@@ -181,13 +190,14 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
         }}
       >
         {displayImage ? (
-          <img
+          <EnlargeableImage
             src={displayImage}
             alt="Course cover"
+            wrapperClassName="w-full h-full"
             className="w-full h-full object-cover"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = 'none';
-            }}
+            onRemove={onRemove}
+            onCrop={onCrop}
+            onPromoteToFloat={onPromoteToFloat}
           />
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
@@ -199,13 +209,13 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
                   Creating an image that matches this course subject
                 </p>
               </>
-            ) : (
+            ) : hasFloatingCover ? null : (
               <>
                 <ImageOff className="w-8 h-8 text-white/50" />
                 <p className="text-white/70 text-sm font-semibold">No cover image yet</p>
                 {canReplace && (
                 <p className="text-white/45 text-xs max-w-[14rem]">
-                  Hover to upload, or use Edit → Generate AI images
+                  Hover to upload, or use Edit → Generate AI image for this slide
                 </p>
                 )}
               </>
@@ -213,7 +223,7 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
           </div>
         )}
 
-        {canReplace && (
+        {canReplace && !displayImage && !hasFloatingCover && (
         <label
           className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer transition-all duration-200"
           style={{
@@ -231,7 +241,7 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
                 <Camera className="w-7 h-7 text-white" />
               </div>
               <span className="text-white text-sm font-semibold drop-shadow">
-                Click to replace image
+                Click to upload image
               </span>
             </motion.div>
           )}
