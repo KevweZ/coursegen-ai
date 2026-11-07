@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Crop, Maximize2, Move, Trash2, X } from 'lucide-react';
+import { Crop, Maximize2, Move, RefreshCw, Trash2, X } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { ImageCropModal } from '../FloatingImageCanvas';
 
@@ -69,6 +69,9 @@ interface EnlargeableImageProps {
   onCrop?: (dataUrl: string) => void;
   /** Authoring: lift into the floating canvas so it can be dragged and resized. */
   onPromoteToFloat?: (info: InFlowPromoteInfo) => void;
+  /** Authoring: request a new AI image for this slot (cover / this-slide). */
+  onRegenerate?: () => void;
+  regenerating?: boolean;
 }
 
 /**
@@ -84,12 +87,14 @@ export const EnlargeableImage: React.FC<EnlargeableImageProps> = ({
   onRemove,
   onCrop,
   onPromoteToFloat,
+  onRegenerate,
+  regenerating = false,
 }) => {
   const [open, setOpen] = useState(false);
   const [cropOpen, setCropOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
-  const authoring = !!(onRemove || onCrop || onPromoteToFloat);
+  const authoring = !!(onRemove || onCrop || onPromoteToFloat || onRegenerate);
 
   useEffect(() => {
     if (!open) return;
@@ -122,6 +127,23 @@ export const EnlargeableImage: React.FC<EnlargeableImageProps> = ({
             className="absolute top-2 right-2 z-[2] flex items-center gap-1"
             data-ai-image-edit="toolbar"
           >
+            {onRegenerate && (
+              <button
+                type="button"
+                title="Regenerate AI image"
+                aria-label="Regenerate AI image"
+                disabled={regenerating}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (regenerating) return;
+                  onRegenerate();
+                }}
+                className="flex items-center gap-1 h-7 px-2 rounded-full bg-violet-600 hover:bg-violet-500 disabled:opacity-60 text-white shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+              >
+                <RefreshCw className={cn('w-3.5 h-3.5 shrink-0', regenerating && 'animate-spin')} />
+                <span className="text-[10px] font-semibold pr-0.5">{regenerating ? 'AI…' : 'AI'}</span>
+              </button>
+            )}
             {onCrop && (
               <button
                 type="button"

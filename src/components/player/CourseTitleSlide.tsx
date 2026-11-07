@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Camera, Loader2, ImageOff } from 'lucide-react';
+import { Camera, ImageOff, Loader2, RefreshCw, X } from 'lucide-react';
 import { shortenCourseTitle, splitCourseTitle } from '../../lib/splitCourseTitle';
 import { EnlargeableImage, type InFlowPromoteInfo } from './EnlargeableImage';
 
@@ -23,6 +23,10 @@ interface CourseTitleSlideProps {
   onRemove?: () => void;
   onCrop?: (dataUrl: string) => void;
   onPromoteToFloat?: (info: InFlowPromoteInfo) => void;
+  onRegenerate?: () => void;
+  regenerating?: boolean;
+  /** Hide the right cover panel entirely (author dismissed it). */
+  coverPanelHidden?: boolean;
   /** A moved cover photo is already on the float canvas — don't show the empty CTA under it. */
   hasFloatingCover?: boolean;
 }
@@ -69,6 +73,9 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
   onRemove,
   onCrop,
   onPromoteToFloat,
+  onRegenerate,
+  regenerating = false,
+  coverPanelHidden = false,
   hasFloatingCover = false,
 }) => {
   const accent   = accentColor || THEME_ACCENT[theme];
@@ -82,7 +89,7 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
 
   const canReplace = typeof onImageUpload === 'function';
   const displayImage = coverImage || null;
-  const showImagePanel = !hideImagePanel || !!displayImage;
+  const showImagePanel = coverPanelHidden ? false : (!hideImagePanel || !!displayImage);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -198,10 +205,12 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
             onRemove={onRemove}
             onCrop={onCrop}
             onPromoteToFloat={onPromoteToFloat}
+            onRegenerate={onRegenerate}
+            regenerating={regenerating || isGeneratingCover}
           />
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
-            {isGeneratingCover ? (
+            {isGeneratingCover || regenerating ? (
               <>
                 <Loader2 className="w-8 h-8 text-white/80 animate-spin" />
                 <p className="text-white/90 text-sm font-semibold">Generating topic cover…</p>
@@ -215,7 +224,7 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
                 <p className="text-white/70 text-sm font-semibold">No cover image yet</p>
                 {canReplace && (
                 <p className="text-white/45 text-xs max-w-[14rem]">
-                  Hover to upload, or use Edit → Generate AI image for this slide
+                  Hover to upload, or use Edit → Regenerate cover image
                 </p>
                 )}
               </>
@@ -223,9 +232,45 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
           </div>
         )}
 
+        {(onRemove || onRegenerate) && !displayImage && (
+          <div className="absolute top-2 right-2 z-[3] flex items-center gap-1">
+            {onRegenerate && (
+              <button
+                type="button"
+                title="Regenerate AI image"
+                aria-label="Regenerate AI image"
+                disabled={regenerating || isGeneratingCover}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (regenerating || isGeneratingCover) return;
+                  onRegenerate();
+                }}
+                className="flex items-center gap-1 h-7 px-2 rounded-full bg-violet-600 hover:bg-violet-500 disabled:opacity-60 text-white shadow"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${(regenerating || isGeneratingCover) ? 'animate-spin' : ''}`} />
+                <span className="text-[10px] font-semibold pr-0.5">AI</span>
+              </button>
+            )}
+            {onRemove && (
+              <button
+                type="button"
+                title="Remove cover panel"
+                aria-label="Remove cover panel"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRemove();
+                }}
+                className="flex items-center justify-center w-7 h-7 rounded-full bg-red-500 hover:bg-red-400 text-white shadow"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        )}
+
         {canReplace && !displayImage && !hasFloatingCover && (
         <label
-          className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer transition-all duration-200"
+          className="absolute inset-0 z-[1] flex flex-col items-center justify-center cursor-pointer transition-all duration-200"
           style={{
             backgroundColor: hovering ? 'rgba(0,0,0,0.45)' : 'transparent',
           }}

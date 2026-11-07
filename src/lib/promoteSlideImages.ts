@@ -23,18 +23,31 @@ export function isCoverAuthoringSlide(slide?: { id?: string; type?: string } | n
 /** Write cover in-flow URL and/or moved floats. Drops deleted keys so drafts do not reattach them. */
 export function applyCoverMediaPatch(
   course: any,
-  updates: { coverImage?: string | null; floatingMedia?: FloatingImage[] },
+  updates: {
+    coverImage?: string | null;
+    floatingMedia?: FloatingImage[];
+    coverPanelHidden?: boolean;
+  },
 ): any {
   if (!course) return course;
   const next: Record<string, unknown> = { ...course };
   if ('coverImage' in updates) {
-    if (updates.coverImage == null || updates.coverImage === '') delete next.coverImage;
-    else next.coverImage = updates.coverImage;
+    if (updates.coverImage == null || updates.coverImage === '') {
+      delete next.coverImage;
+      if (!('coverPanelHidden' in updates)) next.coverPanelHidden = true;
+    } else {
+      next.coverImage = updates.coverImage;
+      delete next.coverPanelHidden;
+    }
   }
   if ('floatingMedia' in updates) {
     const floats = Array.isArray(updates.floatingMedia) ? updates.floatingMedia : [];
     if (floats.length) next.coverFloatingMedia = floats;
     else delete next.coverFloatingMedia;
+  }
+  if ('coverPanelHidden' in updates) {
+    if (updates.coverPanelHidden) next.coverPanelHidden = true;
+    else delete next.coverPanelHidden;
   }
   return omitUndefinedDeep(next);
 }

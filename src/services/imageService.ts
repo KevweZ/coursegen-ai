@@ -406,6 +406,11 @@ async function callImageEndpoint(
         }
       }
     }
+    if (err?.status === 502 || /No image returned/i.test(String(err?.message || ''))) {
+      console.warn('[ImageService] Empty image response — retrying once…');
+      await sleep(1500);
+      return await execute();
+    }
     if (err?.status === 429 || /429|rate.?limit|too many/i.test(String(err?.message || ''))) {
       console.warn('[ImageService] Rate limited — waiting 8s then retrying once…');
       await sleep(8000);

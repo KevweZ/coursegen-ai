@@ -296,7 +296,7 @@ import {
 import { finishImageGenProgress } from './lib/imageGenProgress';
 import { moveArrayItem } from './lib/objectiveOrder';
 import { ObjectiveReorderButtons } from './components/builder/ObjectiveReorderButtons';
-import { isApiColdStart, waitForApiWarm } from './lib/apiWarmup';
+import { isApiColdStart, startPreviewApiKeepWarm, waitForApiWarm } from './lib/apiWarmup';
 import { buildReviewSnapshot, createReviewLink, fetchReviewSnapshot } from './lib/reviewLinkService';
 import { downloadReviewScriptDocx } from './lib/reviewScriptDocx';
 import { tocRefMapFirstWins } from './lib/playerToc';
@@ -1850,6 +1850,11 @@ export default function App() {
     isReviewPlayer,
     activeDraftId,
   };
+  const previewHasCourse = !!course;
+  useEffect(() => {
+    if (isLearnerPlayer || isScormPlayer || step !== 'preview' || !previewHasCourse) return;
+    return startPreviewApiKeepWarm();
+  }, [step, previewHasCourse, isLearnerPlayer, isScormPlayer]);
   const requestLeavePreview = (onConfirm: () => void) => {
     const g = previewGuardRef.current;
     if (g.isScormPlayer || g.isReviewPlayer || g.isSandboxMode || !g.hasCourse || g.step !== 'preview') {
@@ -5123,8 +5128,60 @@ export default function App() {
   };
 
   const regenerateAiImages = () => openGenerateImagesPicker();
+  const coverImageErrorMessage = (err: unknown) => {
+    const msg = String((err as any)?.message || err || '');
+    if (isApiColdStart(err) || /warming up/i.test(msg)) {
+      return 'The image server was still starting. Wait a few seconds and try again.';
+    }
+    if (/No image returned/i.test(msg) || /No imageDataUrl/i.test(msg)) {
+      return 'The image model did not send a picture back (timeout or a blank response). Try again in a moment.';
+    }
+    return msg || 'Could not generate the cover image.';
+  };
+  const regenerateCoverImage = async (opts?: { title?: string; description?: string }) => {
+    const live = courseRef.current || course;
+    if (!live || isGeneratingImages) return;
+    setShowEditMenu(false);
+    const token = ++imageGenTokenRef.current;
+    setIsGeneratingImages(true);
+    showDraftMessage('Generating cover image…');
+    try {
+      const { generateCourseCoverImage } = await import('./services/imageService');
+      const cover = await generateCourseCoverImage(
+        (opts?.title || live.title || 'Course').trim(),
+        (opts?.description ?? live.description ?? '').trim(),
+      );
+      if (imageGenTokenRef.current !== token) return;
+      if (!cover) {
+        showDraftMessage('The image model did not send a picture back. Try again in a moment.');
+        return;
+      }
+      setCourse((prev: any) => applyCoverMediaPatch(prev, {
+        coverImage: cover,
+        coverPanelHidden: false,
+        floatingMedia: [],
+      }));
+      setFloatingImagesMap(prev => {
+        const next = { ...prev };
+        delete next[COVER_SLIDE_ID];
+        return next;
+      });
+      setCourseBg(cover);
+      showDraftMessage('Cover image updated ✓');
+    } catch (err: any) {
+      console.error('[Images] Cover regenerate failed:', err);
+      if (imageGenTokenRef.current !== token) return;
+      showDraftMessage(coverImageErrorMessage(err));
+    } finally {
+      if (imageGenTokenRef.current === token) setIsGeneratingImages(false);
+    }
+  };
   const regenerateAiImagesForCurrentSlide = () => {
     if (!currentSlide?.id || !course?.modules) return;
+    if (isCoverAuthoringSlide(currentSlide)) {
+      void regenerateCoverImage();
+      return;
+    }
     const jobs = collectContentImageJobs(course, {
       slideId: currentSlide.id,
       skipBenefitHeuristic: true,
@@ -5659,6 +5716,7 @@ export default function App() {
     if (isCoverAuthoringSlide(currentSlide) || slideId === COVER_SLIDE_ID) {
       setCourse(prev => applyCoverMediaPatch(prev, {
         coverImage: undefined,
+        coverPanelHidden: false,
         floatingMedia: [...(prev?.coverFloatingMedia || []), newImg],
       }));
       setCourseBg(null);
@@ -7384,8 +7442,14 @@ export default function App() {
                             >
                               <ImageIcon className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                               <span>
-                                <span className="font-semibold block">Generate AI image for this slide</span>
-                                <span className="text-slate-500 text-[10px]">Fill empty pictures on this slide only</span>
+                                <span className="font-semibold block">
+                                  {isCoverAuthoringSlide(currentSlide) ? 'Regenerate cover image' : 'Generate AI image for this slide'}
+                                </span>
+                                <span className="text-slate-500 text-[10px]">
+                                  {isCoverAuthoringSlide(currentSlide)
+                                    ? 'Replace the title photo'
+                                    : 'Fill empty pictures on this slide only'}
+                                </span>
                               </span>
                             </button>
                             <button
@@ -8003,24 +8067,24 @@ export default function App() {
                                      theme={theme}
                                      isPreviewMode={!isLearnerPlayer}
                                      hideImagePanel={normalizeImageMode(imageMode) === 'none'}
+                                     coverPanelHidden={!!(course as any)?.coverPanelHidden}
                                      isGeneratingCover={
                                        !isLearnerPlayer &&
-                                       normalizeImageMode(imageMode) !== 'none' &&
                                        isGeneratingImages &&
-                                       !(currentSlide as any).coverImage &&
-                                       !(course as any)?.coverImage
+                                       isCoverAuthoringSlide(currentSlide)
                                      }
+                                     regenerating={isGeneratingImages && isCoverAuthoringSlide(currentSlide)}
                                      hasFloatingCover={
                                        (floatingImagesMap[COVER_SLIDE_ID] || (course as any)?.coverFloatingMedia || []).length > 0
                                      }
                                      onImageUpload={!isLearnerPlayer ? (url) => {
                                        pushUndo();
-                                       setCourse((prev: any) => applyCoverMediaPatch(prev, { coverImage: url }));
+                                       setCourse((prev: any) => applyCoverMediaPatch(prev, { coverImage: url, coverPanelHidden: false }));
                                        setCourseBg(url);
                                      } : undefined}
                                      onRemove={!isLearnerPlayer ? () => {
                                        pushUndo();
-                                       setCourse((prev: any) => applyCoverMediaPatch(prev, { coverImage: undefined }));
+                                       setCourse((prev: any) => applyCoverMediaPatch(prev, { coverImage: undefined, coverPanelHidden: true }));
                                        setCourseBg(null);
                                      } : undefined}
                                      onCrop={!isLearnerPlayer ? (url) => {
@@ -8031,6 +8095,7 @@ export default function App() {
                                      onPromoteToFloat={!isLearnerPlayer ? (info) => {
                                        promoteInFlowToFloat(info, null, (s) => ({ ...s, coverImage: undefined }));
                                      } : undefined}
+                                     onRegenerate={!isLearnerPlayer ? () => { void regenerateCoverImage(); } : undefined}
                                    />
                                  </div>
                                )}
@@ -10463,48 +10528,22 @@ export default function App() {
                           </div>
                           <button
                             disabled={isRegenSlideRunning || isGeneratingImages}
-                            onClick={async () => {
+                            onClick={() => {
                               if (!editingSlide || !course) return;
                               const slideSnapshot = editingSlide;
                               editingSlideRef.current = null;
                               setEditingSlide(null);
-                              setIsRegenSlideRunning(true);
-                              try {
-                                const nextTitle = (slideSnapshot.title || course.title || '').trim();
-                                pushUndo();
-                                setCourse((prev: any) => prev ? {
-                                  ...prev,
-                                  title: nextTitle || prev.title,
-                                  description: (slideSnapshot.content || prev.description || '').trim() || prev.description,
-                                } : prev);
-                                showDraftMessage('Updating title slide…');
-                                const { generateCourseCoverImage } = await import('./services/imageService');
-                                setIsGeneratingImages(true);
-                                try {
-                                  const cover = await generateCourseCoverImage(
-                                    nextTitle || course.title || 'Course',
-                                    slideSnapshot.content || course.description || ''
-                                  );
-                                  if (cover) {
-                                    setCourse((prev: any) => applyCoverMediaPatch(prev, { coverImage: cover, floatingMedia: [] }));
-                                    setFloatingImagesMap(prev => {
-                                      const next = { ...prev };
-                                      delete next[COVER_SLIDE_ID];
-                                      return next;
-                                    });
-                                    setCourseBg(cover);
-                                  }
-                                  showDraftMessage('Title slide updated ✓');
-                                } finally {
-                                  setIsGeneratingImages(false);
-                                }
-                              } catch (err: any) {
-                                console.error('[Edit Slide] Cover regenerate failed:', err);
-                                showDraftMessage(err?.message || 'Could not regenerate title slide.');
-                                alert(err?.message || 'Could not regenerate title slide.');
-                              } finally {
-                                setIsRegenSlideRunning(false);
-                              }
+                              const nextTitle = (slideSnapshot.title || course.title || '').trim();
+                              pushUndo();
+                              setCourse((prev: any) => prev ? {
+                                ...prev,
+                                title: nextTitle || prev.title,
+                                description: (slideSnapshot.content || prev.description || '').trim() || prev.description,
+                              } : prev);
+                              void regenerateCoverImage({
+                                title: nextTitle || course.title || 'Course',
+                                description: slideSnapshot.content || course.description || '',
+                              });
                             }}
                             className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-sm transition-all disabled:opacity-50"
                           >

@@ -316,8 +316,17 @@ test('cover floats stamp onto course.coverFloatingMedia and restore on load', ()
   const deleted = applyCoverMediaPatch(stamped, { coverImage: undefined, floatingMedia: [] });
   assert.equal('coverImage' in deleted, false);
   assert.equal('coverFloatingMedia' in deleted, false);
+  assert.equal(deleted.coverPanelHidden, true);
+
+  const shown = applyCoverMediaPatch(deleted, { coverImage: 'new.png', coverPanelHidden: false });
+  assert.equal(shown.coverImage, 'new.png');
+  assert.equal('coverPanelHidden' in shown, false);
 
   const app = src('src/App.tsx');
   assert.match(app, /applyCoverMediaPatch/);
   assert.match(app, /COVER_SLIDE_ID/);
+  assert.match(app, /coverPanelHidden/);
+  assert.match(app, /regenerateCoverImage/);
+  assert.match(app, /Regenerate cover image/);
+  assert.doesNotMatch(app, /alert\(err\?\.message \|\| 'Could not regenerate title slide\.'\)/);
 });

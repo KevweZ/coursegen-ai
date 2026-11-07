@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { isApiColdStart } from './apiWarmup.ts';
+import { isApiColdStart, PREVIEW_API_KEEPWARM_MS } from './apiWarmup.ts';
 import { finishImageGenProgress } from './imageGenProgress.ts';
 
 function src(rel: string): string {
@@ -33,14 +33,19 @@ test('image client retries cold starts after warming the API; cover waits on the
   const images = src('src/services/imageService.ts');
   assert.match(images, /isApiColdStart/);
   assert.match(images, /waitForApiWarm/);
+  assert.match(images, /No image returned/);
   const deny = images.indexOf('isImageAuthOrCreditStop(err)');
   const cold = images.indexOf('isApiColdStart(err)');
+  const empty = images.indexOf("No image returned");
   const rateLimit = images.indexOf("err?.status === 429");
   assert.ok(deny >= 0 && cold > deny, 'credit denials must not fall through to cold-start wait');
-  assert.ok(cold >= 0 && rateLimit > cold, 'cold start retries before the 429 retry');
+  assert.ok(cold >= 0 && empty > cold, 'empty model responses retry after cold start');
+  assert.ok(empty >= 0 && rateLimit > empty, 'empty-image retry before the 429 retry');
 
   const app = src('src/App.tsx');
   const cover = app.slice(app.indexOf('setProgress(56)'), app.indexOf('setProgress(72)'));
   assert.match(cover, /waitForApiWarm/);
   assert.match(cover, /generateCourseCoverImage/);
+  assert.match(app, /startPreviewApiKeepWarm/);
+  assert.ok(PREVIEW_API_KEEPWARM_MS >= 60_000);
 });

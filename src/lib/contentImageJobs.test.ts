@@ -266,13 +266,20 @@ test('cover photo uses the same Crop / Move / Delete chrome as other images', ()
   assert.match(title, /onPromoteToFloat/);
   assert.match(title, /onRemove/);
   assert.match(title, /onCrop/);
+  assert.match(title, /onRegenerate/);
   assert.match(title, /object-cover/);
+  assert.match(title, /Remove cover panel/);
   assert.doesNotMatch(title, /Click to replace image/);
+
+  const enlarge = src('src/components/player/EnlargeableImage.tsx');
+  assert.match(enlarge, /onRegenerate/);
+  assert.match(enlarge, /Regenerate AI image/);
 
   const app = src('src/App.tsx');
   assert.match(app, /CourseTitleSlide[\s\S]*onRemove=\{!isLearnerPlayer/);
   assert.match(app, /CourseTitleSlide[\s\S]*onCrop=\{!isLearnerPlayer/);
   assert.match(app, /CourseTitleSlide[\s\S]*onPromoteToFloat=\{!isLearnerPlayer/);
+  assert.match(app, /CourseTitleSlide[\s\S]*onRegenerate=\{!isLearnerPlayer/);
   assert.match(app, /coverFloatingMedia/);
   assert.match(app, /isCoverAuthoringSlide/);
   assert.doesNotMatch(
