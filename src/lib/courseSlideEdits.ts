@@ -499,8 +499,8 @@ export function applySyntheticChromeSave(
   const title = String(slide.title || '').trim();
   if (!id || !title) return course;
   if (id === COVER_SLIDE_ID) {
-    if (course.title === title) return course;
-    return { ...course, title };
+    if (course.title === title && course.titleIsAuthored) return course;
+    return { ...course, title, titleIsAuthored: true };
   }
   const moduleCover = /^__module-cover-(\d+)__$/.exec(id);
   if (moduleCover) {

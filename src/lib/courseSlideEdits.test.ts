@@ -200,6 +200,7 @@ test('Edit Slide Save writes the Course Introduction title onto course.title', (
     title: 'Ethylene and Propylene Chemistry',
   });
   assert.equal(next.title, 'Ethylene and Propylene Chemistry');
+  assert.equal(next.titleIsAuthored, true);
   assert.equal(next.modules[0].title, 'Polyethylene Types');
 
   const moduleNext = applySyntheticChromeSave(course, {
@@ -212,6 +213,9 @@ test('Edit Slide Save writes the Course Introduction title onto course.title', (
   const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
   assert.match(app, /applySyntheticChromeSave/);
   assert.match(app, /isSyntheticSlideId\(latest\.id\)/);
+  assert.match(app, /verbatimTitle=\{!!\(course as any\)\?\.titleIsAuthored\}/);
+  const hydrateLock = readFileSync(resolve(process.cwd(), '.cursor/rules/hydrate-quality-lock.mdc'), 'utf8');
+  assert.match(hydrateLock, /Authored titles stay verbatim/);
 });
 
 test('Edit menu exposes Move up / Move down for authoring slides', () => {

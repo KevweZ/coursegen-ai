@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Camera, ImageOff, Loader2, RefreshCw, X } from 'lucide-react';
-import { shortenCourseTitle, splitCourseTitle } from '../../lib/splitCourseTitle';
+import { courseTitleForDisplay } from '../../lib/splitCourseTitle';
 import { EnlargeableImage, type InFlowPromoteInfo } from './EnlargeableImage';
 
 type Theme = 'light' | 'dark' | 'unified';
@@ -11,6 +11,8 @@ interface CourseTitleSlideProps {
   description?: string;
   /** AI-generated (or user-uploaded) cover — never a stock photo archive fallback */
   coverImage?: string;
+  /** Author typed this title in Edit Slide — do not strip lead-ins like “Overview of”. */
+  verbatimTitle?: boolean;
   accentColor?: string;
   theme: Theme;
   onImageUpload?: (url: string) => void;
@@ -65,6 +67,7 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
   title,
   description,
   coverImage,
+  verbatimTitle = false,
   accentColor,
   theme,
   onImageUpload,
@@ -84,7 +87,7 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
   const descColor = THEME_DESC_COLOR[theme];
   const stripBg  = THEME_STRIP[theme];
 
-  const { primary, secondary, secondaryFirst } = splitCourseTitle(shortenCourseTitle(title));
+  const { primary, secondary, secondaryFirst } = courseTitleForDisplay(title, verbatimTitle);
   const [hovering, setHovering] = useState(false);
 
   const canReplace = typeof onImageUpload === 'function';

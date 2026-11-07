@@ -5,6 +5,8 @@ export interface TerminalObjectiveGroup {
 
 export interface CourseOutline {
   title: string;
+  /** Author typed this cover title in Edit Slide — skip shorten/lead-in rewrite. */
+  titleIsAuthored?: boolean;
   description: string;
   learningObjectives: (string | TerminalObjectiveGroup)[];
   modules: Module[];

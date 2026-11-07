@@ -8064,6 +8064,7 @@ export default function App() {
                                    <CourseTitleSlide
                                      title={currentSlide.title}
                                      description={currentSlide.content || undefined}
+                                     verbatimTitle={!!(course as any)?.titleIsAuthored}
                                      coverImage={(currentSlide as any).coverImage || (course as any)?.coverImage || undefined}
                                      theme={theme}
                                      isPreviewMode={!isLearnerPlayer}
@@ -8194,6 +8195,7 @@ export default function App() {
                                  <div className="w-full h-full">
                                    <HubMenuSlide
                                      courseTitle={course?.title || ''}
+                                     titleIsAuthored={!!(course as any)?.titleIsAuthored}
                                      coverImage={(course as any)?.coverImage || courseBg || null}
                                      modules={(course?.modules || []).map((m: any, i: number) => ({
                                        number: i + 1,

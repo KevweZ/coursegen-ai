@@ -282,7 +282,9 @@ export function sanitizeCourseTitles(course: any, opts?: TitleSanitizeOpts): any
     ...(course.modules || []).map((m: any) => m?.title),
   );
   const merged = { ...gloss, ...(opts?.glossary || {}) };
-  const title = shortenCourseTitle(course.title || '', { glossary: merged });
+  const title = course.titleIsAuthored
+    ? String(course.title || '').replace(/\s+/g, ' ').trim()
+    : shortenCourseTitle(course.title || '', { glossary: merged });
   const description = course.description
     ? expandFirstAcronymMentions(course.description, merged)
     : course.description;
@@ -428,4 +430,17 @@ export function splitCourseTitle(title: string): SplitCourseTitle {
   }
 
   return asHeadline(t);
+}
+
+/** Generated covers still go through shorten + split. Author-typed titles render verbatim. */
+export function courseTitleForDisplay(title: string, verbatim?: boolean): SplitCourseTitle {
+  const t = String(title || '').replace(/\s+/g, ' ').trim();
+  if (verbatim) return asHeadline(t);
+  return splitCourseTitle(shortenCourseTitle(t));
+}
+
+export function courseTitlePlain(title: string, verbatim?: boolean): string {
+  const t = String(title || '').replace(/\s+/g, ' ').trim();
+  if (verbatim) return t;
+  return shortenCourseTitle(t);
 }

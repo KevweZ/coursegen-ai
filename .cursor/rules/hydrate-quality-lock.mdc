@@ -9,7 +9,7 @@ These were already fixed once and leaked back after unrelated hydrate/KC work. *
 
 ## Invariants (code, not prompts)
 
-- **Cover title:** at most 8 words. No unexplained acronyms (`PE`, `PP`). `shortenCourseTitle` after file analysis and outline. Prefer a simple subject (`Polymers: Chemistry and Processes`) over packing expansions into the cover.
+- **Cover title:** at most 8 words. No unexplained acronyms (`PE`, `PP`). `shortenCourseTitle` after file analysis and outline. Prefer a simple subject (`Polymers: Chemistry and Processes`) over packing expansions into the cover. **Authored titles stay verbatim** (`titleIsAuthored` from Edit Slide Save). Do not strip “Overview of” / similar lead-ins on a title the author typed.
 - **Module title:** short topic label, no Bloom gerunds, spell out acronyms (`Polyethylene Types` not `PE Types`). `shortenModuleTitle` after outline coverage. Player/cover/module slides apply the same helpers so existing drafts fix without regenerate.
 - **First mention:** course description expands the first acronym to `Full term (XX)` via `expandFirstAcronymMentions`. Later mentions may stay abbreviated. Do not put bare PE/PP on the cover or module-title page.
 - **Markdown glyphs:** `**bold**` and `###` never show as raw symbols. Choice-card body/reveal/prompt go through `markdownToHtml`. Quiz options and other plain-text surfaces use `stripMarkdownArtifacts`.

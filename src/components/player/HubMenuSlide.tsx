@@ -1,6 +1,6 @@
 import React from 'react';
 import { CheckCircle2, Lock, GraduationCap, LayoutGrid } from 'lucide-react';
-import { shortenCourseTitle, shortenModuleTitle } from '../../lib/splitCourseTitle';
+import { courseTitlePlain, shortenModuleTitle } from '../../lib/splitCourseTitle';
 
 type Theme = 'light' | 'dark' | 'unified';
 
@@ -12,6 +12,7 @@ export interface HubModuleRow {
 
 interface Props {
   courseTitle: string;
+  titleIsAuthored?: boolean;
   coverImage?: string | null;
   modules: HubModuleRow[];
   theme: Theme;
@@ -42,6 +43,7 @@ const MUTED: Record<Theme, string> = {
 
 export const HubMenuSlide: React.FC<Props> = ({
   courseTitle,
+  titleIsAuthored = false,
   coverImage,
   modules,
   theme,
@@ -66,7 +68,7 @@ export const HubMenuSlide: React.FC<Props> = ({
           Main Menu
         </p>
         <h1 className="font-extrabold leading-tight tracking-tight text-[clamp(1.6rem,3.4vw,2.4rem)] mb-2" style={{ color: ink }}>
-          {shortenCourseTitle(courseTitle || 'Course')}
+          {courseTitlePlain(courseTitle || 'Course', titleIsAuthored)}
         </h1>
         <p className="text-sm mb-6" style={{ color: muted }}>
           {doneCount} of {modules.length} module{modules.length === 1 ? '' : 's'} complete

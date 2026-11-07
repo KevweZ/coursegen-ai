@@ -8,6 +8,7 @@ import {
   shortenCourseTitle,
   shortenModuleTitle,
   splitCourseTitle,
+  courseTitleForDisplay,
 } from './splitCourseTitle.ts';
 import { markdownToHtml } from './markdownInline.ts';
 import {
@@ -39,6 +40,21 @@ test('cover headline stays fully bold unless a colon or lead-in marks a subtitle
   const lead = splitCourseTitle('Introduction to Polymer Chemistry');
   assert.match(lead.primary.replace(/\u00a0/g, ' '), /Polymer Chemistry/);
   assert.match(lead.secondary.replace(/\u00a0/g, ' '), /Introduction to/i);
+});
+
+test('author-typed cover titles keep Overview of / eLearning verbatim', () => {
+  assert.equal(shortenCourseTitle('Overview of Polymers eLearning'), 'Polymers eLearning');
+  const authored = courseTitleForDisplay('Overview of Polymers eLearning', true);
+  assert.equal(authored.secondary, '');
+  assert.match(authored.primary.replace(/\u00a0/g, ' '), /Overview of Polymers eLearning/);
+
+  const kept = sanitizeCourseTitles({
+    title: 'Overview of Polymers eLearning',
+    titleIsAuthored: true,
+    description: 'Keep.',
+    modules: [{ title: 'Polyethylene Types', slides: [] }],
+  });
+  assert.equal(kept.title, 'Overview of Polymers eLearning');
 });
 
 test('cover titles drop Introduction-to laundry lists and stay at most 8 words', () => {
