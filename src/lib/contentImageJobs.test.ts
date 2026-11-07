@@ -286,4 +286,9 @@ test('cover photo uses the same Crop / Move / Delete chrome as other images', ()
     app,
     /This slide type does not get AI images \(quizzes, objectives, covers\)/,
   );
+
+  const hub = src('src/components/player/HubMenuSlide.tsx');
+  assert.match(hub, /EnlargeableImage/);
+  assert.match(hub, /Swap backdrop/);
+  assert.match(app, /HubMenuSlide[\s\S]*onPickBackdrop=\{!isLearnerPlayer/);
 });

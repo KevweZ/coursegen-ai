@@ -14,6 +14,10 @@ export interface CourseOutline {
   visualTheme?: string;
   examConfig?: ExamConfig;
   navigationMode?: NavigationMode;
+  /** Persisted Main Menu still from the theme archive (or an author crop/upload). */
+  hubImage?: string;
+  hubPanelHidden?: boolean;
+  hubFloatingMedia?: FloatingImage[];
 }
 
 export interface CourseSettings {

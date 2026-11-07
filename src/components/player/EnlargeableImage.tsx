@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Crop, Maximize2, Move, RefreshCw, Trash2, X } from 'lucide-react';
+import { Crop, Images, Maximize2, Move, RefreshCw, Trash2, X } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { ImageCropModal } from '../FloatingImageCanvas';
 
@@ -72,6 +72,8 @@ interface EnlargeableImageProps {
   /** Authoring: request a new AI image for this slot (cover / this-slide). */
   onRegenerate?: () => void;
   regenerating?: boolean;
+  /** Authoring: pick another still from the theme archive (Main Menu). */
+  onSwap?: () => void;
 }
 
 /**
@@ -89,12 +91,13 @@ export const EnlargeableImage: React.FC<EnlargeableImageProps> = ({
   onPromoteToFloat,
   onRegenerate,
   regenerating = false,
+  onSwap,
 }) => {
   const [open, setOpen] = useState(false);
   const [cropOpen, setCropOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
-  const authoring = !!(onRemove || onCrop || onPromoteToFloat || onRegenerate);
+  const authoring = !!(onRemove || onCrop || onPromoteToFloat || onRegenerate || onSwap);
 
   useEffect(() => {
     if (!open) return;
@@ -127,6 +130,21 @@ export const EnlargeableImage: React.FC<EnlargeableImageProps> = ({
             className="absolute top-2 right-2 z-[2] flex items-center gap-1"
             data-ai-image-edit="toolbar"
           >
+            {onSwap && (
+              <button
+                type="button"
+                title="Swap backdrop"
+                aria-label="Swap backdrop"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSwap();
+                }}
+                className="flex items-center gap-1 h-7 px-2 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+              >
+                <Images className="w-3.5 h-3.5 shrink-0" />
+                <span className="text-[10px] font-semibold pr-0.5">Swap</span>
+              </button>
+            )}
             {onRegenerate && (
               <button
                 type="button"

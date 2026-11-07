@@ -204,7 +204,7 @@ export function mimeForAssetPath(path: string, type?: string): string {
   if (isAudioAssetPath(path) || t.includes('mpeg') || t.includes('mp3') || t.includes('audio')) {
     return 'audio/mpeg';
   }
-  if (t.includes('png') || /coverImage|imageUrl|\.png/i.test(path)) return 'image/png';
+  if (t.includes('png') || /coverImage|hubImage|imageUrl|\.png/i.test(path)) return 'image/png';
   if (t.includes('jpeg') || t.includes('jpg') || /\.jpe?g/i.test(path)) return 'image/jpeg';
   if (t.includes('gif')) return 'image/gif';
   if (t.includes('webp')) return 'image/webp';

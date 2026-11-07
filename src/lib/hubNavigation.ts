@@ -1,4 +1,6 @@
-import { HUB_SLIDE_ID } from './interactionGate';
+import { HUB_SLIDE_ID, isHubNavigation } from './interactionGate';
+import { pickStableBackground } from './backgrounds';
+import { hasPlayableImageUrl } from './draftMedia';
 
 export { HUB_SLIDE_ID };
 
@@ -74,4 +76,24 @@ export function isFirstSlideOfModule(slides: AnySlide[], index: number): boolean
   if (!n) return false;
   const range = moduleIndexRange(slides, n);
   return !!range && index === range.start;
+}
+
+/**
+ * Stamp one theme-archive still onto the Main Menu and keep it.
+ * Do not call getRandomBackgroundForTheme here — that is what made the
+ * menu photo change every time a draft was reopened.
+ */
+export function ensureHubImage(course: any, navigationMode?: string): any {
+  if (!course) return course;
+  const nav = navigationMode || course.navigationMode;
+  if (!isHubNavigation(nav)) return course;
+  if (course.hubPanelHidden) return course;
+  if (hasPlayableImageUrl(course.hubImage)) return course;
+  if (Array.isArray(course.hubFloatingMedia) && course.hubFloatingMedia.length) return course;
+  const url = pickStableBackground(
+    course.visualTheme,
+    `${course.title || ''}|${course.visualTheme || ''}`,
+  );
+  if (!url) return course;
+  return { ...course, hubImage: url };
 }

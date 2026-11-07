@@ -336,6 +336,9 @@ export function mergeBackgroundCourseSnapshot(prev: any, next: any) {
   return {
     ...prev,
     coverImage: prev.coverImage || next.coverImage,
+    hubImage: prev.hubImage || next.hubImage,
+    hubPanelHidden: prev.hubPanelHidden ?? next.hubPanelHidden,
+    hubFloatingMedia: (prev.hubFloatingMedia?.length ? prev.hubFloatingMedia : next.hubFloatingMedia) || prev.hubFloatingMedia,
     modules: (prev.modules || []).map((m: any) => ({
       ...m,
       slides: (m.slides || []).map((s: any) => {
@@ -375,6 +378,9 @@ export function mergeCoursePreservingAudio(prev: any, next: any) {
   return {
     ...next,
     coverImage: next.coverImage || prev.coverImage,
+    hubImage: next.hubImage || prev.hubImage,
+    hubPanelHidden: next.hubPanelHidden ?? prev.hubPanelHidden,
+    hubFloatingMedia: (next.hubFloatingMedia?.length ? next.hubFloatingMedia : prev.hubFloatingMedia) || next.hubFloatingMedia,
     modules: (next.modules || []).map((m: any) => ({
       ...m,
       slides: (m.slides || []).map((s: any) => {

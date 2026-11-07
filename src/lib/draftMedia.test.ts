@@ -19,7 +19,9 @@ import { ensureUniqueSlideIds } from './courseSlideEdits.ts';
 import { harvestClipBelongsToSlide } from './narrationCache.ts';
 import {
   COVER_SLIDE_ID,
+  HUB_SLIDE_ID,
   applyCoverMediaPatch,
+  applyHubMediaPatch,
   floatingMapFromCourse,
   omitUndefinedDeep,
   stampFloatingMediaOnCourse,
@@ -329,4 +331,23 @@ test('cover floats stamp onto course.coverFloatingMedia and restore on load', ()
   assert.match(app, /regenerateCoverImage/);
   assert.match(app, /Regenerate cover image/);
   assert.doesNotMatch(app, /alert\(err\?\.message \|\| 'Could not regenerate title slide\.'\)/);
+});
+
+test('hub floats stamp onto course.hubFloatingMedia and restore on load', () => {
+  const course = {
+    hubImage: '/eLearning Template Backgrounds/Neutral/blue door.jpg',
+    hubFloatingMedia: [],
+    modules: [{ slides: [] }],
+  };
+  const stamped = stampFloatingMediaOnCourse(course, {
+    [HUB_SLIDE_ID]: [{ id: 'fi-hub', url: course.hubImage, x: 640, y: 0, width: 520, height: 720 }],
+  });
+  assert.equal(stamped.hubFloatingMedia[0].id, 'fi-hub');
+  const map = floatingMapFromCourse(stamped);
+  assert.equal(map[HUB_SLIDE_ID][0].width, 520);
+
+  const deleted = applyHubMediaPatch(stamped, { hubImage: undefined, floatingMedia: [] });
+  assert.equal('hubImage' in deleted, false);
+  assert.equal('hubFloatingMedia' in deleted, false);
+  assert.equal(deleted.hubPanelHidden, true);
 });

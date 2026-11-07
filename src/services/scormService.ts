@@ -1,6 +1,7 @@
 import JSZip from 'jszip';
 import { CourseOutline } from '../types/course';
 import { urlToDataUrl } from './ttsService';
+import { isThemeBackgroundUrl } from '../lib/backgrounds';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -56,6 +57,13 @@ async function persistBlobsForExport(value: any): Promise<any> {
       return await urlToDataUrl(value);
     } catch {
       return undefined;
+    }
+  }
+  if (typeof value === 'string' && isThemeBackgroundUrl(value)) {
+    try {
+      return await urlToDataUrl(value);
+    } catch {
+      return value;
     }
   }
   if (Array.isArray(value)) {

@@ -1,6 +1,8 @@
-import React from 'react';
-import { CheckCircle2, Lock, GraduationCap, LayoutGrid } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { CheckCircle2, Images, LayoutGrid, Lock, GraduationCap, Upload, X } from 'lucide-react';
 import { courseTitlePlain, shortenModuleTitle } from '../../lib/splitCourseTitle';
+import { themeBackgroundImages } from '../../lib/backgrounds';
+import { EnlargeableImage, type InFlowPromoteInfo } from './EnlargeableImage';
 
 type Theme = 'light' | 'dark' | 'unified';
 
@@ -13,7 +15,8 @@ export interface HubModuleRow {
 interface Props {
   courseTitle: string;
   titleIsAuthored?: boolean;
-  coverImage?: string | null;
+  imageUrl?: string | null;
+  visualTheme?: string;
   modules: HubModuleRow[];
   theme: Theme;
   accentColor?: string;
@@ -21,6 +24,14 @@ interface Props {
   quizUnlocked: boolean;
   onSelectModule: (moduleNumber: number) => void;
   onSelectQuiz?: () => void;
+  isPreviewMode?: boolean;
+  hubPanelHidden?: boolean;
+  hasFloatingHub?: boolean;
+  onImageUpload?: (url: string) => void;
+  onRemove?: () => void;
+  onCrop?: (dataUrl: string) => void;
+  onPromoteToFloat?: (info: InFlowPromoteInfo) => void;
+  onPickBackdrop?: (url: string) => void;
 }
 
 const LEFT_BG: Record<Theme, string> = {
@@ -44,7 +55,8 @@ const MUTED: Record<Theme, string> = {
 export const HubMenuSlide: React.FC<Props> = ({
   courseTitle,
   titleIsAuthored = false,
-  coverImage,
+  imageUrl,
+  visualTheme,
   modules,
   theme,
   accentColor = '#4f46e5',
@@ -52,11 +64,33 @@ export const HubMenuSlide: React.FC<Props> = ({
   quizUnlocked,
   onSelectModule,
   onSelectQuiz,
+  isPreviewMode = false,
+  hubPanelHidden = false,
+  hasFloatingHub = false,
+  onImageUpload,
+  onRemove,
+  onCrop,
+  onPromoteToFloat,
+  onPickBackdrop,
 }) => {
   const leftBg = LEFT_BG[theme];
   const ink = INK[theme];
   const muted = MUTED[theme];
   const doneCount = modules.filter(m => m.complete).length;
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const canAuthor = isPreviewMode && !!(onRemove || onCrop || onPromoteToFloat || onPickBackdrop || onImageUpload);
+  const displayImage = hubPanelHidden ? null : (imageUrl || null);
+  const backdrops = themeBackgroundImages(visualTheme);
+  const neutral = visualTheme && visualTheme !== 'Neutral' ? themeBackgroundImages('Neutral') : [];
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    onImageUpload?.(url);
+    setPickerOpen(false);
+  };
 
   return (
     <div className="w-full h-full flex flex-row overflow-hidden">
@@ -136,22 +170,165 @@ export const HubMenuSlide: React.FC<Props> = ({
       <div
         className="flex-1 relative overflow-hidden"
         style={{
-          background: coverImage
+          background: displayImage
             ? undefined
             : `linear-gradient(135deg, ${accentColor}55 0%, #0f172a 55%, #1e293b 100%)`,
         }}
       >
-        {coverImage ? (
-          <img src={coverImage} alt="" className="w-full h-full object-cover" />
-        ) : (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-white/80">
+        {displayImage ? (
+          <EnlargeableImage
+            src={displayImage}
+            alt="Main Menu backdrop"
+            wrapperClassName="w-full h-full"
+            className="w-full h-full object-cover"
+            onRemove={canAuthor ? onRemove : undefined}
+            onCrop={canAuthor ? onCrop : undefined}
+            onPromoteToFloat={canAuthor ? onPromoteToFloat : undefined}
+            onSwap={canAuthor && onPickBackdrop ? () => setPickerOpen(true) : undefined}
+          />
+        ) : hasFloatingHub ? null : (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-white/80 px-6 text-center">
             <LayoutGrid className="w-12 h-12 opacity-70" />
             <p className="text-sm font-semibold">Choose a module to continue</p>
+            {canAuthor && (
+              <p className="text-white/50 text-xs max-w-[14rem]">
+                Swap a theme backdrop, or upload your own photo
+              </p>
+            )}
           </div>
         )}
+
+        {canAuthor && !displayImage && (
+          <div className="absolute top-2 right-2 z-[3] flex items-center gap-1">
+            {onPickBackdrop && (
+              <button
+                type="button"
+                title="Swap backdrop"
+                aria-label="Swap backdrop"
+                onClick={() => setPickerOpen(true)}
+                className="flex items-center gap-1 h-7 px-2 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white shadow"
+              >
+                <Images className="w-3.5 h-3.5 shrink-0" />
+                <span className="text-[10px] font-semibold pr-0.5">Swap</span>
+              </button>
+            )}
+            {onImageUpload && (
+              <button
+                type="button"
+                title="Upload image"
+                aria-label="Upload image"
+                onClick={() => fileRef.current?.click()}
+                className="flex items-center justify-center w-7 h-7 rounded-full bg-slate-900/70 hover:bg-slate-800 text-white shadow"
+              >
+                <Upload className="w-3.5 h-3.5" />
+              </button>
+            )}
+            {onRemove && !hubPanelHidden && (
+              <button
+                type="button"
+                title="Remove menu panel"
+                aria-label="Remove menu panel"
+                onClick={onRemove}
+                className="flex items-center justify-center w-7 h-7 rounded-full bg-red-500 hover:bg-red-400 text-white shadow"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        )}
+
+        {pickerOpen && canAuthor && onPickBackdrop && (
+          <div className="absolute inset-0 z-[4] flex flex-col bg-slate-950/80 backdrop-blur-[2px] p-3">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[11px] font-black uppercase tracking-wider text-white/80">
+                Theme backdrops
+              </p>
+              <button
+                type="button"
+                aria-label="Close backdrop picker"
+                onClick={() => setPickerOpen(false)}
+                className="flex items-center justify-center w-7 h-7 rounded-full bg-white/10 text-white hover:bg-white/20"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-3 pr-1">
+              <BackdropGrid
+                urls={backdrops}
+                selected={displayImage}
+                onPick={(url) => {
+                  onPickBackdrop(url);
+                  setPickerOpen(false);
+                }}
+              />
+              {neutral.length > 0 && (
+                <>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-white/55 pt-1">Neutral</p>
+                  <BackdropGrid
+                    urls={neutral}
+                    selected={displayImage}
+                    onPick={(url) => {
+                      onPickBackdrop(url);
+                      setPickerOpen(false);
+                    }}
+                  />
+                </>
+              )}
+            </div>
+            {onImageUpload && (
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                className="mt-2 flex items-center justify-center gap-2 h-8 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs font-semibold"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                Upload your own
+              </button>
+            )}
+          </div>
+        )}
+
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleFileChange}
+        />
       </div>
     </div>
   );
 };
+
+function BackdropGrid({
+  urls,
+  selected,
+  onPick,
+}: {
+  urls: string[];
+  selected?: string | null;
+  onPick: (url: string) => void;
+}) {
+  return (
+    <div className="grid grid-cols-3 gap-1.5">
+      {urls.map((url) => {
+        const active = url === selected;
+        return (
+          <button
+            key={url}
+            type="button"
+            title="Use this backdrop"
+            onClick={() => onPick(url)}
+            className={`relative overflow-hidden rounded-md aspect-[4/3] ring-2 ${
+              active ? 'ring-emerald-400' : 'ring-transparent hover:ring-white/40'
+            }`}
+          >
+            <img src={url} alt="" className="w-full h-full object-cover" />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 export default HubMenuSlide;

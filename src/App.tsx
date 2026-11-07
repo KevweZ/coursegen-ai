@@ -171,7 +171,7 @@ import { assessExtract, type ExtractQuality } from './lib/extractQuality';
 import { reformatObjectiveGroups } from './lib/objectiveFormat';
 import { generateGameTemplate, generateStandaloneGame } from './services/aiGameService';
 import { GameContainer } from './components/game-templates/core/GameContainer';
-import { getRandomBackgroundForTheme } from './lib/backgrounds';
+import { getRandomBackgroundForTheme, nextThemeBackground } from './lib/backgrounds';
 import { getPresetOptions, getPresetConfig } from './lib/presetEngine';
 import { GameTemplateType } from './types/game';
 import {
@@ -267,7 +267,7 @@ import { TrialInvitePanel } from './components/TrialInvitePanel';
 
 import { FloatingImage } from './types/course';
 import { floatingFromFile } from './lib/floatingMedia';
-import { COVER_SLIDE_ID, applyCoverMediaPatch, isCoverAuthoringSlide, stripCourseAutoPromotedFloating, floatingMapFromCourse, omitUndefinedDeep, stampFloatingMediaOnCourse } from './lib/promoteSlideImages';
+import { COVER_SLIDE_ID, applyCoverMediaPatch, applyHubMediaPatch, isCoverAuthoringSlide, isHubAuthoringSlide, stripCourseAutoPromotedFloating, floatingMapFromCourse, omitUndefinedDeep, stampFloatingMediaOnCourse } from './lib/promoteSlideImages';
 import { sanitizeCourseTitles } from './lib/splitCourseTitle';
 import {
   HUB_SLIDE_ID,
@@ -278,6 +278,7 @@ import {
 } from './lib/interactionGate';
 import {
   allContentModulesComplete,
+  ensureHubImage,
   hubSlideIndex,
   isFirstSlideOfModule,
   moduleIndexRange,
@@ -1413,7 +1414,7 @@ export default function App() {
 
         // Remove auto-promoted floating overlays that broke tab layouts
         try {
-          const cleaned = sanitizeCourseTitles(stripCourseAutoPromotedFloating(working));
+          const cleaned = ensureHubImage(sanitizeCourseTitles(stripCourseAutoPromotedFloating(working)), navigationMode);
           const fmap = floatingMapFromCourse(cleaned);
           setFloatingImagesMap(fmap);
           if (cleaned !== working) {
@@ -3251,7 +3252,10 @@ export default function App() {
   // and rewrite PE/PP-style cover/module titles on existing drafts.
   useEffect(() => {
     if (step !== 'preview' || !course?.modules || isLearnerPlayer) return;
-    const cleaned = sanitizeCourseTitles(stripCourseAutoPromotedFloating(dedupeIdenticalModuleSlides(course)));
+    const cleaned = ensureHubImage(
+      sanitizeCourseTitles(stripCourseAutoPromotedFloating(dedupeIdenticalModuleSlides(course))),
+      navigationMode,
+    );
     const hadPromoInCourse = cleaned !== course;
 
     setFloatingImagesMap(prev => {
@@ -3269,8 +3273,8 @@ export default function App() {
     if (hadPromoInCourse) {
       setCourse(cleaned);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- heal once when preview opens / course shell changes
-  }, [step, course?.title, course?.modules?.length]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- heal when preview opens / hub nav changes
+  }, [step, course?.title, course?.modules?.length, navigationMode]);
 
   const clearColdStartCountdown = () => {
     if (coldStartTimerRef.current) {
@@ -4175,7 +4179,7 @@ export default function App() {
       ? rawObjectives
       : reformatObjectivesClientSide(rawObjectives, objectiveFormatSnap);
     setLearningObjectives(formattedObjectives);
-    const stamped = ensureUniqueSlideIds(applyVerticalTabPresentation({
+    const stamped = ensureHubImage(ensureUniqueSlideIds(applyVerticalTabPresentation({
       ...finalCourse,
       examConfig: examConfigSnap,
       navigationMode: navigationModeSnap,
@@ -4193,7 +4197,7 @@ export default function App() {
       wellColor: verticalTabWellColorSnap,
       processSkin: processSkinSnap,
       processShowStepLabels: processShowStepLabelsSnap,
-    }));
+    })), navigationModeSnap);
     setCourse(stamped);
     setOriginalCourse(stamped);
     clearNarrationCache();
@@ -5283,7 +5287,7 @@ export default function App() {
     try {
       const { persistCourseAudioUrls, persistSyntheticAudioMap } = await import('./services/ttsService');
       const packagedCourse = stampFloatingMediaOnCourse(
-        await persistCourseAudioUrls(course),
+        ensureHubImage(await persistCourseAudioUrls(course), navigationMode),
         floatingImagesMap,
       );
       const packagedSynth = await persistSyntheticAudioMap(syntheticAudioMap || {});
@@ -5365,6 +5369,14 @@ export default function App() {
         ...('floatingMedia' in updates ? { floatingMedia: updates.floatingMedia } : {}),
       }));
       if ('coverImage' in updates) setCourseBg(updates.coverImage || null);
+      return;
+    }
+    if (id === HUB_SLIDE_ID) {
+      setCourse(prev => applyHubMediaPatch(prev, {
+        ...('hubImage' in updates ? { hubImage: updates.hubImage } : {}),
+        ...('imageUrl' in updates ? { hubImage: updates.imageUrl } : {}),
+        ...('floatingMedia' in updates ? { floatingMedia: updates.floatingMedia } : {}),
+      }));
       return;
     }
     setCourse(prev => {
@@ -5712,7 +5724,9 @@ export default function App() {
       tabId,
     };
     pushUndo();
-    const floatId = isCoverAuthoringSlide(currentSlide) ? COVER_SLIDE_ID : slideId;
+    const floatId = isCoverAuthoringSlide(currentSlide) || isHubAuthoringSlide(currentSlide)
+      ? (isHubAuthoringSlide(currentSlide) ? HUB_SLIDE_ID : COVER_SLIDE_ID)
+      : slideId;
     setFloatingImagesMap(prev => ({ ...prev, [floatId]: [...(prev[floatId] || []), newImg] }));
     if (isCoverAuthoringSlide(currentSlide) || slideId === COVER_SLIDE_ID) {
       setCourse(prev => applyCoverMediaPatch(prev, {
@@ -5721,6 +5735,14 @@ export default function App() {
         floatingMedia: [...(prev?.coverFloatingMedia || []), newImg],
       }));
       setCourseBg(null);
+      return;
+    }
+    if (isHubAuthoringSlide(currentSlide) || slideId === HUB_SLIDE_ID) {
+      setCourse(prev => applyHubMediaPatch(prev, {
+        hubImage: undefined,
+        hubPanelHidden: false,
+        floatingMedia: [...(prev?.hubFloatingMedia || []), newImg],
+      }));
       return;
     }
     setCourse(prev => {
@@ -5750,6 +5772,15 @@ export default function App() {
         floatingMedia: next,
       }));
       setCourseBg(img.url);
+      return;
+    }
+    if (slideId === HUB_SLIDE_ID || isHubAuthoringSlide(currentSlide)) {
+      const hubNext = (floatingImagesMap[HUB_SLIDE_ID] || []).filter(i => i.id !== img.id);
+      setFloatingImagesMap(prev => ({ ...prev, [HUB_SLIDE_ID]: hubNext }));
+      setCourse(prev => applyHubMediaPatch(prev, {
+        hubImage: img.url,
+        floatingMedia: hubNext,
+      }));
       return;
     }
     setCourse(prev => {
@@ -7435,6 +7466,27 @@ export default function App() {
                                 <span className="text-slate-500 text-[10px]">Fill empty pictures on content slides (up to 14)</span>
                               </span>
                             </button>
+                            {isHubAuthoringSlide(currentSlide) && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const next = nextThemeBackground(
+                                    (course as any)?.visualTheme,
+                                    (course as any)?.hubImage,
+                                  );
+                                  if (!next) return;
+                                  pushUndo();
+                                  setCourse((prev: any) => applyHubMediaPatch(prev, { hubImage: next, hubPanelHidden: false }));
+                                }}
+                                className="w-full text-left px-3 py-2 hover:bg-slate-800 text-emerald-200 flex items-start gap-2"
+                              >
+                                <ImageIcon className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                                <span>
+                                  <span className="font-semibold block">Swap menu image</span>
+                                  <span className="text-slate-500 text-[10px]">Cycle the theme archive still on the Main Menu</span>
+                                </span>
+                              </button>
+                            )}
                             <button
                               type="button"
                               disabled={isGeneratingImages || !currentSlide?.id}
@@ -8196,7 +8248,13 @@ export default function App() {
                                    <HubMenuSlide
                                      courseTitle={course?.title || ''}
                                      titleIsAuthored={!!(course as any)?.titleIsAuthored}
-                                     coverImage={(course as any)?.coverImage || courseBg || null}
+                                     imageUrl={(course as any)?.hubImage || null}
+                                     visualTheme={(course as any)?.visualTheme}
+                                     hubPanelHidden={!!(course as any)?.hubPanelHidden}
+                                     hasFloatingHub={
+                                       (floatingImagesMap[HUB_SLIDE_ID] || (course as any)?.hubFloatingMedia || []).length > 0
+                                     }
+                                     isPreviewMode={!isLearnerPlayer}
                                      modules={(course?.modules || []).map((m: any, i: number) => ({
                                        number: i + 1,
                                        title: m.title || `Module ${i + 1}`,
@@ -8217,6 +8275,25 @@ export default function App() {
                                        setHighestVisitedIndex(prev => Math.max(prev, examIntroIndex));
                                        setCurrentSlideIndex(examIntroIndex);
                                      }}
+                                     onImageUpload={!isLearnerPlayer ? (url) => {
+                                       pushUndo();
+                                       setCourse((prev: any) => applyHubMediaPatch(prev, { hubImage: url, hubPanelHidden: false }));
+                                     } : undefined}
+                                     onRemove={!isLearnerPlayer ? () => {
+                                       pushUndo();
+                                       setCourse((prev: any) => applyHubMediaPatch(prev, { hubImage: undefined, hubPanelHidden: true }));
+                                     } : undefined}
+                                     onCrop={!isLearnerPlayer ? (url) => {
+                                       pushUndo();
+                                       setCourse((prev: any) => applyHubMediaPatch(prev, { hubImage: url }));
+                                     } : undefined}
+                                     onPromoteToFloat={!isLearnerPlayer ? (info) => {
+                                       promoteInFlowToFloat(info, null, (s) => ({ ...s, hubImage: undefined }));
+                                     } : undefined}
+                                     onPickBackdrop={!isLearnerPlayer ? (url) => {
+                                       pushUndo();
+                                       setCourse((prev: any) => applyHubMediaPatch(prev, { hubImage: url, hubPanelHidden: false }));
+                                     } : undefined}
                                    />
                                  </div>
                                )}

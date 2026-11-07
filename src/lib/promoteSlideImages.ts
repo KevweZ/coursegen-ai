@@ -7,9 +7,13 @@
  * uses `fi-${Date.now()}` (kept). Do not restore `fi-ai-` auto-promote.
  */
 import type { FloatingImage } from '../types/course';
+import { HUB_SLIDE_ID, isHubMenuSlide } from './interactionGate';
 
 /** Synthetic title slide — floats live on the course, not a module row. */
 export const COVER_SLIDE_ID = '__cover__';
+
+export { HUB_SLIDE_ID };
+export const isHubAuthoringSlide = isHubMenuSlide;
 
 /** Auto-promoted ids from the brief movable-image experiment */
 const PROMOTED_ID = /^(fi-promo-|fi-ai-|fi-src-)/;
@@ -48,6 +52,38 @@ export function applyCoverMediaPatch(
   if ('coverPanelHidden' in updates) {
     if (updates.coverPanelHidden) next.coverPanelHidden = true;
     else delete next.coverPanelHidden;
+  }
+  return omitUndefinedDeep(next);
+}
+
+/** Write Main Menu in-flow URL and/or moved floats. Independent of the cover photo. */
+export function applyHubMediaPatch(
+  course: any,
+  updates: {
+    hubImage?: string | null;
+    floatingMedia?: FloatingImage[];
+    hubPanelHidden?: boolean;
+  },
+): any {
+  if (!course) return course;
+  const next: Record<string, unknown> = { ...course };
+  if ('hubImage' in updates) {
+    if (updates.hubImage == null || updates.hubImage === '') {
+      delete next.hubImage;
+      if (!('hubPanelHidden' in updates)) next.hubPanelHidden = true;
+    } else {
+      next.hubImage = updates.hubImage;
+      delete next.hubPanelHidden;
+    }
+  }
+  if ('floatingMedia' in updates) {
+    const floats = Array.isArray(updates.floatingMedia) ? updates.floatingMedia : [];
+    if (floats.length) next.hubFloatingMedia = floats;
+    else delete next.hubFloatingMedia;
+  }
+  if ('hubPanelHidden' in updates) {
+    if (updates.hubPanelHidden) next.hubPanelHidden = true;
+    else delete next.hubPanelHidden;
   }
   return omitUndefinedDeep(next);
 }
@@ -107,6 +143,15 @@ export function stripCourseAutoPromotedFloating(course: any): any {
       changed = true;
     }
   }
+  if (Array.isArray(nextCourse.hubFloatingMedia) && nextCourse.hubFloatingMedia.length) {
+    const kept = nextCourse.hubFloatingMedia.filter((f: FloatingImage) => !isAutoPromotedFloating(f));
+    if (kept.length !== nextCourse.hubFloatingMedia.length) {
+      nextCourse = { ...nextCourse, modules: nextCourse === course ? modules : nextCourse.modules };
+      if (kept.length) nextCourse.hubFloatingMedia = kept;
+      else delete nextCourse.hubFloatingMedia;
+      changed = true;
+    }
+  }
   // Preserve referential equality when nothing was stripped — callers use !== to skip setCourse
   if (!changed) return course;
   return nextCourse;
@@ -135,6 +180,12 @@ export function stampFloatingMediaOnCourse(
     next.coverFloatingMedia = coverFloats;
     changed = true;
   }
+  const hubFloats = map[HUB_SLIDE_ID];
+  if (Array.isArray(hubFloats) && hubFloats.length) {
+    next = next === course ? { ...course, modules } : next;
+    next.hubFloatingMedia = hubFloats;
+    changed = true;
+  }
   return changed ? next : course;
 }
 
@@ -150,6 +201,9 @@ export function floatingMapFromCourse(course: any): Record<string, FloatingImage
   }
   if (Array.isArray(course?.coverFloatingMedia) && course.coverFloatingMedia.length) {
     map[COVER_SLIDE_ID] = course.coverFloatingMedia;
+  }
+  if (Array.isArray(course?.hubFloatingMedia) && course.hubFloatingMedia.length) {
+    map[HUB_SLIDE_ID] = course.hubFloatingMedia;
   }
   return map;
 }
