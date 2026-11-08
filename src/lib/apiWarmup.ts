@@ -1,13 +1,40 @@
 /** Render cold-start / deploy HTML is mapped by the worker to 503 COLD_START. */
 
-export function isApiColdStart(err: unknown): boolean {
+function errorParts(err: unknown): { status: number; msg: string; code: string } {
   const rec = err && typeof err === 'object' ? (err as { status?: number; message?: string; code?: string }) : null;
-  const status = Number(rec?.status);
-  if (status === 503) return true;
-  const msg = String(
-    rec?.message || rec?.code || (typeof err === 'string' ? err : ''),
+  return {
+    status: Number(rec?.status) || 0,
+    code: String(rec?.code || ''),
+    msg: String(
+      rec?.message || rec?.code || (typeof err === 'string' ? err : ''),
+    ),
+  };
+}
+
+export function isImageRateLimit(err: unknown): boolean {
+  const { status, msg, code } = errorParts(err);
+  if (status === 429) return true;
+  return /UPSTREAM_RATE_LIMIT|IMAGE_RATE_LIMIT|API error \(429\)|rate.?limit|too many (image|requests)/i.test(
+    `${code} ${msg}`,
   );
-  return /COLD_START|warming up|UPSTREAM_HTML|API proxy error/i.test(msg);
+}
+
+export function formatImageApiError(err: unknown): string | null {
+  const { msg } = errorParts(err);
+  if (isImageRateLimit(err) || /If you were saving a draft/i.test(msg)) {
+    return 'The image API is rate-limited right now. Wait a minute, then click AI again. You do not need to Sync or save a draft.';
+  }
+  if (/UPSTREAM_HTML|API error \(\d+\)/i.test(msg)) {
+    return 'The image server sent an error page instead of a picture. Try AI again in a moment.';
+  }
+  return null;
+}
+
+export function isApiColdStart(err: unknown): boolean {
+  if (isImageRateLimit(err)) return false;
+  const { status, msg, code } = errorParts(err);
+  if (status === 503) return true;
+  return /COLD_START|warming up|UPSTREAM_HTML|API proxy error/i.test(`${code} ${msg}`);
 }
 
 /** Browser dropped the /api/generate-image request (timeout, proxy, Render 524). */

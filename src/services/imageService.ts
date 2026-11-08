@@ -17,7 +17,7 @@ import {
   type ContentImageJob,
 } from '../lib/contentImageJobs';
 import { getSupabaseAccessToken } from '../lib/supabaseAccessToken';
-import { isApiColdStart, isImageNetworkFailure, waitForApiWarm } from '../lib/apiWarmup';
+import { isApiColdStart, isImageNetworkFailure, isImageRateLimit, waitForApiWarm } from '../lib/apiWarmup';
 
 export {
   MAX_CONTENT_AI_IMAGES,
@@ -375,10 +375,16 @@ async function callImageEndpoint(
     }
 
     if (!response.ok) {
-      const err = await response.json().catch(() => ({ error: response.statusText }));
+      const err = await response.json().catch(() => ({ error: response.statusText })) as {
+        error?: string;
+        code?: string;
+        retryAfterMs?: number;
+      };
       const msg = err.error ?? `HTTP ${response.status}`;
-      const e = new Error(msg) as Error & { status?: number };
+      const e = new Error(msg) as Error & { status?: number; code?: string; retryAfterMs?: number };
       e.status = response.status;
+      if (err.code) e.code = err.code;
+      if (Number(err.retryAfterMs) > 0) e.retryAfterMs = Number(err.retryAfterMs);
       throw e;
     }
 
@@ -401,7 +407,11 @@ async function callImageEndpoint(
           return await execute();
         } catch (retryErr: any) {
           if (isImageAuthOrCreditStop(retryErr)) throw retryErr;
-          if (!isApiColdStart(retryErr) && !isImageNetworkFailure(retryErr) && retryErr?.status !== 429) throw retryErr;
+          if (isImageRateLimit(retryErr)) {
+            err = retryErr;
+            break;
+          }
+          if (!isApiColdStart(retryErr) && !isImageNetworkFailure(retryErr)) throw retryErr;
           err = retryErr;
         }
       }
@@ -411,10 +421,19 @@ async function callImageEndpoint(
       await sleep(1500);
       return await execute();
     }
-    if (err?.status === 429 || /429|rate.?limit|too many/i.test(String(err?.message || ''))) {
-      console.warn('[ImageService] Rate limited — waiting 8s then retrying once…');
-      await sleep(8000);
-      return await execute();
+    if (isImageRateLimit(err)) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const waitMs = Number(err?.retryAfterMs) > 0 ? Number(err.retryAfterMs) : 20000;
+        console.warn(`[ImageService] Rate limited — waiting ${waitMs}ms then retrying…`);
+        await sleep(Math.min(60000, waitMs));
+        try {
+          return await execute();
+        } catch (retryErr: any) {
+          if (isImageAuthOrCreditStop(retryErr)) throw retryErr;
+          if (!isImageRateLimit(retryErr)) throw retryErr;
+          err = retryErr;
+        }
+      }
     }
     throw err;
   }

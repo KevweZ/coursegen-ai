@@ -2,7 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { isApiColdStart, isImageNetworkFailure, PREVIEW_API_KEEPWARM_MS } from './apiWarmup.ts';
+import {
+  formatImageApiError,
+  isApiColdStart,
+  isImageNetworkFailure,
+  isImageRateLimit,
+  PREVIEW_API_KEEPWARM_MS,
+} from './apiWarmup.ts';
 import { finishImageGenProgress } from './imageGenProgress.ts';
 
 function src(rel: string): string {
@@ -18,6 +24,13 @@ test('worker warmup copy and 503 are treated as a cold start, not a credit stop'
   assert.equal(isImageNetworkFailure('Failed to fetch'), true);
   assert.equal(isImageNetworkFailure({ name: 'AbortError', message: 'Image generation timed out.' }), true);
   assert.equal(isImageNetworkFailure({ status: 402, message: 'AI_NO_CREDITS' }), false);
+  assert.equal(isImageRateLimit({ status: 429, message: 'API error (429). If you were saving a draft, try Sync again.' }), true);
+  assert.equal(isApiColdStart({ status: 429, message: 'API error (429). If you were saving a draft, try Sync again.' }), false);
+  assert.equal(
+    formatImageApiError({ status: 502, message: 'API error (429). If you were saving a draft, try Sync again.' }),
+    'The image API is rate-limited right now. Wait a minute, then click AI again. You do not need to Sync or save a draft.',
+  );
+  assert.match(String(formatImageApiError({ status: 429, code: 'UPSTREAM_RATE_LIMIT' })), /rate-limited/i);
 });
 
 test('cold-start image errors never become a failed toast', () => {
@@ -43,15 +56,18 @@ test('image client retries cold starts after warming the API; cover waits on the
   const deny = images.indexOf('isImageAuthOrCreditStop(err)');
   const cold = images.indexOf('isApiColdStart(err)');
   const empty = images.indexOf("No image returned");
-  const rateLimit = images.indexOf("err?.status === 429");
+  const rateLimit = images.indexOf('isImageRateLimit(err)');
   assert.ok(deny >= 0 && cold > deny, 'credit denials must not fall through to cold-start wait');
   assert.ok(cold >= 0 && empty > cold, 'empty model responses retry after cold start');
   assert.ok(empty >= 0 && rateLimit > empty, 'empty-image retry before the 429 retry');
+  assert.match(images, /retryAfterMs/);
+  assert.match(images, /Math\.min\(60000, waitMs\)/);
 
   const app = src('src/App.tsx');
   const cover = app.slice(app.indexOf('setProgress(56)'), app.indexOf('setProgress(72)'));
   assert.match(cover, /waitForApiWarm/);
   assert.match(cover, /generateCourseCoverImage/);
   assert.match(app, /startPreviewApiKeepWarm/);
+  assert.match(app, /formatImageApiError/);
   assert.ok(PREVIEW_API_KEEPWARM_MS >= 60_000);
 });

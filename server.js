@@ -15,7 +15,7 @@
 
 import express from 'express';
 import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import * as dotenv from 'dotenv';
@@ -117,10 +117,22 @@ const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 // ─── 2. Express App Setup ───────────────────────────────────────────────────
 const app = express();
 
+// Render terminates TLS in front of Node. Without this, express-rate-limit
+// keys every author as the load-balancer IP (one global 60-image bucket).
+if (isProd) {
+  app.set('trust proxy', 1);
+}
+
 // Stripe webhooks MUST receive the raw body for signature verification.
 // Mount raw parser for that path BEFORE express.json().
 app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '15mb' }));
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && 'body' in err) {
+    return res.status(400).json({ error: 'Invalid JSON body', code: 'BAD_JSON' });
+  }
+  return next(err);
+});
 
 // ─── 2a. CORS — allow Cloudflare Pages frontend ─────────────────────────────
 const ALLOWED_ORIGINS = [
@@ -227,12 +239,26 @@ const parseRateLimit = rateLimit({
   message: { error: 'Too many parse requests. Please wait 15 minutes.' },
 });
 
+function imageLimitKey(req) {
+  const auth = String(req.headers.authorization || '');
+  const token = auth.match(/^Bearer\s+(\S+)/i)?.[1];
+  if (token) return `img-user:${token.slice(0, 24)}`;
+  return `img-ip:${ipKeyGenerator(req.ip || 'anon')}`;
+}
+
 const imageRateLimit = rateLimit({
   windowMs:         15 * 60 * 1000,
-  max:              60,                // 60 image requests per IP per 15 min (full course = ~10)
+  max:              60,                // 60 image requests per author (or IP) per 15 min
   standardHeaders:  true,
   legacyHeaders:    false,
-  message: { error: 'Too many image generation requests. Please wait 15 minutes.' },
+  keyGenerator:     imageLimitKey,
+  handler: (req, res) => {
+    res.status(429).json({
+      error: 'Too many image generation requests. Wait a minute, then click AI again.',
+      code: 'IMAGE_RATE_LIMIT',
+      retryAfterMs: 60000,
+    });
+  },
 });
 
 const reviewGetRateLimit = rateLimit({

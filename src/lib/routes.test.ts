@@ -30,6 +30,17 @@ test('worker does not SPA-fallback hashed /assets bundles to index.html', () => 
   assert.match(worker, /Failed to fetch dynamically imported module/);
 });
 
+test('worker maps Render HTML 429 to a JSON rate-limit, not a draft Sync toast', () => {
+  const worker = readFileSync(resolve(process.cwd(), 'worker.js'), 'utf8');
+  assert.match(worker, /buildProxyHeaders/);
+  assert.match(worker, /cf-connecting-ip/);
+  assert.match(worker, /cdn-loop/);
+  assert.match(worker, /UPSTREAM_RATE_LIMIT/);
+  assert.match(worker, /arrayBuffer/);
+  assert.doesNotMatch(worker, /If you were saving a draft/);
+  assert.match(worker, /rate-limited right now/);
+});
+
 test('team invite query survives /account and /MyAccount path parsing', () => {
   assert.equal(teamInviteFromSearch('?team_invite=abc123'), 'abc123');
   assert.equal(teamInviteFromSearch('team_invite=abc123&x=1'), 'abc123');

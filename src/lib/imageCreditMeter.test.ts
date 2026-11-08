@@ -31,6 +31,19 @@ test('image client sends Bearer and does not retry credit denials as 429', () =>
   assert.match(images, /Authorization:\s*`Bearer \$\{token\}`/);
   assert.match(images, /isImageAuthOrCreditStop/);
   const deny = images.indexOf('isImageAuthOrCreditStop(err)');
-  const rateLimit = images.indexOf("err?.status === 429");
+  const rateLimit = images.indexOf('isImageRateLimit(err)');
   assert.ok(deny >= 0 && rateLimit > deny, '402/401 must not fall through to the 429 retry');
+});
+
+test('image rate limit is per author token, not one global Render IP, and returns JSON', () => {
+  const server = src('server.js');
+  assert.match(server, /app\.set\('trust proxy', 1\)/);
+  assert.match(server, /imageLimitKey/);
+  assert.match(server, /img-user:/);
+  assert.match(server, /ipKeyGenerator/);
+  assert.match(server, /IMAGE_RATE_LIMIT/);
+  assert.match(server, /Invalid JSON body/);
+  const imagesLimiter = server.slice(server.indexOf('function imageLimitKey'), server.indexOf("app.post('/api/generate-image'"));
+  assert.match(imagesLimiter, /keyGenerator:\s*imageLimitKey/);
+  assert.doesNotMatch(imagesLimiter, /Please wait 15 minutes/);
 });

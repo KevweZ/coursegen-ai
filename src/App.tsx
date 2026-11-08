@@ -298,7 +298,7 @@ import {
 import { finishImageGenProgress } from './lib/imageGenProgress';
 import { moveArrayItem } from './lib/objectiveOrder';
 import { ObjectiveReorderButtons } from './components/builder/ObjectiveReorderButtons';
-import { isApiColdStart, startPreviewApiKeepWarm, waitForApiWarm } from './lib/apiWarmup';
+import { formatImageApiError, isApiColdStart, startPreviewApiKeepWarm, waitForApiWarm } from './lib/apiWarmup';
 import { buildReviewSnapshot, createReviewLink, fetchReviewSnapshot } from './lib/reviewLinkService';
 import { downloadReviewScriptDocx } from './lib/reviewScriptDocx';
 import { tocRefMapFirstWins } from './lib/playerToc';
@@ -5136,6 +5136,8 @@ export default function App() {
 
   const regenerateAiImages = () => openGenerateImagesPicker();
   const coverImageErrorMessage = (err: unknown) => {
+    const mapped = formatImageApiError(err);
+    if (mapped) return mapped;
     const msg = String((err as any)?.message || err || '');
     if (/No image returned/i.test(msg) || /No imageDataUrl/i.test(msg) || /timed out/i.test(msg)) {
       return 'The image model did not send a picture back (timeout or a blank response). Try AI again.';
