@@ -22,6 +22,7 @@ import {
   HUB_SLIDE_ID,
   applyCoverMediaPatch,
   applyHubMediaPatch,
+  resolveCoverTitleAlign,
   floatingMapFromCourse,
   omitUndefinedDeep,
   stampFloatingMediaOnCourse,
@@ -324,6 +325,17 @@ test('cover floats stamp onto course.coverFloatingMedia and restore on load', ()
   assert.equal(shown.coverImage, 'new.png');
   assert.equal('coverPanelHidden' in shown, false);
 
+  const moved = applyCoverMediaPatch(stamped, {
+    coverImage: undefined,
+    coverPanelHidden: true,
+    floatingMedia: [{ id: 'fi-1', url: 'cover.png', x: 640, y: 0, width: 520, height: 720 }],
+  });
+  assert.equal(moved.coverPanelHidden, true);
+  assert.equal('coverImage' in moved, false);
+  assert.equal(moved.coverFloatingMedia[0].id, 'fi-1');
+  assert.equal(resolveCoverTitleAlign(undefined), 'left');
+  assert.equal(applyCoverMediaPatch(moved, { coverTitleAlign: 'center' }).coverTitleAlign, 'center');
+
   const app = src('src/App.tsx');
   assert.match(app, /applyCoverMediaPatch/);
   assert.match(app, /COVER_SLIDE_ID/);
@@ -331,6 +343,9 @@ test('cover floats stamp onto course.coverFloatingMedia and restore on load', ()
   assert.match(app, /regenerateCoverImage/);
   assert.match(app, /Regenerate cover image/);
   assert.doesNotMatch(app, /alert\(err\?\.message \|\| 'Could not regenerate title slide\.'\)/);
+  assert.match(app, /coverPanelHidden:\s*true/);
+  assert.match(app, /coverTitleAlign/);
+  assert.match(app, /waitForApiWarm/);
 });
 
 test('hub floats stamp onto course.hubFloatingMedia and restore on load', () => {

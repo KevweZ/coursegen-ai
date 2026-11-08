@@ -270,6 +270,9 @@ test('cover photo uses the same Crop / Move / Delete chrome as other images', ()
   assert.match(title, /object-cover/);
   assert.match(title, /Remove cover panel/);
   assert.doesNotMatch(title, /Click to replace image/);
+  assert.match(title, /coverTitleAlign/);
+  assert.match(title, /Align left/);
+  assert.doesNotMatch(title, /mx-auto text-center/);
 
   const enlarge = src('src/components/player/EnlargeableImage.tsx');
   assert.match(enlarge, /onRegenerate/);

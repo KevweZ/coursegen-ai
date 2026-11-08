@@ -10,6 +10,14 @@ export function isApiColdStart(err: unknown): boolean {
   return /COLD_START|warming up|UPSTREAM_HTML|API proxy error/i.test(msg);
 }
 
+/** Browser dropped the /api/generate-image request (timeout, proxy, Render 524). */
+export function isImageNetworkFailure(err: unknown): boolean {
+  if (isApiColdStart(err)) return true;
+  const rec = err && typeof err === 'object' ? (err as { message?: string; name?: string }) : null;
+  const msg = String(rec?.message || rec?.name || (typeof err === 'string' ? err : ''));
+  return /failed to fetch|networkerror|load failed|aborterror|timed out|Image generation timed out/i.test(msg);
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }

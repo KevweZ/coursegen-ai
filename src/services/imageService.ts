@@ -17,7 +17,7 @@ import {
   type ContentImageJob,
 } from '../lib/contentImageJobs';
 import { getSupabaseAccessToken } from '../lib/supabaseAccessToken';
-import { isApiColdStart, waitForApiWarm } from '../lib/apiWarmup';
+import { isApiColdStart, isImageNetworkFailure, waitForApiWarm } from '../lib/apiWarmup';
 
 export {
   MAX_CONTENT_AI_IMAGES,
@@ -393,15 +393,15 @@ async function callImageEndpoint(
     if (isImageAuthOrCreditStop(err)) {
       throw err;
     }
-    if (isApiColdStart(err)) {
+    if (isApiColdStart(err) || isImageNetworkFailure(err)) {
       for (let attempt = 0; attempt < 2; attempt++) {
-        console.warn('[ImageService] API warming up — waiting, then retrying image…');
+        console.warn('[ImageService] Image request dropped — warming API, then retrying…');
         await waitForApiWarm({ timeoutMs: 30000 });
         try {
           return await execute();
         } catch (retryErr: any) {
           if (isImageAuthOrCreditStop(retryErr)) throw retryErr;
-          if (!isApiColdStart(retryErr) && retryErr?.status !== 429) throw retryErr;
+          if (!isApiColdStart(retryErr) && !isImageNetworkFailure(retryErr) && retryErr?.status !== 429) throw retryErr;
           err = retryErr;
         }
       }
@@ -425,6 +425,7 @@ export async function generateCourseCoverImage(
   courseTitle: string,
   description?: string
 ): Promise<string> {
+  await waitForApiWarm({ timeoutMs: 40000 });
   return groundedCall({
     courseTitle: courseTitle || 'Course',
     panelLabel: description?.trim() || courseTitle || 'professional workplace',

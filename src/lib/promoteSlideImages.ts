@@ -24,6 +24,14 @@ export function isCoverAuthoringSlide(slide?: { id?: string; type?: string } | n
   return id === COVER_SLIDE_ID || type === 'cover' || type === 'title';
 }
 
+export type CoverTitleAlign = 'left' | 'center' | 'right';
+
+export function resolveCoverTitleAlign(value: unknown): CoverTitleAlign {
+  const v = String(value || '').toLowerCase();
+  if (v === 'center' || v === 'right') return v;
+  return 'left';
+}
+
 /** Write cover in-flow URL and/or moved floats. Drops deleted keys so drafts do not reattach them. */
 export function applyCoverMediaPatch(
   course: any,
@@ -31,6 +39,7 @@ export function applyCoverMediaPatch(
     coverImage?: string | null;
     floatingMedia?: FloatingImage[];
     coverPanelHidden?: boolean;
+    coverTitleAlign?: CoverTitleAlign | string;
   },
 ): any {
   if (!course) return course;
@@ -52,6 +61,9 @@ export function applyCoverMediaPatch(
   if ('coverPanelHidden' in updates) {
     if (updates.coverPanelHidden) next.coverPanelHidden = true;
     else delete next.coverPanelHidden;
+  }
+  if ('coverTitleAlign' in updates) {
+    next.coverTitleAlign = resolveCoverTitleAlign(updates.coverTitleAlign);
   }
   return omitUndefinedDeep(next);
 }

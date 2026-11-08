@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Camera, ImageOff, Loader2, RefreshCw, X } from 'lucide-react';
+import { AlignCenter, AlignLeft, AlignRight, Camera, ImageOff, Loader2, RefreshCw, X } from 'lucide-react';
 import { courseTitleForDisplay } from '../../lib/splitCourseTitle';
+import { type CoverTitleAlign, resolveCoverTitleAlign } from '../../lib/promoteSlideImages';
 import { EnlargeableImage, type InFlowPromoteInfo } from './EnlargeableImage';
 
 type Theme = 'light' | 'dark' | 'unified';
@@ -31,6 +32,8 @@ interface CourseTitleSlideProps {
   coverPanelHidden?: boolean;
   /** A moved cover photo is already on the float canvas — don't show the empty CTA under it. */
   hasFloatingCover?: boolean;
+  coverTitleAlign?: CoverTitleAlign;
+  onTitleAlign?: (align: CoverTitleAlign) => void;
 }
 
 const THEME_ACCENT: Record<Theme, string> = {
@@ -57,12 +60,6 @@ const THEME_DESC_COLOR: Record<Theme, string> = {
   unified: '#a5b4fc',
 };
 
-const THEME_STRIP: Record<Theme, string> = {
-  light:   '#e2e8f0',
-  dark:    '#1e293b',
-  unified: '#312e81',
-};
-
 export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
   title,
   description,
@@ -71,6 +68,7 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
   accentColor,
   theme,
   onImageUpload,
+  isPreviewMode = false,
   isGeneratingCover = false,
   hideImagePanel = false,
   onRemove,
@@ -80,19 +78,28 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
   regenerating = false,
   coverPanelHidden = false,
   hasFloatingCover = false,
+  coverTitleAlign = 'left',
+  onTitleAlign,
 }) => {
   const accent   = accentColor || THEME_ACCENT[theme];
   const darkText = THEME_DARK_TEXT[theme];
   const leftBg   = THEME_LEFT_BG[theme];
   const descColor = THEME_DESC_COLOR[theme];
-  const stripBg  = THEME_STRIP[theme];
+  const align = resolveCoverTitleAlign(coverTitleAlign);
 
   const { primary, secondary, secondaryFirst } = courseTitleForDisplay(title, verbatimTitle);
   const [hovering, setHovering] = useState(false);
 
   const canReplace = typeof onImageUpload === 'function';
   const displayImage = coverImage || null;
-  const showImagePanel = coverPanelHidden ? false : (!hideImagePanel || !!displayImage);
+  const generating = isGeneratingCover || regenerating;
+  const showImagePanel = generating
+    ? true
+    : coverPanelHidden
+      ? false
+      : hasFloatingCover && !displayImage
+        ? false
+        : (!hideImagePanel || !!displayImage);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -135,13 +142,22 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
     </div>
   ) : null;
 
+  const titleAlignClass =
+    align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : 'text-left';
+  const titleBlockStyle: React.CSSProperties = {
+    maxWidth: showImagePanel ? '100%' : '46rem',
+    marginLeft: align === 'right' ? 'auto' : align === 'center' ? 'auto' : undefined,
+    marginRight: align === 'left' ? undefined : align === 'center' ? 'auto' : undefined,
+    width: showImagePanel ? '100%' : 'min(46rem, 100%)',
+  };
+
   const titleBlock = (
     <motion.div
-      initial={{ opacity: 0, x: showImagePanel ? -24 : 0, y: showImagePanel ? 0 : 12 }}
+      initial={{ opacity: 0, x: showImagePanel && align === 'left' ? -24 : 0, y: showImagePanel ? 0 : 12 }}
       animate={{ opacity: 1, x: 0, y: 0 }}
       transition={{ duration: 0.5, ease: 'easeOut' }}
-      style={{ maxWidth: showImagePanel ? '100%' : '46rem' }}
-      className={showImagePanel ? undefined : 'mx-auto text-center'}
+      style={titleBlockStyle}
+      className={titleAlignClass}
     >
       {secondaryFirst ? (
         <>
@@ -158,7 +174,12 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
       {description && description.trim() && (
         <motion.p
           className={cnDesc(showImagePanel)}
-          style={{ color: descColor, maxWidth: showImagePanel ? '36rem' : '40rem', marginLeft: showImagePanel ? undefined : 'auto', marginRight: showImagePanel ? undefined : 'auto' }}
+          style={{
+            color: descColor,
+            maxWidth: showImagePanel ? '36rem' : '40rem',
+            marginLeft: align === 'left' ? undefined : 'auto',
+            marginRight: align === 'right' ? undefined : align === 'center' ? 'auto' : undefined,
+          }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.4, delay: 0.3 }}
@@ -169,13 +190,44 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
     </motion.div>
   );
 
+  const alignBar = isPreviewMode && onTitleAlign ? (
+    <div className="absolute top-3 left-3 z-[4] inline-flex items-center rounded-lg border border-slate-200/80 bg-white/90 shadow-sm overflow-hidden">
+      {([
+        { id: 'left' as const, Icon: AlignLeft, title: 'Align left' },
+        { id: 'center' as const, Icon: AlignCenter, title: 'Align center' },
+        { id: 'right' as const, Icon: AlignRight, title: 'Align right' },
+      ] as const).map(({ id, Icon, title: label }) => (
+        <button
+          key={id}
+          type="button"
+          title={label}
+          aria-label={label}
+          onClick={(e) => {
+            e.stopPropagation();
+            onTitleAlign(id);
+          }}
+          className={`p-1.5 transition-colors ${
+            align === id
+              ? 'bg-indigo-600 text-white'
+              : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+          }`}
+        >
+          <Icon className="w-3.5 h-3.5" />
+        </button>
+      ))}
+    </div>
+  ) : null;
+
+  const columnJustify =
+    align === 'center' ? 'items-center' : align === 'right' ? 'items-end' : 'items-start';
+
   if (!showImagePanel) {
     return (
-      <div className="w-full h-full flex flex-row overflow-hidden" style={{ backgroundColor: leftBg }}>
-        <div className="flex-1 flex flex-col justify-center items-center px-10 sm:px-16 py-10">
+      <div className="w-full h-full relative overflow-hidden" style={{ backgroundColor: leftBg }}>
+        {alignBar}
+        <div className={`flex-1 w-full h-full flex flex-col justify-center ${columnJustify} px-10 sm:px-16 py-10`}>
           {titleBlock}
         </div>
-        <div className="shrink-0" style={{ width: '5%', backgroundColor: stripBg }} />
       </div>
     );
   }
@@ -183,9 +235,10 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
   return (
     <div className="w-full h-full flex flex-row overflow-hidden">
       <div
-        className="flex flex-col justify-center px-14 py-10"
+        className={`relative flex flex-col justify-center ${columnJustify} px-14 py-10`}
         style={{ width: '52%', flexShrink: 0, backgroundColor: leftBg }}
       >
+        {alignBar}
         {titleBlock}
       </div>
 
@@ -213,7 +266,7 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
           />
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
-            {isGeneratingCover || regenerating ? (
+            {generating ? (
               <>
                 <Loader2 className="w-8 h-8 text-white/80 animate-spin" />
                 <p className="text-white/90 text-sm font-semibold">Generating topic cover…</p>
@@ -242,15 +295,15 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
                 type="button"
                 title="Regenerate AI image"
                 aria-label="Regenerate AI image"
-                disabled={regenerating || isGeneratingCover}
+                disabled={generating}
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (regenerating || isGeneratingCover) return;
+                  if (generating) return;
                   onRegenerate();
                 }}
                 className="flex items-center gap-1 h-7 px-2 rounded-full bg-violet-600 hover:bg-violet-500 disabled:opacity-60 text-white shadow"
               >
-                <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${(regenerating || isGeneratingCover) ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${generating ? 'animate-spin' : ''}`} />
                 <span className="text-[10px] font-semibold pr-0.5">AI</span>
               </button>
             )}
@@ -302,11 +355,6 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
         </label>
         )}
       </div>
-
-      <div
-        className="shrink-0"
-        style={{ width: '7%', backgroundColor: stripBg }}
-      />
     </div>
   );
 };

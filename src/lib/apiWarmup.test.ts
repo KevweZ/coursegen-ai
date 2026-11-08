@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { isApiColdStart, PREVIEW_API_KEEPWARM_MS } from './apiWarmup.ts';
+import { isApiColdStart, isImageNetworkFailure, PREVIEW_API_KEEPWARM_MS } from './apiWarmup.ts';
 import { finishImageGenProgress } from './imageGenProgress.ts';
 
 function src(rel: string): string {
@@ -15,6 +15,9 @@ test('worker warmup copy and 503 are treated as a cold start, not a credit stop'
   assert.equal(isApiColdStart('Server is warming up — please wait 20–30 seconds and try again.'), true);
   assert.equal(isApiColdStart({ status: 402, message: 'AI_NO_CREDITS' }), false);
   assert.equal(isApiColdStart({ status: 500, message: 'No image returned from AI model.' }), false);
+  assert.equal(isImageNetworkFailure('Failed to fetch'), true);
+  assert.equal(isImageNetworkFailure({ name: 'AbortError', message: 'Image generation timed out.' }), true);
+  assert.equal(isImageNetworkFailure({ status: 402, message: 'AI_NO_CREDITS' }), false);
 });
 
 test('cold-start image errors never become a failed toast', () => {
@@ -34,6 +37,9 @@ test('image client retries cold starts after warming the API; cover waits on the
   assert.match(images, /isApiColdStart/);
   assert.match(images, /waitForApiWarm/);
   assert.match(images, /No image returned/);
+  assert.match(images, /isImageNetworkFailure/);
+  const coverFn = images.slice(images.indexOf('export async function generateCourseCoverImage'));
+  assert.match(coverFn.slice(0, 500), /waitForApiWarm/);
   const deny = images.indexOf('isImageAuthOrCreditStop(err)');
   const cold = images.indexOf('isApiColdStart(err)');
   const empty = images.indexOf("No image returned");

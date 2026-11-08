@@ -626,20 +626,26 @@ async function generateImageViaOpenRouter(prompt, model) {
 
   // Image API is the current OpenRouter path; chat+modalities 404s when a slug
   // no longer advertises image output, which previously hung the 0/14 toast.
-  const imgRes = await fetchWithTimeout('https://openrouter.ai/api/v1/images', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      model,
-      prompt: safePrompt,
-      aspect_ratio: '16:9',
-      n: 1,
-    }),
-  }, OPENROUTER_IMAGE_TIMEOUT_MS);
-  if (imgRes.ok) {
+  let imgRes;
+  try {
+    imgRes = await fetchWithTimeout('https://openrouter.ai/api/v1/images', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model,
+        prompt: safePrompt,
+        aspect_ratio: '16:9',
+        n: 1,
+      }),
+    }, OPENROUTER_IMAGE_TIMEOUT_MS);
+  } catch (err) {
+    if (/timed out/i.test(String(err?.message || ''))) throw err;
+    console.warn(`[ImageGen] OpenRouter /images network (${model}):`, err?.message || err);
+  }
+  if (imgRes?.ok) {
     const fromApi = extractOpenRouterImagesApi(await imgRes.json());
     if (fromApi) return fromApi;
-  } else {
+  } else if (imgRes) {
     const errText = await imgRes.text().catch(() => imgRes.statusText);
     console.warn(`[ImageGen] OpenRouter /images ${imgRes.status} (${model}): ${String(errText).slice(0, 180)}`);
   }

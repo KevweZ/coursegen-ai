@@ -267,7 +267,7 @@ import { TrialInvitePanel } from './components/TrialInvitePanel';
 
 import { FloatingImage } from './types/course';
 import { floatingFromFile } from './lib/floatingMedia';
-import { COVER_SLIDE_ID, applyCoverMediaPatch, applyHubMediaPatch, isCoverAuthoringSlide, isHubAuthoringSlide, stripCourseAutoPromotedFloating, floatingMapFromCourse, omitUndefinedDeep, stampFloatingMediaOnCourse } from './lib/promoteSlideImages';
+import { COVER_SLIDE_ID, applyCoverMediaPatch, applyHubMediaPatch, isCoverAuthoringSlide, isHubAuthoringSlide, resolveCoverTitleAlign, stripCourseAutoPromotedFloating, floatingMapFromCourse, omitUndefinedDeep, stampFloatingMediaOnCourse } from './lib/promoteSlideImages';
 import { sanitizeCourseTitles } from './lib/splitCourseTitle';
 import {
   HUB_SLIDE_ID,
@@ -1683,6 +1683,8 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isHydrating, setIsHydrating] = useState(false);
   const [isGeneratingImages, setIsGeneratingImages] = useState(false);
+  const coverRegenBusyRef = React.useRef(false);
+  const [coverRegenBusy, setCoverRegenBusy] = useState(false);
   const imageGenTokenRef = React.useRef(0);
   /** While a saved draft is open, account Course Settings must not overwrite its navigation. */
   const previewDraftOpenIdRef = React.useRef<string | null>(null);
@@ -5135,30 +5137,34 @@ export default function App() {
   const regenerateAiImages = () => openGenerateImagesPicker();
   const coverImageErrorMessage = (err: unknown) => {
     const msg = String((err as any)?.message || err || '');
-    if (isApiColdStart(err) || /warming up/i.test(msg)) {
-      return 'The image server was still starting. Wait a few seconds and try again.';
+    if (/No image returned/i.test(msg) || /No imageDataUrl/i.test(msg) || /timed out/i.test(msg)) {
+      return 'The image model did not send a picture back (timeout or a blank response). Try AI again.';
     }
-    if (/No image returned/i.test(msg) || /No imageDataUrl/i.test(msg)) {
-      return 'The image model did not send a picture back (timeout or a blank response). Try again in a moment.';
+    if (/failed to fetch|networkerror|load failed/i.test(msg)) {
+      return 'Could not reach the image API. Try AI again — a long cover request may have been dropped.';
+    }
+    if (isApiColdStart(err) || /warming up/i.test(msg)) {
+      return 'The image server was still starting. Click AI again now that it should be awake.';
     }
     return msg || 'Could not generate the cover image.';
   };
   const regenerateCoverImage = async (opts?: { title?: string; description?: string }) => {
     const live = courseRef.current || course;
-    if (!live || isGeneratingImages) return;
+    if (!live || coverRegenBusyRef.current) return;
+    coverRegenBusyRef.current = true;
+    setCoverRegenBusy(true);
     setShowEditMenu(false);
-    const token = ++imageGenTokenRef.current;
-    setIsGeneratingImages(true);
-    showDraftMessage('Generating cover image…');
+    showDraftMessage('Waking the image server…');
     try {
+      await waitForApiWarm({ timeoutMs: 40000 });
+      showDraftMessage('Generating cover image…');
       const { generateCourseCoverImage } = await import('./services/imageService');
       const cover = await generateCourseCoverImage(
         (opts?.title || live.title || 'Course').trim(),
         (opts?.description ?? live.description ?? '').trim(),
       );
-      if (imageGenTokenRef.current !== token) return;
       if (!cover) {
-        showDraftMessage('The image model did not send a picture back. Try again in a moment.');
+        showDraftMessage('The image model did not send a picture back. Try AI again.');
         return;
       }
       setCourse((prev: any) => applyCoverMediaPatch(prev, {
@@ -5175,10 +5181,10 @@ export default function App() {
       showDraftMessage('Cover image updated ✓');
     } catch (err: any) {
       console.error('[Images] Cover regenerate failed:', err);
-      if (imageGenTokenRef.current !== token) return;
       showDraftMessage(coverImageErrorMessage(err));
     } finally {
-      if (imageGenTokenRef.current === token) setIsGeneratingImages(false);
+      coverRegenBusyRef.current = false;
+      setCoverRegenBusy(false);
     }
   };
   const regenerateAiImagesForCurrentSlide = () => {
@@ -5731,7 +5737,7 @@ export default function App() {
     if (isCoverAuthoringSlide(currentSlide) || slideId === COVER_SLIDE_ID) {
       setCourse(prev => applyCoverMediaPatch(prev, {
         coverImage: undefined,
-        coverPanelHidden: false,
+        coverPanelHidden: true,
         floatingMedia: [...(prev?.coverFloatingMedia || []), newImg],
       }));
       setCourseBg(null);
@@ -8122,12 +8128,9 @@ export default function App() {
                                      isPreviewMode={!isLearnerPlayer}
                                      hideImagePanel={normalizeImageMode(imageMode) === 'none'}
                                      coverPanelHidden={!!(course as any)?.coverPanelHidden}
-                                     isGeneratingCover={
-                                       !isLearnerPlayer &&
-                                       isGeneratingImages &&
-                                       isCoverAuthoringSlide(currentSlide)
-                                     }
-                                     regenerating={isGeneratingImages && isCoverAuthoringSlide(currentSlide)}
+                                     coverTitleAlign={resolveCoverTitleAlign((course as any)?.coverTitleAlign)}
+                                     isGeneratingCover={!isLearnerPlayer && coverRegenBusy}
+                                     regenerating={coverRegenBusy}
                                      hasFloatingCover={
                                        (floatingImagesMap[COVER_SLIDE_ID] || (course as any)?.coverFloatingMedia || []).length > 0
                                      }
@@ -8148,6 +8151,10 @@ export default function App() {
                                      } : undefined}
                                      onPromoteToFloat={!isLearnerPlayer ? (info) => {
                                        promoteInFlowToFloat(info, null, (s) => ({ ...s, coverImage: undefined }));
+                                     } : undefined}
+                                     onTitleAlign={!isLearnerPlayer ? (align) => {
+                                       pushUndo();
+                                       setCourse((prev: any) => applyCoverMediaPatch(prev, { coverTitleAlign: align }));
                                      } : undefined}
                                      onRegenerate={!isLearnerPlayer ? () => { void regenerateCoverImage(); } : undefined}
                                    />

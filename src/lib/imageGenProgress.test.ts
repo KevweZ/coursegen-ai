@@ -56,6 +56,7 @@ test('OpenRouter image gen times out and falls back instead of hanging the 0/14 
   assert.match(orFn, /AbortController/);
   assert.match(orFn, /\/api\/v1\/images/);
   assert.match(orFn, /aspect_ratio/);
+  assert.match(orFn, /timed out/);
 
   const handlerStart = server.indexOf("app.post('/api/generate-image'");
   const handlerEnd = server.indexOf("app.post('/api/ai'");

@@ -7,6 +7,8 @@ export interface CourseOutline {
   title: string;
   /** Author typed this cover title in Edit Slide — skip shorten/lead-in rewrite. */
   titleIsAuthored?: boolean;
+  /** Course Introduction title: left (default), center, or right. */
+  coverTitleAlign?: 'left' | 'center' | 'right';
   description: string;
   learningObjectives: (string | TerminalObjectiveGroup)[];
   modules: Module[];
