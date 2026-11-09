@@ -17,7 +17,8 @@ function src(rel: string): string {
 test('bulk content images wait-and-retry 429 then continue; stop only on auth/credits', () => {
   assert.equal(CONTENT_IMAGE_CONCURRENCY, 1);
   assert.ok(CONTENT_IMAGE_PACE_MS >= 2000);
-  assert.ok(CONTENT_IMAGE_TIMEOUT_MS <= 60000);
+  assert.ok(CONTENT_IMAGE_TIMEOUT_MS <= 90000);
+  assert.ok(CONTENT_IMAGE_TIMEOUT_MS >= 60000);
   assert.equal(CONTENT_IMAGE_RATE_LIMIT_WAIT_MS, 25000);
 
   const limited = nextContentImageAttempt({ status: 429, code: 'UPSTREAM_RATE_LIMIT', retryAfterMs: 25000 });
@@ -55,7 +56,8 @@ test('Generate AI images is sequential, skipQa, and keeps filling remaining slid
   assert.match(handler, /skipVisionQa \? \{ skip: true \}/);
   assert.match(handler, /openRouterTimedOut/);
   assert.match(handler, /openRouterRateLimited/);
-  assert.match(handler, /!imageDataUrl && hasOpenAI && !openRouterTimedOut/);
+  assert.match(handler, /OpenAI first/);
+  assert.match(handler, /generateImageViaOpenAI\(p\)/);
   assert.match(handler, /await recordAiSuccess/);
 
   const toast = src('src/components/ImageProgressToast.tsx');

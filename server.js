@@ -22,6 +22,7 @@ import * as dotenv from 'dotenv';
 import crypto from 'crypto';
 import Stripe from 'stripe';
 import { Resend } from 'resend';
+import { extractGeneratedImage } from './src/lib/openRouterImage.js';
 
 dotenv.config();
 
@@ -590,7 +591,7 @@ async function generateImageViaOpenAI(prompt) {
 }
 
 const OPENROUTER_IMAGE_TIMEOUT_MS = 35000;
-const OPENAI_IMAGE_TIMEOUT_MS = 40000;
+const OPENAI_IMAGE_TIMEOUT_MS = 75000;
 /** Lite/2.5 first — 3.1 Flash Image 429s under load and used to abort the whole batch. */
 const OPENROUTER_IMAGE_MODELS = [
   'google/gemini-3.1-flash-lite-image',
@@ -614,31 +615,15 @@ async function fetchWithTimeout(url, init, ms) {
   }
 }
 
-function extractOpenRouterChatImage(data) {
-  const message = data?.choices?.[0]?.message;
-  if (message?.images?.length > 0) {
-    const img = message.images[0];
-    return img?.image_url?.url ?? img?.url ?? null;
-  }
-  if (Array.isArray(message?.content)) {
-    for (const part of message.content) {
-      if (part?.type === 'image' || part?.type === 'image_url') {
-        const url = part?.image_url?.url ?? part?.url ?? null;
-        if (url) return url;
-      }
-    }
-  }
-  return null;
-}
-
-function extractOpenRouterImagesApi(data) {
-  const item = data?.data?.[0] || data?.images?.[0];
-  if (!item) return null;
-  if (item.b64_json) {
-    const mime = item.media_type || item.mime_type || 'image/png';
-    return `data:${mime};base64,${item.b64_json}`;
-  }
-  return item?.image_url?.url ?? item?.url ?? null;
+async function toImageDataUrl(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+  if (raw.startsWith('data:')) return raw;
+  if (!/^https?:\/\//i.test(raw)) return null;
+  const got = await fetchWithTimeout(raw, { method: 'GET' }, 20000);
+  if (!got.ok) return null;
+  const buf = Buffer.from(await got.arrayBuffer());
+  const ctype = got.headers.get('content-type') || 'image/png';
+  return `data:${ctype};base64,${buf.toString('base64')}`;
 }
 
 async function generateImageViaOpenRouter(prompt, model) {
@@ -653,8 +638,8 @@ async function generateImageViaOpenRouter(prompt, model) {
   };
   const safePrompt = withImageNoTextRule(prompt);
 
-  // Image API is the current OpenRouter path; chat+modalities 404s when a slug
-  // no longer advertises image output, which previously hung the 0/14 toast.
+  // /images only — chat+modalities 404s and used to eat the client timeout
+  // before OpenAI could return a picture.
   let imgRes;
   try {
     imgRes = await fetchWithTimeout('https://openrouter.ai/api/v1/images', {
@@ -664,6 +649,7 @@ async function generateImageViaOpenRouter(prompt, model) {
         model,
         prompt: safePrompt,
         aspect_ratio: '16:9',
+        resolution: '1K',
         n: 1,
       }),
     }, OPENROUTER_IMAGE_TIMEOUT_MS);
@@ -672,8 +658,9 @@ async function generateImageViaOpenRouter(prompt, model) {
     console.warn(`[ImageGen] OpenRouter /images network (${model}):`, err?.message || err);
   }
   if (imgRes?.ok) {
-    const fromApi = extractOpenRouterImagesApi(await imgRes.json());
-    if (fromApi) return fromApi;
+    const fromApi = extractGeneratedImage(await imgRes.json());
+    const asData = await toImageDataUrl(fromApi);
+    if (asData) return asData;
   } else if (imgRes) {
     const errText = await imgRes.text().catch(() => imgRes.statusText);
     console.warn(`[ImageGen] OpenRouter /images ${imgRes.status} (${model}): ${String(errText).slice(0, 180)}`);
@@ -682,26 +669,13 @@ async function generateImageViaOpenRouter(prompt, model) {
       err.status = 429;
       throw err;
     }
+    if (imgRes.status === 401 || imgRes.status === 402) {
+      const err = new Error(String(errText).slice(0, 180));
+      err.status = imgRes.status;
+      throw err;
+    }
   }
-
-  const orResponse = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      model,
-      messages: [{ role: 'user', content: safePrompt }],
-      modalities: ['image', 'text'],
-    }),
-  }, OPENROUTER_IMAGE_TIMEOUT_MS);
-
-  if (!orResponse.ok) {
-    const errText = await orResponse.text().catch(() => orResponse.statusText);
-    const err = new Error(`OpenRouter image error ${orResponse.status}: ${errText.slice(0, 200)}`);
-    err.status = orResponse.status;
-    throw err;
-  }
-
-  return extractOpenRouterChatImage(await orResponse.json());
+  return null;
 }
 
 async function reviewGeneratedImage(imageDataUrl, intended) {
@@ -784,6 +758,20 @@ app.post('/api/generate-image', imageRateLimit, async (req, res) => {
     let provider = '';
     let openRouterTimedOut = false;
     let openRouterRateLimited = false;
+
+    // OpenAI first — gpt-image-1-mini is confirmed live on this account.
+    // OpenRouter Gemini 3.1 429s were aborting the batch before a picture landed.
+    if (hasOpenAI) {
+      try {
+        imageDataUrl = await generateImageViaOpenAI(p);
+        if (imageDataUrl) {
+          return { imageDataUrl, provider: 'openai-gpt-image', openRouterRateLimited, openRouterTimedOut };
+        }
+      } catch (err) {
+        console.warn('[ImageGen] OpenAI primary failed:', err.message);
+      }
+    }
+
     const modelsToTry = [];
     for (const id of [model, ...OPENROUTER_IMAGE_MODELS]) {
       if (id && !modelsToTry.includes(id)) modelsToTry.push(id);
@@ -798,7 +786,7 @@ app.post('/api/generate-image', imageRateLimit, async (req, res) => {
           }
         } catch (err) {
           console.warn(`[ImageGen] OpenRouter ${modelId} failed:`, err.message);
-          if (err.status === 401 || err.status === 402) throw err;
+          if (err.status === 401 || err.status === 402) break;
           if (err.status === 429 || /rate limit/i.test(String(err.message || ''))) {
             openRouterRateLimited = true;
             continue;
@@ -808,14 +796,6 @@ app.post('/api/generate-image', imageRateLimit, async (req, res) => {
             break;
           }
         }
-      }
-    }
-    if (!imageDataUrl && hasOpenAI && !openRouterTimedOut) {
-      try {
-        imageDataUrl = await generateImageViaOpenAI(p);
-        provider = 'openai-gpt-image';
-      } catch (err) {
-        console.warn('[ImageGen] OpenAI fallback failed:', err.message);
       }
     }
     return { imageDataUrl, provider, openRouterRateLimited, openRouterTimedOut };

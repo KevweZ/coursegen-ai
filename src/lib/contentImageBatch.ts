@@ -9,7 +9,7 @@ import {
 /** One at a time so parallel OpenRouter 429s cannot zero out the whole 14. */
 export const CONTENT_IMAGE_CONCURRENCY = 1;
 export const CONTENT_IMAGE_PACE_MS = 2000;
-export const CONTENT_IMAGE_TIMEOUT_MS = 60000;
+export const CONTENT_IMAGE_TIMEOUT_MS = 90000;
 export const CONTENT_IMAGE_RATE_LIMIT_WAIT_MS = 25000;
 export const CONTENT_IMAGE_TRANSIENT_WAIT_MS = 2500;
 
