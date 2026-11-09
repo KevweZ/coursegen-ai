@@ -1,14 +1,32 @@
 /** Render cold-start / deploy HTML is mapped by the worker to 503 COLD_START. */
 
+function nestedErrorText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object') {
+    const rec = value as { message?: unknown; error?: unknown };
+    if (typeof rec.message === 'string') return rec.message;
+    if (typeof rec.error === 'string') return rec.error;
+  }
+  return '';
+}
+
 function errorParts(err: unknown): { status: number; msg: string; code: string } {
-  const rec = err && typeof err === 'object' ? (err as { status?: number; message?: string; code?: string }) : null;
+  const rec = err && typeof err === 'object'
+    ? (err as { status?: number; message?: string; code?: string; error?: unknown })
+    : null;
+  const nested = rec ? nestedErrorText(rec.error) : '';
   return {
     status: Number(rec?.status) || 0,
     code: String(rec?.code || ''),
     msg: String(
-      rec?.message || rec?.code || (typeof err === 'string' ? err : ''),
+      rec?.message || nested || rec?.code || (typeof err === 'string' ? err : ''),
     ),
   };
+}
+
+function isUselessImageErrorText(msg: string): boolean {
+  const t = String(msg || '').trim();
+  return !t || /^(error|failed|\[object object\]|http \d+|internal server error)$/i.test(t);
 }
 
 export function isImageRateLimit(err: unknown): boolean {
@@ -20,14 +38,46 @@ export function isImageRateLimit(err: unknown): boolean {
 }
 
 export function formatImageApiError(err: unknown): string | null {
-  const { msg } = errorParts(err);
+  const { status, msg, code } = errorParts(err);
+  const blob = `${code} ${msg} ${status}`;
   if (isImageRateLimit(err) || /If you were saving a draft/i.test(msg)) {
     return 'The image API is rate-limited right now. Wait a minute, then click AI again. You do not need to Sync or save a draft.';
   }
-  if (/UPSTREAM_HTML|API error \(\d+\)/i.test(msg)) {
+  if (
+    status === 524 ||
+    status === 504 ||
+    /UPSTREAM_TIMEOUT| 524\b|timed out/i.test(blob)
+  ) {
+    return 'The image request timed out. Wait a minute, then try Generate AI images again.';
+  }
+  if (/UPSTREAM_HTML|API error \(\d+\)/i.test(blob)) {
     return 'The image server sent an error page instead of a picture. Try AI again in a moment.';
   }
+  if (status === 401 || /AI_AUTH_REQUIRED|Sign in required to generate/i.test(blob)) {
+    return 'Sign in again, then try Generate AI images.';
+  }
+  if (status === 402 || /AI_NO_CREDITS|no AI generation credits/i.test(blob)) {
+    return 'No AI image credits left. Open My Account to add credits, then try again.';
+  }
+  if (isUselessImageErrorText(msg) && status >= 400) {
+    return 'The image server could not generate a picture. Wait a minute, then try Generate AI images again.';
+  }
+  if (isUselessImageErrorText(msg)) {
+    return 'The image server could not generate a picture. Wait a minute, then try Generate AI images again.';
+  }
   return null;
+}
+
+/** Always a sentence the author can act on — never a bare "Error" in the toast. */
+export function publicImageError(err: unknown): string {
+  return (
+    formatImageApiError(err)
+    || (() => {
+      const { msg } = errorParts(err);
+      return isUselessImageErrorText(msg) ? '' : msg.trim();
+    })()
+    || 'The image server could not generate a picture. Wait a minute, then try Generate AI images again.'
+  );
 }
 
 export function isApiColdStart(err: unknown): boolean {
@@ -37,12 +87,14 @@ export function isApiColdStart(err: unknown): boolean {
   return /COLD_START|warming up|UPSTREAM_HTML|API proxy error/i.test(`${code} ${msg}`);
 }
 
-/** Browser dropped the /api/generate-image request (timeout, proxy, Render 524). */
+/** Browser dropped the /api/generate-image request (proxy HTML, Render sleep). Do not retry 524/504. */
 export function isImageNetworkFailure(err: unknown): boolean {
   if (isApiColdStart(err)) return true;
-  const rec = err && typeof err === 'object' ? (err as { message?: string; name?: string }) : null;
-  const msg = String(rec?.message || rec?.name || (typeof err === 'string' ? err : ''));
-  return /failed to fetch|networkerror|load failed|aborterror|timed out|Image generation timed out/i.test(msg);
+  const { status, msg, code } = errorParts(err);
+  if (status === 524 || status === 504 || /UPSTREAM_TIMEOUT/i.test(`${code} ${msg}`)) return false;
+  const rec = err && typeof err === 'object' ? (err as { name?: string }) : null;
+  const blob = `${msg} ${rec?.name || ''}`;
+  return /failed to fetch|networkerror|load failed|aborterror/i.test(blob);
 }
 
 function sleep(ms: number): Promise<void> {

@@ -299,7 +299,7 @@ import {
 import { finishImageGenProgress } from './lib/imageGenProgress';
 import { moveArrayItem } from './lib/objectiveOrder';
 import { ObjectiveReorderButtons } from './components/builder/ObjectiveReorderButtons';
-import { formatImageApiError, isApiColdStart, isImageRateLimit, startPreviewApiKeepWarm, waitForApiWarm } from './lib/apiWarmup';
+import { isApiColdStart, isImageRateLimit, publicImageError, startPreviewApiKeepWarm, waitForApiWarm } from './lib/apiWarmup';
 import { buildReviewSnapshot, createReviewLink, fetchReviewSnapshot } from './lib/reviewLinkService';
 import { downloadReviewScriptDocx } from './lib/reviewScriptDocx';
 import { tocRefMapFirstWins } from './lib/playerToc';
@@ -4686,14 +4686,6 @@ export default function App() {
               next = seedFloatingFromCourse(next) || next;
               commitCourse(next);
               setImageProgress(finishImageGenProgress(imageResult));
-              if (
-                imageResult.jobsAttempted > 0 &&
-                imageResult.jobsApplied === 0 &&
-                imageResult.lastError &&
-                !isApiColdStart(imageResult.lastError)
-              ) {
-                showDraftMessage(imageResult.lastError);
-              }
             }
           } catch (err: any) {
             console.warn('[ImageService] Background imagery failed:', err);
@@ -4703,7 +4695,7 @@ export default function App() {
                 ...prev,
                 isRunning: cold ? true : false,
                 isDone: cold ? false : prev.total > 0,
-                error: cold ? null : (err?.message || 'Image generation failed'),
+                error: cold ? null : publicImageError(err),
               }));
             }
           } finally {
@@ -5083,8 +5075,11 @@ export default function App() {
       working = stripCourseAutoPromotedFloating(withImages);
       setFloatingImagesMap(floatingMapFromCourse(working));
       setCourse(working);
-      const failMsg = lastError || 'No image was returned.';
-      setImageProgress(finishImageGenProgress(imageResult));
+      const failMsg = publicImageError(lastError || 'No image was returned.');
+      setImageProgress(finishImageGenProgress({
+        ...imageResult,
+        lastError: lastError ? failMsg : null,
+      }));
       if (cancelled) {
         showDraftMessage(
           jobsApplied > 0
@@ -5097,9 +5092,7 @@ export default function App() {
             ? 'This slide already has an image, or it is not a content/tab slide. Remove the photo first to generate a new one. Crop and Move still work on the current image.'
             : 'No eligible slides for AI images. Objectives, overviews, and quizzes are skipped — only content/tabs that still need visuals are filled. Use Upload Image for a specific slide.'
         );
-      } else if (!coverMade && jobsApplied === 0) {
-        if (!isApiColdStart(failMsg)) showDraftMessage(failMsg);
-      } else {
+      } else if (coverMade || jobsApplied > 0) {
         const parts = [
           coverMade ? 'cover updated' : null,
           jobsApplied > 0 ? `${jobsApplied} content visual${jobsApplied === 1 ? '' : 's'}` : null,
@@ -5117,9 +5110,9 @@ export default function App() {
         ...prev,
         isRunning: cold ? true : false,
         isDone: cold ? false : prev.total > 0,
-        error: cold ? null : (err?.message || 'Failed to regenerate AI images.'),
+        error: cold ? null : publicImageError(err),
       }));
-      if (!cold) showDraftMessage(err?.message || 'Failed to regenerate AI images.');
+      if (!cold) showDraftMessage(publicImageError(err));
     } finally {
       setIsGeneratingImages(false);
     }
@@ -5160,21 +5153,7 @@ export default function App() {
   };
 
   const regenerateAiImages = () => openGenerateImagesPicker();
-  const coverImageErrorMessage = (err: unknown) => {
-    const mapped = formatImageApiError(err);
-    if (mapped) return mapped;
-    const msg = String((err as any)?.message || err || '');
-    if (/No image returned/i.test(msg) || /No imageDataUrl/i.test(msg) || /timed out/i.test(msg)) {
-      return 'The image model did not send a picture back (timeout or a blank response). Try AI again.';
-    }
-    if (/failed to fetch|networkerror|load failed/i.test(msg)) {
-      return 'Could not reach the image API. Try AI again — a long cover request may have been dropped.';
-    }
-    if (isApiColdStart(err) || /warming up/i.test(msg)) {
-      return 'The image server was still starting. Click AI again now that it should be awake.';
-    }
-    return msg || 'Could not generate the cover image.';
-  };
+  const coverImageErrorMessage = (err: unknown) => publicImageError(err);
   const regenerateCoverImage = async (opts?: { title?: string; description?: string }) => {
     const live = courseRef.current || course;
     if (!live || coverRegenBusyRef.current) return;

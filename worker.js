@@ -35,6 +35,7 @@ function buildProxyHeaders(request) {
 function htmlUpstreamResponse(status, pathnameSearch = '') {
   const isWarmup = status === 502 || status === 503 || status === 520 || status === 521 || status === 522;
   const isRateLimit = status === 429;
+  const isTimeout = status === 524 || status === 504;
   const isImage = String(pathnameSearch).startsWith('/api/generate-image');
   return new Response(
     JSON.stringify({
@@ -44,13 +45,17 @@ function htmlUpstreamResponse(status, pathnameSearch = '') {
           ? (isImage
             ? 'The image API is rate-limited right now. Wait a minute, then click AI again.'
             : 'Too many requests right now. Wait a moment, then try again.')
-          : `API error (${status}). Try again in a moment.`,
-      code: isWarmup ? 'COLD_START' : isRateLimit ? 'UPSTREAM_RATE_LIMIT' : 'UPSTREAM_HTML',
-      status,
-      retryAfterMs: isRateLimit ? 20000 : 0,
+          : isTimeout
+            ? (isImage
+              ? 'The image request timed out. Wait a minute, then try Generate AI images again.'
+              : 'The request timed out. Try again in a moment.')
+            : `API error (${status}). Try again in a moment.`,
+      code: isWarmup ? 'COLD_START' : isRateLimit ? 'UPSTREAM_RATE_LIMIT' : isTimeout ? 'UPSTREAM_TIMEOUT' : 'UPSTREAM_HTML',
+      status: isWarmup ? 503 : isRateLimit ? 429 : isTimeout ? 504 : 502,
+      retryAfterMs: isRateLimit ? 20000 : isTimeout ? 15000 : 0,
     }),
     {
-      status: isWarmup ? 503 : isRateLimit ? 429 : 502,
+      status: isWarmup ? 503 : isRateLimit ? 429 : isTimeout ? 504 : 502,
       headers: { 'Content-Type': 'application/json' },
     },
   );
@@ -74,7 +79,16 @@ async function proxyToRender(request, pathnameSearch) {
       redirect: 'follow',
     });
     const contentType = renderRes.headers.get('content-type') ?? '';
-    if (!contentType.includes('text/html')) return renderRes;
+    const isJson = contentType.includes('application/json');
+    const wrapNonJson =
+      !isJson && (
+        contentType.includes('text/html')
+        || renderRes.status === 429
+        || renderRes.status === 524
+        || renderRes.status === 504
+        || (String(pathnameSearch).startsWith('/api/generate-image') && renderRes.status >= 400)
+      );
+    if (!wrapNonJson) return renderRes;
     lastHtmlStatus = renderRes.status;
     const elapsed = Date.now() - started;
     const retryable = COLD_START_STATUSES.has(renderRes.status) && elapsed < 8000;

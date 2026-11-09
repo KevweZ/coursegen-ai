@@ -19,6 +19,15 @@ test('0 of N image jobs finish the toast as failed instead of spinning forever',
   assert.equal(stuck.current, 0);
   assert.equal(stuck.total, 14);
   assert.match(String(stuck.error), /No endpoints|image/i);
+
+  const bare = finishImageGenProgress({
+    jobsAttempted: 14,
+    jobsApplied: 0,
+    lastError: 'Error',
+  });
+  assert.equal(bare.isRunning, false);
+  assert.doesNotMatch(String(bare.error), /^Error$/);
+  assert.match(String(bare.error), /could not generate a picture|timed out|rate-limited/i);
 });
 
 test('partial image success keeps the applied count and surfaces lastError', () => {
@@ -30,7 +39,7 @@ test('partial image success keeps the applied count and surfaces lastError', () 
   assert.equal(partial.isRunning, false);
   assert.equal(partial.isDone, true);
   assert.equal(partial.current, 6);
-  assert.equal(partial.error, 'Rate limited');
+  assert.match(String(partial.error), /rate-limited/i);
 });
 
 test('preview auto-gen and Edit → Generate both close the visuals toast from jobsApplied', () => {

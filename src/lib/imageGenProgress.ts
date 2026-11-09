@@ -1,6 +1,6 @@
 /** Final image-toast state after generateContentSlideImages returns. */
 
-import { isApiColdStart } from './apiWarmup';
+import { isApiColdStart, publicImageError } from './apiWarmup';
 
 export type ImageGenResultLike = {
   jobsAttempted: number;
@@ -36,7 +36,7 @@ export function finishImageGenProgress(result: ImageGenResultLike): FinishedImag
       stopping: false,
     };
   }
-  const publicError = isApiColdStart(lastError) ? null : lastError;
+  const publicError = isApiColdStart(lastError) ? null : (lastError ? publicImageError(lastError) : null);
   const failMsg = publicError || 'No image was returned.';
   return {
     isRunning: false,

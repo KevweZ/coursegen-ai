@@ -50,6 +50,8 @@ test('worker maps Render HTML 429 to a JSON rate-limit, not a draft Sync toast',
   assert.match(retrySet, /503/);
   assert.doesNotMatch(retrySet, /429/);
   assert.doesNotMatch(retrySet, /524/);
+  assert.match(worker, /UPSTREAM_TIMEOUT/);
+  assert.match(worker, /image request timed out/);
 });
 
 test('team invite query survives /account and /MyAccount path parsing', () => {

@@ -17,7 +17,7 @@ import {
   type ContentImageJob,
 } from '../lib/contentImageJobs';
 import { getSupabaseAccessToken } from '../lib/supabaseAccessToken';
-import { isApiColdStart, isImageNetworkFailure, isImageRateLimit, waitForApiWarm } from '../lib/apiWarmup';
+import { isApiColdStart, isImageNetworkFailure, isImageRateLimit, publicImageError, waitForApiWarm } from '../lib/apiWarmup';
 
 export {
   MAX_CONTENT_AI_IMAGES,
@@ -375,16 +375,28 @@ async function callImageEndpoint(
     }
 
     if (!response.ok) {
-      const err = await response.json().catch(() => ({ error: response.statusText })) as {
-        error?: string;
+      const payload = await response.json().catch(() => null) as {
+        error?: string | { message?: string; error?: string; code?: string };
+        message?: string;
         code?: string;
         retryAfterMs?: number;
-      };
-      const msg = err.error ?? `HTTP ${response.status}`;
+      } | null;
+      const nested = payload?.error;
+      const fromNested = typeof nested === 'string'
+        ? nested
+        : nested && typeof nested === 'object'
+          ? String(nested.message || nested.error || '')
+          : '';
+      const raw = String(fromNested || payload?.message || payload?.code || '').trim();
+      const useless = !raw || /^(error|failed|\[object object\]|internal server error)$/i.test(raw);
+      const msg = useless
+        ? `Image generation failed (HTTP ${response.status}).`
+        : raw;
       const e = new Error(msg) as Error & { status?: number; code?: string; retryAfterMs?: number };
       e.status = response.status;
-      if (err.code) e.code = err.code;
-      if (Number(err.retryAfterMs) > 0) e.retryAfterMs = Number(err.retryAfterMs);
+      const code = payload?.code || (nested && typeof nested === 'object' ? nested.code : '');
+      if (code) e.code = String(code);
+      if (Number(payload?.retryAfterMs) > 0) e.retryAfterMs = Number(payload.retryAfterMs);
       throw e;
     }
 
@@ -953,7 +965,7 @@ export async function generateContentSlideImages(
         mediaPrompt: job.mediaPrompt,
       });
     } catch (err: any) {
-      lastError = err?.message || String(err) || 'Image generation failed.';
+      lastError = publicImageError(err);
       if (isImageAuthOrCreditStop(err)) stopRemaining = true;
       console.warn(`[ImageService] Content visual failed for "${job.subject}":`, err);
     }

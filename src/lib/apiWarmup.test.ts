@@ -7,6 +7,7 @@ import {
   isApiColdStart,
   isImageNetworkFailure,
   isImageRateLimit,
+  publicImageError,
   PREVIEW_API_KEEPWARM_MS,
 } from './apiWarmup.ts';
 import { finishImageGenProgress } from './imageGenProgress.ts';
@@ -31,6 +32,11 @@ test('worker warmup copy and 503 are treated as a cold start, not a credit stop'
     'The image API is rate-limited right now. Wait a minute, then click AI again. You do not need to Sync or save a draft.',
   );
   assert.match(String(formatImageApiError({ status: 429, code: 'UPSTREAM_RATE_LIMIT' })), /rate-limited/i);
+  assert.match(String(formatImageApiError({ status: 504, code: 'UPSTREAM_TIMEOUT' })), /timed out/i);
+  assert.match(publicImageError('Error'), /could not generate a picture/i);
+  assert.match(publicImageError({ status: 500, message: 'Error' }), /could not generate a picture/i);
+  assert.equal(isImageNetworkFailure({ status: 504, code: 'UPSTREAM_TIMEOUT', message: 'The image request timed out.' }), false);
+  assert.equal(isApiColdStart({ status: 504, code: 'UPSTREAM_TIMEOUT' }), false);
 });
 
 test('cold-start image errors never become a failed toast', () => {
@@ -68,7 +74,7 @@ test('image client retries cold starts after warming the API; cover waits on the
   assert.match(cover, /waitForApiWarm/);
   assert.match(cover, /generateCourseCoverImage/);
   assert.match(app, /startPreviewApiKeepWarm/);
-  assert.match(app, /formatImageApiError/);
+  assert.match(app, /publicImageError/);
   assert.match(app, /isImageRateLimit\(imageResult.lastError\)/);
   assert.match(src('src/services/ttsService.ts'), /waitForApiWarm/);
   assert.ok(PREVIEW_API_KEEPWARM_MS >= 60_000);
