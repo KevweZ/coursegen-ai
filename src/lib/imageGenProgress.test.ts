@@ -70,10 +70,10 @@ test('OpenRouter image gen times out and falls back instead of hanging the 0/14 
   const handlerStart = server.indexOf("app.post('/api/generate-image'");
   const handlerEnd = server.indexOf("app.post('/api/ai'");
   const handler = server.slice(handlerStart, handlerEnd);
-  assert.match(handler, /google\/gemini-3\.1-flash-image['"]/);
+  assert.match(handler, /google\/gemini-3\.1-flash-lite-image['"]/);
   assert.match(handler, /OPENROUTER_IMAGE_MODELS|gemini-2\.5-flash-image/);
 
   const images = src('src/services/imageService.ts');
   const clientModel = images.match(/const DEFAULT_IMAGE_MODEL = '([^']+)'/)?.[1];
-  assert.equal(clientModel, 'google/gemini-3.1-flash-image');
+  assert.equal(clientModel, 'google/gemini-3.1-flash-lite-image');
 });

@@ -7,7 +7,7 @@ function src(rel: string): string {
   return readFileSync(resolve(process.cwd(), rel), 'utf8');
 }
 
-test('OpenRouter image 429 is returned to the client instead of chaining chat + every fallback model', () => {
+test('OpenRouter 429 on one slug continues to the next image model and a live OpenAI fallback', () => {
   const server = src('server.js');
   const start = server.indexOf('async function generateImageViaOpenRouter');
   const end = server.indexOf('async function reviewGeneratedImage');
@@ -18,8 +18,23 @@ test('OpenRouter image 429 is returned to the client instead of chaining chat + 
     server.indexOf("app.post('/api/generate-image'"),
     server.indexOf("app.post('/api/ai'"),
   );
-  assert.match(handler, /err\.status === 429/);
+  assert.match(handler, /openRouterRateLimited = true/);
+  assert.match(handler, /continue;/);
   assert.match(handler, /UPSTREAM_RATE_LIMIT/);
+  const openaiFn = server.slice(
+    server.indexOf('async function generateImageViaOpenAI'),
+    server.indexOf('const OPENROUTER_IMAGE_TIMEOUT_MS'),
+  );
+  assert.match(openaiFn, /gpt-image-1-mini/);
+  assert.match(openaiFn, /gpt-image-2\.5-flare/);
+  assert.doesNotMatch(openaiFn, /dall-e-3/);
+  const models = server.slice(
+    server.indexOf('const OPENROUTER_IMAGE_MODELS'),
+    server.indexOf('async function fetchWithTimeout'),
+  );
+  assert.match(models, /gemini-3\.1-flash-lite-image/);
+  assert.match(models, /gemini-2\.5-flash-image/);
+  assert.match(models, /flux\.2-klein-4b/);
 });
 
 test('successful /api/generate-image spends credits_ai; empty image does not', () => {

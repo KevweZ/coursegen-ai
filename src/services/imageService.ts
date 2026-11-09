@@ -32,7 +32,7 @@ export {
   topicBenefitsFromVisual,
 } from '../lib/contentImageJobs';
 
-const DEFAULT_IMAGE_MODEL = 'google/gemini-3.1-flash-image';
+const DEFAULT_IMAGE_MODEL = 'google/gemini-3.1-flash-lite-image';
 
 export { IMAGE_NO_TEXT_RULE };
 

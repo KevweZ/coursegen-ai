@@ -535,28 +535,25 @@ function withImageNoTextRule(prompt) {
   return `${p}\n\n${IMAGE_NO_TEXT_RULE}`;
 }
 
-/** OpenAI image fallback — used when OPENROUTER_API_KEY is not set (common on Render). */
+/** OpenAI image fallback — dall-e-3 / gpt-image-1 are retired on current keys. */
 async function generateImageViaOpenAI(prompt) {
   if (!OPENAI_API_KEY) return null;
   prompt = withImageNoTextRule(prompt);
-  // Prefer gpt-image-1 when available; fall back to dall-e-3 URL response.
   const attempts = [
     {
-      model: 'gpt-image-1',
+      model: 'gpt-image-1-mini',
       body: {
-        model: 'gpt-image-1',
+        model: 'gpt-image-1-mini',
         prompt: String(prompt).slice(0, 3900),
         size: '1536x1024',
       },
     },
     {
-      model: 'dall-e-3',
+      model: 'gpt-image-2.5-flare',
       body: {
-        model: 'dall-e-3',
+        model: 'gpt-image-2.5-flare',
         prompt: String(prompt).slice(0, 3900),
-        n: 1,
-        size: '1792x1024',
-        quality: 'standard',
+        size: '1536x1024',
       },
     },
   ];
@@ -594,11 +591,12 @@ async function generateImageViaOpenAI(prompt) {
 
 const OPENROUTER_IMAGE_TIMEOUT_MS = 35000;
 const OPENAI_IMAGE_TIMEOUT_MS = 40000;
-/** Stable Gemini image first; preview/2.5 stay as fallbacks if a slug is retired. */
+/** Lite/2.5 first — 3.1 Flash Image 429s under load and used to abort the whole batch. */
 const OPENROUTER_IMAGE_MODELS = [
-  'google/gemini-3.1-flash-image',
-  'google/gemini-3.1-flash-image-preview',
+  'google/gemini-3.1-flash-lite-image',
   'google/gemini-2.5-flash-image',
+  'google/gemini-3.1-flash-image',
+  'black-forest-labs/flux.2-klein-4b',
 ];
 
 async function fetchWithTimeout(url, init, ms) {
@@ -762,7 +760,7 @@ async function reviewGeneratedImage(imageDataUrl, intended) {
 }
 
 app.post('/api/generate-image', imageRateLimit, async (req, res) => {
-  const { prompt, model = 'google/gemini-3.1-flash-image', intended, skipQa } = req.body ?? {};
+  const { prompt, model = 'google/gemini-3.1-flash-lite-image', intended, skipQa } = req.body ?? {};
   const skipVisionQa = skipQa === true;
   if (!prompt?.trim()) {
     return res.status(400).json({ error: 'Missing required field: prompt' });
@@ -800,10 +798,10 @@ app.post('/api/generate-image', imageRateLimit, async (req, res) => {
           }
         } catch (err) {
           console.warn(`[ImageGen] OpenRouter ${modelId} failed:`, err.message);
-          // Don't walk every Gemini slug after a 429; OpenAI can still fill.
+          if (err.status === 401 || err.status === 402) throw err;
           if (err.status === 429 || /rate limit/i.test(String(err.message || ''))) {
             openRouterRateLimited = true;
-            break;
+            continue;
           }
           if (/timed out/i.test(String(err.message || ''))) {
             openRouterTimedOut = true;
@@ -815,7 +813,7 @@ app.post('/api/generate-image', imageRateLimit, async (req, res) => {
     if (!imageDataUrl && hasOpenAI && !openRouterTimedOut) {
       try {
         imageDataUrl = await generateImageViaOpenAI(p);
-        provider = 'openai-dall-e-3';
+        provider = 'openai-gpt-image';
       } catch (err) {
         console.warn('[ImageGen] OpenAI fallback failed:', err.message);
       }
