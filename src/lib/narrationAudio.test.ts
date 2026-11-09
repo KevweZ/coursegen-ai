@@ -134,6 +134,57 @@ test('background auto-fix skips narration fields', () => {
   assert.equal(qcFieldTouchesNarration('voiceOverText'), true);
 });
 
+test('chrome narration jobs are queued before teaching slides', () => {
+  const { items } = buildCourseNarrationItems({
+    modules: [{
+      slides: [{
+        id: 's1',
+        type: 'content',
+        title: 'Furnace',
+        voiceOverText: 'The furnace runs hot enough to crack naphtha.',
+      }],
+    }],
+  }, {
+    synthetic: [
+      { id: '__module-overview-1__', text: "Let's revisit the objectives for this module." },
+      { id: '__cover__', text: 'Welcome to Steam Cracker operations training today.' },
+    ],
+  });
+  assert.equal(items[0].id, '__module-overview-1__');
+  assert.equal(items[0].target, 'synthetic');
+  assert.equal(items[1].id, '__cover__');
+  assert.equal(items[2].id, 's1');
+
+  const missing = buildCourseNarrationItems({
+    modules: [{
+      slides: [{
+        id: 's1',
+        type: 'content',
+        title: 'Furnace',
+        voiceOverText: 'The furnace runs hot enough to crack naphtha.',
+        voiceOverUrl: 'https://example.com/audio/s1.mp3'.padEnd(48, 'x'),
+      }],
+    }],
+  }, {
+    onlyMissing: true,
+    synthetic: [
+      {
+        id: '__module-overview-1__',
+        text: "Let's revisit the objectives for this module.",
+        voiceOverUrl: 'https://example.com/audio/overview.mp3'.padEnd(48, 'x'),
+      },
+      { id: '__module-overview-2__', text: "Let's revisit the objectives for this module." },
+    ],
+  });
+  assert.deepEqual(missing.items.map(i => i.id), ['__module-overview-2__']);
+
+  const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+  const hook = readFileSync(resolve(process.cwd(), 'src/hooks/useTTSGeneration.ts'), 'utf8');
+  assert.match(app, /collectSyntheticNarrationJobs/);
+  assert.match(app, /voiceOverUrl: s\.voiceOverUrl/);
+  assert.match(hook, /Chrome clips first/);
+});
+
 test('player tour and objectives TTS copy matches the Audio box', () => {
   const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
   assert.match(app, /PLAYER_TOUR_NARRATION/);

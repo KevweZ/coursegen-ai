@@ -12,6 +12,7 @@ import { coerceOstText, isSymbolOnlyOstLine, sanitizeOstText } from './formatTab
 import { compactChoiceCardsList } from './choiceCardCopy';
 import { quizQuestionList } from './knowledgeCheckOst';
 import { formatOstSectionGroups } from './ostSectionGroups';
+import { sanitizeMermaidCode } from './mermaidNodes';
 
 export function wordCount(text: string): number {
   return String(text || '').trim().split(/\s+/).filter(Boolean).length;
@@ -624,6 +625,19 @@ export function finalizeHydratedSlide(slide: any, moduleTitle = ''): any {
 
   if (next.type === 'click-reveal' && isInstructionOnlyOst(next.content)) {
     next = { ...next, content: '' };
+  }
+
+  if (next.type === 'diagram') {
+    const raw = String(next.data?.mermaidCode || next.data?.code || '').trim();
+    if (raw) {
+      const healed = sanitizeMermaidCode(raw);
+      if (healed && healed !== raw) {
+        next = {
+          ...next,
+          data: { ...(next.data || {}), mermaidCode: healed, code: healed },
+        };
+      }
+    }
   }
 
   if ((next.type === 'content' || next.type === 'summary') && next.content) {

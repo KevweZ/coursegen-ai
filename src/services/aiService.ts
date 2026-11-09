@@ -943,6 +943,7 @@ export async function hydrateCourseContent(
     Plain labels with only letters/numbers/spaces/hyphens do NOT need quotes.
   - Decision branches: always label arrows with -->|Yes| and -->|No| or -->|Approve| and -->|Reject|
   - Max 10 nodes for clarity on a slide
+  - Never name a node, subgraph, or classDef `end` (or `subgraph` / `graph` / `flowchart`) — those tokens are mermaid syntax. Use endNode / endStyle / Finished. A stadium node labelled End is fine: F([End]).
   - Prefer colorful classDef fills for contrast (e.g. fill:#dbeafe,stroke:#2563eb; fill:#fce7f3,stroke:#db2777; fill:#d1fae5,stroke:#059669; fill:#fef3c7,stroke:#d97706) — NEVER dark slate fills. The player renders diagrams on a white slide canvas.
   - Use at least 2–3 distinct node fill colors in flowcharts so steps are visually distinct.
   - Example mermaidCode: "flowchart TD\\n  A([Start]) --> B[Identify Risk]\\n  B --> C{Severity?}\\n  C -->|High| D[Escalate to Manager]\\n  C -->|Low| E[Log & Monitor]\\n  D --> F([End])\\n  E --> F\\n  classDef blue fill:#dbeafe,stroke:#2563eb,color:#0f172a\\n  classDef pink fill:#fce7f3,stroke:#db2777,color:#0f172a\\n  classDef green fill:#d1fae5,stroke:#059669,color:#0f172a\\n  class B,D blue\\n  class E green\\n  class C pink"

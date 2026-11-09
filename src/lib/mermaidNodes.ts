@@ -21,6 +21,68 @@ const RESERVED = new Set([
   'linkStyle', 'direction', 'TD', 'TB', 'BT', 'LR', 'RL',
 ]);
 
+/** Tokens mermaid treats as syntax, not ids — `classDef end` is a parse error. */
+const CLASSDEF_RESERVED = new Set([
+  'end', 'subgraph', 'graph', 'flowchart', 'class', 'style', 'click', 'direction',
+]);
+const NODE_RESERVED = new Set(['end', 'subgraph', 'graph', 'flowchart']);
+
+function aliasClassDefId(id: string): string {
+  if (!CLASSDEF_RESERVED.has(id.toLowerCase())) return id;
+  if (/style$/i.test(id)) return id;
+  return `${id}Style`;
+}
+
+function aliasNodeId(id: string): string {
+  if (!NODE_RESERVED.has(id.toLowerCase())) return id;
+  if (/node$/i.test(id)) return id;
+  return `${id}Node`;
+}
+
+/**
+ * Rename reserved flowchart ids so generated diagrams can render.
+ * `end` closes a subgraph — `classDef end` / a node named `end` never parse.
+ */
+export function rewriteReservedMermaidIds(code: string): string {
+  let out = String(code || '');
+  const classMap = new Map<string, string>();
+
+  out = out.replace(/(^|\n)([ \t]*classDef[ \t]+)([A-Za-z][\w-]*)/g, (full, nl, kw, id) => {
+    const next = aliasClassDefId(id);
+    if (next === id) return full;
+    classMap.set(id, next);
+    return `${nl}${kw}${next}`;
+  });
+
+  out = out.replace(/(^|\n)([ \t]*class[ \t]+)([^\n]+)/g, (full, nl, kw, rest) => {
+    const raw = String(rest || '').trimEnd();
+    const m = raw.match(/^(.*?)([ \t]+)(\S+)([ \t]*)$/);
+    if (!m) return full;
+    let cls = m[3];
+    if (classMap.has(cls)) cls = classMap.get(cls)!;
+    const ids = m[1].split(',').map((part: string) => {
+      const t = part.trim();
+      if (!t) return part;
+      const aliased = aliasNodeId(t);
+      return aliased === t ? part : part.replace(t, aliased);
+    }).join(',');
+    return `${nl}${kw}${ids}${m[2]}${cls}${m[4]}`;
+  });
+
+  out = out.split('\n').map((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('%%')) return line;
+    if (/^end$/i.test(trimmed)) return line;
+    if (/^(classDef|class|click|style|linkStyle|direction|flowchart|graph|subgraph)\b/i.test(trimmed)) return line;
+    return line.replace(
+      /(^|[^\w-])(end|subgraph|graph|flowchart)(?=\[|\(|\{|-->|---|-\.|==>|\s|$)/gi,
+      (_full, pre, id) => `${pre}${aliasNodeId(id)}`,
+    );
+  }).join('\n');
+
+  return out;
+}
+
 export function isDiagramType(type?: string): boolean {
   return String(type || '') === 'diagram';
 }
@@ -216,7 +278,7 @@ export function sanitizeMermaidCode(code: string): string {
   out = out.replace(/\{([^{}]*)\}/g, (_m, label) => `{${wrapLabel(label)}}`);
   out = out.replace(/\(([^()]*)\)/g, (_m, label) => `(${wrapLabel(label)})`);
 
-  return out;
+  return rewriteReservedMermaidIds(out);
 }
 
 /** Last successful SVG plus mermaid source — both live on the slide JSON like imageUrl. */
@@ -259,25 +321,34 @@ export function diagramNeedsMermaidRender(data: any, force = false): boolean {
   return Boolean(diagramSourceCode(data));
 }
 
-export function stampDiagramSnapshot(course: any, slideId: string, svg: string): any {
+export function stampDiagramSnapshot(course: any, slideId: string, svg: string, healedSource?: string): any {
   const id = String(slideId || '').trim();
   const nextSvg = String(svg || '').trim();
   if (!course?.modules || !id || !nextSvg) return course;
   const nextFp = diagramSvgFingerprint(nextSvg);
+  const healed = String(healedSource || '').trim();
   let changed = false;
   const modules = course.modules.map((m: any) => ({
     ...m,
     slides: (m.slides || []).map((s: any) => {
       if (String(s?.id || '') !== id) return s;
       const existing = String(s?.data?.diagramSvg || '');
-      const source = diagramSourceCode(s.data);
+      const source = healed || diagramSourceCode(s.data);
+      const nextData: any = { ...(s.data || {}) };
+      if (healed && healed !== String(s?.data?.mermaidCode || '')) {
+        nextData.mermaidCode = healed;
+        nextData.code = healed;
+      }
       if (existing && diagramSvgFingerprint(existing) === nextFp) {
-        if (String(s?.data?.diagramSvgSource || '') === source) return s;
+        if (String(s?.data?.diagramSvgSource || '') === source
+          && nextData.mermaidCode === s?.data?.mermaidCode) {
+          return s;
+        }
         changed = true;
-        return { ...s, data: { ...(s.data || {}), diagramSvgSource: source } };
+        return { ...s, data: { ...nextData, diagramSvgSource: source } };
       }
       changed = true;
-      return { ...s, data: { ...(s.data || {}), diagramSvg: nextSvg, diagramSvgSource: source } };
+      return { ...s, data: { ...nextData, diagramSvg: nextSvg, diagramSvgSource: source } };
     }),
   }));
   return changed ? { ...course, modules } : course;

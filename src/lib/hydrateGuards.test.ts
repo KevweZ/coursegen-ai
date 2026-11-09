@@ -453,3 +453,17 @@ test('oversized all-correct choice-cards remap to click-reveal, not Check-all-gr
   assert.equal(next.data.items.length, 8);
   assert.match(String(next.data.items[0].term), /Card 1/);
 });
+
+test('hydrate rewrites reserved mermaid ids on diagram slides', () => {
+  const next = finalizeHydratedSlide({
+    type: 'diagram',
+    title: 'Ethylene and Propylene Value Chain Overview',
+    content: 'The value chain connects refining to finished products.',
+    voiceOverText: 'The journey starts at the refinery, where crude oil is processed.',
+    data: {
+      mermaidCode: 'flowchart TD\n  A[Crude] --> end[Products]\n  classDef end fill:#fef3c7,stroke:#d97706',
+    },
+  }, 'Polyolefin Types');
+  assert.match(String(next.data.mermaidCode), /classDef endStyle /);
+  assert.match(String(next.data.mermaidCode), /endNode\[Products\]/);
+});

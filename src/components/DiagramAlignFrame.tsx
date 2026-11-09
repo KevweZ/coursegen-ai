@@ -16,7 +16,7 @@ interface Props {
   isAuthoring?: boolean;
   cachedSvg?: string;
   regenerating?: boolean;
-  onRendered?: (svg: string) => void;
+  onRendered?: (svg: string, source?: string) => void;
   onAlignChange?: (align: DiagramAlign) => void;
   onRegenerate?: () => void;
   onDelete?: () => void;
@@ -40,7 +40,9 @@ export function DiagramAlignFrame({
 }: Props) {
   const [selected, setSelected] = useState(false);
   const [regenNonce, setRegenNonce] = useState(0);
+  const [localBusy, setLocalBusy] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const busy = regenerating || localBusy;
 
   useEffect(() => {
     if (!isAuthoring || !selected) return;
@@ -95,22 +97,21 @@ export function DiagramAlignFrame({
               </button>
             ))}
           </div>
-          {onRegenerate && (
-            <button
-              type="button"
-              title="Regenerate diagram"
-              disabled={regenerating}
-              onClick={(e) => {
-                e.stopPropagation();
-                setSelected(true);
-                setRegenNonce((n) => n + 1);
-                onRegenerate();
-              }}
-              className="p-1.5 rounded-lg border border-indigo-200 bg-white text-indigo-600 hover:bg-indigo-50 shadow-sm disabled:opacity-50"
-            >
-              <RefreshCw className={cn('w-3.5 h-3.5', regenerating && 'animate-spin')} />
-            </button>
-          )}
+          <button
+            type="button"
+            title="Regenerate diagram"
+            disabled={busy}
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelected(true);
+              setLocalBusy(true);
+              setRegenNonce((n) => n + 1);
+              onRegenerate?.();
+            }}
+            className="p-1.5 rounded-lg border border-indigo-200 bg-white text-indigo-600 hover:bg-indigo-50 shadow-sm disabled:opacity-50"
+          >
+            <RefreshCw className={cn('w-3.5 h-3.5', busy && 'animate-spin')} />
+          </button>
           {onDelete && (
             <button
               type="button"
@@ -154,11 +155,18 @@ export function DiagramAlignFrame({
           )}
         >
           <MermaidDiagram
+            key={`diagram-${regenNonce}`}
             code={code}
             theme={theme}
             cachedSvg={cachedSvg}
             regenNonce={regenNonce}
-            onRendered={onRendered}
+            onRendered={(svg, source) => {
+              setLocalBusy(false);
+              onRendered?.(svg, source);
+            }}
+            onRenderSettled={(ok) => {
+              if (!ok) setLocalBusy(false);
+            }}
             className="!w-auto max-w-full"
           />
         </div>

@@ -7,7 +7,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { AlertCircle } from 'lucide-react';
-import { sanitizeMermaidCode } from '../lib/mermaidNodes';
+import { rewriteReservedMermaidIds, sanitizeMermaidCode } from '../lib/mermaidNodes';
 
 function cn(...classes: (string | false | undefined | null)[]): string {
   return classes.filter(Boolean).join(' ');
@@ -23,7 +23,8 @@ interface MermaidDiagramProps {
   cachedSvg?: string;
   /** Increment to re-run mermaid even when a saved SVG exists (author Regenerate). */
   regenNonce?: number;
-  onRendered?: (svg: string) => void;
+  onRendered?: (svg: string, source?: string) => void;
+  onRenderSettled?: (ok: boolean) => void;
 }
 
 let _idCounter = 0;
@@ -39,6 +40,7 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
   cachedSvg = '',
   regenNonce = 0,
   onRendered,
+  onRenderSettled,
 }) => {
   const [svg, setSvg] = useState<string>(() => String(cachedSvg || '').trim());
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +48,8 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
   const wrapRef = useRef<HTMLDivElement>(null);
   const onRenderedRef = useRef(onRendered);
   onRenderedRef.current = onRendered;
+  const onSettledRef = useRef(onRenderSettled);
+  onSettledRef.current = onRenderSettled;
   const appliedNonceRef = useRef(0);
   const cached = String(cachedSvg || '').trim();
 
@@ -148,23 +152,28 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
             appliedNonceRef.current = regenNonce;
             setSvg(renderedSvg);
             setError(null);
-            onRenderedRef.current?.(renderedSvg);
+            onRenderedRef.current?.(renderedSvg, sanitized);
+            onSettledRef.current?.(true);
           }
         } catch (firstErr: any) {
           // Last-chance retry with the unsanitized original (in case our
           // quote-wrapping accidentally broke a rare valid construct).
-          if (sanitized === raw) throw firstErr;
+          // Do not retry reserved-id markup (`classDef end`) — that is the parse fail.
+          if (sanitized === raw || rewriteReservedMermaidIds(raw) !== raw) throw firstErr;
           const retryId = `${idRef.current}-r${regenNonce}-retry`;
           const { svg: retrySvg } = await mermaid.render(retryId, raw);
           if (!cancelled) {
             appliedNonceRef.current = regenNonce;
             setSvg(retrySvg);
             setError(null);
-            onRenderedRef.current?.(retrySvg);
+            onRenderedRef.current?.(retrySvg, raw);
+            onSettledRef.current?.(true);
           }
         }
       } catch (err: any) {
         if (!cancelled) {
+          appliedNonceRef.current = regenNonce;
+          onSettledRef.current?.(false);
           if (cached) {
             setSvg(cached);
             setError(null);

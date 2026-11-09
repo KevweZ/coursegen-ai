@@ -12,6 +12,7 @@ import {
   removeFlowchartNode,
   rewriteFlowchartNodeLabel,
   sanitizeMermaidCode,
+  rewriteReservedMermaidIds,
   stampDiagramSnapshot,
   diagramNeedsMermaidRender,
   diagramSvgFingerprint,
@@ -65,6 +66,23 @@ test('quoted labels with parentheses survive sanitize', () => {
   assert.equal(isDiagramType('content'), false);
 });
 
+test('classDef end and a node named end are rewritten so mermaid can parse', () => {
+  const code = `flowchart TD
+  A[Crude oil] --> end[Finished products]
+  end --> B[Market]
+  classDef end fill:#fef3c7,stroke:#d97706,color:#0f172a
+  class end end`;
+  const out = sanitizeMermaidCode(code);
+  assert.match(out, /classDef endStyle /);
+  assert.doesNotMatch(out, /classDef end /);
+  assert.match(out, /endNode\[Finished products\]/);
+  assert.match(out, /endNode --> B/);
+  assert.match(out, /class endNode endStyle/);
+  assert.equal(rewriteReservedMermaidIds(code).includes('classDef endStyle'), true);
+  const subgraph = 'flowchart TD\n  subgraph chain\n    A --> B\n  end';
+  assert.match(sanitizeMermaidCode(subgraph), /^\s*end$/m);
+});
+
 test('Edit Slide hides leftover diagram OST and binds shape fields', () => {
   const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
   const fields = readFileSync(resolve(process.cwd(), 'src/components/builder/EditSlideItemFields.tsx'), 'utf8');
@@ -115,7 +133,9 @@ test('draft load shows the saved SVG even if mermaid.core cannot be fetched', ()
   assert.match(mermaid, /cached && !forceRender/);
   assert.match(frame, /Regenerate diagram/);
   assert.match(frame, /overflow-x-hidden/);
+  assert.match(frame, /diagram-\$\{regenNonce\}/);
   assert.match(app, /onRegenerate/);
+  assert.match(app, /sanitizeMermaidCode\(diagramSourceCode/);
 });
 
 test('restamping the same diagram with a new mermaid id does not rewrite the draft', () => {

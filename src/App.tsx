@@ -95,6 +95,7 @@ import {
   clearDiagramSnapshot,
   diagramSourceCode,
   diagramSavedSvg,
+  sanitizeMermaidCode,
 } from './lib/mermaidNodes';
 import {
   applyObjectiveModuleSync,
@@ -4737,8 +4738,9 @@ export default function App() {
             mermaid.initialize({ startOnLoad: false, theme: 'base', securityLevel: 'loose' });
             for (const s of diagramSlides.slice(0, 8)) {
               try {
-                const { svg } = await mermaid.render(`prewarm-${s.id}-${Date.now()}`, String(s.data.mermaidCode));
-                if (svg) working = stampDiagramSnapshot(working, s.id, svg);
+                const source = sanitizeMermaidCode(String(s.data.mermaidCode)) || String(s.data.mermaidCode);
+                const { svg } = await mermaid.render(`prewarm-${s.id}-${Date.now()}`, source);
+                if (svg) working = stampDiagramSnapshot(working, s.id, svg, source);
               } catch { /* non-fatal */ }
             }
             if (stillActive()) commitCourse(working);
@@ -4857,12 +4859,13 @@ export default function App() {
     typeof id === 'string' && id.startsWith('__') && id.endsWith('__');
 
   /** Jobs for injected slides (cover / tour / objectives / module title+overview) currently in the player. */
-  const collectSyntheticNarrationJobs = (slides: Slide[] = allSlides): Array<{ id: string; text: string }> =>
+  const collectSyntheticNarrationJobs = (slides: Slide[] = allSlides): Array<{ id: string; text: string; voiceOverUrl?: string }> =>
     slides
       .filter(s => isSyntheticSlideId(s?.id) && !['__closing__', '__exam-intro__', '__mastery-exam__', '__exam-results__'].includes(String(s.id)))
       .map(s => ({
         id: String(s.id),
         text: String(s.voiceOverText || s.narration || '').trim(),
+        voiceOverUrl: s.voiceOverUrl,
       }))
       .filter(j => j.text.length > 0);
 
@@ -8741,12 +8744,21 @@ export default function App() {
                                           theme={theme as any}
                                           align={diagramAlign}
                                           isAuthoring={!isLearnerPlayer}
-                                          onRendered={(svg) => {
+                                          onRendered={(svg, source) => {
                                             if (!currentSlide?.id || isLearnerPlayer) return;
-                                            setCourse(prev => stampDiagramSnapshot(prev, currentSlide.id, svg));
+                                            setCourse(prev => stampDiagramSnapshot(prev, currentSlide.id, svg, source));
                                           }}
                                           onRegenerate={() => {
                                             if (!currentSlide?.id || isLearnerPlayer) return;
+                                            const healed = sanitizeMermaidCode(diagramSourceCode(currentSlide.data));
+                                            if (!healed) return;
+                                            handleUpdateSlideMedia(currentSlide.id, {
+                                              data: {
+                                                ...(currentSlide.data || {}),
+                                                mermaidCode: healed,
+                                                code: healed,
+                                              },
+                                            });
                                           }}
                                           onAlignChange={(align) => {
                                             if (!currentSlide?.id) return;

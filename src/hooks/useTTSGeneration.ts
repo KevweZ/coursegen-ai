@@ -7,7 +7,7 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { slideSkipsNarration } from '../lib/enablingCoverage';
-import { hasPlayableNarrationUrl, isTabbedNarrationType, slideNarrationScript, stampSpokenClip, tabNarrationScript } from '../lib/narrationAudio';
+import { hasLiveNarrationUrl, hasPlayableNarrationUrl, isTabbedNarrationType, slideNarrationScript, stampSpokenClip, tabNarrationScript } from '../lib/narrationAudio';
 
 /** Tab jobs must not stamp slide.voiceOverUrl even if the server drops `target`. */
 export function ttsResultIsTab(r: { target?: string | null; tabId?: string | null; id?: string }): boolean {
@@ -151,13 +151,27 @@ export function buildCourseNarrationItems(
   course: any,
   opts?: {
     onlyMissing?: boolean;
-    synthetic?: Array<{ id: string; text: string; title?: string }>;
+    synthetic?: Array<{ id: string; text: string; title?: string; voiceOverUrl?: string | null }>;
   },
 ): { items: TtsJobItem[]; skipped: number } {
   const items: TtsJobItem[] = [];
   let skipped = 0;
   if (!course?.modules) {
     return { items, skipped };
+  }
+
+  // Chrome clips first so cover / tour / objectives / module overviews still
+  // record if the teaching-slide job later drops.
+  for (const s of opts?.synthetic || []) {
+    const text = String(s.text || '').trim();
+    if (!text) continue;
+    if (opts?.onlyMissing && hasLiveNarrationUrl(s.voiceOverUrl)) continue;
+    items.push({
+      id: s.id,
+      text,
+      title: s.title || s.id,
+      target: 'synthetic',
+    });
   }
 
   for (const mod of course.modules) {
@@ -201,17 +215,6 @@ export function buildCourseNarrationItems(
     }
   }
 
-  for (const s of opts?.synthetic || []) {
-    const text = String(s.text || '').trim();
-    if (!text) continue;
-    items.push({
-      id: s.id,
-      text,
-      title: s.title || s.id,
-      target: 'synthetic',
-    });
-  }
-
   return { items, skipped };
 }
 
@@ -229,7 +232,7 @@ export function useTTSGeneration() {
     onSlideProgress?: (current: number, total: number, title: string) => void,
     opts?: {
       onlyMissing?: boolean;
-      synthetic?: Array<{ id: string; text: string; title?: string }>;
+      synthetic?: Array<{ id: string; text: string; title?: string; voiceOverUrl?: string | null }>;
       setSyntheticAudioMap?: (updater: (prev: Record<string, string>) => Record<string, string>) => void;
       /**
        * Internal: how many auto-resumes already ran after network drops.
