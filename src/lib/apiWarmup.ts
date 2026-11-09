@@ -76,7 +76,7 @@ export async function waitForApiWarm(opts?: {
 }
 
 /** Ping health while Course Development is open so Render stays up between clicks. */
-export const PREVIEW_API_KEEPWARM_MS = 4 * 60 * 1000;
+export const PREVIEW_API_KEEPWARM_MS = 2 * 60 * 1000;
 
 export function startPreviewApiKeepWarm(): () => void {
   void waitForApiWarm({ timeoutMs: 20000 });

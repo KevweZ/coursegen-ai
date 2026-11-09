@@ -7,6 +7,21 @@ function src(rel: string): string {
   return readFileSync(resolve(process.cwd(), rel), 'utf8');
 }
 
+test('OpenRouter image 429 is returned to the client instead of chaining chat + every fallback model', () => {
+  const server = src('server.js');
+  const start = server.indexOf('async function generateImageViaOpenRouter');
+  const end = server.indexOf('async function reviewGeneratedImage');
+  const fn = server.slice(start, end);
+  assert.match(fn, /imgRes\.status === 429/);
+  assert.match(fn, /err\.status = 429/);
+  const handler = server.slice(
+    server.indexOf("app.post('/api/generate-image'"),
+    server.indexOf("app.post('/api/ai'"),
+  );
+  assert.match(handler, /err\.status === 429/);
+  assert.match(handler, /UPSTREAM_RATE_LIMIT/);
+});
+
 test('successful /api/generate-image spends credits_ai; empty image does not', () => {
   const server = src('server.js');
   const start = server.indexOf("app.post('/api/generate-image'");
@@ -45,5 +60,6 @@ test('image rate limit is per author token, not one global Render IP, and return
   assert.match(server, /Invalid JSON body/);
   const imagesLimiter = server.slice(server.indexOf('function imageLimitKey'), server.indexOf("app.post('/api/generate-image'"));
   assert.match(imagesLimiter, /keyGenerator:\s*imageLimitKey/);
+  assert.match(imagesLimiter, /skipFailedRequests:\s*true/);
   assert.doesNotMatch(imagesLimiter, /Please wait 15 minutes/);
 });

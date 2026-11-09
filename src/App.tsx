@@ -10276,7 +10276,7 @@ export default function App() {
                                   }
                                   setRegenSlideId(`main:${live.id}`);
                                   try {
-                                    const { generateSlideTTS: genTTS, urlToDataUrl } = await import('./services/ttsService');
+                                    const { generateSlideTTS: genTTS, urlToDataUrl, formatTtsErrorForUser } = await import('./services/ttsService');
                                     let durable = await genTTS(mainText, { voice: ttsVoice as any });
                                     try { durable = await urlToDataUrl(durable); } catch { /* keep blob url */ }
                                     const stamped = stampSpokenClip({ ...live, voiceOverText: mainText }, durable, mainText);
@@ -10286,7 +10286,7 @@ export default function App() {
                                     handleUpdateSlideMedia(live.id, stampSpokenClip({}, durable, mainText));
                                     showDraftMessage('Main slide audio regenerated ✓');
                                   } catch (err: any) {
-                                    alert(`TTS error: ${err.message}`);
+                                    showDraftMessage(formatTtsErrorForUser(err));
                                   } finally {
                                     setRegenSlideId(null);
                                   }
@@ -10361,7 +10361,7 @@ export default function App() {
                                        const tabKey = `tab:${liveTabs[ti]?.id || ti}`;
                                        setRegenSlideId(tabKey);
                                        try {
-                                         const { generateSlideTTS: genTTS, urlToDataUrl } = await import('./services/ttsService');
+                                         const { generateSlideTTS: genTTS, urlToDataUrl, formatTtsErrorForUser } = await import('./services/ttsService');
                                          let durable = await genTTS(text, { voice: ttsVoice as any });
                                          try { durable = await urlToDataUrl(durable); } catch { /* keep blob url */ }
                                          liveTabs[ti] = stampSpokenClip({ ...liveTabs[ti], voiceOverText: text }, durable, text);
@@ -10387,7 +10387,7 @@ export default function App() {
                                          }
                                          showDraftMessage(`Audio regenerated for “${liveTabs[ti].label || `Tab ${ti + 1}`}” ✓`);
                                        } catch (err: any) {
-                                         alert(`TTS error: ${err.message}`);
+                                         showDraftMessage(formatTtsErrorForUser(err));
                                        } finally {
                                          setRegenSlideId(null);
                                        }
@@ -10481,7 +10481,7 @@ export default function App() {
                                 }
                                 setRegenSlideId(editingSlide.id);
                                 try {
-                                  const { generateSlideTTS: genTTS, urlToDataUrl } = await import('./services/ttsService');
+                                  const { generateSlideTTS: genTTS, urlToDataUrl, formatTtsErrorForUser } = await import('./services/ttsService');
                                   const toDurable = async (blobUrl: string) => {
                                     try { return await urlToDataUrl(blobUrl); } catch { return blobUrl; }
                                   };
@@ -10548,7 +10548,7 @@ export default function App() {
                                   setEditingSlide(nextSlide);
                                   showDraftMessage('Audio regenerated for all narration sections ✓');
                                 } catch (err: any) {
-                                  alert(`TTS error: ${err.message}`);
+                                  showDraftMessage(formatTtsErrorForUser(err));
                                 } finally {
                                   setRegenSlideId(null);
                                 }

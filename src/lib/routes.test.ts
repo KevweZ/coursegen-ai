@@ -39,6 +39,17 @@ test('worker maps Render HTML 429 to a JSON rate-limit, not a draft Sync toast',
   assert.match(worker, /arrayBuffer/);
   assert.doesNotMatch(worker, /If you were saving a draft/);
   assert.match(worker, /rate-limited right now/);
+  // Retrying HTML 429/524 re-runs a 90s image gen and burns the limiter.
+  assert.match(worker, /COLD_START_STATUSES/);
+  assert.doesNotMatch(worker, /HTML_RETRY_STATUSES/);
+  const retrySet = worker.slice(
+    worker.indexOf('const COLD_START_STATUSES'),
+    worker.indexOf('function sleep'),
+  );
+  assert.match(retrySet, /502/);
+  assert.match(retrySet, /503/);
+  assert.doesNotMatch(retrySet, /429/);
+  assert.doesNotMatch(retrySet, /524/);
 });
 
 test('team invite query survives /account and /MyAccount path parsing', () => {

@@ -4,6 +4,8 @@
  * Sends the Supabase JWT so the server can enforce credits / trial TTS caps.
  */
 
+import { waitForApiWarm } from '../lib/apiWarmup';
+
 const TTS_PROXY_URL = '/api/tts';
 
 export type TTSVoice = 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
@@ -91,7 +93,7 @@ function parseProxyError(status: number, raw: string): TTSRequestError {
 export function isTransientTtsNetworkError(err: unknown): boolean {
   if (err instanceof TTSRequestError) {
     if (TTS_FATAL_CODES.has(err.code)) return false;
-    if (err.code === 'TTS_NETWORK' || err.code === 'COLD_START' || err.code === 'TTS_JOB_NOT_FOUND') return true;
+    if (err.code === 'TTS_NETWORK' || err.code === 'COLD_START' || err.code === 'TTS_BUSY' || err.code === 'TTS_JOB_NOT_FOUND') return true;
     // Real proxy/gateway responses (not app-level job failures, which use 4xx/500).
     if (err.status === 502 || err.status === 503 || err.status === 504) return true;
   }
@@ -120,12 +122,36 @@ async function fetchTtsWithRetry(
       const response = await fetch(input, init);
       if (response.ok) return response;
 
-      const retryableStatus = response.status === 502 || response.status === 503 || response.status === 504;
-      if (retryableStatus && attempt < retries) {
-        // Drain body so the connection can close cleanly before retrying.
-        await response.text().catch(() => '');
-        await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
-        continue;
+      const retryableStatus =
+        response.status === 429 ||
+        response.status === 502 ||
+        response.status === 503 ||
+        response.status === 504;
+      if (retryableStatus) {
+        const errText = await response.text().catch(() => '');
+        let waitMs = 1500 * (attempt + 1);
+        try {
+          const data = JSON.parse(errText);
+          if (TTS_FATAL_CODES.has(String(data?.code || ''))) {
+            throw parseProxyError(response.status, errText);
+          }
+          const ra = Number(data?.retryAfterMs);
+          if (ra > 0) waitMs = Math.min(20000, ra);
+        } catch (e) {
+          if (e instanceof TTSRequestError) throw e;
+        }
+        const headerRetry = Number(response.headers.get('retry-after'));
+        if (Number.isFinite(headerRetry) && headerRetry > 0) {
+          waitMs = Math.max(waitMs, Math.min(20000, headerRetry * 1000));
+        }
+        if (attempt < retries) {
+          await new Promise(r => setTimeout(r, waitMs));
+          continue;
+        }
+        return new Response(errText, {
+          status: response.status,
+          headers: { 'Content-Type': 'application/json' },
+        });
       }
       return response;
     } catch (err) {
@@ -137,7 +163,7 @@ async function fetchTtsWithRetry(
   }
   if (lastNetworkErr instanceof TTSRequestError) throw lastNetworkErr;
   throw new TTSRequestError(
-    'Connection to the narration server dropped. The app will retry automatically when possible.',
+    'Connection to the narration server dropped. Click Generate again — finished clips are kept.',
     { status: 503, code: 'TTS_NETWORK', retryAfterMs: 5000 },
   );
 }
@@ -155,14 +181,16 @@ export function formatTtsErrorForUser(err: unknown): string {
       case 'TTS_QUOTA':
         return 'Server OpenAI TTS quota exceeded. Check OpenAI Billing (prepaid credits / payment method) and Limits (Usage tier monthly cap is separate from your $ spend limit). Then retry narration.';
       case 'TTS_RATE_LIMIT':
-        return 'Narration is rate-limited right now. The app will wait and retry automatically when possible.';
+        return 'Narration is rate-limited right now. Click Generate again in a few seconds — finished clips are kept.';
+      case 'TTS_BUSY':
+        return 'Narration is finishing another clip. Click Generate again in a few seconds — you do not need to start over.';
       case 'TTS_CONCURRENCY':
         return 'Narration is already running in another tab. Finish or close that run, then retry.';
       case 'TTS_AUTH_REQUIRED':
         return 'Sign in required to generate narration.';
       case 'TTS_NETWORK':
       case 'COLD_START':
-        return err.message || 'Narration server connection dropped. Retry — finished slides are kept and only missing audio is regenerated.';
+        return 'Narration server was busy or still starting. Click Generate again — finished clips are kept.';
       case 'TTS_JOB_NOT_FOUND':
         return 'The narration job was lost (the server restarted or the job expired). Finished clips are kept — Retry to generate the rest, or use Edit → Regenerate all narration.';
       default:
@@ -283,6 +311,8 @@ export async function generateSlideTTS(
   if (!text || text.trim().length === 0) {
     throw new Error('Cannot generate TTS for empty text.');
   }
+
+  await waitForApiWarm({ timeoutMs: 25000 });
 
   const token = await getSupabaseAccessToken();
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };

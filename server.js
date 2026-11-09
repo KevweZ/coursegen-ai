@@ -248,15 +248,20 @@ function imageLimitKey(req) {
 
 const imageRateLimit = rateLimit({
   windowMs:         15 * 60 * 1000,
-  max:              60,                // 60 image requests per author (or IP) per 15 min
+  max:              60,                // 60 successful images per author (or IP) per 15 min
   standardHeaders:  true,
   legacyHeaders:    false,
+  // Failed/warming POSTs must not eat the budget — cover AI was 429 after dropped retries.
+  skipFailedRequests: true,
   keyGenerator:     imageLimitKey,
   handler: (req, res) => {
+    const resetMs = req.rateLimit?.resetTime
+      ? Math.max(5000, req.rateLimit.resetTime.getTime() - Date.now())
+      : 20000;
     res.status(429).json({
-      error: 'Too many image generation requests. Wait a minute, then click AI again.',
+      error: 'Too many image generation requests. Wait a moment, then click AI again.',
       code: 'IMAGE_RATE_LIMIT',
-      retryAfterMs: 60000,
+      retryAfterMs: Math.min(resetMs, 20000),
     });
   },
 });
@@ -674,6 +679,11 @@ async function generateImageViaOpenRouter(prompt, model) {
   } else if (imgRes) {
     const errText = await imgRes.text().catch(() => imgRes.statusText);
     console.warn(`[ImageGen] OpenRouter /images ${imgRes.status} (${model}): ${String(errText).slice(0, 180)}`);
+    if (imgRes.status === 429) {
+      const err = new Error('OpenRouter image rate limit');
+      err.status = 429;
+      throw err;
+    }
   }
 
   const orResponse = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
@@ -688,7 +698,9 @@ async function generateImageViaOpenRouter(prompt, model) {
 
   if (!orResponse.ok) {
     const errText = await orResponse.text().catch(() => orResponse.statusText);
-    throw new Error(`OpenRouter image error ${orResponse.status}: ${errText.slice(0, 200)}`);
+    const err = new Error(`OpenRouter image error ${orResponse.status}: ${errText.slice(0, 200)}`);
+    err.status = orResponse.status;
+    throw err;
   }
 
   return extractOpenRouterChatImage(await orResponse.json());
@@ -785,6 +797,8 @@ app.post('/api/generate-image', imageRateLimit, async (req, res) => {
           }
         } catch (err) {
           console.warn(`[ImageGen] OpenRouter ${modelId} failed:`, err.message);
+          // Don't walk every Gemini slug after a 429; OpenAI can still fill the cover.
+          if (err.status === 429 || /rate limit/i.test(String(err.message || ''))) break;
           if (/timed out/i.test(String(err.message || ''))) break;
         }
       }
@@ -829,7 +843,14 @@ app.post('/api/generate-image', imageRateLimit, async (req, res) => {
     return res.json({ imageDataUrl });
   } catch (err) {
     console.error('[ImageGen] Error:', err.message);
-    return res.status(500).json({ error: `Image generation failed: ${err.message}` });
+    const is429 = err.status === 429 || /rate.?limit| 429/.test(String(err.message || ''));
+    return res.status(is429 ? 429 : (err.status || 500)).json({
+      error: is429
+        ? 'The image API is rate-limited right now. Wait a moment, then click AI again.'
+        : `Image generation failed: ${err.message}`,
+      code: is429 ? 'UPSTREAM_RATE_LIMIT' : 'IMAGE_ERROR',
+      retryAfterMs: is429 ? 20000 : 0,
+    });
   }
 });
 
@@ -2080,6 +2101,7 @@ app.put('/api/preferences', async (req, res) => {
 // ─── 7. OpenAI TTS Proxy ────────────────────────────────────────────────────
 /** Serialize TTS calls process-wide so a full course cannot stampede OpenAI RPM limits. */
 let ttsQueue = Promise.resolve();
+let ttsQueueDepth = 0;
 let ttsLastStartedAt = 0;
 const TTS_MIN_GAP_MS = 700;
 /** Soft per-user concurrency — blocks multi-tab stampede without blocking sequential course gen. */
@@ -2618,9 +2640,21 @@ async function synthesizeSpeechBuffer(text, { voice = 'alloy', model = 'tts-1', 
 }
 
 function enqueueTtsWork(fn) {
-  const done = ttsQueue.then(fn, fn);
+  ttsQueueDepth += 1;
+  const run = async () => {
+    try {
+      return await fn();
+    } finally {
+      ttsQueueDepth = Math.max(0, ttsQueueDepth - 1);
+    }
+  };
+  const done = ttsQueue.then(run, run);
   ttsQueue = done.catch(() => {});
   return done;
+}
+
+function ttsSynthesizerBusy() {
+  return ttsQueueDepth > 0;
 }
 
 app.post('/api/tts', ttsRateLimit, async (req, res) => {
@@ -2637,6 +2671,15 @@ app.post('/api/tts', ttsRateLimit, async (req, res) => {
   const authz = await authorizeTtsRequest(req);
   if (!authz.ok) {
     return res.status(authz.status).json(authz.body);
+  }
+
+  // Don't hold this HTTP request behind a course job — Cloudflare drops it as "connection dropped".
+  if (ttsSynthesizerBusy()) {
+    return res.status(503).json({
+      error: 'Narration is finishing another clip. Retry in a few seconds — you do not need to start over.',
+      code: 'TTS_BUSY',
+      retryAfterMs: 4000,
+    });
   }
 
   const userId = authz.user.id;
