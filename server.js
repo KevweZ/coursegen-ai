@@ -540,23 +540,12 @@ function withImageNoTextRule(prompt) {
 async function generateImageViaOpenAI(prompt) {
   if (!OPENAI_API_KEY) return null;
   prompt = withImageNoTextRule(prompt);
+  const clipped = String(prompt).slice(0, 3900);
   const attempts = [
-    {
-      model: 'gpt-image-1-mini',
-      body: {
-        model: 'gpt-image-1-mini',
-        prompt: String(prompt).slice(0, 3900),
-        size: '1536x1024',
-      },
-    },
-    {
-      model: 'gpt-image-2.5-flare',
-      body: {
-        model: 'gpt-image-2.5-flare',
-        prompt: String(prompt).slice(0, 3900),
-        size: '1536x1024',
-      },
-    },
+    { model: 'gpt-image-1-mini', body: { model: 'gpt-image-1-mini', prompt: clipped } },
+    { model: 'gpt-image-1-mini', body: { model: 'gpt-image-1-mini', prompt: clipped, size: '1536x1024' } },
+    { model: 'chatgpt-image-latest', body: { model: 'chatgpt-image-latest', prompt: clipped } },
+    { model: 'gpt-image-2.5-flare', body: { model: 'gpt-image-2.5-flare', prompt: clipped, size: '1536x1024' } },
   ];
 
   let lastErr = 'No image returned from OpenAI.';
@@ -576,14 +565,11 @@ async function generateImageViaOpenAI(prompt) {
       continue;
     }
     const data = await orResponse.json();
-    const item = data?.data?.[0];
-    if (item?.b64_json) return `data:image/png;base64,${item.b64_json}`;
-    if (item?.url) {
-      const imgRes = await fetch(item.url);
-      if (!imgRes.ok) { lastErr = `Failed to download image URL (${imgRes.status})`; continue; }
-      const buf = Buffer.from(await imgRes.arrayBuffer());
-      const ctype = imgRes.headers.get('content-type') || 'image/png';
-      return `data:${ctype};base64,${buf.toString('base64')}`;
+    const extracted = extractGeneratedImage(data);
+    if (extracted?.startsWith('data:')) return extracted;
+    if (extracted) {
+      const asData = await toImageDataUrl(extracted);
+      if (asData) return asData;
     }
     lastErr = `Unexpected ${attempt.model} response shape`;
   }
@@ -758,6 +744,7 @@ app.post('/api/generate-image', imageRateLimit, async (req, res) => {
     let provider = '';
     let openRouterTimedOut = false;
     let openRouterRateLimited = false;
+    let lastErr = '';
 
     // OpenAI first — gpt-image-1-mini is confirmed live on this account.
     // OpenRouter Gemini 3.1 429s were aborting the batch before a picture landed.
@@ -765,11 +752,14 @@ app.post('/api/generate-image', imageRateLimit, async (req, res) => {
       try {
         imageDataUrl = await generateImageViaOpenAI(p);
         if (imageDataUrl) {
-          return { imageDataUrl, provider: 'openai-gpt-image', openRouterRateLimited, openRouterTimedOut };
+          return { imageDataUrl, provider: 'openai-gpt-image', openRouterRateLimited, openRouterTimedOut, lastErr };
         }
       } catch (err) {
-        console.warn('[ImageGen] OpenAI primary failed:', err.message);
+        lastErr = String(err?.message || err).slice(0, 240);
+        console.warn('[ImageGen] OpenAI primary failed:', lastErr);
       }
+    } else {
+      lastErr = 'OPENAI_API_KEY is not set on the API server.';
     }
 
     const modelsToTry = [];
@@ -785,6 +775,7 @@ app.post('/api/generate-image', imageRateLimit, async (req, res) => {
             break;
           }
         } catch (err) {
+          lastErr = String(err?.message || err).slice(0, 240) || lastErr;
           console.warn(`[ImageGen] OpenRouter ${modelId} failed:`, err.message);
           if (err.status === 401 || err.status === 402) break;
           if (err.status === 429 || /rate limit/i.test(String(err.message || ''))) {
@@ -798,11 +789,11 @@ app.post('/api/generate-image', imageRateLimit, async (req, res) => {
         }
       }
     }
-    return { imageDataUrl, provider, openRouterRateLimited, openRouterTimedOut };
+    return { imageDataUrl, provider, openRouterRateLimited, openRouterTimedOut, lastErr };
   };
 
   try {
-    let { imageDataUrl, provider, openRouterRateLimited, openRouterTimedOut } = await generateOnce(prompt);
+    let { imageDataUrl, provider, openRouterRateLimited, openRouterTimedOut, lastErr } = await generateOnce(prompt);
 
     if (!imageDataUrl) {
       if (openRouterRateLimited) {
@@ -818,7 +809,10 @@ app.post('/api/generate-image', imageRateLimit, async (req, res) => {
           code: 'UPSTREAM_TIMEOUT',
         });
       }
-      return res.status(502).json({ error: 'No image returned from AI model.' });
+      return res.status(502).json({
+        error: lastErr || 'No image returned from AI model.',
+        code: 'IMAGE_EMPTY',
+      });
     }
 
     const qa = skipVisionQa ? { skip: true } : await reviewGeneratedImage(imageDataUrl, intended);
@@ -3842,6 +3836,9 @@ app.get('/api/health', (_req, res) => {
     resend_configured: !!resend,
     support_email: SUPPORT_EMAIL,
     version: 'pilot-trial-harden-1',
+    image_gen: 'openai-first-mini',
+    image_openai: !!OPENAI_API_KEY,
+    image_openrouter: !!process.env.OPENROUTER_API_KEY,
   });
 });
 
