@@ -16,6 +16,7 @@ Anthony (2026-11-02): generated Mermaid diagrams had no way to fix a misspelled 
 - **Not a canvas builder.** No drag-drop, edge routing, or color picker. Advanced Mermaid source stays collapsed. Align/delete on the player canvas stay.
 - **Sanitize stays shared.** [`sanitizeMermaidCode`](src/lib/mermaidNodes.ts) is what [`MermaidDiagram`](src/components/MermaidDiagram.tsx) uses. Do not fork a second quote-wrapper in the component.
 - **Saved diagrams are durable.** After a successful render, [`stampDiagramSnapshot`](src/lib/mermaidNodes.ts) writes `data.diagramSvg` onto the slide JSON. Opening a draft shows that SVG immediately ([`cachedSvg`](src/components/MermaidDiagram.tsx)); a mermaid.core fetch miss must not blank a diagram that already existed. Delete still uses [`clearDiagramSnapshot`](src/lib/mermaidNodes.ts).
+- **Do not re-fetch mermaid when a snapshot exists.** [`diagramNeedsMermaidRender`](src/lib/mermaidNodes.ts) / [`MermaidDiagram`](src/components/MermaidDiagram.tsx) skip the `mermaid.core` import when `cachedSvg` is present. Compare fingerprints, not raw SVG ids — mermaid’s render-id rewrite must not restamp the draft (that loop shakes the slide left-right). Author **Regenerate** on [`DiagramAlignFrame`](src/components/DiagramAlignFrame.tsx) is the only force-rerender. Course Settings **Diagram slides** (`includeDiagrams`, default on) is how authors opt out of generating new diagram slides.
 
 ## How to change this
 

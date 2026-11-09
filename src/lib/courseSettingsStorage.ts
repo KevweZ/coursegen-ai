@@ -27,6 +27,8 @@ export interface SavedCourseSettings {
   /** Auto-injected per-module overview (objectives accordion) after the Module Title slide. */
   includeModuleOverviewSlides: boolean;
   includeSummarySlides: boolean;
+  /** When false, outline/hydrate will not emit Mermaid diagram slides. */
+  includeDiagrams: boolean;
   slideCount: number;
   /** Multimedia: none | ai | source | ai-and-source (legacy ai-title* accepted) */
   imageMode: CourseImageMode;
@@ -77,6 +79,7 @@ export const DEFAULT_COURSE_SETTINGS: SavedCourseSettings = {
   includeModuleTitleSlides: true,
   includeModuleOverviewSlides: true,
   includeSummarySlides: true,
+  includeDiagrams: true,
   /** Legacy field. Outline length is derived from enabling objectives, not this number. */
   slideCount: 14,
   imageMode: 'ai',
@@ -111,6 +114,7 @@ function normalizeSaved(parsed: SavedCourseSettings): SavedCourseSettings {
       showQuestionMap: parsed.examConfig?.showQuestionMap !== false,
     },
     interactionTypes: stripParkedInteractionTypes(parsed.interactionTypes),
+    includeDiagrams: parsed.includeDiagrams !== false,
     imageMode: normalizeImageMode(parsed.imageMode),
     verticalTabSkin: resolveVerticalTabSkin(parsed.verticalTabSkin),
     verticalTabColorMode: resolveVerticalTabColorMode(parsed.verticalTabColorMode),

@@ -13,6 +13,8 @@ import {
   rewriteFlowchartNodeLabel,
   sanitizeMermaidCode,
   stampDiagramSnapshot,
+  diagramNeedsMermaidRender,
+  diagramSvgFingerprint,
 } from './mermaidNodes.ts';
 
 const SAMPLE = `flowchart TD
@@ -109,4 +111,26 @@ test('draft load shows the saved SVG even if mermaid.core cannot be fetched', ()
   assert.match(frame, /cachedSvg/);
   assert.match(mermaid, /cachedSvg/);
   assert.match(mermaid, /onRendered/);
+  assert.match(mermaid, /regenNonce/);
+  assert.match(mermaid, /cached && !forceRender/);
+  assert.match(frame, /Regenerate diagram/);
+  assert.match(frame, /overflow-x-hidden/);
+  assert.match(app, /onRegenerate/);
+});
+
+test('restamping the same diagram with a new mermaid id does not rewrite the draft', () => {
+  const svgA = '<svg id="mermaid-diagram-1-100"><g id="flowchart-A-mermaid-diagram-1-100">Gas</g></svg>';
+  const svgB = '<svg id="mermaid-diagram-1-999"><g id="flowchart-A-mermaid-diagram-1-999">Gas</g></svg>';
+  assert.equal(diagramSvgFingerprint(svgA), diagramSvgFingerprint(svgB));
+  assert.equal(diagramNeedsMermaidRender({ mermaidCode: SAMPLE, diagramSvg: svgA }), false);
+  assert.equal(diagramNeedsMermaidRender({ mermaidCode: SAMPLE }), true);
+  assert.equal(diagramNeedsMermaidRender({ mermaidCode: SAMPLE, diagramSvg: svgA }, true), true);
+
+  const first = stampDiagramSnapshot(
+    { modules: [{ slides: [{ id: 'diagram-9', type: 'diagram', data: { mermaidCode: SAMPLE } }] }] },
+    'diagram-9',
+    svgA,
+  );
+  const second = stampDiagramSnapshot(first, 'diagram-9', svgB);
+  assert.equal(second.modules[0].slides[0].data.diagramSvg, svgA);
 });

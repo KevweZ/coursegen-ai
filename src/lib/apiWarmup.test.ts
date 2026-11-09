@@ -69,5 +69,7 @@ test('image client retries cold starts after warming the API; cover waits on the
   assert.match(cover, /generateCourseCoverImage/);
   assert.match(app, /startPreviewApiKeepWarm/);
   assert.match(app, /formatImageApiError/);
+  assert.match(app, /isImageRateLimit\(imageResult.lastError\)/);
+  assert.match(src('src/services/ttsService.ts'), /waitForApiWarm/);
   assert.ok(PREVIEW_API_KEEPWARM_MS >= 60_000);
 });

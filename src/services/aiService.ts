@@ -69,6 +69,7 @@ const QUIZ_SLIDE_TYPES = new Set([
 export function coerceInteractionTypes(
   modules: Array<{ slides?: Array<{ type?: string; [k: string]: any }> }>,
   allowed: string[],
+  opts?: { includeDiagrams?: boolean },
 ): typeof modules {
   const allow = new Set(
     (allowed || [])
@@ -77,7 +78,7 @@ export function coerceInteractionTypes(
   );
   // Always allow structural content types
   allow.add('content');
-  allow.add('diagram');
+  if (opts?.includeDiagrams !== false) allow.add('diagram');
   allow.add('key-takeaways');
   allow.add('summary');
   allow.add('title');
@@ -90,6 +91,9 @@ export function coerceInteractionTypes(
     slides: (mod.slides || []).map(s => {
       const raw = s.type === 'accordion' ? 'click-reveal' : (s.type || 'content');
       if (QUIZ_SLIDE_TYPES.has(raw)) return s.type === 'accordion' ? { ...s, type: 'click-reveal' } : s;
+      if (raw === 'diagram' && !allow.has('diagram')) {
+        return { ...s, type: 'content' };
+      }
       if (!CONTENT_INTERACTION_TYPES.has(raw) || allow.has(raw)) {
         return raw === s.type ? s : { ...s, type: raw };
       }
@@ -447,6 +451,7 @@ export async function generateCourseOutline(
     /** When true, the player injects a Module Overview slide after each Module Title. */
     includeModuleOverviewSlides?: boolean;
     includeSummarySlides?: boolean;
+    includeDiagrams?: boolean;
     includeModuleTitleSlides?: boolean;
     includeKnowledgeChecks?: boolean;
     knowledgeCheckMode?: 'total' | 'per-module';
@@ -502,8 +507,11 @@ export async function generateCourseOutline(
     ? `Exactly ${kcCount} Knowledge Check slide(s) per module (type must be one of: ${uniqueQuizActivities.join(', ')}). Title MUST start with "Knowledge Check:". This cap is independent of enabling count — a module with 6 enablings and a cap of ${kcCount} still gets ${kcCount} checks, not 6.`
     : `Exactly ${kcCount} Knowledge Check slides for the WHOLE course (not per module; type must be one of: ${uniqueQuizActivities.join(', ')}). Title MUST start with "Knowledge Check:". Spread them across ${moduleHint} module(s): typical split is ${totalSlots.join(' / ')} (leftover checks go to denser modules). Never exceed ${kcCount} total.`;
 
+  const includeDiagrams = configParams.includeDiagrams !== false;
   const allowedTypesForSchema = [
-    'content', 'diagram', 'key-takeaways',
+    'content',
+    ...(includeDiagrams ? ['diagram'] : []),
+    'key-takeaways',
     ...outlineInteractions.filter(t => !['content', 'diagram', 'key-takeaways'].includes(t)),
     ...schemaQuizActivities,
   ];
@@ -535,7 +543,9 @@ export async function generateCourseOutline(
      - flashcards, timeline, hotspot, scenario, tabbed-horizontal, tabbed-vertical, folder-explorer, carousel-panel, click-reveal -> use the exact string as the slide 'type'
      - Do NOT use type "accordion" — use "click-reveal" instead (same progressive-disclosure pattern)
      - tabbed-horizontal is the Process interaction (numbered stepper, 3–4 steps only). 5+ related topics use tabbed-vertical.
-     - For BRANCHING process flows, decision trees, or Mermaid diagrams: use type: "diagram"
+     ${includeDiagrams
+       ? '- For BRANCHING process flows, decision trees, or Mermaid diagrams: use type: "diagram"'
+       : '- Do NOT use type: "diagram". Teach branching flows as content, Process (tabbed-horizontal), or Tabs (tabbed-vertical).'}
      - Plain teaching slides: type: "content"
      CRITICAL — QUIZ-ONLY TYPES: Never use sorting, matching, drop-targets, multiple-choice, or multiple-answers as regular content slides. Those belong ONLY under Knowledge Checks (see #4).
   4. ${kcDirective}
@@ -629,7 +639,9 @@ export async function generateCourseOutline(
         configParams.sourceContent || '',
       ) as any;
     }
-    parsedOutline.modules = coerceInteractionTypes(parsedOutline.modules, outlineInteractions) as any;
+    parsedOutline.modules = coerceInteractionTypes(parsedOutline.modules, outlineInteractions, {
+      includeDiagrams,
+    }) as any;
   }
 
   parsedOutline.learningObjectives = objectives;
@@ -665,6 +677,7 @@ export async function hydrateCourseContent(
     scenarioConfig?: ScenarioConfigForGeneration;
     /** Whitelist from Course Settings — coerced after hydrate */
     interactionTypes?: string[];
+    includeDiagrams?: boolean;
     includeKnowledgeChecks?: boolean;
     knowledgeCheckMode?: 'total' | 'per-module';
     knowledgeCheckCount?: number;
@@ -1408,7 +1421,9 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     const allow = sourceMode === 'storyboard'
       ? [...new Set([...hydrateInteractions, ...STORYBOARD_CONTENT_TYPES])]
       : hydrateInteractions;
-    fullCourse.modules = coerceInteractionTypes(fullCourse.modules as any, allow) as any;
+    fullCourse.modules = coerceInteractionTypes(fullCourse.modules as any, allow, {
+      includeDiagrams: configParams.includeDiagrams !== false,
+    }) as any;
   }
 
   for (const mod of fullCourse.modules) {
@@ -1744,6 +1759,7 @@ export async function generateInsertedContent(opts: {
   slideCount?: number;
   autoSlideCount?: boolean;
   allowedInteractionTypes?: string[];
+  includeDiagrams?: boolean;
 }): Promise<{ moduleTitle?: string; objective?: string; slides: any[] }> {
   const auto = !!opts.autoSlideCount && opts.scope !== 'slide';
   const minSlides = opts.scope === 'slide' ? 1 : opts.scope === 'module' ? 3 : 2;
@@ -1827,6 +1843,7 @@ Rules:
   const wrapped = coerceInteractionTypes(
     [{ slides }],
     allowed.length ? allowed : ['content', 'click-reveal', 'tabbed-horizontal', 'choice-cards'],
+    { includeDiagrams: opts.includeDiagrams !== false || allowed.includes('diagram') },
   );
   slides = wrapped[0]?.slides || slides;
   slides = slides.map((s: any) => ensureGeneratedTabSlide(finalizeHydratedSlide(s, opts.moduleTitle || opts.courseTitle)));

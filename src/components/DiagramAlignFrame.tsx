@@ -3,7 +3,7 @@
  * left / center / right alignment and delete.
  * Align/delete chrome only appears while the diagram is selected.
  */
-import { AlignLeft, AlignCenter, AlignRight, Trash2 } from 'lucide-react';
+import { AlignLeft, AlignCenter, AlignRight, RefreshCw, Trash2 } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import MermaidDiagram from './MermaidDiagram';
 
@@ -15,8 +15,10 @@ interface Props {
   align?: DiagramAlign;
   isAuthoring?: boolean;
   cachedSvg?: string;
+  regenerating?: boolean;
   onRendered?: (svg: string) => void;
   onAlignChange?: (align: DiagramAlign) => void;
+  onRegenerate?: () => void;
   onDelete?: () => void;
 }
 
@@ -30,11 +32,14 @@ export function DiagramAlignFrame({
   align = 'center',
   isAuthoring = false,
   cachedSvg,
+  regenerating = false,
   onRendered,
   onAlignChange,
+  onRegenerate,
   onDelete,
 }: Props) {
   const [selected, setSelected] = useState(false);
+  const [regenNonce, setRegenNonce] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -61,7 +66,7 @@ export function DiagramAlignFrame({
 
   return (
     <div ref={rootRef} className="w-full space-y-2">
-      {isAuthoring && selected && (
+      {isAuthoring && (
         <div className="flex items-center justify-end gap-1">
           <div className="inline-flex items-center rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
             {(
@@ -90,6 +95,22 @@ export function DiagramAlignFrame({
               </button>
             ))}
           </div>
+          {onRegenerate && (
+            <button
+              type="button"
+              title="Regenerate diagram"
+              disabled={regenerating}
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelected(true);
+                setRegenNonce((n) => n + 1);
+                onRegenerate();
+              }}
+              className="p-1.5 rounded-lg border border-indigo-200 bg-white text-indigo-600 hover:bg-indigo-50 shadow-sm disabled:opacity-50"
+            >
+              <RefreshCw className={cn('w-3.5 h-3.5', regenerating && 'animate-spin')} />
+            </button>
+          )}
           {onDelete && (
             <button
               type="button"
@@ -109,7 +130,7 @@ export function DiagramAlignFrame({
       <div className={cn('w-full flex', justify)}>
         {/*
           Shrink-wrap the diagram so flex justify-* can actually move it.
-          Previous w-full child made left/center/right look identical.
+          overflow-x-hidden (not auto) so a scrollbar appearing cannot jitter L/R.
         */}
         <div
           role={isAuthoring ? 'button' : undefined}
@@ -125,7 +146,7 @@ export function DiagramAlignFrame({
             }
           }}
           className={cn(
-            'max-w-full w-fit overflow-x-auto rounded-xl transition-[box-shadow,outline] outline-none',
+            'max-w-full w-fit overflow-x-hidden rounded-xl transition-[box-shadow,outline] outline-none',
             theme === 'light' ? 'bg-transparent' : 'bg-slate-800/40 p-4',
             isAuthoring && 'cursor-pointer',
             isAuthoring && selected && 'ring-2 ring-indigo-500 ring-offset-2 shadow-md',
@@ -136,6 +157,7 @@ export function DiagramAlignFrame({
             code={code}
             theme={theme}
             cachedSvg={cachedSvg}
+            regenNonce={regenNonce}
             onRendered={onRendered}
             className="!w-auto max-w-full"
           />

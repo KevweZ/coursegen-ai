@@ -298,7 +298,7 @@ import {
 import { finishImageGenProgress } from './lib/imageGenProgress';
 import { moveArrayItem } from './lib/objectiveOrder';
 import { ObjectiveReorderButtons } from './components/builder/ObjectiveReorderButtons';
-import { formatImageApiError, isApiColdStart, startPreviewApiKeepWarm, waitForApiWarm } from './lib/apiWarmup';
+import { formatImageApiError, isApiColdStart, isImageRateLimit, startPreviewApiKeepWarm, waitForApiWarm } from './lib/apiWarmup';
 import { buildReviewSnapshot, createReviewLink, fetchReviewSnapshot } from './lib/reviewLinkService';
 import { downloadReviewScriptDocx } from './lib/reviewScriptDocx';
 import { tocRefMapFirstWins } from './lib/playerToc';
@@ -1106,6 +1106,7 @@ export default function App() {
     includeModuleTitleSlides,
     includeModuleOverviewSlides,
     includeSummarySlides,
+    includeDiagrams,
     interactionTypes,
     scenarioConfig,
     outlineDraft,
@@ -1131,6 +1132,7 @@ export default function App() {
     if (typeof design.includeModuleTitleSlides === 'boolean') setIncludeModuleTitleSlides(design.includeModuleTitleSlides);
     if (typeof design.includeModuleOverviewSlides === 'boolean') setIncludeModuleOverviewSlides(design.includeModuleOverviewSlides);
     if (typeof design.includeSummarySlides === 'boolean') setIncludeSummarySlides(design.includeSummarySlides);
+    if (typeof (design as any).includeDiagrams === 'boolean') setIncludeDiagrams((design as any).includeDiagrams);
     if (design.interactionTypes) setInteractionTypes(design.interactionTypes);
     if (design.scenarioConfig) setScenarioConfig(design.scenarioConfig);
     setOutlineDraft(design.outlineDraft ?? null);
@@ -1145,6 +1147,7 @@ export default function App() {
             includeModuleTitleSlides: !!design.includeModuleTitleSlides,
             includeModuleOverviewSlides: !!design.includeModuleOverviewSlides,
             includeSummarySlides: !!design.includeSummarySlides,
+            includeDiagrams: (design as any).includeDiagrams !== false,
           })
         : null
     );
@@ -1919,6 +1922,7 @@ export default function App() {
         includeModuleTitleSlides,
         includeModuleOverviewSlides,
         includeSummarySlides,
+        includeDiagrams,
       }));
       setStep('details');
       if (pushUrl) navigateTo(ROUTES.sandboxDesignMobile);
@@ -2438,6 +2442,9 @@ export default function App() {
       ? scormRt.includeSummarySlides
       : DEFAULT_COURSE_SETTINGS.includeSummarySlides
   );
+  const [includeDiagrams, setIncludeDiagrams] = useState(
+    () => DEFAULT_COURSE_SETTINGS.includeDiagrams !== false
+  );
   const [includeModuleTitleSlides, setIncludeModuleTitleSlides] = useState(
     () => typeof scormRt.includeModuleTitleSlides === 'boolean'
       ? scormRt.includeModuleTitleSlides
@@ -2555,6 +2562,9 @@ export default function App() {
         }
         if (typeof snapshot.includeSummarySlides === 'boolean') {
           setIncludeSummarySlides(snapshot.includeSummarySlides);
+        }
+        if (typeof snapshot.includeDiagrams === 'boolean') {
+          setIncludeDiagrams(snapshot.includeDiagrams);
         }
         if (snapshot.imageMode) setImageMode(normalizeImageMode(snapshot.imageMode));
         if (snapshot.processSkin) setProcessSkin(resolveProcessSkin(snapshot.processSkin));
@@ -3349,6 +3359,7 @@ export default function App() {
         : true
     );
     setIncludeSummarySlides(saved.includeSummarySlides ?? true);
+    setIncludeDiagrams(saved.includeDiagrams !== false);
     setSlideCount(saved.slideCount);
     setImageMode(normalizeImageMode(saved.imageMode));
     setHotspotGenerateBackdrop(!!saved.hotspotGenerateBackdrop);
@@ -3373,6 +3384,7 @@ export default function App() {
     includeModuleTitleSlides,
     includeModuleOverviewSlides,
     includeSummarySlides,
+    includeDiagrams,
     slideCount,
     imageMode,
     hotspotGenerateBackdrop,
@@ -3498,6 +3510,7 @@ export default function App() {
         includeModuleTitleSlides,
         includeModuleOverviewSlides,
         includeSummarySlides,
+        includeDiagrams,
         // Games temporarily disabled in UI — never request game slides
         gameTemplateIds: undefined,
         includeKnowledgeChecks: true,
@@ -3602,6 +3615,7 @@ export default function App() {
       let outlineIncludeModuleTitles = settingsOverride?.includeModuleTitleSlides ?? includeModuleTitleSlides;
       let outlineIncludeModuleOverviews = settingsOverride?.includeModuleOverviewSlides ?? includeModuleOverviewSlides;
       const outlineIncludeSummarySlides = settingsOverride?.includeSummarySlides ?? includeSummarySlides;
+      const outlineIncludeDiagrams = settingsOverride?.includeDiagrams !== false && includeDiagrams !== false;
       const outlineExamCfg = settingsOverride?.examConfig ?? examConfig;
       // Explicit array (including []) must win — never re-expand to factory KC types when the user cleared some.
       const outlineQuizActivityTypes = (
@@ -3632,6 +3646,7 @@ export default function App() {
               includeModuleTitleSlides: outlineIncludeModuleTitles,
               includeModuleOverviewSlides: outlineIncludeModuleOverviews,
               includeSummarySlides: outlineIncludeSummarySlides,
+              includeDiagrams: outlineIncludeDiagrams,
               gameTemplateIds: undefined,
               includeKnowledgeChecks: true,
               knowledgeCheckMode: outlineExamCfg.knowledgeCheckMode || 'per-module',
@@ -3651,6 +3666,7 @@ export default function App() {
               // Scenario parked like Game Modes — never request a branching sim this version
               scenarioConfig: undefined,
               interactionTypes: outlineInteractions,
+              includeDiagrams: outlineIncludeDiagrams,
               includeKnowledgeChecks: true,
               knowledgeCheckMode: outlineExamCfg.knowledgeCheckMode || 'per-module',
               knowledgeCheckCount: outlineExamCfg.knowledgeCheckCount ?? 1,
@@ -3707,6 +3723,7 @@ export default function App() {
             includeModuleTitleSlides: outlineIncludeModuleTitles,
             includeModuleOverviewSlides: outlineIncludeModuleOverviews,
             includeSummarySlides: outlineIncludeSummarySlides,
+            includeDiagrams: outlineIncludeDiagrams,
             gameTemplateIds: undefined,
             includeKnowledgeChecks: true,
             knowledgeCheckMode: outlineExamCfg.knowledgeCheckMode || 'per-module',
@@ -3730,6 +3747,7 @@ export default function App() {
           includeModuleTitleSlides: outlineIncludeModuleTitles,
           includeModuleOverviewSlides: outlineIncludeModuleOverviews,
           includeSummarySlides: outlineIncludeSummarySlides,
+          includeDiagrams: outlineIncludeDiagrams,
         }));
       } catch (e: any) {
         console.warn('[runAnalysis] Outline generation failed:', e);
@@ -3854,6 +3872,7 @@ export default function App() {
       includeModuleTitleSlides: override?.includeModuleTitleSlides ?? includeModuleTitleSlides,
       includeModuleOverviewSlides: override?.includeModuleOverviewSlides ?? includeModuleOverviewSlides,
       includeSummarySlides: override?.includeSummarySlides ?? includeSummarySlides,
+      includeDiagrams: override?.includeDiagrams ?? includeDiagrams,
     }));
   };
 
@@ -3867,6 +3886,7 @@ export default function App() {
       includeModuleTitleSlides,
       includeModuleOverviewSlides,
       includeSummarySlides,
+      includeDiagrams,
     }) !== outlineSourceFingerprint;
 
   const regenerateOutlineForSettings = async () => {
@@ -4091,6 +4111,7 @@ export default function App() {
           includeModuleTitleSlides,
           includeModuleOverviewSlides,
           includeSummarySlides,
+          includeDiagrams,
           gameTemplateIds: undefined,
           includeKnowledgeChecks: true,
           knowledgeCheckMode: examConfig.knowledgeCheckMode || 'per-module',
@@ -4118,6 +4139,7 @@ export default function App() {
             courseType: settingsSnap.preset,
             scenarioConfig: undefined,
             interactionTypes: contentInteractions,
+            includeDiagrams: settingsSnap.includeDiagrams !== false,
             includeKnowledgeChecks: true,
             knowledgeCheckMode: settingsSnap.examConfig.knowledgeCheckMode || 'per-module',
             knowledgeCheckCount: settingsSnap.examConfig.knowledgeCheckCount ?? 1,
@@ -4646,7 +4668,7 @@ export default function App() {
               if (
                 stillActive() &&
                 imageResult.jobsApplied === 0 &&
-                isApiColdStart(imageResult.lastError)
+                (isApiColdStart(imageResult.lastError) || isImageRateLimit(imageResult.lastError))
               ) {
                 await waitForApiWarm({ timeoutMs: 30000 });
                 if (stillActive()) {
@@ -5225,6 +5247,7 @@ export default function App() {
           courseType: settingsSnap.preset,
           scenarioConfig: undefined,
           interactionTypes: contentInteractions,
+          includeDiagrams: settingsSnap.includeDiagrams !== false,
           includeKnowledgeChecks: true,
           knowledgeCheckMode: settingsSnap.examConfig.knowledgeCheckMode || 'per-module',
           knowledgeCheckCount: settingsSnap.examConfig.knowledgeCheckCount ?? 1,
@@ -5560,6 +5583,7 @@ export default function App() {
         allowedInteractionTypes: allowQuiz
           ? typePool
           : typePool.filter(t => !isQuizishSlideType({ type: t })),
+        includeDiagrams: includeDiagrams !== false || typePool.includes('diagram'),
       });
       if (!result.slides.length) throw new Error('No slides were generated.');
       pushUndo();
@@ -6003,6 +6027,8 @@ export default function App() {
         setIncludeModuleOverviewSlides={setIncludeModuleOverviewSlides}
         includeSummarySlides={includeSummarySlides}
         setIncludeSummarySlides={setIncludeSummarySlides}
+        includeDiagrams={includeDiagrams}
+        setIncludeDiagrams={setIncludeDiagrams}
         interactionTypes={interactionTypes}
         setInteractionTypes={setInteractionTypes}
         scenarioConfig={scenarioConfig}
@@ -6073,6 +6099,8 @@ export default function App() {
         setIncludeModuleOverviewSlides={setIncludeModuleOverviewSlides}
         includeSummarySlides={includeSummarySlides}
         setIncludeSummarySlides={setIncludeSummarySlides}
+        includeDiagrams={includeDiagrams}
+        setIncludeDiagrams={setIncludeDiagrams}
         outlineDraft={outlineDraft}
         onOutlineChange={setOutlineDraft}
         onRegenerateOutline={regenerateOutlineForSettings}
@@ -8716,6 +8744,9 @@ export default function App() {
                                           onRendered={(svg) => {
                                             if (!currentSlide?.id || isLearnerPlayer) return;
                                             setCourse(prev => stampDiagramSnapshot(prev, currentSlide.id, svg));
+                                          }}
+                                          onRegenerate={() => {
+                                            if (!currentSlide?.id || isLearnerPlayer) return;
                                           }}
                                           onAlignChange={(align) => {
                                             if (!currentSlide?.id) return;

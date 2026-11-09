@@ -232,24 +232,52 @@ export function diagramIsHidden(data: any): boolean {
   return !!data?.diagramHidden;
 }
 
+/**
+ * Mermaid embeds a unique render id in every SVG. Comparing raw markup would
+ * restamp the draft on every visit and retrigger mermaid (the left-right shake).
+ */
+export function diagramSvgFingerprint(svg: string): string {
+  return String(svg || '')
+    .replace(/id=(["'])[\s\S]*?\1/gi, '')
+    .replace(/url\(#[^)]+\)/gi, 'url(#)')
+    .replace(/mermaid-diagram-\d+(-\d+)?/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 /** True when a saved draft must still show a diagram (source and/or rendered SVG). */
 export function diagramIsSaved(data: any): boolean {
   if (diagramIsHidden(data)) return false;
   return Boolean(diagramSourceCode(data) || diagramSavedSvg(data));
 }
 
+/** Fetch mermaid.core only when there is no saved SVG (or the author clicked Regenerate). */
+export function diagramNeedsMermaidRender(data: any, force = false): boolean {
+  if (force) return true;
+  if (diagramIsHidden(data)) return false;
+  if (diagramSavedSvg(data)) return false;
+  return Boolean(diagramSourceCode(data));
+}
+
 export function stampDiagramSnapshot(course: any, slideId: string, svg: string): any {
   const id = String(slideId || '').trim();
   const nextSvg = String(svg || '').trim();
   if (!course?.modules || !id || !nextSvg) return course;
+  const nextFp = diagramSvgFingerprint(nextSvg);
   let changed = false;
   const modules = course.modules.map((m: any) => ({
     ...m,
     slides: (m.slides || []).map((s: any) => {
       if (String(s?.id || '') !== id) return s;
-      if (String(s?.data?.diagramSvg || '') === nextSvg) return s;
+      const existing = String(s?.data?.diagramSvg || '');
+      const source = diagramSourceCode(s.data);
+      if (existing && diagramSvgFingerprint(existing) === nextFp) {
+        if (String(s?.data?.diagramSvgSource || '') === source) return s;
+        changed = true;
+        return { ...s, data: { ...(s.data || {}), diagramSvgSource: source } };
+      }
       changed = true;
-      return { ...s, data: { ...(s.data || {}), diagramSvg: nextSvg } };
+      return { ...s, data: { ...(s.data || {}), diagramSvg: nextSvg, diagramSvgSource: source } };
     }),
   }));
   return changed ? { ...course, modules } : course;
@@ -261,6 +289,7 @@ export function clearDiagramSnapshot(data: any): any {
     mermaidCode: '',
     code: '',
     diagramSvg: '',
+    diagramSvgSource: '',
     diagramHidden: true,
   };
 }

@@ -49,6 +49,8 @@ export interface CourseReviewPageProps {
   setIncludeModuleOverviewSlides: (v: boolean) => void;
   includeSummarySlides: boolean;
   setIncludeSummarySlides: (v: boolean) => void;
+  includeDiagrams: boolean;
+  setIncludeDiagrams: (v: boolean) => void;
 
   outlineDraft: CourseOutlineDraft | null;
   onOutlineChange: (o: CourseOutlineDraft) => void;
@@ -540,6 +542,7 @@ export function CourseReviewPage(props: CourseReviewPageProps) {
                   { label: 'Module Overview Slides', state: props.includeModuleOverviewSlides, set: props.setIncludeModuleOverviewSlides },
                   { label: 'Knowledge Checks', state: true, set: () => {}, locked: true },
                   { label: 'Summary/Recap Slides', state: props.includeSummarySlides, set: props.setIncludeSummarySlides },
+                  { label: 'Diagram slides', state: props.includeDiagrams, set: props.setIncludeDiagrams },
                 ].map((opt, i) => (
                   <label key={i} className={`flex items-center justify-between cursor-pointer group ${opt.locked ? 'opacity-80' : ''}`}>
                     <span className="text-slate-300 font-medium group-hover:text-white">{opt.label}</span>

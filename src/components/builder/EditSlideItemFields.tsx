@@ -802,7 +802,14 @@ function DiagramEditFields({ slide, onPatch, getSlide }: Props) {
     const base = live();
     onPatch({
       ...base,
-      data: { ...(base.data || {}), mermaidCode: nextCode, code: nextCode, diagramHidden: false },
+      data: {
+        ...(base.data || {}),
+        mermaidCode: nextCode,
+        code: nextCode,
+        diagramHidden: false,
+        diagramSvg: '',
+        diagramSvgSource: '',
+      },
     });
   };
 

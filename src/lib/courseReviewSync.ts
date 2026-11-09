@@ -11,6 +11,7 @@ export type FoundationFingerprintInput = {
   includeModuleTitleSlides: boolean;
   includeModuleOverviewSlides: boolean;
   includeSummarySlides: boolean;
+  includeDiagrams: boolean;
 };
 
 export function foundationFingerprint(input: FoundationFingerprintInput): string {
@@ -22,5 +23,6 @@ export function foundationFingerprint(input: FoundationFingerprintInput): string
     includeModuleTitleSlides: !!input.includeModuleTitleSlides,
     includeModuleOverviewSlides: !!input.includeModuleOverviewSlides,
     includeSummarySlides: !!input.includeSummarySlides,
+    includeDiagrams: input.includeDiagrams !== false,
   });
 }

@@ -21,6 +21,8 @@ interface MermaidDiagramProps {
   className?: string;
   /** Last successful SVG from the draft — shown immediately so a mermaid.core miss cannot blank the slide. */
   cachedSvg?: string;
+  /** Increment to re-run mermaid even when a saved SVG exists (author Regenerate). */
+  regenNonce?: number;
   onRendered?: (svg: string) => void;
 }
 
@@ -35,6 +37,7 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
   theme = 'dark',
   className = '',
   cachedSvg = '',
+  regenNonce = 0,
   onRendered,
 }) => {
   const [svg, setSvg] = useState<string>(() => String(cachedSvg || '').trim());
@@ -43,6 +46,7 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
   const wrapRef = useRef<HTMLDivElement>(null);
   const onRenderedRef = useRef(onRendered);
   onRenderedRef.current = onRendered;
+  const appliedNonceRef = useRef(0);
   const cached = String(cachedSvg || '').trim();
 
   useEffect(() => {
@@ -64,6 +68,13 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
         setSvg(cached);
         setError(null);
       }
+      return;
+    }
+
+    const forceRender = regenNonce !== appliedNonceRef.current;
+    if (cached && !forceRender) {
+      setSvg(cached);
+      setError(null);
       return;
     }
 
@@ -130,10 +141,11 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
         // somehow produces empty output.
         const raw = code.trim();
         const sanitized = sanitizeMermaidCode(raw) || raw;
-        const renderId = `${idRef.current}-${Date.now()}`;
+        const renderId = `${idRef.current}-r${regenNonce}`;
         try {
           const { svg: renderedSvg } = await mermaid.render(renderId, sanitized);
           if (!cancelled) {
+            appliedNonceRef.current = regenNonce;
             setSvg(renderedSvg);
             setError(null);
             onRenderedRef.current?.(renderedSvg);
@@ -142,9 +154,10 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
           // Last-chance retry with the unsanitized original (in case our
           // quote-wrapping accidentally broke a rare valid construct).
           if (sanitized === raw) throw firstErr;
-          const retryId = `${idRef.current}-${Date.now()}-retry`;
+          const retryId = `${idRef.current}-r${regenNonce}-retry`;
           const { svg: retrySvg } = await mermaid.render(retryId, raw);
           if (!cancelled) {
+            appliedNonceRef.current = regenNonce;
             setSvg(retrySvg);
             setError(null);
             onRenderedRef.current?.(retrySvg);
@@ -170,7 +183,7 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [code, theme, cached]);
+  }, [code, theme, cached, regenNonce]);
 
   const isLight = theme === 'light';
 

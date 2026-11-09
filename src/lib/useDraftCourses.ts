@@ -90,6 +90,7 @@ export interface DesignDraftSnapshot {
   includeModuleTitleSlides: boolean;
   includeModuleOverviewSlides: boolean;
   includeSummarySlides: boolean;
+  includeDiagrams?: boolean;
   interactionTypes: string[];
   scenarioConfig: any;
   outlineDraft: any | null;
