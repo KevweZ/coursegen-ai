@@ -17,7 +17,13 @@ import {
   type ContentImageJob,
 } from '../lib/contentImageJobs';
 import { getSupabaseAccessToken } from '../lib/supabaseAccessToken';
-import { isApiColdStart, isImageNetworkFailure, isImageRateLimit, publicImageError, waitForApiWarm } from '../lib/apiWarmup';
+import { isApiColdStart, isImageAuthOrCreditStop, isImageNetworkFailure, isImageRateLimit, publicImageError, waitForApiWarm } from '../lib/apiWarmup';
+import {
+  CONTENT_IMAGE_CONCURRENCY,
+  CONTENT_IMAGE_PACE_MS,
+  CONTENT_IMAGE_TIMEOUT_MS,
+  nextContentImageAttempt,
+} from '../lib/contentImageBatch';
 
 export {
   MAX_CONTENT_AI_IMAGES,
@@ -37,14 +43,6 @@ const IMAGE_GEN_CONCURRENCY = 2;
 
 function sleep(ms: number): Promise<void> {
   return new Promise(r => setTimeout(r, ms));
-}
-
-function isImageAuthOrCreditStop(err: any): boolean {
-  const status = Number(err?.status);
-  if (status === 401 || status === 402 || status === 403) return true;
-  return /AI_NO_CREDITS|AI_AUTH_REQUIRED|TRIAL_EXPIRED|Sign in required to generate|no AI generation credits/i.test(
-    String(err?.message || ''),
-  );
 }
 
 /** Run async work with at most `concurrency` in flight; results stay in input order. */
@@ -334,20 +332,26 @@ function pickRelevantSourceImage(
   return pool[bestIdx];
 }
 
-function groundedCall(input: VisualPromptInput): Promise<string> {
+function groundedCall(
+  input: VisualPromptInput,
+  opts?: { retry?: boolean; skipQa?: boolean; timeoutMs?: number },
+): Promise<string> {
   const { prompt, intended } = buildGroundedVisualPrompt(input);
-  return callImageEndpoint(prompt, DEFAULT_IMAGE_MODEL, intended);
+  return callImageEndpoint(prompt, DEFAULT_IMAGE_MODEL, intended, opts);
 }
 
 async function callImageEndpoint(
   prompt: string,
   model = DEFAULT_IMAGE_MODEL,
   intended?: string,
+  opts?: { retry?: boolean; skipQa?: boolean; timeoutMs?: number },
 ): Promise<string> {
+  const retry = opts?.retry !== false;
+  const timeoutMs = opts?.timeoutMs || (retry ? 95000 : CONTENT_IMAGE_TIMEOUT_MS);
   const execute = async () => {
     const token = getSupabaseAccessToken();
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 95000);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     let response: Response;
     try {
       response = await fetch('/api/generate-image', {
@@ -360,6 +364,7 @@ async function callImageEndpoint(
           prompt: withImageNoTextRule(prompt),
           model,
           ...(intended?.trim() ? { intended: intended.trim() } : {}),
+          ...(opts?.skipQa ? { skipQa: true } : {}),
         }),
         signal: controller.signal,
       });
@@ -408,6 +413,7 @@ async function callImageEndpoint(
   try {
     return await execute();
   } catch (err: any) {
+    if (!retry) throw err;
     if (isImageAuthOrCreditStop(err)) {
       throw err;
     }
@@ -911,7 +917,12 @@ export type ContentImageGenOpts = {
 
 export async function generateContentSlideImages(
   course: any,
-  onProgress?: (applied: number, total: number, latestCourse?: any) => void,
+  onProgress?: (
+    applied: number,
+    total: number,
+    latestCourse?: any,
+    meta?: { tried: number },
+  ) => void,
   opts?: ContentImageGenOpts,
 ): Promise<ContentImageGenResult> {
   if (!course?.modules?.length) return emptyImageGenResult(course);
@@ -943,31 +954,57 @@ export async function generateContentSlideImages(
   });
 
   let jobsApplied = 0;
+  let jobsTried = 0;
   let lastError: string | null = null;
   const withLock = createAsyncLock();
   let stopRemaining = false;
+  const visualInput = (job: ContentImageJob) => ({
+    courseTitle: course.title || 'Course',
+    moduleTitle: job.moduleTitle,
+    slideTitle: job.slideTitle,
+    panelLabel: job.panelLabel,
+    panelBody: job.panelBody,
+    mediaPrompt: job.mediaPrompt,
+  });
+  const attemptOnce = (job: ContentImageJob) =>
+    groundedCall(visualInput(job), {
+      retry: false,
+      skipQa: true,
+      timeoutMs: CONTENT_IMAGE_TIMEOUT_MS,
+    });
 
-  await mapWithConcurrency(selected, IMAGE_GEN_CONCURRENCY, async (job) => {
+  await mapWithConcurrency(selected, CONTENT_IMAGE_CONCURRENCY, async (job) => {
     if (opts?.shouldCancel?.()) stopRemaining = true;
     if (stopRemaining) {
       opts?.onJob?.(job, 'skipped');
       return;
     }
+    jobsTried += 1;
     opts?.onJob?.(job, 'started');
+    onProgress?.(jobsApplied, selected.length, undefined, { tried: jobsTried });
     let url: string | null = null;
     try {
-      url = await groundedCall({
-        courseTitle: course.title || 'Course',
-        moduleTitle: job.moduleTitle,
-        slideTitle: job.slideTitle,
-        panelLabel: job.panelLabel,
-        panelBody: job.panelBody,
-        mediaPrompt: job.mediaPrompt,
-      });
+      url = await attemptOnce(job);
     } catch (err: any) {
       lastError = publicImageError(err);
-      if (isImageAuthOrCreditStop(err)) stopRemaining = true;
       console.warn(`[ImageService] Content visual failed for "${job.subject}":`, err);
+      const action = nextContentImageAttempt(err);
+      if (action.kind === 'stop') {
+        stopRemaining = true;
+      } else if (action.kind === 'retry') {
+        await sleep(action.waitMs);
+        if (opts?.shouldCancel?.()) {
+          stopRemaining = true;
+        } else {
+          try {
+            url = await attemptOnce(job);
+          } catch (retryErr: any) {
+            lastError = publicImageError(retryErr);
+            console.warn(`[ImageService] Content visual retry failed for "${job.subject}":`, retryErr);
+            if (nextContentImageAttempt(retryErr).kind === 'stop') stopRemaining = true;
+          }
+        }
+      }
     }
 
     if (url) {
@@ -976,15 +1013,16 @@ export async function generateContentSlideImages(
         modules[job.mi].slides[job.si] = applyContentImageUrl(slide, job, url);
         jobsApplied += 1;
         console.log(`[ImageService] ✓ Content visual for "${job.subject}"`);
-        onProgress?.(jobsApplied, selected.length, snapshot());
+        onProgress?.(jobsApplied, selected.length, snapshot(), { tried: jobsTried });
       });
       opts?.onJob?.(job, 'done');
     } else {
       if (!lastError) lastError = 'No image was returned.';
       opts?.onJob?.(job, 'skipped');
+      onProgress?.(jobsApplied, selected.length, undefined, { tried: jobsTried });
     }
 
-    if (!stopRemaining) await sleep(IMAGE_PACE_MS);
+    if (!stopRemaining) await sleep(CONTENT_IMAGE_PACE_MS);
   });
 
   return {

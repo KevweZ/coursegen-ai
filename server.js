@@ -762,7 +762,8 @@ async function reviewGeneratedImage(imageDataUrl, intended) {
 }
 
 app.post('/api/generate-image', imageRateLimit, async (req, res) => {
-  const { prompt, model = 'google/gemini-3.1-flash-image', intended } = req.body ?? {};
+  const { prompt, model = 'google/gemini-3.1-flash-image', intended, skipQa } = req.body ?? {};
+  const skipVisionQa = skipQa === true;
   if (!prompt?.trim()) {
     return res.status(400).json({ error: 'Missing required field: prompt' });
   }
@@ -783,6 +784,8 @@ app.post('/api/generate-image', imageRateLimit, async (req, res) => {
   const generateOnce = async (p) => {
     let imageDataUrl = null;
     let provider = '';
+    let openRouterTimedOut = false;
+    let openRouterRateLimited = false;
     const modelsToTry = [];
     for (const id of [model, ...OPENROUTER_IMAGE_MODELS]) {
       if (id && !modelsToTry.includes(id)) modelsToTry.push(id);
@@ -797,13 +800,19 @@ app.post('/api/generate-image', imageRateLimit, async (req, res) => {
           }
         } catch (err) {
           console.warn(`[ImageGen] OpenRouter ${modelId} failed:`, err.message);
-          // Don't walk every Gemini slug after a 429; OpenAI can still fill the cover.
-          if (err.status === 429 || /rate limit/i.test(String(err.message || ''))) break;
-          if (/timed out/i.test(String(err.message || ''))) break;
+          // Don't walk every Gemini slug after a 429; OpenAI can still fill.
+          if (err.status === 429 || /rate limit/i.test(String(err.message || ''))) {
+            openRouterRateLimited = true;
+            break;
+          }
+          if (/timed out/i.test(String(err.message || ''))) {
+            openRouterTimedOut = true;
+            break;
+          }
         }
       }
     }
-    if (!imageDataUrl && hasOpenAI) {
+    if (!imageDataUrl && hasOpenAI && !openRouterTimedOut) {
       try {
         imageDataUrl = await generateImageViaOpenAI(p);
         provider = 'openai-dall-e-3';
@@ -811,17 +820,30 @@ app.post('/api/generate-image', imageRateLimit, async (req, res) => {
         console.warn('[ImageGen] OpenAI fallback failed:', err.message);
       }
     }
-    return { imageDataUrl, provider };
+    return { imageDataUrl, provider, openRouterRateLimited, openRouterTimedOut };
   };
 
   try {
-    let { imageDataUrl, provider } = await generateOnce(prompt);
+    let { imageDataUrl, provider, openRouterRateLimited, openRouterTimedOut } = await generateOnce(prompt);
 
     if (!imageDataUrl) {
+      if (openRouterRateLimited) {
+        return res.status(429).json({
+          error: 'The image API is rate-limited right now. Wait a moment, then click AI again.',
+          code: 'UPSTREAM_RATE_LIMIT',
+          retryAfterMs: 25000,
+        });
+      }
+      if (openRouterTimedOut) {
+        return res.status(504).json({
+          error: 'The image request timed out.',
+          code: 'UPSTREAM_TIMEOUT',
+        });
+      }
       return res.status(502).json({ error: 'No image returned from AI model.' });
     }
 
-    const qa = await reviewGeneratedImage(imageDataUrl, intended);
+    const qa = skipVisionQa ? { skip: true } : await reviewGeneratedImage(imageDataUrl, intended);
     if (!qa.skip && (qa.hasVisibleText || qa.offTopic)) {
       console.warn(`[ImageGen] QA reject (${qa.hasVisibleText ? 'text' : 'off-topic'}): ${qa.reason}`);
       const retryPrompt =
@@ -849,7 +871,7 @@ app.post('/api/generate-image', imageRateLimit, async (req, res) => {
         ? 'The image API is rate-limited right now. Wait a moment, then click AI again.'
         : `Image generation failed: ${err.message}`,
       code: is429 ? 'UPSTREAM_RATE_LIMIT' : 'IMAGE_ERROR',
-      retryAfterMs: is429 ? 20000 : 0,
+      retryAfterMs: is429 ? 25000 : 0,
     });
   }
 });

@@ -10,7 +10,7 @@ Phase 1.5 mobile verify is complete enough to start this work. Prefer **same API
 ## Status
 
 1. **Parallel hydrate** — **DONE** (bounded concurrency 3 for `hydrateCourseContent` chunks in [`src/services/aiService.ts`](src/services/aiService.ts); Tier 1→2→3 + Bug #7 safety net kept).
-2. **Image pacing** — **DONE** (concurrency 2 + ~400ms pace in [`src/services/imageService.ts`](src/services/imageService.ts); was 1.2–2.0s fully sequential; 429 single retry kept).
+2. **Image pacing** — **DONE** (hotspot/title still concurrency 2 + ~400ms). **Bulk content pictures are sequential** (concurrency 1, ~2s pace, `skipQa`) so OpenRouter 429s fill remaining slides instead of zeroing the 14. Do not put concurrency 2 back on `generateContentSlideImages`.
 3. **Perceived speed** — **NEXT** — open preview after hydrate (+ cover); continue content images / AI QC async, or defer AI QC past first preview ([`src/App.tsx`](src/App.tsx) `finalizeGeneratedCourse`, [`src/services/qcService.ts`](src/services/qcService.ts)).
 
 ## Explicitly deprioritize first

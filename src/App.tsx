@@ -299,7 +299,7 @@ import {
 import { finishImageGenProgress } from './lib/imageGenProgress';
 import { moveArrayItem } from './lib/objectiveOrder';
 import { ObjectiveReorderButtons } from './components/builder/ObjectiveReorderButtons';
-import { isApiColdStart, isImageRateLimit, publicImageError, startPreviewApiKeepWarm, waitForApiWarm } from './lib/apiWarmup';
+import { isApiColdStart, publicImageError, startPreviewApiKeepWarm, waitForApiWarm } from './lib/apiWarmup';
 import { buildReviewSnapshot, createReviewLink, fetchReviewSnapshot } from './lib/reviewLinkService';
 import { downloadReviewScriptDocx } from './lib/reviewScriptDocx';
 import { tocRefMapFirstWins } from './lib/playerToc';
@@ -4644,7 +4644,7 @@ export default function App() {
             commitCourse(next);
 
             if (wantsAi) {
-              const onImageProgress = (applied: number, total: number, latest?: any) => {
+              const onImageProgress = (applied: number, total: number, latest?: any, meta?: { tried: number }) => {
                 if (!stillActive()) return;
                 if (latest) {
                   const cleaned = stripCourseAutoPromotedFloating(latest);
@@ -4659,6 +4659,7 @@ export default function App() {
                   current: applied,
                   total,
                   error: null,
+                  tried: meta?.tried,
                 });
               };
               let imageResult = await generateContentSlideImages(
@@ -4669,7 +4670,7 @@ export default function App() {
               if (
                 stillActive() &&
                 imageResult.jobsApplied === 0 &&
-                (isApiColdStart(imageResult.lastError) || isImageRateLimit(imageResult.lastError))
+                isApiColdStart(imageResult.lastError)
               ) {
                 await waitForApiWarm({ timeoutMs: 30000 });
                 if (stillActive()) {
@@ -5040,7 +5041,7 @@ export default function App() {
       }
       const imageResult = await generateContentSlideImages(
         working,
-        (applied, total, latest) => {
+        (applied, total, latest, meta) => {
           if (latest) {
             const next = stripCourseAutoPromotedFloating(latest);
             setCourse(next);
@@ -5054,6 +5055,7 @@ export default function App() {
             total,
             error: null,
             stopping: imageGenTokenRef.current !== token,
+            tried: meta?.tried,
           });
         },
         {

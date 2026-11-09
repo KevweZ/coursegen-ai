@@ -37,17 +37,27 @@ export function isImageRateLimit(err: unknown): boolean {
   );
 }
 
+export function isImageTimeout(err: unknown): boolean {
+  const { status, msg, code } = errorParts(err);
+  if (status === 524 || status === 504) return true;
+  return /UPSTREAM_TIMEOUT/i.test(`${code} ${msg}`);
+}
+
+export function isImageAuthOrCreditStop(err: unknown): boolean {
+  const { status, msg, code } = errorParts(err);
+  if (status === 401 || status === 402 || status === 403) return true;
+  return /AI_NO_CREDITS|AI_AUTH_REQUIRED|TRIAL_EXPIRED|Sign in required to generate|no AI generation credits/i.test(
+    `${code} ${msg}`,
+  );
+}
+
 export function formatImageApiError(err: unknown): string | null {
   const { status, msg, code } = errorParts(err);
   const blob = `${code} ${msg} ${status}`;
   if (isImageRateLimit(err) || /If you were saving a draft/i.test(msg)) {
     return 'The image API is rate-limited right now. Wait a minute, then click AI again. You do not need to Sync or save a draft.';
   }
-  if (
-    status === 524 ||
-    status === 504 ||
-    /UPSTREAM_TIMEOUT| 524\b|timed out/i.test(blob)
-  ) {
+  if (isImageTimeout(err) || /UPSTREAM_TIMEOUT| 524\b/i.test(blob)) {
     return 'The image request timed out. Wait a minute, then try Generate AI images again.';
   }
   if (/UPSTREAM_HTML|API error \(\d+\)/i.test(blob)) {
@@ -91,7 +101,7 @@ export function isApiColdStart(err: unknown): boolean {
 export function isImageNetworkFailure(err: unknown): boolean {
   if (isApiColdStart(err)) return true;
   const { status, msg, code } = errorParts(err);
-  if (status === 524 || status === 504 || /UPSTREAM_TIMEOUT/i.test(`${code} ${msg}`)) return false;
+  if (isImageTimeout(err)) return false;
   const rec = err && typeof err === 'object' ? (err as { name?: string }) : null;
   const blob = `${msg} ${rec?.name || ''}`;
   return /failed to fetch|networkerror|load failed|aborterror/i.test(blob);

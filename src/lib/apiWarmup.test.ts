@@ -7,6 +7,7 @@ import {
   isApiColdStart,
   isImageNetworkFailure,
   isImageRateLimit,
+  isImageTimeout,
   publicImageError,
   PREVIEW_API_KEEPWARM_MS,
 } from './apiWarmup.ts';
@@ -35,6 +36,8 @@ test('worker warmup copy and 503 are treated as a cold start, not a credit stop'
   assert.match(String(formatImageApiError({ status: 504, code: 'UPSTREAM_TIMEOUT' })), /timed out/i);
   assert.match(publicImageError('Error'), /could not generate a picture/i);
   assert.match(publicImageError({ status: 500, message: 'Error' }), /could not generate a picture/i);
+  assert.equal(isImageTimeout({ status: 504, code: 'UPSTREAM_TIMEOUT' }), true);
+  assert.equal(isImageTimeout({ status: 524, message: 'timeout' }), true);
   assert.equal(isImageNetworkFailure({ status: 504, code: 'UPSTREAM_TIMEOUT', message: 'The image request timed out.' }), false);
   assert.equal(isApiColdStart({ status: 504, code: 'UPSTREAM_TIMEOUT' }), false);
 });
@@ -75,7 +78,9 @@ test('image client retries cold starts after warming the API; cover waits on the
   assert.match(cover, /generateCourseCoverImage/);
   assert.match(app, /startPreviewApiKeepWarm/);
   assert.match(app, /publicImageError/);
-  assert.match(app, /isImageRateLimit\(imageResult.lastError\)/);
+  assert.match(app, /isApiColdStart\(imageResult.lastError\)/);
+  const autoGen = app.slice(app.indexOf('Generating content visuals'), app.indexOf('Background imagery failed'));
+  assert.doesNotMatch(autoGen, /isImageRateLimit\(imageResult.lastError\)/);
   assert.match(src('src/services/ttsService.ts'), /waitForApiWarm/);
   assert.ok(PREVIEW_API_KEEPWARM_MS >= 60_000);
 });

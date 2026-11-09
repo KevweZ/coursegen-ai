@@ -16,6 +16,7 @@ export interface ImageGenProgress {
   total: number;
   error: string | null;
   stopping?: boolean;
+  tried?: number;
 }
 
 interface Props {
@@ -80,7 +81,7 @@ export const ImageProgressToast: React.FC<Props> = ({
   };
 
   const pct = progress.total > 0
-    ? Math.round((progress.current / progress.total) * 100)
+    ? Math.round(((progress.isRunning ? Math.max(progress.current, progress.tried || 0) : progress.current) / progress.total) * 100)
     : 0;
   const displayError = isApiColdStart(progress.error) ? null : progress.error;
 
@@ -142,7 +143,9 @@ export const ImageProgressToast: React.FC<Props> = ({
                   <p className="text-xs text-slate-400 mt-0.5 truncate">
                     {progress.stopping
                       ? `${progress.current} of ${progress.total} on slides — no further images will be generated`
-                      : `${progress.current} of ${progress.total} on slides`}
+                      : (progress.tried && progress.tried > progress.current
+                        ? `${progress.current} of ${progress.total} ready · working ${progress.tried}`
+                        : `${progress.current} of ${progress.total} on slides`)}
                   </p>
                 )}
                 {progress.isDone && !progress.isRunning && (

@@ -31,6 +31,7 @@ test('successful /api/generate-image spends credits_ai; empty image does not', (
 
   assert.match(handler, /authorizeAiRequest\(req, \{\s*isComplexCall:\s*false\s*\}\)/);
   assert.match(handler, /await recordAiSuccess\(authz\.supabase, authz\.billing\)/);
+  assert.match(handler, /skipVisionQa \? \{ skip: true \}/);
   assert.ok(
     handler.indexOf('authorizeAiRequest') < handler.indexOf('generateOnce'),
     'auth must run before image generation',
