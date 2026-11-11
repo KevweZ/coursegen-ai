@@ -291,6 +291,7 @@ import {
   collectContentImageJobs,
   contentImageJobKey,
   groupContentImageJobs,
+  slideIdsCoveringPictures,
   slideTypeSkipsAiContentImages,
   type ContentImageJob,
   type ContentImageJobGroup,
@@ -5129,16 +5130,14 @@ export default function App() {
     setImagePickJobs(jobs);
     setImagePickGroups(groups);
     setImagePickCoverMissing(coverMissing);
-    setImageSelectedSlideIds(groups.map(g => g.slideId));
+    setImageSelectedSlideIds(slideIdsCoveringPictures(jobs, MAX_CONTENT_AI_IMAGES));
     setImageCoverSelected(coverMissing);
     setImagePickOpen(true);
   };
 
   const confirmGenerateImagesFromPicker = () => {
     const selected = new Set(imageSelectedSlideIds);
-    const jobs = imagePickJobs
-      .filter(j => selected.has(j.slideId))
-      .slice(0, MAX_CONTENT_AI_IMAGES);
+    const jobs = imagePickJobs.filter(j => selected.has(j.slideId));
     const includeCover = imagePickCoverMissing && imageCoverSelected;
     const jobKeys = new Set(jobs.map(j => contentImageJobKey(j)));
     const groups = imagePickGroups
@@ -7483,7 +7482,7 @@ export default function App() {
                               <ImageIcon className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                               <span>
                                 <span className="font-semibold block">Generate AI images</span>
-                                <span className="text-slate-500 text-[10px]">Fill empty pictures on content slides (up to 14)</span>
+                                <span className="text-slate-500 text-[10px]">Fill empty pictures on content slides</span>
                               </span>
                             </button>
                             {isHubAuthoringSlide(currentSlide) && (

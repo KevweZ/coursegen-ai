@@ -1,0 +1,22 @@
+---
+description: Render API deploys — npm install only; git push is not proof the API is live.
+alwaysApply: true
+---
+
+# Render API lock (do not regress)
+
+Anthony (2026-11-09): Generate AI images failed for days while we retuned models. **nexcourse-ai-api** Auto Deploy had been red; the old instance stayed Live, so health still 200’d.
+
+`GET https://nexcourse-ai-api.onrender.com/api/health` must show the new fingerprint before asking him to retry a production API path.
+
+## Invariants
+
+- **Two hosts.** Cloudflare = frontend (`npx wrangler deploy`). Render **nexcourse-ai-api** = `server.js` (images, TTS, `/api/ai`, billing). A green git push / Worker deploy does not update Render.
+- **Failed deploy keeps the old process.** Red Auto Deploy + purple Live = stale API. Open Render → nexcourse-ai-api → **Deploys** before changing image models or prompts.
+- **Build Command is `npm install`.** Start Command is `node server.js`. Do **not** set Render to `npm run build`. That script is two Vite builds (player + app) and OOMs the free 512MB box. `npm run build` stays for Cloudflare / local SCORM only.
+- **Prove the live code.** After pushing `server.js`, poll health until new fields match (`image_gen`, etc.). If they do not appear in a few minutes, the deploy failed — do not tell him to wait and click Generate again.
+- **Ignore Static `coursegen-ai`.** Frontend is Cloudflare. Do not Manual Deploy that old static site.
+
+## How to change this
+
+Change Render Settings on nexcourse-ai-api and add a failing health-fingerprint test first. Do not “fix” a dead API by swapping OpenRouter/OpenAI slugs while Deploys is red.

@@ -892,7 +892,8 @@ export function applyCoverImageToCourse(
  * Prefer leaving source-extracted imageUrl untouched.
  * Does not rewrite OST, voice-over, interaction type, or tab copy — only image URL fields.
  *
- * Course-wide (Edit → Generate AI images): remaining empty slots, cap MAX_CONTENT_AI_IMAGES.
+ * Course-wide auto-gen: remaining empty slots, cap MAX_CONTENT_AI_IMAGES.
+ * Author picker passes `jobs` and generates every selected slot (no 14 cut).
  * `{ slideId }` (this slide only): empty slots on that slide, bypass visual heuristic, smaller cap.
  */
 export type ContentImageGenResult = {

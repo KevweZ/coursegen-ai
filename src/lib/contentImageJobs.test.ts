@@ -11,6 +11,7 @@ import {
   contentImageJobSlotLabel,
   contentSlideHasVisual,
   groupContentImageJobs,
+  slideIdsCoveringPictures,
   slideTypeSkipsAiContentImages,
   summarizeImageSelection,
   topicBenefitsFromVisual,
@@ -193,15 +194,15 @@ test('author generate lists empty content slides in course order, including abst
 test('selection copy names pictures and slides separately, and picker can list past the 14 cap', () => {
   assert.equal(
     summarizeImageSelection({ pictureCount: 14, slideCount: 5 }),
-    '14 pictures on 5 slides selected (up to 14 pictures per run).',
+    '14 pictures on 5 slides selected (a typical run is 14 pictures).',
   );
   assert.equal(
     summarizeImageSelection({ pictureCount: 1, slideCount: 1 }),
-    '1 picture on 1 slide selected (up to 14 pictures per run).',
+    '1 picture on 1 slide selected (a typical run is 14 pictures).',
   );
   assert.equal(
     summarizeImageSelection({ pictureCount: 22, slideCount: 8 }),
-    '22 pictures on 8 slides selected. This run will generate the first 14 pictures in course order.',
+    '22 pictures on 8 slides selected. Each uses 1 AI credit (~20 seconds). This is more than the usual 14-picture run.',
   );
   assert.equal(summarizeImageSelection({ pictureCount: 0, slideCount: 0 }), 'No pictures selected.');
 
@@ -213,6 +214,10 @@ test('selection copy names pictures and slides separately, and picker can list p
   const listed = collectContentImageJobs(courseWithSlides(slides), { skipBenefitHeuristic: true, noCap: true });
   assert.equal(capped.length, 14);
   assert.ok(listed.length > 14);
+  const defaultIds = slideIdsCoveringPictures(listed, MAX_CONTENT_AI_IMAGES);
+  const defaultPics = listed.filter((j) => defaultIds.includes(j.slideId)).length;
+  assert.ok(defaultPics <= MAX_CONTENT_AI_IMAGES || defaultIds.length === 1);
+  assert.ok(defaultIds.length < listed.length);
 });
 
 test('image gen and authoring stay wired: remaining fill, this-slide, crop/move, no auto fi-ai- promote', () => {
@@ -226,13 +231,15 @@ test('image gen and authoring stay wired: remaining fill, this-slide, crop/move,
   const app = src('src/App.tsx');
   assert.match(app, /jobsApplied/);
   assert.match(app, /Generate AI images/);
-  assert.match(app, /Fill empty pictures on content slides \(up to 14\)/);
+  assert.match(app, /Fill empty pictures on content slides/);
+  assert.doesNotMatch(app, /Fill empty pictures on content slides \(up to 14\)/);
   assert.match(app, /Generate AI image for this slide/);
   assert.match(app, /openGenerateImagesPicker/);
   assert.match(app, /GenerateImagesDialog/);
   assert.match(app, /skipBenefitHeuristic: true/);
   assert.match(app, /noCap:\s*true/);
-  assert.match(app, /slice\(0,\s*MAX_CONTENT_AI_IMAGES\)/);
+  assert.match(app, /slideIdsCoveringPictures/);
+  assert.doesNotMatch(app, /slice\(0,\s*MAX_CONTENT_AI_IMAGES\)/);
   assert.match(app, /slideId:\s*currentSlide\.id/);
   assert.match(app, /onPromoteToFloat/);
   assert.doesNotMatch(app, /id:\s*`fi-ai-/);
@@ -242,7 +249,9 @@ test('image gen and authoring stay wired: remaining fill, this-slide, crop/move,
   assert.match(dialog, /No further images will be generated/);
   assert.match(dialog, /Pictures already on slides will stay/);
   assert.match(dialog, /Uncheck any you want to skip/);
+  assert.match(dialog, /Check all if you want every empty slot/);
   assert.match(dialog, /summarizeImageSelection/);
+  assert.doesNotMatch(dialog, /Up to 14 pictures per run/);
   assert.match(dialog, /overflow-y-scroll/);
   assert.match(dialog, /Scroll for more slides/);
   assert.match(dialog, /generate-images-footer/);

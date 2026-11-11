@@ -63,9 +63,9 @@ export function GenerateImagesDialog({
   const selected = new Set(selectedSlideIds);
   const allOn = groups.length > 0 && groups.every((g) => selected.has(g.slideId));
   const empty = groups.length === 0 && !coverOption;
-  const selectedSlideCount =
-    groups.filter((g) => selected.has(g.slideId)).length
-    + (coverOption?.selected ? 1 : 0);
+  const coverCount = coverOption?.selected ? 1 : 0;
+  const contentPictureCount = Math.max(0, selectedPictureCount - coverCount);
+  const overTypicalRun = contentPictureCount > MAX_CONTENT_AI_IMAGES;
   const listRef = useRef<HTMLDivElement>(null);
   const [canScrollMore, setCanScrollMore] = useState(false);
 
@@ -133,16 +133,20 @@ export function GenerateImagesDialog({
               </div>
               <p className="text-sm text-slate-400 leading-relaxed">
                 {picking
-                  ? 'Pictures will be added to the slides on the right, in course order. Uncheck any you want to skip. Content, process steps, tabs, and click-reveal can get pictures. Module titles, overviews, objectives, and quizzes are skipped. Up to 14 pictures per run. Each picture uses 1 AI credit.'
+                  ? 'Pictures will be added to the slides on the right, in course order. Uncheck any you want to skip. Content, process steps, tabs, and click-reveal can get pictures. Module titles, overviews, objectives, and quizzes are skipped. Each picture uses 1 AI credit. Check all if you want every empty slot — a typical run is 14 pictures.'
                   : 'Pictures already on slides will stay. No further images will be generated. Green means that picture is already on the slide — Save the draft to keep it.'}
               </p>
               {picking && (
-                <p className="text-xs text-slate-500 leading-relaxed">
+                <p className={`text-xs leading-relaxed ${
+                  !empty && overTypicalRun
+                    ? 'text-amber-300/90'
+                    : 'text-slate-500'
+                }`}>
                   {empty
                     ? 'No empty content pictures to fill. Use Upload Image for a specific slide, or Generate AI image for this slide on a content/tab slide.'
                     : summarizeImageSelection({
-                        pictureCount: selectedPictureCount,
-                        slideCount: selectedSlideCount,
+                        pictureCount: contentPictureCount,
+                        slideCount: groups.filter((g) => selected.has(g.slideId)).length,
                         maxPictures: MAX_CONTENT_AI_IMAGES,
                       })}
                 </p>

@@ -5,6 +5,7 @@
 
 import { hasPlayableImageUrl } from './draftMedia';
 
+/** Auto-gen after Build, and the picker default. Author Generate can run every checked slot. */
 export const MAX_CONTENT_AI_IMAGES = 14;
 /** One authoring click on “this slide” — intro + a few tabs/items, not a course-wide refill. */
 export const MAX_SLIDE_AI_IMAGES = 8;
@@ -256,6 +257,21 @@ export function collectContentImageJobs(
   return jobs.slice(0, cap);
 }
 
+/** First slides whose empty slots fit in `maxPictures` (whole slides, not a mid-slide cut). */
+export function slideIdsCoveringPictures(jobs: ContentImageJob[], maxPictures: number): string[] {
+  const ids: string[] = [];
+  let count = 0;
+  const cap = Math.max(0, maxPictures);
+  for (const group of groupContentImageJobs(jobs)) {
+    const n = group.jobs.length;
+    if (ids.length > 0 && count + n > cap) break;
+    ids.push(group.slideId);
+    count += n;
+    if (count >= cap) break;
+  }
+  return ids;
+}
+
 /** Author-facing count: pictures vs slides, never “14 slides” for 14 picture slots. */
 export function summarizeImageSelection(opts: {
   pictureCount: number;
@@ -269,9 +285,9 @@ export function summarizeImageSelection(opts: {
   const slideWord = slides === 1 ? 'slide' : 'slides';
   if (pics === 0) return 'No pictures selected.';
   if (pics > max) {
-    return `${pics} ${picWord} on ${slides} ${slideWord} selected. This run will generate the first ${max} pictures in course order.`;
+    return `${pics} ${picWord} on ${slides} ${slideWord} selected. Each uses 1 AI credit (~20 seconds). This is more than the usual ${max}-picture run.`;
   }
-  return `${pics} ${picWord} on ${slides} ${slideWord} selected (up to ${max} pictures per run).`;
+  return `${pics} ${picWord} on ${slides} ${slideWord} selected (a typical run is ${max} pictures).`;
 }
 
 /**

@@ -11,7 +11,7 @@ Anthony (2026-11-03): SuccessFactors did not match laptop preview — vertical t
 
 ## Invariants (code, not comments)
 
-- **Deploy rebuilds the player.** `npm run build` runs `build:player` before `vite build`. Publish fetches `/scorm-player/index.html` from that deploy. Do not go back to `vite build` alone.
+- **Cloudflare rebuilds the player.** `npm run build` runs `build:player` before `vite build` for wrangler / local Publish. Do not go back to `vite build` alone. Do **not** put `npm run build` on Render **nexcourse-ai-api** (that box is `npm install` + `node server.js`; see render-api-lock).
 - **LMS iframe fills the stage.** [`splitScormPlayerBundle`](src/services/scormService.ts) sets `html,body,#root{height:100%}`. Scale-to-fit in the packed player needs a real stage height inside SuccessFactors.
 - **Float geometry is in the zip.** [`stampFloatingMediaOnCourse`](src/lib/promoteSlideImages.ts) copies live `x/y/width/height` onto `slide.floatingMedia` before package. Do not pack preview-only `floatingImagesMap` and leave slides at default 240×180.
 - **Packed player is the preview layout.** Vertical tabs keep Overview left + Instruction. Do not restore a zomako Introduction-tab canvas as the SCORM path.
