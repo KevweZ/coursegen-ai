@@ -239,6 +239,7 @@ import {
   formatAnalysisFailure,
   formatDraftOpenFailure,
   isAnalysisTransient,
+  REGEN_KEEP_SLIDE_MESSAGE,
   SERVER_WARMING_MESSAGE,
 } from './lib/analysisErrors';
 import { foundationFingerprint, type FoundationFingerprintInput } from './lib/courseReviewSync';
@@ -3700,11 +3701,7 @@ export default function App() {
             settingsOverride
           );
         } catch (e: any) {
-          setError(
-            isAnalysisTransient(e) || isAnalysisTransient(e?.message)
-              ? SERVER_WARMING_MESSAGE
-              : (e?.message || 'Quick build failed.'),
-          );
+          setError(formatAddContentFailure(e) || 'Quick build failed.');
           setSettingsMode('session');
           setStep('details');
         } finally {
@@ -3768,11 +3765,7 @@ export default function App() {
         }));
       } catch (e: any) {
         console.warn('[runAnalysis] Outline generation failed:', e);
-        setError(
-          isAnalysisTransient(e) || isAnalysisTransient(e?.message)
-            ? SERVER_WARMING_MESSAGE
-            : (e?.message || 'Could not generate course structure. You can retry from the Course structure tab.'),
-        );
+        setError(formatAddContentFailure(e));
       } finally {
         clearInterval(outlineTimer);
         setIsGeneratingOutline(false);
@@ -3926,11 +3919,7 @@ export default function App() {
       captureFoundationFingerprint();
       setProgress(100);
     } catch (e: any) {
-      setError(
-        isAnalysisTransient(e) || isAnalysisTransient(e?.message)
-          ? SERVER_WARMING_MESSAGE
-          : (e?.message || 'Failed to regenerate course structure.'),
-      );
+      setError(formatAddContentFailure(e));
     } finally {
       clearInterval(timer);
       setIsGeneratingOutline(false);
@@ -4196,11 +4185,7 @@ export default function App() {
         setStep('outline');
       }
     } catch (e: any) {
-      setError(
-        isAnalysisTransient(e) || isAnalysisTransient(e?.message)
-          ? SERVER_WARMING_MESSAGE
-          : e.message,
-      );
+      setError(formatAddContentFailure(e));
     } finally {
       setIsGenerating(false);
       setProgress(0);
@@ -4828,34 +4813,12 @@ export default function App() {
         });
         showDraftMessage('Slide regenerated ✓');
       } catch (err: any) {
-        console.warn('[regenerateBlankSlide] AI failed, using title-derived fallback', err);
-        const fetchHint = /failed to fetch|API error: 5/i.test(String(err?.message || ''))
-          ? ' (API unreachable — often a cold start; try again in ~30s)'
-          : '';
-        showDraftMessage(`Regenerate failed${fetchHint}. Using a placeholder — edit or retry.`);
-        pushUndo();
-        setCourse(prev => {
-          if (!prev) return prev;
-          return patchCourseSlideById(prev, slide.id, (s: any) => ({
-            ...s,
-            content: isTakeaway
-              ? `## Key Takeaways\n\n- Review ${slide.title}\n- Apply the core module practices\n- Confirm understanding before moving on\n- Follow up with next steps`
-              : `## ${slide.title}\n\n- Key point related to ${slide.title}\n- Practical application for learners\n- Common pitfall to avoid\n- Next step to take`,
-            voiceOverText: `Let's review the key points for ${slide.title}.`,
-            narration: `Let's review the key points for ${slide.title}.`,
-            voiceOverUrl: undefined,
-            data: isTakeaway
-              ? {
-                  objectives: [
-                    { id: '1', label: `Review ${slide.title}`, content: '' },
-                    { id: '2', label: 'Apply the core module practices', content: '' },
-                    { id: '3', label: 'Confirm understanding before moving on', content: '' },
-                    { id: '4', label: 'Follow up with next steps', content: '' },
-                  ],
-                }
-              : s.data,
-          }));
-        });
+        console.warn('[regenerateBlankSlide] AI failed; leaving the existing slide', err);
+        showDraftMessage(
+          isAnalysisTransient(err) || isAnalysisTransient(err?.message)
+            ? SERVER_WARMING_MESSAGE
+            : REGEN_KEEP_SLIDE_MESSAGE,
+        );
       }
     } finally {
       setRegeneratingSlideId(null);
@@ -5279,11 +5242,7 @@ export default function App() {
       );
       await finalizeGeneratedCourse(finalCourse, settingsSnap);
     } catch (e: any) {
-      setError(
-        isAnalysisTransient(e) || isAnalysisTransient(e?.message)
-          ? SERVER_WARMING_MESSAGE
-          : e.message,
-      );
+      setError(formatAddContentFailure(e));
     } finally {
       setIsHydrating(false);
       setProgress(0);

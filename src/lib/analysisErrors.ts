@@ -21,6 +21,14 @@ export const SERVER_WARMING_MESSAGE =
 export const ADD_CONTENT_EMPTY_MESSAGE =
   'The generator did not return slides. This is usually a busy server. Wait a moment and try again.';
 
+/** Outline JSON missing or unreadable — not a bad PPT. */
+export const OUTLINE_PARSE_MESSAGE =
+  'Could not build the course structure. This is usually a busy server. Wait a moment and try again.';
+
+/** Regen failed — leave the slide the author already has. */
+export const REGEN_KEEP_SLIDE_MESSAGE =
+  'Regenerate failed. The slide was left as-is. Wait a moment and try again.';
+
 /** Dropped draft fetch / HTML error page — not a corrupt file. */
 export const DRAFT_OPEN_RETRY_MESSAGE =
   'Could not open this draft. Wait a moment and try again from View drafts.';
@@ -65,7 +73,7 @@ export function shouldRetryAiRateLimit(err: unknown): boolean {
 
 /** Hydrate must throw these instead of writing “This slide covers key content…” stubs. */
 export function isAiInfraFailure(err: unknown): boolean {
-  return isAiAuthOrCreditFailure(err) || isAnalysisTransient(err);
+  return isAiAuthOrCreditFailure(err) || isAnalysisTransient(err) || isEmptyOrUnparseableAiPayload(err);
 }
 
 /** Sleeping Render, Cloudflare 524, or a dropped fetch — retry after warmup, do not blame the file. */
@@ -112,7 +120,7 @@ export function formatAnalysisFailure(raw: string | null | undefined): AnalysisF
 
 export function isEmptyOrUnparseableAiPayload(err: unknown): boolean {
   const blob = errBlob(err);
-  return /No JSON structure found|All JSON parse attempts failed|did not return any(?: new teaching)? slides|did not return slides|Paste more of the source/i.test(blob);
+  return /No JSON structure found|All JSON parse attempts failed|did not return any(?: new teaching)? slides|did not return slides|Paste more of the source|Missing or empty ['"]slides['"] array|Critical Data Failure|empty content or voiceOverText|Single slide response missing/i.test(blob);
 }
 
 function isDraftFetchNoise(err: unknown): boolean {
@@ -128,6 +136,9 @@ export function formatAddContentFailure(err: unknown): string {
     return 'Sign in required to generate.';
   }
   if (isAnalysisTransient(err)) return SERVER_WARMING_MESSAGE;
+  if (/Critical Data Failure|Could not build the course structure/i.test(blob)) {
+    return OUTLINE_PARSE_MESSAGE;
+  }
   if (isEmptyOrUnparseableAiPayload(err)) return ADD_CONTENT_EMPTY_MESSAGE;
   const msg = String(
     (err && typeof err === 'object' && 'message' in err && (err as { message?: string }).message)

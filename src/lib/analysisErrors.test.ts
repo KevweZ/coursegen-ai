@@ -13,6 +13,8 @@ import {
   isAiInfraFailure,
   isAnalysisTransient,
   isEmptyOrUnparseableAiPayload,
+  OUTLINE_PARSE_MESSAGE,
+  REGEN_KEEP_SLIDE_MESSAGE,
   SERVER_WARMING_MESSAGE,
   shouldRetryAiProxy,
   shouldRetryAiRateLimit,
@@ -70,6 +72,8 @@ test('Generate / outline / Add content wait for health and do not stub cold-star
   assert.equal(shouldRetryAiRateLimit({ status: 402, message: 'AI_NO_CREDITS' }), false);
   assert.equal(isAiInfraFailure('AI Proxy request failed to fetch (server unreachable or timed out — often right after a Render deploy). Wait ~30s and try again.'), true);
   assert.equal(isAiInfraFailure('AI proxy error 401: Sign in required'), true);
+  assert.equal(isAiInfraFailure('No JSON structure found in AI response.'), true);
+  assert.equal(isAiInfraFailure("Missing or empty 'slides' array in response."), true);
   assert.equal(isAiInfraFailure('Could not parse module JSON'), false);
   assert.match(SERVER_WARMING_MESSAGE, /warming up/i);
 
@@ -77,7 +81,7 @@ test('Generate / outline / Add content wait for health and do not stub cold-star
   const hydrate = app.slice(app.indexOf('const hydrateCourse = async'), app.indexOf('const handleCreateReviewLink'));
   assert.match(hydrate, /await waitForApiWarm/);
   assert.match(hydrate, /ANALYSIS_WARM_TIMEOUT_MS/);
-  assert.match(hydrate, /isAnalysisTransient/);
+  assert.match(hydrate, /formatAddContentFailure/);
   assert.match(hydrate, /SERVER_WARMING_MESSAGE/);
   assert.doesNotMatch(hydrate, /void waitForApiWarm/);
 
@@ -129,4 +133,22 @@ test('Add content empty JSON and draft-open fetch failures do not blame the auth
   const ai = readFileSync(resolve(process.cwd(), 'src/services/aiService.ts'), 'utf8');
   assert.match(ai, /ADD_CONTENT_EMPTY_MESSAGE/);
   assert.doesNotMatch(ai, /Paste more of the source text/);
+});
+
+test('hydrate empty JSON and regen failure do not plant placeholder slides', () => {
+  assert.equal(formatAddContentFailure('Critical Data Failure: Outline could not be parsed.'), OUTLINE_PARSE_MESSAGE);
+  assert.equal(formatAddContentFailure('No JSON structure found in AI response.'), ADD_CONTENT_EMPTY_MESSAGE);
+  assert.doesNotMatch(OUTLINE_PARSE_MESSAGE, /Critical Data Failure|your file/i);
+  assert.doesNotMatch(REGEN_KEEP_SLIDE_MESSAGE, /placeholder/i);
+
+  const ai = readFileSync(resolve(process.cwd(), 'src/services/aiService.ts'), 'utf8');
+  assert.match(ai, /OUTLINE_PARSE_MESSAGE/);
+  assert.doesNotMatch(ai, /Critical Data Failure/);
+  assert.doesNotMatch(ai, /This slide covers key content/);
+
+  const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+  const regen = app.slice(app.indexOf('const regenerateBlankSlide'), app.indexOf('const openRegenerateSlideDrawer'));
+  assert.match(regen, /REGEN_KEEP_SLIDE_MESSAGE/);
+  assert.doesNotMatch(regen, /Using a placeholder/);
+  assert.doesNotMatch(regen, /Key point related to/);
 });

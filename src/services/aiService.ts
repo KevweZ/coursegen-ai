@@ -26,7 +26,7 @@ import {
 import { applyAlignedQuizPrompt, quizQuestionList } from "../lib/knowledgeCheckOst";
 import { getSupabaseAccessTokenAsync } from "../lib/supabaseAccessToken";
 import { waitForApiWarm } from "../lib/apiWarmup";
-import { ADD_CONTENT_EMPTY_MESSAGE, isAiInfraFailure, shouldRetryAiProxy, shouldRetryAiRateLimit } from "../lib/analysisErrors";
+import { ADD_CONTENT_EMPTY_MESSAGE, OUTLINE_PARSE_MESSAGE, isAiInfraFailure, shouldRetryAiProxy, shouldRetryAiRateLimit } from "../lib/analysisErrors";
 
 // ── Secure AI Proxy Client ───────────────────────────────────────────────────
 // API keys live ONLY in server.js — never in the browser bundle.
@@ -612,8 +612,13 @@ export async function generateCourseOutline(
   const rawText = await executeAnthropicAI('complex', systemInstruction, userPrompt, 8192);
   const cleanedText = extractJsonFromText(rawText);
   
-  const parsedOutline = parseJsonSafely(rawText) as CourseOutlineDraft;
-  if (!parsedOutline) throw new Error("Critical Data Failure: Outline could not be parsed.");
+  let parsedOutline: CourseOutlineDraft;
+  try {
+    parsedOutline = parseJsonSafely(rawText) as CourseOutlineDraft;
+  } catch {
+    throw new Error(OUTLINE_PARSE_MESSAGE);
+  }
+  if (!parsedOutline?.modules?.length) throw new Error(OUTLINE_PARSE_MESSAGE);
 
   // Always strip AI-authored objectives / learning-objectives slides.
   // Module Overview (when enabled) surfaces objectives from the canonical list;
@@ -1318,12 +1323,7 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
           } catch (e3: any) {
             if (isAiInfraFailure(e3)) throw e3;
             console.error(`[Single slide "${slide.title}" in "${emptyModule.title}"] All tiers failed: ${e3.message}`);
-            individualResults.push({
-              ...slide,
-              content: `**${slide.title}**\n\nThis slide covers key content for module: ${emptyModule.title}. Please review and edit as needed.`,
-              voiceOverText: slideSkipsNarration(slide) ? '' : `In this slide we cover ${slide.title}, which is an important aspect of ${emptyModule.title}.`,
-              mediaPrompt: `Professional illustration related to ${slide.title}`,
-            });
+            throw new Error(ADD_CONTENT_EMPTY_MESSAGE);
           }
         }
         bumpProgress();
