@@ -17,6 +17,14 @@ export const ANALYSIS_NO_CREDITS_MESSAGE =
 export const SERVER_WARMING_MESSAGE =
   'Server is warming up — nothing is wrong with your file or account. Wait a moment and try again.';
 
+/** Empty / unparseable /api/ai JSON after a live brief — not “paste more source”. */
+export const ADD_CONTENT_EMPTY_MESSAGE =
+  'The generator did not return slides. This is usually a busy server. Wait a moment and try again.';
+
+/** Dropped draft fetch / HTML error page — not a corrupt file. */
+export const DRAFT_OPEN_RETRY_MESSAGE =
+  'Could not open this draft. Wait a moment and try again from View drafts.';
+
 function errBlob(err: unknown): string {
   const rec = err && typeof err === 'object'
     ? (err as { status?: number; message?: string; code?: string; error?: unknown })
@@ -100,4 +108,45 @@ export function formatAnalysisFailure(raw: string | null | undefined): AnalysisF
     body: 'Something went wrong while reading your file. Please try again.',
     action: 'retry',
   };
+}
+
+export function isEmptyOrUnparseableAiPayload(err: unknown): boolean {
+  const blob = errBlob(err);
+  return /No JSON structure found|All JSON parse attempts failed|did not return any(?: new teaching)? slides|did not return slides|Paste more of the source/i.test(blob);
+}
+
+function isDraftFetchNoise(err: unknown): boolean {
+  if (isAnalysisTransient(err)) return true;
+  const blob = errBlob(err);
+  return /unexpected token|not valid JSON|SyntaxError|JSON\.parse|<!DOCTYPE|cloudflare|Could not load draft|may be corrupted|Failed to open draft/i.test(blob);
+}
+
+export function formatAddContentFailure(err: unknown): string {
+  const blob = errBlob(err);
+  if (isNoCreditsError(blob)) return ANALYSIS_NO_CREDITS_MESSAGE;
+  if (isAiAuthOrCreditFailure(err) && /sign in|AI_AUTH_REQUIRED|\b401\b|\b403\b/i.test(blob)) {
+    return 'Sign in required to generate.';
+  }
+  if (isAnalysisTransient(err)) return SERVER_WARMING_MESSAGE;
+  if (isEmptyOrUnparseableAiPayload(err)) return ADD_CONTENT_EMPTY_MESSAGE;
+  const msg = String(
+    (err && typeof err === 'object' && 'message' in err && (err as { message?: string }).message)
+      || (typeof err === 'string' ? err : ''),
+  ).trim();
+  return msg || ADD_CONTENT_EMPTY_MESSAGE;
+}
+
+export function formatDraftOpenFailure(err: unknown): string {
+  const blob = errBlob(err);
+  if (isAiAuthOrCreditFailure(err) && /sign in|AI_AUTH_REQUIRED|\b401\b/i.test(blob)) {
+    return 'Sign in to open this draft.';
+  }
+  if (isAnalysisTransient(err)) return SERVER_WARMING_MESSAGE;
+  if (isDraftFetchNoise(err)) return DRAFT_OPEN_RETRY_MESSAGE;
+  const msg = String(
+    (err && typeof err === 'object' && 'message' in err && (err as { message?: string }).message)
+      || (typeof err === 'string' ? err : ''),
+  ).trim();
+  if (/corrupt/i.test(msg) || !msg) return DRAFT_OPEN_RETRY_MESSAGE;
+  return msg;
 }

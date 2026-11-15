@@ -235,7 +235,9 @@ import type { SandboxDemo } from './lib/routes';
 import {
   ANALYSIS_WARM_TIMEOUT_MS,
   COLD_START_COUNTDOWN_SEC,
+  formatAddContentFailure,
   formatAnalysisFailure,
+  formatDraftOpenFailure,
   isAnalysisTransient,
   SERVER_WARMING_MESSAGE,
 } from './lib/analysisErrors';
@@ -1516,12 +1518,7 @@ export default function App() {
           console.log(`[Drafts] Open complete in ${Math.round(performance.now() - t0)}ms`);
         } catch (err: any) {
           console.error('[Drafts] Open failed:', err);
-          const raw = String(err?.message || '');
-          showDraftMessage(
-            isAnalysisTransient(err) || isAnalysisTransient(raw)
-              ? SERVER_WARMING_MESSAGE
-              : (raw || 'Failed to open draft. It may be corrupted.'),
-          );
+          showDraftMessage(formatDraftOpenFailure(err));
           setStep('home');
           navigateTo(ROUTES.upload, true);
         } finally {
@@ -5654,11 +5651,7 @@ export default function App() {
         }
       }
     } catch (e: any) {
-      showDraftMessage(
-        isAnalysisTransient(e) || isAnalysisTransient(e?.message)
-          ? SERVER_WARMING_MESSAGE
-          : (e?.message || 'Could not generate the new content.'),
-      );
+      showDraftMessage(formatAddContentFailure(e));
     } finally {
       addingContentRef.current = false;
       setIsAddingContent(false);

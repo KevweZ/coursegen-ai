@@ -21,6 +21,8 @@ Anthony reversed the extract-first wait (2026-10-06): show Build now / Review im
 - **Skip embedded Word images** so extract status is not a huge HTML blob (`mammoth` `convertImage` skip).
 - **Sleeping API is warmup, not a bad file.** `runAnalysis` waits on `/api/health` (`ANALYSIS_WARM_TIMEOUT_MS`) before parse/AI. Timeouts, 524s, and `Failed to fetch` use `isAnalysisTransient` → cold-start countdown, not Analysis Failed. Do not restore a generic “reading your file” overlay for Render spin-down.
 - **Generate / outline / Add content wait the same way.** `hydrateCourse`, `generateOutline`, and `handleGenerateAddedContent` **await** `waitForApiWarm`. `executeAnthropicAI` retries 503/`COLD_START`/`Failed to fetch` after warmup (not 401/402/trial). Hydrate **throws** infra failures instead of writing “This slide covers key content…” stubs. Do not fire-and-forget warmup on Generate. `npm test` must stay green (`src/lib/analysisErrors.test.ts`).
+- **Empty AI JSON is not “paste more source”.** Add content uses [`formatAddContentFailure`](src/lib/analysisErrors.ts) / `ADD_CONTENT_EMPTY_MESSAGE`. Do not tell the author to paste more when `/api/ai` returned `{}` or unparseable text.
+- **Dropped draft fetch is not “corrupted”.** [`formatDraftOpenFailure`](src/lib/analysisErrors.ts) maps HTML/JSON/524/Failed to fetch to retry copy. Do not restore “It may be corrupted.”
 
 ## How to change this
 

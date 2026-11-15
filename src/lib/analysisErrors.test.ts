@@ -3,11 +3,16 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
+  ADD_CONTENT_EMPTY_MESSAGE,
   ANALYSIS_NO_CREDITS_MESSAGE,
   COLD_START_COUNTDOWN_SEC,
+  DRAFT_OPEN_RETRY_MESSAGE,
+  formatAddContentFailure,
   formatAnalysisFailure,
+  formatDraftOpenFailure,
   isAiInfraFailure,
   isAnalysisTransient,
+  isEmptyOrUnparseableAiPayload,
   SERVER_WARMING_MESSAGE,
   shouldRetryAiProxy,
   shouldRetryAiRateLimit,
@@ -91,4 +96,37 @@ test('Generate / outline / Add content wait for health and do not stub cold-star
   assert.match(ai, /if \(isAiInfraFailure\(e1\)\) throw e1/);
   assert.match(ai, /if \(isAiInfraFailure\(e2\)\) throw e2/);
   assert.match(ai, /if \(isAiInfraFailure\(e3\)\) throw e3/);
+});
+
+test('Add content empty JSON and draft-open fetch failures do not blame the author', () => {
+  assert.equal(
+    isEmptyOrUnparseableAiPayload('The generator did not return any slides. Paste more of the source text and try again.'),
+    true,
+  );
+  assert.equal(isEmptyOrUnparseableAiPayload('No JSON structure found in AI response.'), true);
+  assert.equal(isEmptyOrUnparseableAiPayload('All JSON parse attempts failed. Tail: "<html>"'), true);
+  assert.equal(
+    formatAddContentFailure('The generator did not return any slides. Paste more of the source text and try again.'),
+    ADD_CONTENT_EMPTY_MESSAGE,
+  );
+  assert.doesNotMatch(formatAddContentFailure('Paste more of the source text and try again.'), /paste more/i);
+  assert.equal(formatAddContentFailure('Failed to fetch'), SERVER_WARMING_MESSAGE);
+  assert.equal(formatAddContentFailure('AI_NO_CREDITS'), ANALYSIS_NO_CREDITS_MESSAGE);
+  assert.doesNotMatch(ADD_CONTENT_EMPTY_MESSAGE, /paste more|source text/i);
+
+  assert.equal(formatDraftOpenFailure('Failed to open draft. It may be corrupted.'), DRAFT_OPEN_RETRY_MESSAGE);
+  assert.equal(formatDraftOpenFailure('Unexpected token < in JSON at position 0'), DRAFT_OPEN_RETRY_MESSAGE);
+  assert.equal(formatDraftOpenFailure('Could not load draft (524).'), SERVER_WARMING_MESSAGE);
+  assert.equal(formatDraftOpenFailure('Failed to fetch'), SERVER_WARMING_MESSAGE);
+  assert.doesNotMatch(formatDraftOpenFailure(new Error('Unexpected token <')), /corrupt/i);
+  assert.doesNotMatch(DRAFT_OPEN_RETRY_MESSAGE, /corrupt/i);
+
+  const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+  assert.match(app, /formatAddContentFailure/);
+  assert.match(app, /formatDraftOpenFailure/);
+  assert.doesNotMatch(app, /It may be corrupted/);
+
+  const ai = readFileSync(resolve(process.cwd(), 'src/services/aiService.ts'), 'utf8');
+  assert.match(ai, /ADD_CONTENT_EMPTY_MESSAGE/);
+  assert.doesNotMatch(ai, /Paste more of the source text/);
 });

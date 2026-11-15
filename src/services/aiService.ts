@@ -26,7 +26,7 @@ import {
 import { applyAlignedQuizPrompt, quizQuestionList } from "../lib/knowledgeCheckOst";
 import { getSupabaseAccessTokenAsync } from "../lib/supabaseAccessToken";
 import { waitForApiWarm } from "../lib/apiWarmup";
-import { isAiInfraFailure, shouldRetryAiProxy, shouldRetryAiRateLimit } from "../lib/analysisErrors";
+import { ADD_CONTENT_EMPTY_MESSAGE, isAiInfraFailure, shouldRetryAiProxy, shouldRetryAiRateLimit } from "../lib/analysisErrors";
 
 // ── Secure AI Proxy Client ───────────────────────────────────────────────────
 // API keys live ONLY in server.js — never in the browser bundle.
@@ -1837,14 +1837,19 @@ Rules:
 - Pure JSON only.`;
 
   const raw = await executeAnthropicAI('bulk', system, user, 8192);
-  const parsed = parseJsonSafely(raw);
+  let parsed: any;
+  try {
+    parsed = parseJsonSafely(raw);
+  } catch {
+    throw new Error(ADD_CONTENT_EMPTY_MESSAGE);
+  }
   const list = Array.isArray(parsed?.slides)
     ? parsed.slides
     : Array.isArray(parsed)
       ? parsed
       : parsed?.module?.slides;
   if (!Array.isArray(list) || !list.length) {
-    throw new Error('The generator did not return any slides. Paste more of the source text and try again.');
+    throw new Error(ADD_CONTENT_EMPTY_MESSAGE);
   }
   const fallbackTitle = opts.titleHint || 'New slide';
   const cap = auto ? maxSlides : count;
@@ -1864,7 +1869,7 @@ Rules:
   }
   slides = slides.filter((s: any) => !isSummarySlide(s) && s?.type !== 'cover' && s?.type !== 'module-overview');
   if (!slides.length) {
-    throw new Error('The generator did not return any new teaching slides. Paste more of the source text and try again.');
+    throw new Error(ADD_CONTENT_EMPTY_MESSAGE);
   }
   return {
     moduleTitle: String(parsed?.moduleTitle || opts.titleHint || '').trim() || undefined,
