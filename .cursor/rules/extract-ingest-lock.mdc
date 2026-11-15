@@ -18,6 +18,7 @@ Anthony reversed the extract-first wait (2026-10-06): show Build now / Review im
 - **Help/FAQ, not a blocker.** Help widget + homepage file-types FAQ: PPT+notes is most reliable; Word/PDF follow extractable text. Do not refuse Word/PDF.
 - **Word tables stay text.** `tableToMarkdown` in [`server.js`](server.js) flattens tables. Do not replace them with `[Table — see original document]`.
 - **Skip embedded Word images** so extract status is not a huge HTML blob (`mammoth` `convertImage` skip).
+- **Sleeping API is warmup, not a bad file.** `runAnalysis` waits on `/api/health` (`ANALYSIS_WARM_TIMEOUT_MS`) before parse/AI. Timeouts, 524s, and `Failed to fetch` use `isAnalysisTransient` → cold-start countdown, not Analysis Failed. Do not restore a generic “reading your file” overlay for Render spin-down. `npm test` must stay green (`src/lib/analysisErrors.test.ts`).
 
 ## How to change this
 

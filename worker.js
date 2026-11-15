@@ -48,14 +48,14 @@ function htmlUpstreamResponse(status, pathnameSearch = '') {
           : isTimeout
             ? (isImage
               ? 'The image request timed out. Wait a minute, then try Generate AI images again.'
-              : 'The request timed out. Try again in a moment.')
+              : 'Server is warming up — please wait 20–30 seconds and try again.')
             : `API error (${status}). Try again in a moment.`,
-      code: isWarmup ? 'COLD_START' : isRateLimit ? 'UPSTREAM_RATE_LIMIT' : isTimeout ? 'UPSTREAM_TIMEOUT' : 'UPSTREAM_HTML',
-      status: isWarmup ? 503 : isRateLimit ? 429 : isTimeout ? 504 : 502,
+      code: isWarmup || (isTimeout && !isImage) ? 'COLD_START' : isRateLimit ? 'UPSTREAM_RATE_LIMIT' : isTimeout ? 'UPSTREAM_TIMEOUT' : 'UPSTREAM_HTML',
+      status: isWarmup || (isTimeout && !isImage) ? 503 : isRateLimit ? 429 : isTimeout ? 504 : 502,
       retryAfterMs: isRateLimit ? 20000 : isTimeout ? 15000 : 0,
     }),
     {
-      status: isWarmup ? 503 : isRateLimit ? 429 : isTimeout ? 504 : 502,
+      status: isWarmup || (isTimeout && !isImage) ? 503 : isRateLimit ? 429 : isTimeout ? 504 : 502,
       headers: { 'Content-Type': 'application/json' },
     },
   );

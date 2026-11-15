@@ -16,6 +16,7 @@ Anthony (2026-11-09): Generate AI images failed for days while we retuned models
 - **Build Command is `npm install`.** Start Command is `node server.js`. Do **not** set Render to `npm run build`. That script is two Vite builds (player + app) and OOMs the free 512MB box. `npm run build` stays for Cloudflare / local SCORM only.
 - **Prove the live code.** After pushing `server.js`, poll health until new fields match (`image_gen`, etc.). If they do not appear in a few minutes, the deploy failed — do not tell him to wait and click Generate again.
 - **Ignore Static `coursegen-ai`.** Frontend is Cloudflare. Do not Manual Deploy that old static site.
+- **Free instance spin-down.** Idle Render can take ~50–90s to answer health. Analysis and first `/api/*` after a gap must wait/retry as warmup. Do not tell the author their file failed.
 
 ## How to change this
 

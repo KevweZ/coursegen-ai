@@ -232,7 +232,12 @@ import {
   myAccountInvitePath,
 } from './lib/routes';
 import type { SandboxDemo } from './lib/routes';
-import { formatAnalysisFailure } from './lib/analysisErrors';
+import {
+  ANALYSIS_WARM_TIMEOUT_MS,
+  COLD_START_COUNTDOWN_SEC,
+  formatAnalysisFailure,
+  isAnalysisTransient,
+} from './lib/analysisErrors';
 import { foundationFingerprint, type FoundationFingerprintInput } from './lib/courseReviewSync';
 import { DraftCoursesPanel } from './components/player/DraftCoursesPanel';
 import { ViewDraftsModal } from './components/player/ViewDraftsModal';
@@ -3314,7 +3319,7 @@ export default function App() {
   const startColdStartCountdown = () => {
     clearColdStartCountdown();
     setAnalyzeError(null);
-    setColdStartCountdown(30);
+    setColdStartCountdown(COLD_START_COUNTDOWN_SEC);
     setProgress(80);
     coldStartTimerRef.current = setInterval(() => {
       setColdStartCountdown(prev => {
@@ -3556,6 +3561,12 @@ export default function App() {
       setProgress(prev => prev < 80 ? Math.min(80, prev + 5) : prev);
     }, 500);
     try {
+      const warmed = await waitForApiWarm({ timeoutMs: ANALYSIS_WARM_TIMEOUT_MS });
+      if (!warmed) {
+        clearInterval(analysisTimer);
+        startColdStartCountdown();
+        return;
+      }
       const text = (typeof resume?.extractedText === 'string' && resume.extractedText.trim())
         ? resume.extractedText
         : await extractTextFromFile(file);
@@ -3762,9 +3773,7 @@ export default function App() {
     } catch (err: any) {
       clearInterval(analysisTimer);
       console.error('File analysis error:', err);
-      const isColdStart = err?.message?.includes('COLD_START') || err?.message?.includes('warming up') || err?.message?.includes('503');
-      if (isColdStart) {
-        // Friendly warm-up state with auto-retry — not framed as a failure
+      if (isAnalysisTransient(err) || isAnalysisTransient(err?.message)) {
         startColdStartCountdown();
         return;
       }
@@ -6923,7 +6932,7 @@ export default function App() {
                        <div className="w-full max-w-sm mx-auto h-2.5 bg-slate-800 rounded-full overflow-hidden">
                          <div
                            className="h-full bg-gradient-to-r from-amber-500 to-indigo-500 rounded-full transition-all duration-1000 ease-linear"
-                           style={{ width: `${((30 - coldStartCountdown) / 30) * 100}%` }}
+                           style={{ width: `${((COLD_START_COUNTDOWN_SEC - coldStartCountdown) / COLD_START_COUNTDOWN_SEC) * 100}%` }}
                          />
                        </div>
                        <div className="flex gap-3 justify-center">

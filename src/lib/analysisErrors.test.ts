@@ -4,7 +4,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   ANALYSIS_NO_CREDITS_MESSAGE,
+  COLD_START_COUNTDOWN_SEC,
   formatAnalysisFailure,
+  isAnalysisTransient,
 } from './analysisErrors.ts';
 
 test('credit denials become a short My Account message with no proxy JSON', () => {
@@ -29,4 +31,21 @@ test('analysis overlay sends credit failures to My Account', () => {
   assert.match(app, /formatAnalysisFailure/);
   assert.match(app, /analyzeErrorAction === 'account'/);
   assert.match(app, /My Account/);
+});
+
+test('Render sleep and proxy timeouts are warmup, not Analysis Failed', () => {
+  assert.equal(isAnalysisTransient('AI Proxy request failed to fetch (server unreachable or timed out — often right after a Render deploy). Wait ~30s and try again.'), true);
+  assert.equal(isAnalysisTransient('AI proxy error 504: {"code":"UPSTREAM_TIMEOUT"}'), true);
+  assert.equal(isAnalysisTransient({ status: 503, message: 'Server is warming up — please wait 20–30 seconds and try again.' }), true);
+  assert.equal(isAnalysisTransient('Failed to fetch'), true);
+  assert.equal(isAnalysisTransient('AI Proxy request failed: boom'), false);
+  assert.equal(isAnalysisTransient('AI_NO_CREDITS'), false);
+  assert.ok(COLD_START_COUNTDOWN_SEC >= 50);
+
+  const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+  const run = app.slice(app.indexOf('const runAnalysis = async'), app.indexOf('const handleFileUpload'));
+  assert.match(run, /waitForApiWarm/);
+  assert.match(run, /isAnalysisTransient/);
+  assert.match(run, /startColdStartCountdown/);
+  assert.doesNotMatch(run, /err\?\.message\?\.includes\('503'\)/);
 });
