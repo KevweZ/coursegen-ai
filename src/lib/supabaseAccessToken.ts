@@ -1,4 +1,4 @@
-/** Read the current Supabase access token from localStorage (browser only). */
+/** Sync localStorage scrape — tests and fallbacks. Prefer getSupabaseAccessTokenAsync. */
 export function getSupabaseAccessToken(): string | null {
   if (typeof localStorage === 'undefined') return null;
   try {
@@ -18,4 +18,24 @@ export function getSupabaseAccessToken(): string | null {
     }
   } catch { /* ignore */ }
   return null;
+}
+
+/** Prefer the live Supabase session — localStorage fails on chunked/cookie sessions. */
+export async function getSupabaseAccessTokenAsync(): Promise<string | null> {
+  try {
+    const { supabase } = await import('./supabaseClient');
+    const { data } = await supabase.auth.getSession();
+    if (data?.session?.access_token) return data.session.access_token;
+  } catch {
+    /* fall through to localStorage */
+  }
+  return getSupabaseAccessToken();
+}
+
+export async function authJsonHeaders(): Promise<Record<string, string>> {
+  const token = await getSupabaseAccessTokenAsync();
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
 }

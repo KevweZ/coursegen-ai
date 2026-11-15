@@ -7,7 +7,7 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { slideSkipsNarration } from '../lib/enablingCoverage';
-import { hasLiveNarrationUrl, hasPlayableNarrationUrl, isTabbedNarrationType, slideNarrationScript, stampSpokenClip, tabNarrationScript } from '../lib/narrationAudio';
+import { hasLiveNarrationUrl, isTabbedNarrationType, slideNarrationScript, stampSpokenClip, tabNarrationScript } from '../lib/narrationAudio';
 
 /** Tab jobs must not stamp slide.voiceOverUrl even if the server drops `target`. */
 export function ttsResultIsTab(r: { target?: string | null; tabId?: string | null; id?: string }): boolean {
@@ -179,7 +179,7 @@ export function buildCourseNarrationItems(
       if (slideSkipsNarration(slide)) continue;
       const text = slideNarrationScript(slide);
       const hasMain = !!text;
-      const skipMain = !!(opts?.onlyMissing && hasPlayableNarrationUrl(slide.voiceOverUrl));
+      const skipMain = !!(opts?.onlyMissing && hasLiveNarrationUrl(slide.voiceOverUrl));
 
       if (hasMain && !skipMain) {
         items.push({
@@ -200,7 +200,7 @@ export function buildCourseNarrationItems(
         for (const tab of tabs) {
           const tabText = tabNarrationScript(tab);
           if (!tabText) continue;
-          if (opts?.onlyMissing && hasPlayableNarrationUrl(tab.voiceOverUrl)) continue;
+          if (opts?.onlyMissing && hasLiveNarrationUrl(tab.voiceOverUrl)) continue;
           items.push({
             id: `${slide.id}::tab::${tab.id}`,
             text: tabText,

@@ -19,7 +19,7 @@ import {
   Mail,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { redirectToCheckout, type StripePlanId } from '../services/paymentService';
+import { getPaymentStatus, openBillingPortal, redirectToCheckout, type StripePlanId } from '../services/paymentService';
 import { planDisplayName } from '../lib/planEntitlements';
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -406,10 +406,9 @@ const ManageBillingBanner = () => {
   useEffect(() => {
     if (!user?.id) return;
     setLoading(true);
-    fetch(`/api/payments/status?userId=${user.id}`)
-      .then(r => r.json())
+    getPaymentStatus(user.id)
       .then(d => {
-        if (d.stripe_customer_id) {
+        if (d?.stripe_customer_id) {
           setCustomerId(d.stripe_customer_id);
           setPlanName(d.subscription ?? '');
         }
@@ -424,13 +423,7 @@ const ManageBillingBanner = () => {
     setPortalLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/payments/billing-portal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customerId }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Failed to open billing portal.');
+      const data = await openBillingPortal();
       window.location.href = data.url;
     } catch (err: any) {
       setError(err.message);

@@ -7,7 +7,7 @@ import {
   TrendingUp, Package, Users, UserPlus, Trash2, Eye,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { getPaymentStatus, redirectToCheckout, type PaymentStatus } from '../services/paymentService';
+import { getPaymentStatus, openBillingPortal, redirectToCheckout, type PaymentStatus } from '../services/paymentService';
 import {
   fetchWorkspace,
   inviteWorkspaceMember,
@@ -266,13 +266,7 @@ export function AccountPage({ onUpgrade }: AccountPageProps) {
     setPortalLoading(true);
     setPortalError(null);
     try {
-      const res = await fetch('/api/payments/billing-portal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customerId }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Failed to open billing portal.');
+      const data = await openBillingPortal();
       window.location.href = data.url;
     } catch (err: any) {
       setPortalError(err.message ?? 'Could not open billing portal.');

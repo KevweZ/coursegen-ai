@@ -91,10 +91,10 @@ export function attachHeavyMedia(course: any, map: MediaMap): void {
     // Index-keyed leftover audio lands on whoever sits at that slot after
     // Add content / delete — never attach those. Use slide:/tab:/synth: keys.
     if (isIndexKeyedAudioPath(path)) continue;
-    // Audio keys can land on slides that never stored a null placeholder.
-    // Image keys must already exist on the shell — leftover IndexedDB/cloud
-    // blobs must not resurrect a deleted or Crop/Move-promoted imageUrl.
-    if (!isAudioAssetPath(path) && !hasOwnMediaPath(course, path)) continue;
+    // Image and audio keys must already exist on the shell (including null
+    // placeholders). Leftover IndexedDB/cloud blobs must not resurrect a
+    // deleted imageUrl or a cleared Audio box.
+    if (!hasOwnMediaPath(course, path)) continue;
     setByPath(course, path, url);
   }
 }
@@ -566,7 +566,9 @@ export function applyNarrationUrls(
       slides: (m.slides || []).map((s: any) => {
         let slide = s;
         const su = s?.id ? slideUrl.get(String(s.id)) : undefined;
-        if (su) slide = { ...slide, voiceOverUrl: su };
+        if (su && Object.prototype.hasOwnProperty.call(s || {}, 'voiceOverUrl')) {
+          slide = { ...slide, voiceOverUrl: su };
+        }
         if (!slide.data || typeof slide.data !== 'object') return slide;
         if (!isTabbedNarrationType(s?.type)) return slide;
         let data = slide.data;
@@ -575,7 +577,7 @@ export function applyNarrationUrls(
           if (!Array.isArray(data[listKey])) continue;
           const list = data[listKey].map((item: any) => {
             const tu = item?.id && s?.id ? tabUrl.get(`${String(s.id)}::${listKey}::${String(item.id)}`) : undefined;
-            if (!tu) return item;
+            if (!tu || !Object.prototype.hasOwnProperty.call(item || {}, 'voiceOverUrl')) return item;
             changed = true;
             return { ...item, voiceOverUrl: tu };
           });

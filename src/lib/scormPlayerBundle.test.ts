@@ -14,6 +14,7 @@ test('deploy rebuilds the SCORM player so LMS packages match preview', () => {
   assert.match(scorm, /html,body,#root\{height:100%/);
   const app = src('src/App.tsx');
   assert.match(app, /stampFloatingMediaOnCourse/);
+  assert.match(scorm, /Could not read an image or audio file for the SCORM zip/);
 });
 
 test('committed SCORM player includes the Overview / Instruction tab layout', () => {

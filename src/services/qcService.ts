@@ -12,7 +12,7 @@ import { coerceCarouselColor } from '../lib/colorContrast';
 import { slideSkipsNarration, stripSlideNarration } from '../lib/enablingCoverage';
 import { applyAlignedQuizPrompt } from '../lib/knowledgeCheckOst';
 import { finalizeHydratedSlide } from '../lib/hydrateGuards';
-import { getSupabaseAccessToken } from '../lib/supabaseAccessToken';
+import { getSupabaseAccessTokenAsync } from '../lib/supabaseAccessToken';
 
 const BATCH_SIZE = 5;
 /** Always use same-origin /api/* (Cloudflare Worker → Render). Never localhost in production. */
@@ -101,9 +101,13 @@ async function scanBatch(slides: any[]): Promise<RawAIIssue[]> {
     fields: extractSlideText(slide),
   }));
 
+  const token = await getSupabaseAccessTokenAsync();
   const res = await fetch(`${API_BASE}/api/qc/content-scan`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({ slides: payload }),
   });
 
@@ -198,17 +202,20 @@ export async function runFullQC(
     const QC_SCAN_CONCURRENCY = 3;
     const workers = Math.min(QC_SCAN_CONCURRENCY, batches.length);
     let cursor = 0;
+    let batchFailures = 0;
     const runWorker = async () => {
       while (cursor < batches.length) {
         const idx = cursor++;
         const batchIssues = await scanBatch(batches[idx]).catch((err) => {
           console.warn('[QC] Batch scan failed:', err);
+          batchFailures += 1;
           return [] as RawAIIssue[];
         });
         rawAIIssues.push(...batchIssues);
       }
     };
     await Promise.all(Array.from({ length: Math.max(workers, 0) }, () => runWorker()));
+    if (batchFailures > 0 && rawAIIssues.length === 0) aiScanFailed = true;
   } catch {
     aiScanFailed = true;
     console.warn('[QC] AI scan unavailable — returning structural results only.');
@@ -455,7 +462,7 @@ ${type === 'choice-cards' ? '- This is a teaching slide, not a knowledge check. 
   for (let attempt = 0; attempt < 3 && !parsed; attempt++) {
     try {
       if (attempt > 0) await new Promise(r => setTimeout(r, 1500 * attempt));
-      const token = getSupabaseAccessToken();
+      const token = await getSupabaseAccessTokenAsync();
       const res = await fetch(`${API_BASE}/api/ai`, {
         method: 'POST',
         headers: {

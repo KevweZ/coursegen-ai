@@ -562,6 +562,11 @@ async function generateImageViaOpenAI(prompt) {
       const errText = await orResponse.text().catch(() => orResponse.statusText);
       lastErr = `${attempt.model} ${orResponse.status}: ${errText.slice(0, 180)}`;
       console.warn('[ImageGen] OpenAI attempt failed:', lastErr);
+      if (orResponse.status === 429) {
+        const err = new Error(`OpenAI image error: ${lastErr}`);
+        err.status = 429;
+        throw err;
+      }
       continue;
     }
     const data = await orResponse.json();
@@ -1252,23 +1257,7 @@ async function verifyAdminJwt(authHeader) {
   console.log('[AdminAuth] Token extracted:', token ? `${token.slice(0,20)}...` : 'NONE');
   if (!token) return false;
 
-  // ── Fast path: decode JWT locally — no Supabase network call needed ─────────
-  const payload = decodeJwtPayload(token);
-  console.log('[AdminAuth] JWT email:', payload?.email ?? 'null');
-  console.log('[AdminAuth] JWT role:', payload?.user_metadata?.role ?? 'none');
-  console.log('[AdminAuth] ADMIN_EMAIL env:', ADMIN_EMAIL || '(not set)');
-
-  if (payload) {
-    const emailMatch = !!(ADMIN_EMAIL && payload.email?.toLowerCase() === ADMIN_EMAIL);
-    const roleMatch  = payload.user_metadata?.role === 'admin';
-    console.log('[AdminAuth] Email match:', emailMatch, '| Role match:', roleMatch);
-    if (emailMatch || roleMatch) {
-      console.log('[AdminAuth] ✅ Passed via JWT decode');
-      return true;
-    }
-  }
-
-  // ── Fallback: verify via Supabase getUser (requires env vars) ───────────────
+  // ── Verify via Supabase getUser (rejects unsigned / forged payloads) ────────
   console.log('[AdminAuth] Trying Supabase fallback...');
   try {
     const { createClient } = await import('@supabase/supabase-js');
@@ -1557,18 +1546,19 @@ function stripHeavyStrings(value, depth = 0) {
 }
 
 async function requireAuthedUser(req) {
-  const auth = authFromHeader(req.headers.authorization);
-  if (!auth?.userId) return null;
-  // Confirm token with Supabase when possible (rejects forged payloads)
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!token) return null;
   try {
-    const header = req.headers.authorization || '';
-    const token = header.startsWith('Bearer ') ? header.slice(7) : null;
-    if (!token) return auth;
     const supabase = await getAdminSupabase();
     const { data: { user }, error } = await supabase.auth.getUser(token);
-    if (!error && user?.id) return { userId: user.id, email: user.email || auth.email };
-  } catch { /* fall through to JWT decode */ }
-  return auth;
+    if (!error && user?.id) {
+      return { userId: user.id, email: (user.email || '').toLowerCase() };
+    }
+  } catch {
+    /* unverified */
+  }
+  return null;
 }
 
 app.get('/api/drafts', async (req, res) => {
@@ -1582,6 +1572,18 @@ app.get('/api/drafts', async (req, res) => {
       .select('id, phase, course_title, slide_count, module_count, theme, updated_at, workspace_id')
       .order('updated_at', { ascending: false });
     if (workspaceId) {
+      const email = await resolveAuthEmail(supabase, auth);
+      const membership = await getActiveTeamMembership(supabase, auth.userId, email);
+      const memberWsId = membership?.workspace_id || membership?.workspaces?.id;
+      const { data: owned } = await supabase
+        .from('workspaces')
+        .select('id')
+        .eq('id', workspaceId)
+        .eq('owner_user_id', auth.userId)
+        .maybeSingle();
+      if (memberWsId !== workspaceId && !owned) {
+        return res.status(403).json({ error: 'Forbidden.' });
+      }
       query = query.or(
         `workspace_id.eq.${workspaceId},and(user_id.eq.${auth.userId},workspace_id.is.null)`
       );
@@ -1677,6 +1679,14 @@ app.post('/api/drafts/upsert', async (req, res) => {
       updated_at: meta.savedAt || new Date().toISOString(),
       workspace_id: workspaceId || null,
     };
+    const { data: existing } = await supabase
+      .from('course_drafts')
+      .select('user_id')
+      .eq('id', meta.id)
+      .maybeSingle();
+    if (existing && existing.user_id !== auth.userId) {
+      return res.status(403).json({ error: 'Forbidden.' });
+    }
     // Never attach a cancelled / invalid workspace — FK would reject the save
     if (row.workspace_id) {
       const { data: ws } = await supabase
@@ -2995,9 +3005,13 @@ app.delete('/api/tts/jobs/:jobId', async (req, res) => {
 app.post('/api/payments/create-checkout', async (req, res) => {
   if (!stripe) return res.status(503).json({ error: 'Payments not configured on this server.' });
 
-  const { planId, userId, userEmail } = req.body;
-  if (!planId || !userId || !userEmail) {
-    return res.status(400).json({ error: 'Missing required fields: planId, userId, userEmail' });
+  const auth = await requireAuthedUser(req);
+  if (!auth?.userId) return res.status(401).json({ error: 'Sign in required.' });
+  const planId = req.body?.planId;
+  const userId = auth.userId;
+  const userEmail = auth.email || req.body?.userEmail;
+  if (!planId || !userEmail) {
+    return res.status(400).json({ error: 'Missing required fields: planId, userEmail' });
   }
 
   const priceId = STRIPE_PRICE_MAP[planId];
@@ -3029,10 +3043,24 @@ app.post('/api/payments/create-checkout', async (req, res) => {
   const frontendBase = isProd ? 'https://nexcourse.ai' : 'http://localhost:3000';
 
   try {
+    let existingCustomerId = null;
+    try {
+      const supabase = await getAdminSupabase();
+      const { data: ent } = await supabase
+        .from('user_entitlements')
+        .select('stripe_customer_id')
+        .eq('user_id', userId)
+        .maybeSingle();
+      existingCustomerId = ent?.stripe_customer_id || null;
+    } catch (lookupErr) {
+      console.warn('[Stripe] existing customer lookup failed:', lookupErr.message);
+    }
     const session = await stripe.checkout.sessions.create({
       mode:               isSubscription ? 'subscription' : 'payment',
       payment_method_types: ['card'],
-      customer_email:     userEmail,
+      ...(existingCustomerId
+        ? { customer: existingCustomerId }
+        : { customer_email: userEmail }),
       line_items: [{ price: priceId, quantity: 1 }],
       metadata:           { userId, planId },
       success_url:        `${frontendBase}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
@@ -3049,14 +3077,22 @@ app.post('/api/payments/create-checkout', async (req, res) => {
 app.post('/api/payments/billing-portal', async (req, res) => {
   if (!stripe) return res.status(503).json({ error: 'Payments not configured on this server.' });
 
-  const { customerId } = req.body;
-  if (!customerId?.trim()) {
-    return res.status(400).json({ error: 'customerId is required.' });
-  }
+  const auth = await requireAuthedUser(req);
+  if (!auth?.userId) return res.status(401).json({ error: 'Sign in required.' });
 
   const frontendBase = isProd ? 'https://nexcourse.ai' : 'http://localhost:3000';
 
   try {
+    const supabase = await getAdminSupabase();
+    const { data: ent } = await supabase
+      .from('user_entitlements')
+      .select('stripe_customer_id')
+      .eq('user_id', auth.userId)
+      .maybeSingle();
+    const customerId = ent?.stripe_customer_id;
+    if (!customerId) {
+      return res.status(400).json({ error: 'No Stripe customer on this account yet. Complete a checkout first.' });
+    }
     const session = await stripe.billingPortal.sessions.create({
       customer:   customerId,
       return_url: `${frontendBase}/MyAccount`,
@@ -3154,9 +3190,12 @@ app.post(
 app.post('/api/payments/confirm-session', async (req, res) => {
   if (!stripe) return res.status(503).json({ error: 'Payments not configured on this server.' });
 
-  const { sessionId, userId } = req.body || {};
-  if (!sessionId || !userId) {
-    return res.status(400).json({ error: 'sessionId and userId are required.' });
+  const auth = await requireAuthedUser(req);
+  if (!auth?.userId) return res.status(401).json({ error: 'Sign in required.' });
+  const { sessionId } = req.body || {};
+  const userId = auth.userId;
+  if (!sessionId) {
+    return res.status(400).json({ error: 'sessionId is required.' });
   }
 
   try {
@@ -3196,8 +3235,9 @@ app.post('/api/payments/confirm-session', async (req, res) => {
 
 // 8c. Get Payment Status for a user (own plan OR active Team seat)
 app.get('/api/payments/status', async (req, res) => {
-  const { userId } = req.query;
-  if (!userId) return res.status(400).json({ error: 'Missing userId query param' });
+  const auth = await requireAuthedUser(req);
+  if (!auth?.userId) return res.status(401).json({ error: 'Sign in required.' });
+  const userId = auth.userId;
 
   try {
     const supabase = await getAdminSupabase();
@@ -3274,7 +3314,7 @@ app.get('/api/payments/status', async (req, res) => {
 // ─── 8d. Team workspace / seats ─────────────────────────────────────────────
 
 app.get('/api/workspace', async (req, res) => {
-  const auth = authFromHeader(req.headers.authorization);
+  const auth = await requireAuthedUser(req);
   if (!auth) return res.status(401).json({ error: 'Sign in required.' });
 
   try {
@@ -3338,7 +3378,7 @@ app.get('/api/workspace', async (req, res) => {
 });
 
 app.post('/api/workspace/invite', async (req, res) => {
-  const auth = authFromHeader(req.headers.authorization);
+  const auth = await requireAuthedUser(req);
   if (!auth) return res.status(401).json({ error: 'Sign in required.' });
 
   const email = (req.body?.email || '').trim().toLowerCase();
@@ -3439,7 +3479,7 @@ app.post('/api/workspace/invite', async (req, res) => {
 });
 
 app.post('/api/workspace/accept', async (req, res) => {
-  const auth = authFromHeader(req.headers.authorization);
+  const auth = await requireAuthedUser(req);
   if (!auth) return res.status(401).json({ error: 'Sign in required.' });
 
   const token = (req.body?.token || '').trim();
@@ -3499,7 +3539,7 @@ app.post('/api/workspace/accept', async (req, res) => {
 });
 
 app.post('/api/workspace/remove', async (req, res) => {
-  const auth = authFromHeader(req.headers.authorization);
+  const auth = await requireAuthedUser(req);
   if (!auth) return res.status(401).json({ error: 'Sign in required.' });
 
   const memberId = req.body?.memberId;
@@ -3558,6 +3598,8 @@ app.post('/api/workspace/remove', async (req, res) => {
 
 // ─── 9. QC Content Scan ─────────────────────────────────────────────────────
 app.post('/api/qc/content-scan', aiRateLimit, async (req, res) => {
+  const auth = await requireAuthedUser(req);
+  if (!auth?.userId) return res.status(401).json({ error: 'Sign in required.' });
   try {
     const { slides } = req.body;
     if (!Array.isArray(slides) || slides.length === 0) {

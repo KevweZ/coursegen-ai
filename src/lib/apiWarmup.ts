@@ -91,10 +91,11 @@ export function publicImageError(err: unknown): string {
 }
 
 export function isApiColdStart(err: unknown): boolean {
-  if (isImageRateLimit(err)) return false;
+  if (isImageRateLimit(err) || isImageAuthOrCreditStop(err)) return false;
   const { status, msg, code } = errorParts(err);
+  if (status === 401 || status === 402 || status === 403) return false;
   if (status === 503) return true;
-  return /COLD_START|warming up|UPSTREAM_HTML|API proxy error/i.test(`${code} ${msg}`);
+  return /COLD_START|warming up|UPSTREAM_HTML/i.test(`${code} ${msg}`);
 }
 
 /** Browser dropped the /api/generate-image request (proxy HTML, Render sleep). Do not retry 524/504. */
@@ -115,9 +116,23 @@ function sleep(ms: number): Promise<void> {
  * Poll /api/health until Render answers JSON ok. Use on the Build progress
  * screen so preview never opens against a sleeping API.
  */
+export const LIVE_IMAGE_GEN = 'openai-first-mini';
+
+export function healthLooksLive(
+  data: unknown,
+  opts?: { requireImageGen?: boolean },
+): boolean {
+  if (!data || typeof data !== 'object') return false;
+  const rec = data as { status?: string; image_gen?: string };
+  if (rec.status !== 'ok') return false;
+  if (opts?.requireImageGen && rec.image_gen !== LIVE_IMAGE_GEN) return false;
+  return true;
+}
+
 export async function waitForApiWarm(opts?: {
   timeoutMs?: number;
   intervalMs?: number;
+  requireImageGen?: boolean;
 }): Promise<boolean> {
   const timeoutMs = opts?.timeoutMs ?? 40000;
   const intervalMs = opts?.intervalMs ?? 2000;
@@ -127,7 +142,7 @@ export async function waitForApiWarm(opts?: {
       const res = await fetch('/api/health', { method: 'GET', cache: 'no-store' });
       if (res.ok) {
         const data = await res.json().catch(() => null);
-        if (data && data.status === 'ok') return true;
+        if (healthLooksLive(data, { requireImageGen: opts?.requireImageGen })) return true;
       }
     } catch {
       /* still booting */

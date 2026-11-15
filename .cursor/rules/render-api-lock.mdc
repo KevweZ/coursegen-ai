@@ -14,7 +14,7 @@ Anthony (2026-11-09): Generate AI images failed for days while we retuned models
 - **Two hosts.** Cloudflare = frontend (`npx wrangler deploy`). Render **nexcourse-ai-api** = `server.js` (images, TTS, `/api/ai`, billing). A green git push / Worker deploy does not update Render.
 - **Failed deploy keeps the old process.** Red Auto Deploy + purple Live = stale API. Open Render → nexcourse-ai-api → **Deploys** before changing image models or prompts.
 - **Build Command is `npm install`.** Start Command is `node server.js`. Do **not** set Render to `npm run build`. That script is two Vite builds (player + app) and OOMs the free 512MB box. `npm run build` stays for Cloudflare / local SCORM only.
-- **Prove the live code.** After pushing `server.js`, poll health until new fields match (`image_gen`, etc.). If they do not appear in a few minutes, the deploy failed — do not tell him to wait and click Generate again.
+- **Prove the live code.** After pushing `server.js`, poll health until new fields match (`image_gen`, etc.). If they do not appear in a few minutes, the deploy failed — do not tell him to wait and click Generate again. Image waits use `waitForApiWarm({ requireImageGen: true })` so `status: ok` on a stale process is not “live.” `npm test` must stay green (`src/lib/apiWarmup.test.ts`, `src/lib/openRouterImage.test.ts`).
 - **Ignore Static `coursegen-ai`.** Frontend is Cloudflare. Do not Manual Deploy that old static site.
 - **Free instance spin-down.** Idle Render can take ~50–90s to answer health. Analysis and first `/api/*` after a gap must wait/retry as warmup. Do not tell the author their file failed.
 

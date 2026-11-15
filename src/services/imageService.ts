@@ -16,7 +16,7 @@ import {
   collectContentImageJobs,
   type ContentImageJob,
 } from '../lib/contentImageJobs';
-import { getSupabaseAccessToken } from '../lib/supabaseAccessToken';
+import { getSupabaseAccessTokenAsync } from '../lib/supabaseAccessToken';
 import { isApiColdStart, isImageAuthOrCreditStop, isImageNetworkFailure, isImageRateLimit, publicImageError, waitForApiWarm } from '../lib/apiWarmup';
 import {
   CONTENT_IMAGE_CONCURRENCY,
@@ -349,7 +349,7 @@ async function callImageEndpoint(
   const retry = opts?.retry !== false;
   const timeoutMs = opts?.timeoutMs || (retry ? 95000 : CONTENT_IMAGE_TIMEOUT_MS);
   const execute = async () => {
-    const token = getSupabaseAccessToken();
+    const token = await getSupabaseAccessTokenAsync();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     let response: Response;
@@ -420,7 +420,7 @@ async function callImageEndpoint(
     if (isApiColdStart(err) || isImageNetworkFailure(err)) {
       for (let attempt = 0; attempt < 2; attempt++) {
         console.warn('[ImageService] Image request dropped — warming API, then retrying…');
-        await waitForApiWarm({ timeoutMs: 30000 });
+        await waitForApiWarm({ timeoutMs: 30000, requireImageGen: true });
         try {
           return await execute();
         } catch (retryErr: any) {
@@ -462,7 +462,7 @@ export async function generateCourseCoverImage(
   courseTitle: string,
   description?: string
 ): Promise<string> {
-  await waitForApiWarm({ timeoutMs: 40000 });
+  await waitForApiWarm({ timeoutMs: 40000, requireImageGen: true });
   return groundedCall({
     courseTitle: courseTitle || 'Course',
     panelLabel: description?.trim() || courseTitle || 'professional workplace',

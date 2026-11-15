@@ -178,8 +178,25 @@ test('chrome narration jobs are queued before teaching slides', () => {
   });
   assert.deepEqual(missing.items.map(i => i.id), ['__module-overview-2__']);
 
-  const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+  const blobSkip = buildCourseNarrationItems({
+    modules: [{
+      slides: [{
+        id: 's1',
+        type: 'content',
+        title: 'Furnace',
+        voiceOverText: 'The furnace runs hot enough to crack naphtha.',
+        voiceOverUrl: 'blob:http://localhost/already-recorded',
+      }],
+    }],
+  }, { onlyMissing: true, synthetic: [] });
+  assert.equal(blobSkip.items.length, 0);
+
   const hook = readFileSync(resolve(process.cwd(), 'src/hooks/useTTSGeneration.ts'), 'utf8');
+  assert.match(hook, /onlyMissing && hasLiveNarrationUrl\(slide\.voiceOverUrl\)/);
+  assert.match(hook, /onlyMissing && hasLiveNarrationUrl\(tab\.voiceOverUrl\)/);
+  assert.doesNotMatch(hook, /hasPlayableNarrationUrl\(slide\.voiceOverUrl\)/);
+
+  const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
   assert.match(app, /collectSyntheticNarrationJobs/);
   assert.match(app, /voiceOverUrl: s\.voiceOverUrl/);
   assert.match(hook, /Chrome clips first/);

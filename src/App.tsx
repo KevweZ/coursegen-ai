@@ -237,6 +237,7 @@ import {
   COLD_START_COUNTDOWN_SEC,
   formatAnalysisFailure,
   isAnalysisTransient,
+  SERVER_WARMING_MESSAGE,
 } from './lib/analysisErrors';
 import { foundationFingerprint, type FoundationFingerprintInput } from './lib/courseReviewSync';
 import { DraftCoursesPanel } from './components/player/DraftCoursesPanel';
@@ -305,7 +306,7 @@ import {
 import { finishImageGenProgress } from './lib/imageGenProgress';
 import { moveArrayItem } from './lib/objectiveOrder';
 import { ObjectiveReorderButtons } from './components/builder/ObjectiveReorderButtons';
-import { isApiColdStart, publicImageError, startPreviewApiKeepWarm, waitForApiWarm } from './lib/apiWarmup';
+import { isApiColdStart, isImageAuthOrCreditStop, publicImageError, startPreviewApiKeepWarm, waitForApiWarm } from './lib/apiWarmup';
 import { buildReviewSnapshot, createReviewLink, fetchReviewSnapshot } from './lib/reviewLinkService';
 import { downloadReviewScriptDocx } from './lib/reviewScriptDocx';
 import { tocRefMapFirstWins } from './lib/playerToc';
@@ -1515,7 +1516,12 @@ export default function App() {
           console.log(`[Drafts] Open complete in ${Math.round(performance.now() - t0)}ms`);
         } catch (err: any) {
           console.error('[Drafts] Open failed:', err);
-          showDraftMessage(err?.message || 'Failed to open draft. It may be corrupted.');
+          const raw = String(err?.message || '');
+          showDraftMessage(
+            isAnalysisTransient(err) || isAnalysisTransient(raw)
+              ? SERVER_WARMING_MESSAGE
+              : (raw || 'Failed to open draft. It may be corrupted.'),
+          );
           setStep('home');
           navigateTo(ROUTES.upload, true);
         } finally {
@@ -3700,7 +3706,11 @@ export default function App() {
             settingsOverride
           );
         } catch (e: any) {
-          setError(e?.message || 'Quick build failed.');
+          setError(
+            isAnalysisTransient(e) || isAnalysisTransient(e?.message)
+              ? SERVER_WARMING_MESSAGE
+              : (e?.message || 'Quick build failed.'),
+          );
           setSettingsMode('session');
           setStep('details');
         } finally {
@@ -3764,7 +3774,11 @@ export default function App() {
         }));
       } catch (e: any) {
         console.warn('[runAnalysis] Outline generation failed:', e);
-        setError(e?.message || 'Could not generate course structure. You can retry from the Course structure tab.');
+        setError(
+          isAnalysisTransient(e) || isAnalysisTransient(e?.message)
+            ? SERVER_WARMING_MESSAGE
+            : (e?.message || 'Could not generate course structure. You can retry from the Course structure tab.'),
+        );
       } finally {
         clearInterval(outlineTimer);
         setIsGeneratingOutline(false);
@@ -3908,12 +3922,21 @@ export default function App() {
       setProgress(prev => (prev < 85 ? Math.min(85, prev + 4) : prev));
     }, 400);
     try {
+      const warmed = await waitForApiWarm({ timeoutMs: ANALYSIS_WARM_TIMEOUT_MS });
+      if (!warmed) {
+        setError(SERVER_WARMING_MESSAGE);
+        return;
+      }
       const draft = await buildOutlineFromCurrentSettings();
       setOutlineDraft(draft);
       captureFoundationFingerprint();
       setProgress(100);
     } catch (e: any) {
-      setError(e?.message || 'Failed to regenerate course structure.');
+      setError(
+        isAnalysisTransient(e) || isAnalysisTransient(e?.message)
+          ? SERVER_WARMING_MESSAGE
+          : (e?.message || 'Failed to regenerate course structure.'),
+      );
     } finally {
       clearInterval(timer);
       setIsGeneratingOutline(false);
@@ -4110,6 +4133,11 @@ export default function App() {
     setIsGenerating(true);
     setProgress(15);
     try {
+      const warmed = await waitForApiWarm({ timeoutMs: ANALYSIS_WARM_TIMEOUT_MS });
+      if (!warmed) {
+        setError(SERVER_WARMING_MESSAGE);
+        return;
+      }
       const contentInteractions = stripParkedInteractionTypes((interactionTypes || []).filter(
         t => !['sorting', 'matching', 'drop-targets', 'multiple-choice', 'multiple-answers', 'quiz'].includes(t)
       ));
@@ -4174,7 +4202,11 @@ export default function App() {
         setStep('outline');
       }
     } catch (e: any) {
-      setError(e.message);
+      setError(
+        isAnalysisTransient(e) || isAnalysisTransient(e?.message)
+          ? SERVER_WARMING_MESSAGE
+          : e.message,
+      );
     } finally {
       setIsGenerating(false);
       setProgress(0);
@@ -4475,6 +4507,9 @@ export default function App() {
             showDraftMessage('AI cover image ready ✓');
           } catch (err: any) {
             console.warn('[ImageService] Cover generation failed, retrying once:', err);
+            if (isImageAuthOrCreditStop(err)) {
+              showDraftMessage(publicImageError(err));
+            } else {
             try {
               await new Promise(r => setTimeout(r, 2000));
               const aiCover = await generateCourseCoverImage(working.title || 'Course', working.description);
@@ -4486,13 +4521,8 @@ export default function App() {
               showDraftMessage('AI cover image ready ✓');
             } catch (err2: any) {
               console.warn('[ImageService] Cover generation failed:', err2);
-              if (isApiColdStart(err2)) {
-                /* retry already happened inside generateCourseCoverImage */
-              } else if (coverUrl) {
-                showDraftMessage('AI cover failed — using an image from your upload on the title slide.');
-              } else {
-                showDraftMessage('Cover image generation failed — hover the title image panel to upload one, or Edit → Generate AI images.');
-              }
+              showDraftMessage(publicImageError(err2));
+            }
             }
           }
         } else if (coverUrl) {
@@ -5225,8 +5255,12 @@ export default function App() {
   const hydrateCourse = async () => {
     setIsHydrating(true);
     setProgress(10);
-    void waitForApiWarm({ timeoutMs: 40000 });
     try {
+      const warmed = await waitForApiWarm({ timeoutMs: ANALYSIS_WARM_TIMEOUT_MS });
+      if (!warmed) {
+        setError(SERVER_WARMING_MESSAGE);
+        return;
+      }
       // Snapshot live Course Settings so multimedia / VO aren't stale vs React batching.
       const settingsSnap = collectCurrentSettings();
       const contentInteractions = stripParkedInteractionTypes((settingsSnap.interactionTypes || []).filter(
@@ -5257,7 +5291,11 @@ export default function App() {
       );
       await finalizeGeneratedCourse(finalCourse, settingsSnap);
     } catch (e: any) {
-      setError(e.message);
+      setError(
+        isAnalysisTransient(e) || isAnalysisTransient(e?.message)
+          ? SERVER_WARMING_MESSAGE
+          : e.message,
+      );
     } finally {
       setIsHydrating(false);
       setProgress(0);
@@ -5545,6 +5583,13 @@ export default function App() {
     setIsAddingContent(true);
     showDraftMessage(specify ? 'Adding slide…' : 'Generating new content…');
     try {
+      if (!specify) {
+        const warmed = await waitForApiWarm({ timeoutMs: ANALYSIS_WARM_TIMEOUT_MS });
+        if (!warmed) {
+          showDraftMessage(SERVER_WARMING_MESSAGE);
+          return;
+        }
+      }
       const live = courseRef.current || course;
       const moduleIdx = resolveInsertModuleIndex(live, currentSlide);
       const hostModule = live.modules?.[moduleIdx];
@@ -5618,7 +5663,11 @@ export default function App() {
         }
       }
     } catch (e: any) {
-      showDraftMessage(e?.message || 'Could not generate the new content.');
+      showDraftMessage(
+        isAnalysisTransient(e) || isAnalysisTransient(e?.message)
+          ? SERVER_WARMING_MESSAGE
+          : (e?.message || 'Could not generate the new content.'),
+      );
     } finally {
       addingContentRef.current = false;
       setIsAddingContent(false);

@@ -56,7 +56,9 @@ async function persistBlobsForExport(value: any): Promise<any> {
     try {
       return await urlToDataUrl(value);
     } catch {
-      return undefined;
+      throw new Error(
+        'Could not read an image or audio file for the SCORM zip. Stay on this page and try Publish again.',
+      );
     }
   }
   if (typeof value === 'string' && isThemeBackgroundUrl(value)) {

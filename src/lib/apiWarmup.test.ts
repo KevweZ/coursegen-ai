@@ -4,10 +4,12 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   formatImageApiError,
+  healthLooksLive,
   isApiColdStart,
   isImageNetworkFailure,
   isImageRateLimit,
   isImageTimeout,
+  LIVE_IMAGE_GEN,
   publicImageError,
   PREVIEW_API_KEEPWARM_MS,
 } from './apiWarmup.ts';
@@ -40,6 +42,13 @@ test('worker warmup copy and 503 are treated as a cold start, not a credit stop'
   assert.equal(isImageTimeout({ status: 524, message: 'timeout' }), true);
   assert.equal(isImageNetworkFailure({ status: 504, code: 'UPSTREAM_TIMEOUT', message: 'The image request timed out.' }), false);
   assert.equal(isApiColdStart({ status: 504, code: 'UPSTREAM_TIMEOUT' }), false);
+  assert.equal(isApiColdStart('AI proxy error 401: Sign in required to generate.'), false);
+  assert.equal(isApiColdStart({ status: 401, message: 'AI proxy error 401' }), false);
+  assert.equal(isApiColdStart({ status: 402, message: 'AI_NO_CREDITS' }), false);
+  assert.equal(healthLooksLive({ status: 'ok' }), true);
+  assert.equal(healthLooksLive({ status: 'ok' }, { requireImageGen: true }), false);
+  assert.equal(healthLooksLive({ status: 'ok', image_gen: LIVE_IMAGE_GEN }, { requireImageGen: true }), true);
+  assert.equal(healthLooksLive({ status: 'ok', image_gen: 'dall-e-3' }, { requireImageGen: true }), false);
 });
 
 test('cold-start image errors never become a failed toast', () => {
@@ -62,6 +71,7 @@ test('image client retries cold starts after warming the API; cover waits on the
   assert.match(images, /isImageNetworkFailure/);
   const coverFn = images.slice(images.indexOf('export async function generateCourseCoverImage'));
   assert.match(coverFn.slice(0, 500), /waitForApiWarm/);
+  assert.match(coverFn.slice(0, 500), /requireImageGen: true/);
   const deny = images.indexOf('isImageAuthOrCreditStop(err)');
   const cold = images.indexOf('isApiColdStart(err)');
   const empty = images.indexOf("No image returned");

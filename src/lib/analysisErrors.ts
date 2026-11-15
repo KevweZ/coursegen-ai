@@ -14,8 +14,50 @@ export type AnalysisFailure = {
 export const ANALYSIS_NO_CREDITS_MESSAGE =
   'You have no AI credits. Purchase credits or choose a membership plan to continue.';
 
+export const SERVER_WARMING_MESSAGE =
+  'Server is warming up — nothing is wrong with your file or account. Wait a moment and try again.';
+
+function errBlob(err: unknown): string {
+  const rec = err && typeof err === 'object'
+    ? (err as { status?: number; message?: string; code?: string; error?: unknown })
+    : null;
+  const nested = rec && rec.error && typeof rec.error === 'object'
+    ? String((rec.error as { message?: string }).message || rec.error)
+    : typeof rec?.error === 'string' ? rec.error : '';
+  const msg = String(
+    rec?.message || nested || rec?.code || (typeof err === 'string' ? err : ''),
+  );
+  return `${rec?.code || ''} ${msg} ${rec?.status || ''}`;
+}
+
 export function isNoCreditsError(raw: string): boolean {
   return /AI_NO_CREDITS|no AI generation credits remaining|proxy error 402/i.test(raw);
+}
+
+export function isAiAuthOrCreditFailure(err: unknown): boolean {
+  const blob = errBlob(err);
+  if (/timed out|failed to fetch|warming up|COLD_START/i.test(blob) && !/AI_NO_CREDITS|TRIAL_/i.test(blob)) {
+    return false;
+  }
+  return /AI_NO_CREDITS|AI_AUTH_REQUIRED|Sign in required|TRIAL_EXPIRED|TRIAL_LIMIT|\b401\b|\b402\b|\b403\b/i.test(blob);
+}
+
+/** 503 / 524 / Failed to fetch after a first attempt — wait and retry, do not stub slides. */
+export function shouldRetryAiProxy(err: unknown): boolean {
+  if (isAiAuthOrCreditFailure(err)) return false;
+  return isAnalysisTransient(err);
+}
+
+/** Paid/trial 429-shaped messages must not pause-and-retry as a rate limit. */
+export function shouldRetryAiRateLimit(err: unknown): boolean {
+  if (isAiAuthOrCreditFailure(err)) return false;
+  const blob = errBlob(err);
+  return /\b429\b|rate_limit|quota/i.test(blob);
+}
+
+/** Hydrate must throw these instead of writing “This slide covers key content…” stubs. */
+export function isAiInfraFailure(err: unknown): boolean {
+  return isAiAuthOrCreditFailure(err) || isAnalysisTransient(err);
 }
 
 /** Sleeping Render, Cloudflare 524, or a dropped fetch — retry after warmup, do not blame the file. */

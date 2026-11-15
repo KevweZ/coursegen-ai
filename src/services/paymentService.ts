@@ -12,6 +12,8 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
+import { authJsonHeaders } from '../lib/supabaseAccessToken';
+
 const API_BASE =
   import.meta.env.MODE === 'production'
     ? '' // same origin in production (Cloudflare Worker serves the frontend and proxies /api/* to Render)
@@ -59,7 +61,7 @@ export async function createCheckoutSession(
 ): Promise<CheckoutResponse> {
   const res = await fetch(`${API_BASE}/api/payments/create-checkout`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authJsonHeaders(),
     body: JSON.stringify(options),
   });
 
@@ -86,13 +88,28 @@ export async function redirectToCheckout(options: CheckoutOptions): Promise<void
  * Returns null if the user has no entitlement record yet (new user = free tier).
  */
 export async function getPaymentStatus(userId: string): Promise<PaymentStatus | null> {
-  const res = await fetch(`${API_BASE}/api/payments/status?userId=${encodeURIComponent(userId)}`);
+  const res = await fetch(`${API_BASE}/api/payments/status?userId=${encodeURIComponent(userId)}`, {
+    headers: await authJsonHeaders(),
+  });
 
   if (!res.ok) {
     console.warn('[paymentService] Failed to fetch payment status:', res.statusText);
     return null;
   }
 
+  return res.json();
+}
+
+export async function openBillingPortal(): Promise<{ url: string }> {
+  const res = await fetch(`${API_BASE}/api/payments/billing-portal`, {
+    method: 'POST',
+    headers: await authJsonHeaders(),
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error ?? 'Failed to open billing portal.');
+  }
   return res.json();
 }
 
@@ -105,7 +122,7 @@ export async function confirmCheckoutSession(
 ): Promise<{ ok: boolean; subscription?: string; error?: string }> {
   const res = await fetch(`${API_BASE}/api/payments/confirm-session`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authJsonHeaders(),
     body: JSON.stringify({ sessionId, userId }),
   });
   const data = await res.json().catch(() => ({}));

@@ -5,6 +5,7 @@
  */
 
 import { waitForApiWarm } from '../lib/apiWarmup';
+import { getSupabaseAccessTokenAsync } from '../lib/supabaseAccessToken';
 
 const TTS_PROXY_URL = '/api/tts';
 
@@ -40,35 +41,6 @@ export const TTS_FATAL_CODES = new Set([
   'TRIAL_EXPIRED',
   'TRIAL_TTS_LIMIT',
 ]);
-
-/** Prefer live Supabase session — localStorage scraping fails with chunked/cookie sessions. */
-async function getSupabaseAccessToken(): Promise<string | null> {
-  try {
-    const { supabase } = await import('../lib/supabaseClient');
-    const { data } = await supabase.auth.getSession();
-    if (data?.session?.access_token) return data.session.access_token;
-  } catch {
-    /* fall through to localStorage */
-  }
-  try {
-    const key = Object.keys(localStorage).find(k =>
-      (k.startsWith('sb-') && k.includes('auth-token')) ||
-      (k.includes('supabase') && k.includes('auth'))
-    );
-    let token = key ? JSON.parse(localStorage.getItem(key) ?? '')?.access_token : null;
-    if (!token) {
-      for (const k of Object.keys(localStorage)) {
-        try {
-          const v = JSON.parse(localStorage.getItem(k) ?? '');
-          if (v?.access_token) { token = v.access_token; break; }
-        } catch { /* ignore */ }
-      }
-    }
-    return token || null;
-  } catch {
-    return null;
-  }
-}
 
 function parseProxyError(status: number, raw: string): TTSRequestError {
   try {
@@ -237,7 +209,7 @@ export type TtsJobSnapshot = {
 };
 
 async function authHeaders(): Promise<Record<string, string>> {
-  const token = await getSupabaseAccessToken();
+  const token = await getSupabaseAccessTokenAsync();
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
   return headers;
@@ -314,7 +286,7 @@ export async function generateSlideTTS(
 
   await waitForApiWarm({ timeoutMs: 25000 });
 
-  const token = await getSupabaseAccessToken();
+  const token = await getSupabaseAccessTokenAsync();
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
   if (!token) {

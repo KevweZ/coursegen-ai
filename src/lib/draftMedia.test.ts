@@ -152,6 +152,19 @@ test('mergeDraftAssetPaths drops stale images and index-keyed leftover audio', (
   assert.ok(!paths.includes('modules[0].slides[0].voiceOverUrl'));
 });
 
+test('deleted narration is not restored from leftover slide keys', () => {
+  const course = {
+    modules: [{ slides: [{ id: 'abc', title: 'Margins' }] }],
+  };
+  const applied = applyNarrationUrls(course, { 'slide:abc': 'blob:old-clip' });
+  assert.equal(applied.course.modules[0].slides[0].voiceOverUrl, undefined);
+  attachHeavyMedia(course, new Map([
+    ['modules[0].slides[0].voiceOverUrl', 'blob:old-clip'],
+    ['slide:abc', 'blob:old-clip'],
+  ]));
+  assert.equal(course.modules[0].slides[0].voiceOverUrl, undefined);
+});
+
 test('index-keyed leftover audio does not overwrite a slide-id clip', () => {
   assert.equal(isIndexKeyedAudioPath('modules[2].slides[8].voiceOverUrl'), true);
   assert.equal(isIndexKeyedAudioPath('slide:diagram-9'), false);

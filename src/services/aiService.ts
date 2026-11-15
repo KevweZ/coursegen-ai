@@ -23,7 +23,9 @@ import {
   type SourceMode,
 } from "../lib/storyboardSource";
 import { applyAlignedQuizPrompt, quizQuestionList } from "../lib/knowledgeCheckOst";
-import { getSupabaseAccessToken } from "../lib/supabaseAccessToken";
+import { getSupabaseAccessTokenAsync } from "../lib/supabaseAccessToken";
+import { waitForApiWarm } from "../lib/apiWarmup";
+import { isAiInfraFailure, shouldRetryAiProxy, shouldRetryAiRateLimit } from "../lib/analysisErrors";
 
 // ── Secure AI Proxy Client ───────────────────────────────────────────────────
 // API keys live ONLY in server.js — never in the browser bundle.
@@ -194,16 +196,12 @@ function parseJsonSafely(rawText: string): any {
  */
 async function executeAnthropicAI(modelTier: 'complex' | 'bulk', systemPrompt: string, userPrompt: string, maxTokens: number = 8192): Promise<string> {
   const executeCall = async () => {
+    const token = await getSupabaseAccessTokenAsync();
     const response = await fetch(AI_PROXY_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        // Send the Supabase JWT so the server can enforce trial rate limits.
-        // Reads from localStorage where Supabase stores the session client-side.
-        ...(() => {
-          const token = getSupabaseAccessToken();
-          return token ? { 'Authorization': `Bearer ${token}` } : {};
-        })(),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify({
         model:     modelTier,
@@ -215,7 +213,9 @@ async function executeAnthropicAI(modelTier: 'complex' | 'bulk', systemPrompt: s
 
     if (!response.ok) {
       const errText = await response.text().catch(() => response.statusText);
-      throw new Error(`AI proxy error ${response.status}: ${errText}`);
+      const err = new Error(`AI proxy error ${response.status}: ${errText}`) as Error & { status?: number };
+      err.status = response.status;
+      throw err;
     }
 
     const data = await response.json();
@@ -225,12 +225,18 @@ async function executeAnthropicAI(modelTier: 'complex' | 'bulk', systemPrompt: s
   try {
     return await executeCall();
   } catch (err: any) {
-    if (err?.message?.includes('429') || err?.message?.includes('rate_limit') || err?.message?.includes('quota')) {
-      const retryMatch = err.message.match(/retry after (\d+)/i) || err.message.match(/reset in (\d+)/i) || err.message.match(/(\d+)s/i);
+    if (shouldRetryAiRateLimit(err)) {
+      const retryMatch = String(err?.message || '').match(/retry after (\d+)/i)
+        || String(err?.message || '').match(/reset in (\d+)/i)
+        || String(err?.message || '').match(/(\d+)s/i);
       let waitTime = 15000;
       if (retryMatch) waitTime = (parseInt(retryMatch[1], 10) + 2) * 1000;
       console.warn(`[AI Proxy] Rate limited — pausing ${waitTime / 1000}s then retrying...`);
       await new Promise(resolve => setTimeout(resolve, waitTime));
+      return await executeCall();
+    }
+    if (shouldRetryAiProxy(err)) {
+      await waitForApiWarm({ timeoutMs: 40000 });
       return await executeCall();
     }
     const raw = String(err?.message || err || '');
@@ -1291,6 +1297,7 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
       const raw = await executeAnthropicAI('bulk', systemInstruction, fullPrompt, 8192);
       parsedChunk = parseModuleChunk(raw);
     } catch (e1: any) {
+      if (isAiInfraFailure(e1)) throw e1;
       console.warn(`[${label}] Tier 1 failed: ${e1.message}`);
 
       // Tier 2: Simplified prompt
@@ -1298,6 +1305,7 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
         const raw2 = await executeAnthropicAI('bulk', systemInstruction, simplePrompt, 8192);
         parsedChunk = parseModuleChunk(raw2);
       } catch (e2: any) {
+        if (isAiInfraFailure(e2)) throw e2;
         console.warn(`[${label}] Tier 2 failed: ${e2.message}. Falling back to per-slide generation.`);
 
         // Tier 3: per-slide sequentially (avoid exploding concurrency when several chunks fail)
@@ -1307,6 +1315,7 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
             const hydratedSlide = await hydrateSingleSlide(slide, emptyModule.title);
             individualResults.push(hydratedSlide);
           } catch (e3: any) {
+            if (isAiInfraFailure(e3)) throw e3;
             console.error(`[Single slide "${slide.title}" in "${emptyModule.title}"] All tiers failed: ${e3.message}`);
             individualResults.push({
               ...slide,

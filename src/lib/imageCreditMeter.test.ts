@@ -28,6 +28,9 @@ test('OpenRouter 429 on one slug continues to the next image model and a live Op
   assert.match(openaiFn, /gpt-image-1-mini/);
   assert.match(openaiFn, /gpt-image-2\.5-flare/);
   assert.doesNotMatch(openaiFn, /dall-e-3/);
+  assert.match(openaiFn, /orResponse\.status === 429/);
+  assert.match(openaiFn, /err\.status = 429/);
+  assert.match(openaiFn, /throw err/);
   const models = server.slice(
     server.indexOf('const OPENROUTER_IMAGE_MODELS'),
     server.indexOf('async function fetchWithTimeout'),
@@ -58,7 +61,7 @@ test('successful /api/generate-image spends credits_ai; empty image does not', (
 
 test('image client sends Bearer and does not retry credit denials as 429', () => {
   const images = src('src/services/imageService.ts');
-  assert.match(images, /getSupabaseAccessToken/);
+  assert.match(images, /getSupabaseAccessTokenAsync/);
   assert.match(images, /Authorization:\s*`Bearer \$\{token\}`/);
   assert.match(images, /isImageAuthOrCreditStop/);
   const deny = images.indexOf('isImageAuthOrCreditStop(err)');

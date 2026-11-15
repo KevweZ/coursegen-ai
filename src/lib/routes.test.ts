@@ -54,6 +54,71 @@ test('worker maps Render HTML 429 to a JSON rate-limit, not a draft Sync toast',
   assert.match(worker, /image request timed out/);
 });
 
+test('payments, drafts, QC, and admin require a verified Bearer', () => {
+  const server = readFileSync(resolve(process.cwd(), 'server.js'), 'utf8');
+  const checkout = server.slice(
+    server.indexOf("app.post('/api/payments/create-checkout'"),
+    server.indexOf("app.post('/api/payments/billing-portal'"),
+  );
+  assert.match(checkout, /requireAuthedUser/);
+  assert.match(checkout, /userId = auth\.userId/);
+  assert.match(checkout, /stripe_customer_id/);
+  assert.match(checkout, /customer: existingCustomerId/);
+  assert.doesNotMatch(checkout, /const \{ planId, userId, userEmail \} = req\.body/);
+
+  const portal = server.slice(
+    server.indexOf("app.post('/api/payments/billing-portal'"),
+    server.indexOf("app.post('/api/payments/webhook'"),
+  );
+  assert.match(portal, /requireAuthedUser/);
+  assert.match(portal, /eq\('user_id', auth\.userId\)/);
+
+  const status = server.slice(
+    server.indexOf("app.get('/api/payments/status'"),
+    server.indexOf("app.get('/api/workspace'"),
+  );
+  assert.match(status, /requireAuthedUser/);
+  assert.match(status, /userId = auth\.userId/);
+
+  const upsert = server.slice(
+    server.indexOf("app.post('/api/drafts/upsert'"),
+    server.indexOf("app.delete('/api/drafts/:id'"),
+  );
+  assert.match(upsert, /existing\.user_id !== auth\.userId/);
+  assert.match(upsert, /status\(403\)/);
+
+  const draftsList = server.slice(
+    server.indexOf("app.get('/api/drafts'"),
+    server.indexOf("app.get('/api/drafts/:id'"),
+  );
+  assert.match(draftsList, /getActiveTeamMembership/);
+  assert.match(draftsList, /Forbidden/);
+
+  const qc = server.slice(
+    server.indexOf("app.post('/api/qc/content-scan'"),
+    server.indexOf('const slideSummary'),
+  );
+  assert.match(qc, /requireAuthedUser/);
+
+  const admin = server.slice(
+    server.indexOf('async function verifyAdminJwt'),
+    server.indexOf("app.post('/api/admin/invite'"),
+  );
+  assert.match(admin, /auth\.getUser\(token\)/);
+  assert.doesNotMatch(admin, /Passed via JWT decode/);
+
+  const requireAuth = server.slice(
+    server.indexOf('async function requireAuthedUser'),
+    server.indexOf("app.get('/api/drafts'"),
+  );
+  assert.match(requireAuth, /auth\.getUser\(token\)/);
+  assert.doesNotMatch(requireAuth, /fall through to JWT decode/);
+
+  const pay = readFileSync(resolve(process.cwd(), 'src/services/paymentService.ts'), 'utf8');
+  assert.match(pay, /authJsonHeaders/);
+  assert.match(pay, /openBillingPortal/);
+});
+
 test('team invite query survives /account and /MyAccount path parsing', () => {
   assert.equal(teamInviteFromSearch('?team_invite=abc123'), 'abc123');
   assert.equal(teamInviteFromSearch('team_invite=abc123&x=1'), 'abc123');
