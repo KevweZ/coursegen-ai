@@ -1,7 +1,31 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { assessExtract, extractBusyCopy } from './extractQuality.ts';
-import { looksLikeStoryboard, shouldOfferStoryboardChoice, defaultSourceModeFromFileName } from './storyboardSource.ts';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { looksLikeStoryboard, shouldOfferStoryboardChoice, defaultSourceModeFromFileName, fileSourceConfigFromExtract, CONTENT_FILE_SOURCE_CHARS } from './storyboardSource.ts';
+
+test('Content file extract is passed into outline and hydrate, not title-only', () => {
+  const raw = 'Ethylene-vinyl acetate copolymerization kinetics. '.repeat(80);
+  const cfg = fileSourceConfigFromExtract('raw', raw);
+  assert.equal(cfg.sourceMode, 'raw');
+  assert.equal(cfg.isSourceConversion, true);
+  assert.ok(String(cfg.sourceContent).includes('Ethylene-vinyl acetate'));
+  assert.ok(String(cfg.sourceContent).length <= CONTENT_FILE_SOURCE_CHARS);
+  assert.deepEqual(fileSourceConfigFromExtract('raw', '   '), {});
+
+  const board = fileSourceConfigFromExtract('storyboard', 'ON-SCREEN TEXT\nNarration script\nScreen 1');
+  assert.equal(board.sourceMode, 'storyboard');
+  assert.equal(board.isSourceConversion, undefined);
+
+  const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+  assert.match(app, /fileSourceConfigFromExtract/);
+  assert.doesNotMatch(app, /mode === 'storyboard' && text/);
+
+  const ai = readFileSync(resolve(process.cwd(), 'src/services/aiService.ts'), 'utf8');
+  assert.match(ai, /CONTENT_FILE_SOURCE_CHARS/);
+  assert.match(ai, /isSourceConversion && configParams\.sourceContent/);
+});
 
 test('filename storyboard defaults source mode without waiting for extract', () => {
   assert.equal(defaultSourceModeFromFileName('Supply_Chain_Storyboard.docx'), 'storyboard');

@@ -63,7 +63,7 @@ test('cold-start image errors never become a failed toast', () => {
   assert.equal(done.current, 0);
 });
 
-test('image client retries cold starts after warming the API; cover waits on the Build progress bar', () => {
+test('image client retries cold starts after warming the API; preview opens before cover', () => {
   const images = src('src/services/imageService.ts');
   assert.match(images, /isApiColdStart/);
   assert.match(images, /waitForApiWarm/);
@@ -83,9 +83,15 @@ test('image client retries cold starts after warming the API; cover waits on the
   assert.match(images, /Math\.min\(60000, waitMs\)/);
 
   const app = src('src/App.tsx');
-  const cover = app.slice(app.indexOf('setProgress(56)'), app.indexOf('setProgress(72)'));
-  assert.match(cover, /waitForApiWarm/);
-  assert.match(cover, /generateCourseCoverImage/);
+  const finalize = app.slice(
+    app.indexOf('const finalizeGeneratedCourse = async'),
+    app.indexOf('finalizeGeneratedCourseRef.current = finalizeGeneratedCourse'),
+  );
+  const previewAt = finalize.indexOf("setStep('preview')");
+  const coverAt = finalize.indexOf('generateCourseCoverImage');
+  assert.ok(previewAt >= 0, 'finalize must open preview');
+  assert.ok(coverAt > previewAt, 'cover must continue after first preview');
+  assert.match(finalize, /waitForApiWarm/);
   assert.match(app, /startPreviewApiKeepWarm/);
   assert.match(app, /publicImageError/);
   assert.match(app, /isApiColdStart\(imageResult.lastError\)/);

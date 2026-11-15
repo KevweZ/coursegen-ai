@@ -15,6 +15,29 @@ export function defaultSourceModeFromFileName(fileName?: string): SourceMode {
 /** Enough of a typical storyboard to include screens + scripts; raw path stays smaller. */
 export const STORYBOARD_SOURCE_CHARS = 24000;
 
+/** Content-file analyze / outline / hydrate window. Do not send the whole PPT. */
+export const CONTENT_FILE_SOURCE_CHARS = 12000;
+
+export type FileSourceConfig = {
+  sourceMode?: SourceMode;
+  sourceContent?: string;
+  isSourceConversion?: boolean;
+};
+
+/** Storyboard vs Content file payload for outline, hydrate, and slide regen. */
+export function fileSourceConfigFromExtract(mode: SourceMode, text: string): FileSourceConfig {
+  const src = String(text || '');
+  if (!src.trim()) return {};
+  if (mode === 'storyboard') {
+    return { sourceMode: 'storyboard', sourceContent: storyboardSourceWindow(src) };
+  }
+  return {
+    sourceMode: 'raw',
+    sourceContent: src.slice(0, CONTENT_FILE_SOURCE_CHARS),
+    isSourceConversion: true,
+  };
+}
+
 const STRONG_SIGNALS: RegExp[] = [
   /e-?learning[\s\S]{0,48}storyboard/i,
   /production storyboard/i,

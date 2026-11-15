@@ -167,7 +167,7 @@ import { loadPlayerProperties, savePlayerProperties, cachePlayerProperties } fro
 import { fetchAccountPreferences, pushAccountPreferences } from './lib/accountPreferences';
 import { CourseOutline, Slide, TerminalObjectiveGroup, ExamConfig, ExamQuestion, ExamSessionState, NavigationMode } from './types/course';
 import { extractTextFromFile, extractImagesFromFile, EXTRACT_DEADLINE_MS, SourceImage } from './lib/fileProcessor';
-import { shouldOfferStoryboardChoice, storyboardSourceWindow, defaultSourceModeFromFileName, type SourceMode } from './lib/storyboardSource';
+import { shouldOfferStoryboardChoice, fileSourceConfigFromExtract, defaultSourceModeFromFileName, type SourceMode } from './lib/storyboardSource';
 import { assessExtract, type ExtractQuality } from './lib/extractQuality';
 import { reformatObjectiveGroups } from './lib/objectiveFormat';
 import { generateGameTemplate, generateStandaloneGame } from './services/aiGameService';
@@ -2372,11 +2372,8 @@ export default function App() {
     path?: UploadPathChoice | 'game';
     settingsOverride?: SavedCourseSettings | null;
   } | null>(null);
-  const fileSourceConfig = (mode: SourceMode = sourceMode, text: string = extractedFileText) => (
-    mode === 'storyboard' && text
-      ? { sourceMode: 'storyboard' as const, sourceContent: storyboardSourceWindow(text) }
-      : {}
-  );
+  const fileSourceConfig = (mode: SourceMode = sourceMode, text: string = extractedFileText) =>
+    fileSourceConfigFromExtract(mode, text);
   const [voiceOverEnabled, setVoiceOverEnabled] = useState(
     () => typeof scormRt.voiceOverEnabled === 'boolean'
       ? scormRt.voiceOverEnabled
@@ -4213,7 +4210,7 @@ export default function App() {
     }
   };
 
-  /** Apply Course Settings, generate cover, open preview; visuals/QC/TTS continue in background. */
+  /** Apply Course Settings, open preview; cover/visuals/QC/TTS continue in background. */
   const finalizeGeneratedCourse = async (
     finalCourse: any,
     settingsOverride?: SavedCourseSettings | null
@@ -4296,8 +4293,8 @@ export default function App() {
     setActiveDraftId(null);
     setIsSandboxMode(false);
     setMobileDesignDemo(false);
-    // Perceived speed: open Course Development after cover (and hydrate).
-    // Content visuals, QC, exam await, and TTS continue in the background.
+    // Perceived speed: open Course Development after hydrate. Cover, content
+    // visuals, QC, exam await, and TTS continue in the background.
 
     // Pre-generate mastery quiz in parallel — await it in background so Begin Quiz
     // still uses a ready bank without blocking first preview.
@@ -4417,129 +4414,23 @@ export default function App() {
     };
 
     let working: any = stamped;
-    let coverUrl: string | null = null;
+    let coverUrl: string | null = working.coverImage || null;
 
-    // ── Cover only (blocks preview) ──────────────────────────────────
-    if (runImagery) {
-      setIsGeneratingImages(true);
-      setProgress(56);
-      await waitForApiWarm({ timeoutMs: 40000 });
-      try {
-        // Prefer early-upload extract (ref/cache). Never re-run a full extract when we
-        // already have images — and never block cover/preview > EXTRACT_DEADLINE_MS.
-        if (wantsSource && fileSnapshot) {
-          if (imgs.length === 0) {
-            try {
-              const extractPromise = extractImagesFromFile(fileSnapshot, (done, total) => {
-                // Stay in the "Adding course visuals" band (56–59) while media extracts
-                const pct = 56 + Math.min(3, Math.round((done / Math.max(1, total)) * 3));
-                setProgress(pct);
-              });
-              let timedOut = false;
-              imgs = await Promise.race([
-                extractPromise,
-                new Promise<SourceImage[]>((resolve) => {
-                  setTimeout(() => {
-                    timedOut = true;
-                    // Prefer whatever the upload effect already stored
-                    resolve(sourceImagesRef.current.length ? sourceImagesRef.current : []);
-                  }, EXTRACT_DEADLINE_MS);
-                }),
-              ]);
-              // If race returned empty due to timeout but extract later fills ref, don't wait —
-              // cover phase must proceed. Background extract still updates sourceImages via upload effect.
-              if (timedOut) {
-                console.warn(
-                  `[ImageService] Source extract hit ${EXTRACT_DEADLINE_MS}ms cover deadline — proceeding with ${imgs.length} image(s)`
-                );
-                if (imgs.length) {
-                  setSourceImages(imgs);
-                  showDraftMessage(
-                    `Using ${imgs.length} image(s) from your upload (extract time-capped so preview can open).`
-                  );
-                } else {
-                  showDraftMessage(
-                    'Source image extract is taking too long — continuing without them for now. You can still insert from the gallery later if they finish loading.'
-                  );
-                }
-              } else if (imgs.length) {
-                setSourceImages(imgs);
-                showDraftMessage(`Extracted ${imgs.length} image(s) from ${fileSnapshot.name}`);
-              } else {
-                console.warn('[ImageService] Source extract returned 0 images from', fileSnapshot.name);
-                showDraftMessage('No extractable images found in the uploaded file (PNG/JPEG in PPTX media).');
-              }
-            } catch (e) {
-              console.warn('[ImageService] Late source extract failed:', e);
-              showDraftMessage('Could not extract images from the uploaded file.');
-            }
-          }
+    // Instant source cover from images already extracted at upload — no wait.
+    if (wantsSource && imgs.length > 0) {
+      working = attachSourceImagesToCourse(working, imgs);
+      if (!coverUrl && !working.coverImage) {
+        const best = [...imgs].sort((a, b) => (b.width * b.height) - (a.width * a.height))[0];
+        if (best?.dataUrl) {
+          coverUrl = best.dataUrl;
+          working = { ...working, coverImage: coverUrl };
         }
-        setProgress(60);
-
-        if (wantsSource && imgs.length > 0) {
-          working = attachSourceImagesToCourse(working, imgs);
-          // Prefer the largest extracted image as a temporary title cover until AI cover lands
-          if (!coverUrl && !working.coverImage) {
-            const best = [...imgs].sort((a, b) => (b.width * b.height) - (a.width * a.height))[0];
-            if (best?.dataUrl) {
-              coverUrl = best.dataUrl;
-              working = { ...working, coverImage: coverUrl };
-              setCourseBg(coverUrl);
-            }
-          }
-          working = seedFloatingFromCourse(working) || working;
-          setCourse(working);
-          setOriginalCourse(working);
-        }
-        setProgress(63);
-
-        if (wantsAi) {
-          await waitForApiWarm({ timeoutMs: 40000 });
-          setProgress(66);
-          try {
-            const aiCover = await generateCourseCoverImage(working.title || 'Course', working.description);
-            coverUrl = aiCover;
-            working = { ...working, coverImage: coverUrl };
-            setCourseBg(coverUrl);
-            setCourse(working);
-            setOriginalCourse(working);
-            showDraftMessage('AI cover image ready ✓');
-          } catch (err: any) {
-            console.warn('[ImageService] Cover generation failed, retrying once:', err);
-            if (isImageAuthOrCreditStop(err)) {
-              showDraftMessage(publicImageError(err));
-            } else {
-            try {
-              await new Promise(r => setTimeout(r, 2000));
-              const aiCover = await generateCourseCoverImage(working.title || 'Course', working.description);
-              coverUrl = aiCover;
-              working = { ...working, coverImage: coverUrl };
-              setCourseBg(coverUrl);
-              setCourse(working);
-              setOriginalCourse(working);
-              showDraftMessage('AI cover image ready ✓');
-            } catch (err2: any) {
-              console.warn('[ImageService] Cover generation failed:', err2);
-              showDraftMessage(publicImageError(err2));
-            }
-            }
-          }
-        } else if (coverUrl) {
-          showDraftMessage('Title cover set from your uploaded file (AI Images is off).');
-        }
-        setProgress(72);
-      } catch (err) {
-        console.warn('[ImageService] Cover phase failed:', err);
       }
-      // Keep isGeneratingImages true while content visuals continue in background
     }
 
     if (coverUrl) {
       working = { ...working, coverImage: coverUrl };
       setCourseBg(coverUrl);
-    } else if (wantsAi) {
-      console.warn('[ImageService] AI images enabled but no cover URL after cover phase');
     } else if (!wantsAi && !wantsSource) {
       showDraftMessage('Multimedia images are off in Course Settings — enable AI Images to generate a cover.');
     }
@@ -4553,6 +4444,7 @@ export default function App() {
       setCourseBg(finalCover);
     }
     setProgress(100);
+    if (runImagery) setIsGeneratingImages(true);
     setCurrentSlideIndex(0);
     setHighestVisitedIndex(0);
     setCompletedSlideIds(new Set());
@@ -4670,6 +4562,105 @@ export default function App() {
 
         if (runImagery) {
           try {
+            setIsGeneratingImages(true);
+            // Cover + late source extract after preview so hydrate is not blocked.
+            if (wantsSource && fileSnapshot && imgs.length === 0) {
+              try {
+                const extractPromise = extractImagesFromFile(fileSnapshot);
+                let timedOut = false;
+                imgs = await Promise.race([
+                  extractPromise,
+                  new Promise<SourceImage[]>((resolve) => {
+                    setTimeout(() => {
+                      timedOut = true;
+                      resolve(sourceImagesRef.current.length ? sourceImagesRef.current : []);
+                    }, EXTRACT_DEADLINE_MS);
+                  }),
+                ]);
+                if (timedOut) {
+                  console.warn(
+                    `[ImageService] Source extract hit ${EXTRACT_DEADLINE_MS}ms deadline — proceeding with ${imgs.length} image(s)`
+                  );
+                  if (imgs.length) {
+                    setSourceImages(imgs);
+                    showDraftMessage(
+                      `Using ${imgs.length} image(s) from your upload (extract time-capped).`
+                    );
+                  } else {
+                    showDraftMessage(
+                      'Source image extract is taking too long — continuing without them for now. You can still insert from the gallery later if they finish loading.'
+                    );
+                  }
+                } else if (imgs.length) {
+                  setSourceImages(imgs);
+                  showDraftMessage(`Extracted ${imgs.length} image(s) from ${fileSnapshot.name}`);
+                } else {
+                  console.warn('[ImageService] Source extract returned 0 images from', fileSnapshot.name);
+                  showDraftMessage('No extractable images found in the uploaded file (PNG/JPEG in PPTX media).');
+                }
+              } catch (e) {
+                console.warn('[ImageService] Late source extract failed:', e);
+                showDraftMessage('Could not extract images from the uploaded file.');
+              }
+            }
+
+            if (!stillActive()) return;
+
+            if (wantsSource && imgs.length > 0) {
+              working = attachSourceImagesToCourse(working, imgs);
+              if (!coverUrl && !working.coverImage) {
+                const best = [...imgs].sort((a, b) => (b.width * b.height) - (a.width * a.height))[0];
+                if (best?.dataUrl) {
+                  coverUrl = best.dataUrl;
+                  working = { ...working, coverImage: coverUrl };
+                  setCourseBg(coverUrl);
+                }
+              }
+              working = seedFloatingFromCourse(working) || working;
+              if (stillActive()) commitCourse(working);
+              if (coverUrl && !wantsAi) {
+                showDraftMessage('Title cover set from your uploaded file (AI Images is off).');
+              }
+            }
+
+            if (wantsAi && stillActive()) {
+              await waitForApiWarm({ timeoutMs: 40000, requireImageGen: true });
+              if (!stillActive()) return;
+              try {
+                const aiCover = await generateCourseCoverImage(working.title || 'Course', working.description);
+                coverUrl = aiCover;
+                working = { ...working, coverImage: coverUrl };
+                setCourseBg(coverUrl);
+                if (stillActive()) {
+                  commitCourse(working);
+                  showDraftMessage('AI cover image ready ✓');
+                }
+              } catch (err: any) {
+                console.warn('[ImageService] Cover generation failed, retrying once:', err);
+                if (isImageAuthOrCreditStop(err)) {
+                  showDraftMessage(publicImageError(err));
+                } else {
+                  try {
+                    await new Promise(r => setTimeout(r, 2000));
+                    if (!stillActive()) return;
+                    const aiCover = await generateCourseCoverImage(working.title || 'Course', working.description);
+                    coverUrl = aiCover;
+                    working = { ...working, coverImage: coverUrl };
+                    setCourseBg(coverUrl);
+                    if (stillActive()) {
+                      commitCourse(working);
+                      showDraftMessage('AI cover image ready ✓');
+                    }
+                  } catch (err2: any) {
+                    console.warn('[ImageService] Cover generation failed:', err2);
+                    showDraftMessage(publicImageError(err2));
+                  }
+                }
+              }
+            } else if (wantsAi && !coverUrl) {
+              console.warn('[ImageService] AI images enabled but no cover URL after cover phase');
+            }
+
             showDraftMessage('Generating content visuals…');
             setImageProgress({ isRunning: false, isDone: false, current: 0, total: 0, error: null });
             const { enrichHotspotAndCarouselImages } = await import('./services/imageService');

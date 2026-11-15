@@ -828,11 +828,26 @@ export async function enrichHotspotAndCarouselImages(
     await mapWithConcurrency(aiJobs, IMAGE_GEN_CONCURRENCY, async (job) => {
       if (stopRemaining) return;
       let url: string | null = null;
+      const attemptOnce = () =>
+        callImageEndpoint(job.prompt, DEFAULT_IMAGE_MODEL, job.intended, { retry: false, skipQa: true });
       try {
-        url = await callImageEndpoint(job.prompt, DEFAULT_IMAGE_MODEL, job.intended);
+        url = await attemptOnce();
       } catch (e) {
-        if (isImageAuthOrCreditStop(e)) stopRemaining = true;
         console.warn('[ImageService] Hotspot/carousel AI image failed:', e);
+        const action = nextContentImageAttempt(e);
+        if (action.kind === 'stop') {
+          stopRemaining = true;
+        } else if (action.kind === 'retry') {
+          await sleep(action.waitMs);
+          if (!stopRemaining) {
+            try {
+              url = await attemptOnce();
+            } catch (retryErr) {
+              if (isImageAuthOrCreditStop(retryErr)) stopRemaining = true;
+              console.warn('[ImageService] Hotspot/carousel AI retry failed:', retryErr);
+            }
+          }
+        }
       }
       if (url) {
         await withLock(() => {

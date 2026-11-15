@@ -48,6 +48,14 @@ test('Generate AI images is sequential, skipQa, and keeps filling remaining slid
   assert.match(bulk, /mapWithConcurrency\(selected, CONTENT_IMAGE_CONCURRENCY/);
   assert.doesNotMatch(bulk, /mapWithConcurrency\(selected, IMAGE_GEN_CONCURRENCY/);
 
+  const hotspot = images.slice(
+    images.indexOf('export async function enrichHotspotAndCarouselImages'),
+    images.indexOf('export function applyCoverImageToCourse'),
+  );
+  assert.match(hotspot, /nextContentImageAttempt/);
+  assert.match(hotspot, /retry:\s*false/);
+  assert.match(hotspot, /IMAGE_GEN_CONCURRENCY/);
+
   const server = src('server.js');
   const handler = server.slice(
     server.indexOf("app.post('/api/generate-image'"),

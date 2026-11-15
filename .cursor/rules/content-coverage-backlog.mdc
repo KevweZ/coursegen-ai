@@ -32,7 +32,10 @@ SME length (e.g. 45–60 min from a 123-slide PPT) is a source/ID problem. Autho
 - QC: [`src/services/structuralValidator.ts`](src/services/structuralValidator.ts) `coverage` issues.
 - Course structure shows “Enabling N” on teaching slides.
 
+## Source extract (restarted 2026-11-15)
+
+- **Content file is converted from the extract.** [`fileSourceConfigFromExtract`](src/lib/storyboardSource.ts) passes `sourceContent` + `isSourceConversion` for raw uploads (window `CONTENT_FILE_SOURCE_CHARS` = 12k). Outline and hydrate use that window. Do not return `{}` for Content file and generate from title + objectives only. Storyboard still uses `storyboardSourceWindow`. `npm test` must stay green (`src/lib/extractQuality.test.ts`).
+
 ## Not in this cut
 
-- Fuller source extract (12k / 4k windows).
 - Duration meter / curriculum split — parked 2026-09-29 (see above).

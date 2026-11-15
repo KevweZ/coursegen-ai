@@ -43,6 +43,7 @@ test('generate-image tries OpenAI gpt-image-1-mini before OpenRouter', () => {
     /\/api\/v1\/chat\/completions/,
   );
   assert.match(src('server.js'), /image_gen: 'openai-first-mini'/);
+  assert.match(src('server.js'), /version: 'pilot-reliability-2'/);
   const warmup = src('src/lib/apiWarmup.ts');
   assert.match(warmup, /LIVE_IMAGE_GEN/);
   assert.match(warmup, /requireImageGen/);

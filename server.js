@@ -3877,7 +3877,7 @@ app.get('/api/health', (_req, res) => {
     stripe_prices_configured: priceConfigured,
     resend_configured: !!resend,
     support_email: SUPPORT_EMAIL,
-    version: 'pilot-trial-harden-1',
+    version: 'pilot-reliability-2',
     image_gen: 'openai-first-mini',
     image_openai: !!OPENAI_API_KEY,
     image_openrouter: !!process.env.OPENROUTER_API_KEY,

@@ -9,6 +9,7 @@ import { sanitizeMasteryExamQuestions, examQuestionIsMeta } from "../lib/mastery
 import { extractAcronymGlossary, sanitizeCourseTitles, shortenCourseTitle, shortenModuleTitle } from "../lib/splitCourseTitle";
 import {
   STORYBOARD_SOURCE_CHARS,
+  CONTENT_FILE_SOURCE_CHARS,
   storyboardAnalyzeInstructions,
   storyboardHydrateInstructions,
   storyboardOutlineInstructions,
@@ -352,7 +353,7 @@ export async function analyzeUploadedFile(
     "possibleModules": ["string"]
   }`;
   
-  const windowChars = sourceMode === 'storyboard' ? STORYBOARD_SOURCE_CHARS : 12000;
+  const windowChars = sourceMode === 'storyboard' ? STORYBOARD_SOURCE_CHARS : CONTENT_FILE_SOURCE_CHARS;
   const userPrompt = `Analyze the following source material from a file named "${fileName}":\n\n${fileText.slice(0, windowChars)}`;
   
   const text = await executeAnthropicAI('complex', systemInstruction, userPrompt, 4096);
@@ -590,7 +591,7 @@ export async function generateCourseOutline(
   const conversionNote = sourceMode === 'storyboard' && configParams.sourceContent
     ? `\n\n${storyboardOutlineInstructions(outlineInteractions)}\n\nSOURCE MATERIAL (storyboard):\n${storyboardSourceWindow(configParams.sourceContent)}`
     : configParams.isSourceConversion && configParams.sourceContent
-    ? `\n\nIMPORTANT: This course is being CONVERTED from an uploaded source document. Use the source material below as the primary content reference. Apply instructional design best practices: chunk dense content, convert lecture-style material into interactive learning segments, and apply progressive disclosure.\nConversion Preferences: ${(configParams.conversionPreferences || []).join(', ') || 'Default conversion'}\n\nSOURCE MATERIAL (first 4000 chars):\n${configParams.sourceContent.slice(0, 4000)}`
+    ? `\n\nIMPORTANT: This course is being CONVERTED from an uploaded source document. Use the source material below as the primary content reference. Apply instructional design best practices: chunk dense content, convert lecture-style material into interactive learning segments, and apply progressive disclosure.\nConversion Preferences: ${(configParams.conversionPreferences || []).join(', ') || 'Default conversion'}\n\nSOURCE MATERIAL (first ${CONTENT_FILE_SOURCE_CHARS} chars):\n${configParams.sourceContent.slice(0, CONTENT_FILE_SOURCE_CHARS)}`
     : '';
 
     const userPrompt = `Draft the outline for a Corporate Training Course. Topic: "${prompt}".
@@ -1027,7 +1028,7 @@ export async function hydrateCourseContent(
   const sourceNote = sourceMode === 'storyboard' && configParams.sourceContent
     ? `\n\nFollow the STORYBOARD MODE rules in the system instruction. Source (OST + narration):\n${storyboardSourceWindow(configParams.sourceContent)}`
     : configParams.sourceContent
-    ? `\n\nIMPORTANT: This course was converted from an uploaded source document. Base the content on the source material below. Transform lecture-style slides into interactive, learner-centric content. Preferences: ${(configParams.conversionPreferences || []).join(', ') || 'Default'}\n\nSOURCE MATERIAL (first 4000 chars):\n${configParams.sourceContent.slice(0, 4000)}`
+    ? `\n\nIMPORTANT: This course was converted from an uploaded source document. Base the content on the source material below. Transform lecture-style slides into interactive, learner-centric content. Preferences: ${(configParams.conversionPreferences || []).join(', ') || 'Default'}\n\nSOURCE MATERIAL (first ${CONTENT_FILE_SOURCE_CHARS} chars):\n${configParams.sourceContent.slice(0, CONTENT_FILE_SOURCE_CHARS)}`
     : '';
 
   // --- Helper: drop extra slides a chunk model re-emitted (keep outline count) ---
@@ -1784,7 +1785,7 @@ export async function generateInsertedContent(opts: {
     ? allowed.join(', ')
     : 'content, click-reveal, tabbed-horizontal, choice-cards';
   const existing = (opts.existingSlideTitles || []).filter(Boolean).slice(0, 24);
-  const source = String(opts.brief || '').slice(0, 12000);
+  const source = String(opts.brief || '').slice(0, CONTENT_FILE_SOURCE_CHARS);
   const scopeLine = opts.scope === 'slide'
     ? 'exactly 1 slide'
     : auto
