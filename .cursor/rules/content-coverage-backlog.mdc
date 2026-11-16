@@ -34,7 +34,7 @@ SME length (e.g. 45–60 min from a 123-slide PPT) is a source/ID problem. Autho
 
 ## Source extract (restarted 2026-11-15)
 
-- **Content file is converted from the extract.** [`fileSourceConfigFromExtract`](src/lib/storyboardSource.ts) passes `sourceContent` + `isSourceConversion` for raw uploads (window `CONTENT_FILE_SOURCE_CHARS` = 12k). Outline and hydrate use that window. Do not return `{}` for Content file and generate from title + objectives only. Storyboard still uses `storyboardSourceWindow`. `npm test` must stay green (`src/lib/extractQuality.test.ts`).
+- **Content file is converted from the extract.** [`fileSourceConfigFromExtract`](src/lib/storyboardSource.ts) passes the **full** extract + `isSourceConversion`. Analyze/outline see later pages via [`contentFileCoverageWindow`](src/lib/storyboardSource.ts). Hydrate gets a module-matched excerpt ([`contentFileHydrateExcerpt`](src/lib/storyboardSource.ts)), not a 1:1 slide conversion and not the first 12k only. Storyboard still uses `storyboardSourceWindow`. `npm test` must stay green (`src/lib/extractQuality.test.ts`).
 
 ## Not in this cut
 

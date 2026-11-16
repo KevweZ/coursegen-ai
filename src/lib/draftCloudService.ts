@@ -4,6 +4,7 @@
  */
 import { supabase } from './supabaseClient';
 import { blobToDataUrl, dataUrlToBlob } from './draftMedia';
+import { MEDIA_UPLOAD_ATTEMPTS, MEDIA_SYNC_RETRY_MESSAGE } from './draftSaveErrors';
 
 export interface CloudDraftMeta {
   id: string;
@@ -207,13 +208,25 @@ async function uploadAssets(
   } catch { /* keep new manifest even if leftover cleanup fails */ }
 }
 
-/** Public wrapper so draft saves can sync IndexedDB blobs without blocking the UI. */
+/** Upload pictures/audio to cloud. Retry once, then throw so Save can toast a retry. */
 export async function uploadCloudAssets(
   userId: string,
   draftId: string,
   assets?: Record<string, string | Blob>
 ): Promise<void> {
-  await uploadAssets(userId, draftId, assets);
+  let last: unknown;
+  for (let i = 0; i < MEDIA_UPLOAD_ATTEMPTS; i++) {
+    try {
+      await uploadAssets(userId, draftId, assets);
+      return;
+    } catch (e) {
+      last = e;
+      if (i + 1 < MEDIA_UPLOAD_ATTEMPTS) {
+        await new Promise(r => setTimeout(r, 800 * (i + 1)));
+      }
+    }
+  }
+  throw last instanceof Error ? last : new Error(MEDIA_SYNC_RETRY_MESSAGE);
 }
 
 export async function downloadCloudAssets(

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { assessExtract, extractBusyCopy } from './extractQuality.ts';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { looksLikeStoryboard, shouldOfferStoryboardChoice, defaultSourceModeFromFileName, fileSourceConfigFromExtract, CONTENT_FILE_SOURCE_CHARS } from './storyboardSource.ts';
+import { looksLikeStoryboard, shouldOfferStoryboardChoice, defaultSourceModeFromFileName, fileSourceConfigFromExtract, CONTENT_FILE_SOURCE_CHARS, CONTENT_FILE_COVERAGE_CHARS, contentFileCoverageWindow, contentFileHydrateExcerpt } from './storyboardSource.ts';
 
 test('Content file extract is passed into outline and hydrate, not title-only', () => {
   const raw = 'Ethylene-vinyl acetate copolymerization kinetics. '.repeat(80);
@@ -11,7 +11,7 @@ test('Content file extract is passed into outline and hydrate, not title-only', 
   assert.equal(cfg.sourceMode, 'raw');
   assert.equal(cfg.isSourceConversion, true);
   assert.ok(String(cfg.sourceContent).includes('Ethylene-vinyl acetate'));
-  assert.ok(String(cfg.sourceContent).length <= CONTENT_FILE_SOURCE_CHARS);
+  assert.equal(String(cfg.sourceContent).length, raw.length);
   assert.deepEqual(fileSourceConfigFromExtract('raw', '   '), {});
 
   const board = fileSourceConfigFromExtract('storyboard', 'ON-SCREEN TEXT\nNarration script\nScreen 1');
@@ -23,8 +23,33 @@ test('Content file extract is passed into outline and hydrate, not title-only', 
   assert.doesNotMatch(app, /mode === 'storyboard' && text/);
 
   const ai = readFileSync(resolve(process.cwd(), 'src/services/aiService.ts'), 'utf8');
-  assert.match(ai, /CONTENT_FILE_SOURCE_CHARS/);
+  assert.match(ai, /contentFileCoverageWindow/);
+  assert.match(ai, /contentFileHydrateExcerpt/);
   assert.match(ai, /isSourceConversion && configParams\.sourceContent/);
+  assert.doesNotMatch(ai, /sourceContent\.slice\(0, CONTENT_FILE_SOURCE_CHARS\)/);
+});
+
+test('Content-file coverage window includes later PPT pages; hydrate excerpt follows the module', () => {
+  const head = 'FRONT MATTER polyethylene density branching. '.repeat(1200);
+  const mid = 'HEAT INTEGRATION STRATEGY quench oil tower steam savings. '.repeat(200);
+  const tail = 'FURNACE DECoke procedure emergency shutdown checklist. '.repeat(200);
+  const full = `${head}\n${mid}\n${tail}`;
+  assert.ok(full.length > CONTENT_FILE_COVERAGE_CHARS);
+
+  const coverage = contentFileCoverageWindow(full);
+  assert.ok(coverage.length <= CONTENT_FILE_COVERAGE_CHARS);
+  assert.match(coverage, /FRONT MATTER/);
+  assert.match(coverage, /FURNACE DECoke|emergency shutdown/i);
+
+  const excerpt = contentFileHydrateExcerpt(full, {
+    moduleTitle: 'Heat Integration Strategy',
+    slideTitles: ['Quench oil tower'],
+    moduleIndex: 3,
+    moduleCount: 6,
+  });
+  assert.ok(excerpt.length <= CONTENT_FILE_SOURCE_CHARS + 120);
+  assert.match(excerpt, /HEAT INTEGRATION STRATEGY|quench oil tower/i);
+  assert.doesNotMatch(excerpt, /FRONT MATTER polyethylene/);
 });
 
 test('filename storyboard defaults source mode without waiting for extract', () => {

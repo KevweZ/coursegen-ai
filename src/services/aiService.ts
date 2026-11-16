@@ -8,8 +8,9 @@ import { ensureGeneratedTabSlide } from "../lib/courseSlideEdits";
 import { sanitizeMasteryExamQuestions, examQuestionIsMeta } from "../lib/masteryExam";
 import { extractAcronymGlossary, sanitizeCourseTitles, shortenCourseTitle, shortenModuleTitle } from "../lib/splitCourseTitle";
 import {
-  STORYBOARD_SOURCE_CHARS,
-  CONTENT_FILE_SOURCE_CHARS,
+    CONTENT_FILE_SOURCE_CHARS,
+  contentFileCoverageWindow,
+  contentFileHydrateExcerpt,
   storyboardAnalyzeInstructions,
   storyboardHydrateInstructions,
   storyboardOutlineInstructions,
@@ -353,8 +354,10 @@ export async function analyzeUploadedFile(
     "possibleModules": ["string"]
   }`;
   
-  const windowChars = sourceMode === 'storyboard' ? STORYBOARD_SOURCE_CHARS : CONTENT_FILE_SOURCE_CHARS;
-  const userPrompt = `Analyze the following source material from a file named "${fileName}":\n\n${fileText.slice(0, windowChars)}`;
+  const packedSource = sourceMode === 'storyboard'
+    ? storyboardSourceWindow(fileText)
+    : contentFileCoverageWindow(fileText);
+  const userPrompt = `Analyze the following source material from a file named "${fileName}":\n\n${packedSource}`;
   
   const text = await executeAnthropicAI('complex', systemInstruction, userPrompt, 4096);
   const cleanedText = extractJsonFromText(text);
@@ -591,7 +594,7 @@ export async function generateCourseOutline(
   const conversionNote = sourceMode === 'storyboard' && configParams.sourceContent
     ? `\n\n${storyboardOutlineInstructions(outlineInteractions)}\n\nSOURCE MATERIAL (storyboard):\n${storyboardSourceWindow(configParams.sourceContent)}`
     : configParams.isSourceConversion && configParams.sourceContent
-    ? `\n\nIMPORTANT: This course is being CONVERTED from an uploaded source document. Use the source material below as the primary content reference. Apply instructional design best practices: chunk dense content, convert lecture-style material into interactive learning segments, and apply progressive disclosure.\nConversion Preferences: ${(configParams.conversionPreferences || []).join(', ') || 'Default conversion'}\n\nSOURCE MATERIAL (first ${CONTENT_FILE_SOURCE_CHARS} chars):\n${configParams.sourceContent.slice(0, CONTENT_FILE_SOURCE_CHARS)}`
+    ? `\n\nIMPORTANT: This course is being CONVERTED from an uploaded source document. Use the source material below as the primary content reference. Apply instructional design best practices: chunk dense content, convert lecture-style material into interactive learning segments, and apply progressive disclosure.\nConversion Preferences: ${(configParams.conversionPreferences || []).join(', ') || 'Default conversion'}\n\nSOURCE MATERIAL (excerpts from throughout the file — ${configParams.sourceContent.length} characters extracted; later pages are included):\n${contentFileCoverageWindow(configParams.sourceContent)}`
     : '';
 
     const userPrompt = `Draft the outline for a Corporate Training Course. Topic: "${prompt}".
@@ -1030,11 +1033,21 @@ export async function hydrateCourseContent(
   Knowledge checks (quiz, multiple-choice, multiple-answers, true-false, sorting, matching, drop-targets, knowledge-check) MUST use voiceOverText "". Learners read the on-screen task; do not generate spoken narration for them.
   Interactive slides must ALSO have: data (object) or interactions (array) as specified above.`;
 
-  const sourceNote = sourceMode === 'storyboard' && configParams.sourceContent
-    ? `\n\nFollow the STORYBOARD MODE rules in the system instruction. Source (OST + narration):\n${storyboardSourceWindow(configParams.sourceContent)}`
-    : configParams.sourceContent
-    ? `\n\nIMPORTANT: This course was converted from an uploaded source document. Base the content on the source material below. Transform lecture-style slides into interactive, learner-centric content. Preferences: ${(configParams.conversionPreferences || []).join(', ') || 'Default'}\n\nSOURCE MATERIAL (first ${CONTENT_FILE_SOURCE_CHARS} chars):\n${configParams.sourceContent.slice(0, CONTENT_FILE_SOURCE_CHARS)}`
-    : '';
+  const sourceNoteForChunk = (emptyModule: any, chunk: any[], moduleIndex: number) => {
+    if (sourceMode === 'storyboard' && configParams.sourceContent) {
+      return `\n\nFollow the STORYBOARD MODE rules in the system instruction. Source (OST + narration):\n${storyboardSourceWindow(configParams.sourceContent)}`;
+    }
+    if (configParams.sourceContent) {
+      const excerpt = contentFileHydrateExcerpt(configParams.sourceContent, {
+        moduleTitle: emptyModule?.title,
+        slideTitles: (chunk || []).map((s: any) => s?.title),
+        moduleIndex,
+        moduleCount: skeleton.modules.length,
+      });
+      return `\n\nIMPORTANT: This course was converted from an uploaded source document. Base the content on the source material below. Transform lecture-style material into interactive, learner-centric content. Preferences: ${(configParams.conversionPreferences || []).join(', ') || 'Default'}\n\nSOURCE MATERIAL (excerpts matched to this module; full extract is ${configParams.sourceContent.length} characters):\n${excerpt}`;
+    }
+    return '';
+  };
 
   // --- Helper: drop extra slides a chunk model re-emitted (keep outline count) ---
   function constrainChunkSlides(parsedSlides: any[], outlineChunk: any[]): any[] {
@@ -1059,7 +1072,10 @@ export async function hydrateCourseContent(
     const enablingHint = Number.isInteger(slide?.enablingIndex)
       ? ` This slide teaches enabling objective ${slide.enablingIndex} (0-based) for this module. Keep enablingIndex ${slide.enablingIndex}.`
       : '';
-    const singlePrompt = `Hydrate exactly ONE slide for the module titled "${moduleTitle}". Course topic: ${originalPrompt}.${enablingHint}
+    const singleSource = sourceMode !== 'storyboard' && configParams.sourceContent
+      ? `\nSOURCE EXCERPT:\n${contentFileHydrateExcerpt(configParams.sourceContent, { moduleTitle, slideTitles: [slide?.title] }, 4000)}\n`
+      : '';
+    const singlePrompt = `Hydrate exactly ONE slide for the module titled "${moduleTitle}". Course topic: ${originalPrompt}.${enablingHint}${singleSource}
 Slide JSON: ${JSON.stringify(slide, null, 2)}
 Return ONLY a JSON object for this single slide with all fields: id, type, title, content, voiceOverText, mediaPrompt, enablingIndex (if present on the input), and data/interactions if applicable.`;
     const raw = await executeAnthropicAI('bulk', systemInstruction, singlePrompt, 8192);
@@ -1293,6 +1309,7 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     const enablingNote = enablingList.length
       ? `\nThis module's enabling objectives (keep enablingIndex on each teaching slide; teach that enabling):\n${enablingList.map((e, i) => `${i}: ${e}`).join('\n')}\n`
       : '';
+    const sourceNote = sourceNoteForChunk(emptyModule, chunk, moduleIndex);
     const fullPrompt = `Hydrate Module Chunk ${chunkIndex + 1} of ${chunkCount}.\nCourse Topic: ${originalPrompt}${sourceNote}${enablingNote}\n\nModule Draft JSON:\n${JSON.stringify(chunkModule, null, 2)}\n\nReturn ONLY a single JSON object: { "id": "...", "title": "...", "slides": [ ... ] }`;
     const simplePrompt = `Hydrate this module chunk. Be concise -- max 2 sentences per content field, max 4 items per array.\nModule: ${JSON.stringify(chunkModule)}\nReturn ONLY: { "id": "...", "title": "...", "slides": [ ... ] }`;
 

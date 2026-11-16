@@ -13,6 +13,7 @@ import { slideSkipsNarration, stripSlideNarration } from '../lib/enablingCoverag
 import { applyAlignedQuizPrompt } from '../lib/knowledgeCheckOst';
 import { finalizeHydratedSlide } from '../lib/hydrateGuards';
 import { getSupabaseAccessTokenAsync } from '../lib/supabaseAccessToken';
+import { contentFileHydrateExcerpt, storyboardSourceWindow } from '../lib/storyboardSource';
 
 const BATCH_SIZE = 5;
 /** Always use same-origin /api/* (Cloudflare Worker → Render). Never localhost in production. */
@@ -429,7 +430,9 @@ export async function regenerateSlideData(
   const isKc = ['quiz', 'matching', 'sorting', 'drop-targets', 'multiple-choice', 'multiple-answers', 'true-false'].includes(type);
   const storyboardLock = opts?.sourceMode === 'storyboard';
   const sourceClip = storyboardLock && opts?.sourceContent
-    ? `\nThis course was built from a storyboard. Follow that screen's OST, narration, and listed items — do not redesign the teaching.\nSOURCE (excerpt):\n${String(opts.sourceContent).slice(0, 8000)}\n`
+    ? `\nThis course was built from a storyboard. Follow that screen's OST, narration, and listed items — do not redesign the teaching.\nSOURCE (excerpt):\n${storyboardSourceWindow(opts.sourceContent).slice(0, 8000)}\n`
+    : opts?.sourceContent
+    ? `\nThis course was converted from an uploaded source document. Ground the slide in this excerpt.\nSOURCE (excerpt):\n${contentFileHydrateExcerpt(opts.sourceContent, { slideTitles: [slide?.title] }, 8000)}\n`
     : '';
   const itemLock = existingItemLock(slide, type);
   const prompt = `Regenerate rich, educational content for this "${type}" slide.

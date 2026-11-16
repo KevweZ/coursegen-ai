@@ -5,6 +5,8 @@
  *   - Cloud (Supabase) = source of truth for signed-in users
  *   - IndexedDB = local cache + offline fallback
  *     - `draft_index` / `draft_payload` / `draft_assets` (manifest) / `draft_asset_blobs`
+ *   Cloud media upload is awaited (one retry). IndexedDB quota does not fail the save
+ *   when the cloud copy succeeds — pictures download on the next open.
  *
  * Older v1 localStorage / single-blob IDB formats are migrated on read,
  * then uploaded to cloud when available.
@@ -36,6 +38,7 @@ import {
   collectNarrationRecords,
   unbindStolenNarrationBlobs,
   unbindStolenNarrationRecords,
+  countAudioAssetKeys,
   isAudioAssetPath,
   coerceStoredAudioBlob,
   cloneStandaloneBlob,
@@ -52,6 +55,11 @@ import {
   resetCloudDraftsProbe,
   uploadCloudAssets,
 } from './draftCloudService';
+import {
+  isBrowserStorageFull,
+  MEDIA_SYNC_RETRY_MESSAGE,
+  BROWSER_CACHE_FULL_MESSAGE,
+} from './draftSaveErrors';
 import { getNarrationCache, stashNarrationBlobs, flushLiveNarration, readLiveNarration, harvestPlayerAudio, playerElementHasAudio, getLiveNarrationScope } from './narrationCache';
 import { getDraftLimitForPlan } from './draftSlots';
 
@@ -1058,6 +1066,94 @@ export function useDraftCourses(
     return { snapshot, assets, draftId, audioClips, narrationRecords };
   };
 
+  const persistShellAndMedia = async (
+    id: string,
+    meta: CourseDraft,
+    snapshot: DraftSnapshot,
+    assets?: Record<string, string | Blob>,
+    expectedAudio = 0,
+    onProgress?: (msg: string) => void,
+    narrationRecords?: Record<string, NarrationRecord>,
+    mode: 'new' | 'replace' = 'replace',
+  ): Promise<{ ok: boolean; error?: string; packedNarration?: number }> => {
+    if (!userId) return { ok: false, error: 'Sign in to save drafts.' };
+    let packedNarration = 0;
+    let localOk = false;
+    let localNote = '';
+    const nextMeta = metaFromDraft(
+      mode === 'new'
+        ? meta
+        : ({ ...draftsRef.current.find(d => d.id === id), ...meta, id } as CourseDraft),
+    );
+    try {
+      packedNarration = await writeNarrationRecords(userId, id, narrationRecords || {});
+      if (expectedAudio > 0 && packedNarration === 0 && countAudioAssetKeys(assets) === 0) {
+        return {
+          ok: false,
+          error: mode === 'new'
+            ? 'Narration was generated but could not be packed for storage. Try saving again.'
+            : 'Narration was generated but could not be packed for storage. Try Update Draft again.',
+        };
+      }
+      if (assets) {
+        await writeDraftAssets(userId, id, assets, onProgress);
+      }
+      await idbPut(STORE_PAYLOAD, payloadKey(userId, id), snapshot);
+      const next = mode === 'new'
+        ? [...draftsRef.current, nextMeta]
+        : draftsRef.current.map(d => (d.id === id ? nextMeta : d));
+      await writeIndex(userId, next);
+      setDrafts(next);
+      payloadCacheRef.current.set(id, snapshot);
+      localOk = true;
+    } catch (e: any) {
+      if (!isBrowserStorageFull(e)) {
+        console.error('[DraftCourses] Save failed:', e);
+        return {
+          ok: false,
+          error: e?.message || 'Failed to save draft.',
+        };
+      }
+      localNote = BROWSER_CACHE_FULL_MESSAGE;
+      packedNarration = Math.max(packedNarration, countAudioAssetKeys(assets));
+      payloadCacheRef.current.set(id, snapshot);
+      if (mode === 'new' && !draftsRef.current.some(d => d.id === id)) {
+        setDrafts([...draftsRef.current, nextMeta]);
+      } else if (mode === 'replace') {
+        setDrafts(draftsRef.current.map(d => (d.id === id ? nextMeta : d)));
+      }
+    }
+
+    onProgress?.('Uploading pictures and audio…');
+    const cloud = await upsertCloudDraft(userId, nextMeta, snapshot, undefined, workspaceId);
+    if (!cloud.ok) {
+      if (!localOk) {
+        return {
+          ok: false,
+          error: 'Could not save this draft. This browser is full and cloud sync failed. Delete unused drafts, then try again.',
+        };
+      }
+      return {
+        ok: true,
+        packedNarration,
+        error: ` (local only — ${cloud.error || 'unavailable'})`,
+      };
+    }
+    setCloudEnabled(true);
+    const toUpload = assets && Object.keys(assets).length
+      ? assets
+      : await readDraftAssetBlobs(userId, id).catch(() => ({} as Record<string, string | Blob>));
+    if (Object.keys(toUpload || {}).length) {
+      try {
+        await uploadCloudAssets(userId, id, toUpload);
+      } catch (e) {
+        console.warn('[DraftCourses] Media sync failed:', e);
+        return { ok: true, packedNarration, error: MEDIA_SYNC_RETRY_MESSAGE };
+      }
+    }
+    return { ok: true, packedNarration, error: localNote || undefined };
+  };
+
   const persistNew = async (
     meta: CourseDraft,
     snapshot: DraftSnapshot,
@@ -1066,52 +1162,7 @@ export function useDraftCourses(
     onProgress?: (msg: string) => void,
     narrationRecords?: Record<string, NarrationRecord>,
   ): Promise<{ ok: boolean; error?: string; packedNarration?: number }> => {
-    if (!userId) return { ok: false, error: 'Sign in to save drafts.' };
-    try {
-      const t0 = performance.now();
-      const packedNarration = await writeNarrationRecords(userId, meta.id, narrationRecords || {});
-      if (expectedAudio > 0 && packedNarration === 0) {
-        return {
-          ok: false,
-          error: 'Narration was generated but could not be packed for storage. Try saving again.',
-        };
-      }
-      if (assets) {
-        await writeDraftAssets(userId, meta.id, assets, onProgress);
-      }
-      await idbPut(STORE_PAYLOAD, payloadKey(userId, meta.id), snapshot);
-      const next = [...draftsRef.current, metaFromDraft(meta)];
-      await writeIndex(userId, next);
-      setDrafts(next);
-      payloadCacheRef.current.set(meta.id, snapshot);
-
-      let cloudNote = '';
-      const cloud = await upsertCloudDraft(userId, meta, snapshot, undefined, workspaceId);
-      if (cloud.ok) {
-        setCloudEnabled(true);
-        void (async () => {
-          try {
-            const blobs = await readDraftAssetBlobs(userId, meta.id);
-            if (Object.keys(blobs).length) await uploadCloudAssets(userId, meta.id, blobs);
-          } catch (e) {
-            console.warn('[DraftCourses] Background media sync failed:', e);
-          }
-        })();
-      } else if (cloud.error) {
-        cloudNote = ` (local only — ${cloud.error})`;
-      }
-
-      console.log(`[DraftCourses] Saved "${meta.courseTitle}" in ${Math.round(performance.now() - t0)}ms`);
-      return { ok: true, error: cloudNote || undefined, packedNarration };
-    } catch (e: any) {
-      console.error('[DraftCourses] Save failed:', e);
-      return {
-        ok: false,
-        error: /quota|full/i.test(String(e?.message || e?.name || ''))
-          ? 'Browser storage is full — delete unused drafts, then save again so narration can be kept.'
-          : (e?.message || 'Failed to save draft.'),
-      };
-    }
+    return persistShellAndMedia(meta.id, meta, snapshot, assets, expectedAudio, onProgress, narrationRecords, 'new');
   };
 
   const persistReplace = async (
@@ -1123,52 +1174,8 @@ export function useDraftCourses(
     onProgress?: (msg: string) => void,
     narrationRecords?: Record<string, NarrationRecord>,
   ): Promise<{ ok: boolean; error?: string; packedNarration?: number }> => {
-    if (!userId) return { ok: false, error: 'Sign in to save drafts.' };
-    try {
-      const packedNarration = await writeNarrationRecords(userId, id, narrationRecords || {});
-      if (expectedAudio > 0 && packedNarration === 0) {
-        return {
-          ok: false,
-          error: 'Narration was generated but could not be packed for storage. Try Update Draft again.',
-        };
-      }
-      if (assets) {
-        await writeDraftAssets(userId, id, assets, onProgress);
-      }
-      await idbPut(STORE_PAYLOAD, payloadKey(userId, id), snapshot);
-      const nextMeta = metaFromDraft({ ...draftsRef.current.find(d => d.id === id), ...metaPatch, id } as CourseDraft);
-      const next = draftsRef.current.map(d => (d.id === id ? nextMeta : d));
-      await writeIndex(userId, next);
-      setDrafts(next);
-      payloadCacheRef.current.set(id, snapshot);
-
-      const cloud = await upsertCloudDraft(userId, nextMeta, snapshot, undefined, workspaceId);
-      if (cloud.ok) {
-        setCloudEnabled(true);
-        void (async () => {
-          try {
-            const blobs = await readDraftAssetBlobs(userId, id);
-            if (Object.keys(blobs).length) await uploadCloudAssets(userId, id, blobs);
-          } catch (e) {
-            console.warn('[DraftCourses] Background media sync failed:', e);
-          }
-        })();
-      }
-      return {
-        ok: true,
-        packedNarration,
-        error: cloud.ok
-          ? undefined
-          : `Saved on this device. Cloud sync failed (${cloud.error || 'unavailable'}).`,
-      };
-    } catch (e: any) {
-      return {
-        ok: false,
-        error: /quota|full/i.test(String(e?.message || e?.name || ''))
-          ? 'Browser storage is full — delete unused drafts, then Update Draft again so narration can be kept.'
-          : (e?.message || 'Failed to update draft.'),
-      };
-    }
+    const meta = { ...draftsRef.current.find(d => d.id === id), ...metaPatch, id } as CourseDraft;
+    return persistShellAndMedia(id, meta, snapshot, assets, expectedAudio, onProgress, narrationRecords, 'replace');
   };
 
   const savePreviewDraft = useCallback(async (
@@ -1566,7 +1573,7 @@ export function useDraftCourses(
     const audioNote = stored > 0
       ? ` ${stored} narration clip${stored === 1 ? '' : 's'} stored.`
       : ' No narration clips were on the course at save time.';
-    const cloudNote = result.error ? ` ${result.error}` : ' Cloud copy will finish in the background.';
+    const cloudNote = result.error ? ` ${result.error}` : ' Pictures and audio are stored in your account.';
     return { success: true, message: `Draft updated ✓${audioNote}${cloudNote} You can refresh this tab now.` };
   }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 

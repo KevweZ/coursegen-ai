@@ -15,8 +15,14 @@ export function defaultSourceModeFromFileName(fileName?: string): SourceMode {
 /** Enough of a typical storyboard to include screens + scripts; raw path stays smaller. */
 export const STORYBOARD_SOURCE_CHARS = 24000;
 
-/** Content-file analyze / outline / hydrate window. Do not send the whole PPT. */
+/** One excerpt window. Analyze/outline pack several of these; hydrate uses one matched slice. */
 export const CONTENT_FILE_SOURCE_CHARS = 12000;
+
+/** Packed budget for analyze + outline so later PPT pages are visible without dumping the whole file. */
+export const CONTENT_FILE_COVERAGE_CHARS = 36000;
+
+/** Per-hydrate-chunk excerpt. Do not paste the full extract into every module call. */
+export const CONTENT_FILE_HYDRATE_CHARS = 12000;
 
 export type FileSourceConfig = {
   sourceMode?: SourceMode;
@@ -33,7 +39,7 @@ export function fileSourceConfigFromExtract(mode: SourceMode, text: string): Fil
   }
   return {
     sourceMode: 'raw',
-    sourceContent: src.slice(0, CONTENT_FILE_SOURCE_CHARS),
+    sourceContent: src,
     isSourceConversion: true,
   };
 }
@@ -85,6 +91,112 @@ export function shouldOfferStoryboardChoice(text: string, fileName?: string): bo
 
 export function storyboardSourceWindow(text: string): string {
   return String(text || '').slice(0, STORYBOARD_SOURCE_CHARS);
+}
+
+const CONTENT_FILE_STOP = new Set([
+  'this', 'that', 'with', 'from', 'have', 'were', 'been', 'will', 'your', 'about',
+  'module', 'slide', 'course', 'into', 'such', 'they', 'them', 'then', 'than',
+  'when', 'what', 'which', 'their', 'there', 'these', 'those', 'also', 'using',
+  'used', 'each', 'only', 'more', 'most', 'other', 'over', 'after', 'before',
+  'between', 'content', 'overview', 'introduction', 'summary', 'learner',
+]);
+
+function labeledSourceSlice(src: string, start: number, len: number): string {
+  const s = Math.max(0, Math.min(start, Math.max(0, src.length - 1)));
+  const slice = src.slice(s, s + Math.max(0, len));
+  return `[Source excerpt characters ${s + 1}–${s + slice.length} of ${src.length}]\n${slice}`;
+}
+
+/** Head + evenly spaced interiors + tail so later pages reach analyze/outline. */
+export function contentFileCoverageWindow(
+  text: string,
+  maxChars = CONTENT_FILE_COVERAGE_CHARS,
+): string {
+  const src = String(text || '');
+  if (src.length <= maxChars) return src;
+  const nWindows = Math.max(3, Math.min(5, Math.floor(maxChars / 7000)));
+  const windowChars = Math.min(
+    CONTENT_FILE_SOURCE_CHARS,
+    Math.max(3000, Math.floor((maxChars - nWindows * 80) / nWindows)),
+  );
+  const lastStart = Math.max(0, src.length - windowChars);
+  const parts: string[] = [];
+  const usedStarts: number[] = [];
+  for (let i = 0; i < nWindows; i++) {
+    const start = nWindows === 1 ? 0 : Math.round((i / (nWindows - 1)) * lastStart);
+    if (usedStarts.some(s => Math.abs(s - start) < windowChars * 0.4)) continue;
+    usedStarts.push(start);
+    parts.push(labeledSourceSlice(src, start, windowChars));
+  }
+  let out = parts.join('\n\n');
+  if (out.length > maxChars) out = out.slice(0, maxChars);
+  return out;
+}
+
+function contentFileKeywords(parts: Array<string | undefined | null>): string[] {
+  const blob = parts.filter(Boolean).join(' ').toLowerCase();
+  const words = blob.match(/[a-z0-9][a-z0-9-]{3,}/g) || [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const w of words) {
+    if (CONTENT_FILE_STOP.has(w) || seen.has(w)) continue;
+    seen.add(w);
+    out.push(w);
+  }
+  return out;
+}
+
+export type ContentFileHydrateQuery = {
+  moduleTitle?: string;
+  slideTitles?: string[];
+  enablingText?: string;
+  moduleIndex?: number;
+  moduleCount?: number;
+};
+
+/** Module-relevant slice of the full extract. Fallback is the matching fraction of the file. */
+export function contentFileHydrateExcerpt(
+  text: string,
+  query: ContentFileHydrateQuery = {},
+  maxChars = CONTENT_FILE_HYDRATE_CHARS,
+): string {
+  const src = String(text || '');
+  if (!src) return '';
+  if (src.length <= maxChars) return src;
+  const keys = contentFileKeywords([
+    query.moduleTitle,
+    query.enablingText,
+    ...(query.slideTitles || []),
+  ]);
+  let bestStart = 0;
+  let bestScore = 0;
+  const windowLen = Math.min(maxChars, src.length);
+  const step = Math.max(400, Math.floor(windowLen / 4));
+  for (let i = 0; i <= src.length - windowLen; i += step) {
+    const window = src.slice(i, i + windowLen).toLowerCase();
+    let score = 0;
+    for (const k of keys) {
+      let idx = 0;
+      while ((idx = window.indexOf(k, idx)) !== -1) {
+        score += 1;
+        idx += k.length;
+      }
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestStart = i;
+    }
+  }
+  if (bestScore === 0) {
+    const count = Math.max(1, query.moduleCount || 1);
+    const idx = Math.min(Math.max(0, query.moduleIndex ?? 0), count - 1);
+    const frac = (idx + 0.5) / count;
+    bestStart = Math.max(
+      0,
+      Math.min(src.length - windowLen, Math.floor(frac * src.length - windowLen / 2)),
+    );
+  }
+  return labeledSourceSlice(src, bestStart, windowLen);
 }
 
 /** Prompt block: how to read a storyboard as a build spec, not as a lecture. */
