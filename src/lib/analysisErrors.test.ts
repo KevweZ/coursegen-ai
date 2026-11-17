@@ -152,3 +152,21 @@ test('hydrate empty JSON and regen failure do not plant placeholder slides', () 
   assert.doesNotMatch(regen, /Using a placeholder/);
   assert.doesNotMatch(regen, /Key point related to/);
 });
+
+test('Course Review hydrate failure stays on Review; Start Over does not leave a File Ready zombie', () => {
+  assert.match(ADD_CONTENT_EMPTY_MESSAGE, /Generate Course again/);
+  assert.match(ADD_CONTENT_EMPTY_MESSAGE, /do not need to start over/);
+  assert.doesNotMatch(ADD_CONTENT_EMPTY_MESSAGE, /busy server/i);
+
+  const review = readFileSync(resolve(process.cwd(), 'src/components/builder/CourseReviewPage.tsx'), 'utf8');
+  assert.doesNotMatch(review, /if \(\(isGenerating \|\| isHydrating\) && renderProgressState\)/);
+
+  const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+  const hydrate = app.slice(app.indexOf('const hydrateCourse = async'), app.indexOf('const handleCreateReviewLink'));
+  assert.match(hydrate, /setError\(null\)/);
+
+  const failed = app.slice(app.indexOf('Generation Failed'), app.indexOf('const TimelinePreviewDemo'));
+  assert.match(failed, /Try again/);
+  assert.match(failed, /setUploadedFile\(null\)/);
+  assert.match(failed, /navigateTo\(ROUTES\.upload/);
+});

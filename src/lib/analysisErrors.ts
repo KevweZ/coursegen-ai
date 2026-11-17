@@ -19,7 +19,7 @@ export const SERVER_WARMING_MESSAGE =
 
 /** Empty / unparseable /api/ai JSON after a live brief — not “paste more source”. */
 export const ADD_CONTENT_EMPTY_MESSAGE =
-  'The generator did not return slides. This is usually a busy server. Wait a moment and try again.';
+  'The generator did not return slides. Wait a moment, then click Generate Course again — you do not need to start over or re-upload.';
 
 /** Outline JSON missing or unreadable — not a bad PPT. */
 export const OUTLINE_PARSE_MESSAGE =

@@ -72,13 +72,11 @@ export function CourseReviewPage(props: CourseReviewPageProps) {
   const {
     compactMobile = false,
     isSandboxMode,
-    isGenerating,
     isHydrating,
     isSuggesting,
     isGeneratingOutline,
     progress,
     error,
-    renderProgressState,
     structureStale,
   } = props;
 
@@ -95,16 +93,6 @@ export function CourseReviewPage(props: CourseReviewPageProps) {
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, [isSandboxMode]);
-
-  if ((isGenerating || isHydrating) && renderProgressState) {
-    return (
-      <div className={cn('w-full relative z-10', compactMobile ? 'min-h-0 h-full' : 'min-h-[calc(100vh-80px)]')}>
-        <div className={cn('mx-auto space-y-8 relative z-10', compactMobile ? 'max-w-none pb-8 pt-4 px-3' : 'max-w-4xl pb-32 pt-16 px-6')}>
-          {renderProgressState()}
-        </div>
-      </div>
-    );
-  }
 
   const goToStructure = () => setActiveTab('structure');
 

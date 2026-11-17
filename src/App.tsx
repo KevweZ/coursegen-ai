@@ -3928,6 +3928,7 @@ export default function App() {
   };
 
   const handleGenerateCourseFromSettings = async () => {
+    setError(null);
     if (isSandboxMode) {
       // Sandbox: jump to preview with dummy course (optionally reordered from outline)
       if (outlineDraft) {
@@ -5204,6 +5205,7 @@ export default function App() {
   };
 
   const hydrateCourse = async () => {
+    setError(null);
     setIsHydrating(true);
     setProgress(10);
     try {
@@ -5887,7 +5889,43 @@ export default function App() {
             <AlertCircle className="w-16 h-16 text-red-500 mx-auto" />
             <h3 className="text-2xl font-bold text-white">Generation Failed</h3>
             <p className="text-red-400 font-medium max-w-lg mx-auto">{error}</p>
-            <button onClick={() => { setError(null); setSourceMode('raw'); setExtractedFileText(''); storyboardDecisionForFileRef.current = null; setStep('home'); }} className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl mt-4 font-bold transition-all">Start Over</button>
+            <div className="flex flex-wrap gap-3 justify-center mt-4">
+              <button
+                type="button"
+                onClick={() => { setError(null); void handleGenerateCourseFromSettings(); }}
+                className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-all"
+              >
+                Try again
+              </button>
+              {outlineDraft && settingsMode !== 'defaults' && (
+                <button
+                  type="button"
+                  onClick={() => setError(null)}
+                  className="px-6 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-bold transition-all"
+                >
+                  Back to Review
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null);
+                  setSourceMode('raw');
+                  setExtractedFileText('');
+                  setExtractQuality(null);
+                  setUploadedFile(null);
+                  setPendingUploadFile(null);
+                  setOutlineDraft(null);
+                  setOutlineSourceFingerprint(null);
+                  storyboardDecisionForFileRef.current = null;
+                  setStep('home');
+                  navigateTo(ROUTES.upload);
+                }}
+                className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold transition-all"
+              >
+                Start Over
+              </button>
+            </div>
           </div>
         ) : (
           <div className="space-y-8 w-full max-w-xl mx-auto">
