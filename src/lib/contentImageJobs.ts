@@ -10,6 +10,22 @@ export const MAX_CONTENT_AI_IMAGES = 14;
 /** One authoring click on “this slide” — intro + a few tabs/items, not a course-wide refill. */
 export const MAX_SLIDE_AI_IMAGES = 8;
 
+/** Course Settings → Audio & Multimedia: visible when AI images is on. */
+export const AI_IMAGES_SETTINGS_BLURB =
+  `Build adds up to ${MAX_CONTENT_AI_IMAGES} pictures. For remaining slides, use Edit → Generate AI images.`;
+
+/** Hover/click info next to “AI-generated images”. */
+export const AI_IMAGES_SETTINGS_TIP =
+  `After you Build, NexCourse creates up to ${MAX_CONTENT_AI_IMAGES} pictures automatically — the cover plus some content slides. Quizzes and objectives are skipped. Later slides stay empty until you choose Edit → Generate AI images and pick the rest (about 20 seconds and 1 credit each).`;
+
+/** Course Settings → Audio & Multimedia: visible when source extract is on. */
+export const SOURCE_IMAGES_SETTINGS_BLURB =
+  'Each picture file is extracted on its own. Grouped diagrams work best as one screenshot on the slide.';
+
+/** Hover/click info next to “Images from uploaded file”. */
+export const SOURCE_IMAGES_SETTINGS_TIP =
+  'NexCourse pulls pictures that are saved as their own files in the PPT or PDF. Labels, arrows, and several shapes on one PowerPoint slide are not combined into one image. If a diagram is many pieces, screenshot the whole grouping so it stays together.';
+
 export const AI_CONTENT_SKIP_TYPES = new Set([
   'title', 'cover', 'module-cover', 'module-overview', 'course-objectives',
   'learning-objectives', 'objectives', 'player-tour', 'knowledge-check', 'quiz',

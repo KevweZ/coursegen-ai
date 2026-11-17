@@ -15,6 +15,10 @@ import {
   slideTypeSkipsAiContentImages,
   summarizeImageSelection,
   topicBenefitsFromVisual,
+  AI_IMAGES_SETTINGS_BLURB,
+  AI_IMAGES_SETTINGS_TIP,
+  SOURCE_IMAGES_SETTINGS_BLURB,
+  SOURCE_IMAGES_SETTINGS_TIP,
 } from './contentImageJobs.ts';
 
 function src(rel: string): string {
@@ -50,6 +54,24 @@ test('course-wide generate fills remaining empty slots only, capped at 14', () =
   assert.equal(jobs.length, 14);
   assert.ok(jobs.every((j) => j.kind === 'slide'));
   assert.ok(!jobs.some((j) => j.slideId === 'quiz' || j.slideId === 'has'));
+});
+
+test('Course Settings multimedia explains the 14-picture cap and source extract limits', () => {
+  assert.match(AI_IMAGES_SETTINGS_BLURB, /14 pictures/);
+  assert.match(AI_IMAGES_SETTINGS_BLURB, /Generate AI images/);
+  assert.match(AI_IMAGES_SETTINGS_TIP, /14 pictures/);
+  assert.match(AI_IMAGES_SETTINGS_TIP, /Edit → Generate AI images/);
+  assert.match(AI_IMAGES_SETTINGS_TIP, /Quizzes and objectives are skipped/);
+  assert.match(SOURCE_IMAGES_SETTINGS_BLURB, /screenshot/i);
+  assert.match(SOURCE_IMAGES_SETTINGS_TIP, /own files/);
+  assert.match(SOURCE_IMAGES_SETTINGS_TIP, /screenshot/i);
+
+  const settings = src('src/components/builder/CourseSettingsPage.tsx');
+  assert.match(settings, /AI_IMAGES_SETTINGS_BLURB/);
+  assert.match(settings, /AI_IMAGES_SETTINGS_TIP/);
+  assert.match(settings, /SOURCE_IMAGES_SETTINGS_BLURB/);
+  assert.match(settings, /SOURCE_IMAGES_SETTINGS_TIP/);
+  assert.match(settings, /SettingsInfoTip/);
 });
 
 test('this-slide option only collects jobs for that slide', () => {

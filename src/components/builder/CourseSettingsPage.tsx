@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   ArrowRight, Loader2, FileUp, Target, Layers, Lock, Grid3X3,
   Gamepad2, Volume2, Eye, Plus, Trash2, Wand2, AlertCircle, Ear, CheckCircle2,
-  BookOpen, ListChecks, Navigation, SlidersHorizontal, Save, Settings2, ImageIcon,
+  BookOpen, ListChecks, Navigation, SlidersHorizontal, Save, Settings2, ImageIcon, Info,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { getRecommendedGames } from '../../lib/gameEngine';
@@ -14,6 +14,12 @@ import type { ScenarioConfig } from '../../types/scenario';
 import type { CourseOutlineDraft } from '../../services/aiService';
 import type { ExamConfig, NavigationMode, TerminalObjectiveGroup } from '../../types/course';
 import { imageModeFlags, imageModeFromFlags, type CourseImageMode } from '../../services/imageService';
+import {
+  AI_IMAGES_SETTINGS_BLURB,
+  AI_IMAGES_SETTINGS_TIP,
+  SOURCE_IMAGES_SETTINGS_BLURB,
+  SOURCE_IMAGES_SETTINGS_TIP,
+} from '../../lib/contentImageJobs';
 import { canUseAllVoices } from '../../lib/planEntitlements';
 import {
   BLOCKS_WELL_DEFAULT,
@@ -32,6 +38,47 @@ export type SettingsTab =
   | 'games'
   | 'audio'
   | 'design';
+
+function SettingsInfoTip({ label, children }: { label: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const stopLabelToggle = (e: React.MouseEvent | React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  return (
+    <span
+      className="relative inline-flex shrink-0 p-1 -m-1"
+      onMouseDown={stopLabelToggle}
+      onClick={stopLabelToggle}
+      onPointerDown={stopLabelToggle}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button
+        type="button"
+        aria-label={label}
+        aria-expanded={open}
+        onMouseDown={stopLabelToggle}
+        onClick={(e) => { stopLabelToggle(e); setOpen(v => !v); }}
+        onMouseEnter={() => setOpen(true)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        className="w-5 h-5 rounded-full flex items-center justify-center text-slate-500 hover:text-sky-300 hover:bg-sky-500/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50"
+      >
+        <Info className="w-3.5 h-3.5" />
+      </button>
+      {open && (
+        <span
+          role="tooltip"
+          className="absolute z-50 left-0 top-full mt-1.5 w-72 max-w-[min(18rem,calc(100vw-2rem))] p-3 rounded-xl border border-slate-700 bg-slate-900 text-[11px] text-slate-300 leading-relaxed shadow-xl"
+          onMouseDown={stopLabelToggle}
+          onClick={stopLabelToggle}
+        >
+          {children}
+        </span>
+      )}
+    </span>
+  );
+}
 
 const OBJECTIVE_EXAMPLES: Record<string, { label: string; example: string }> = {
   AB: {
@@ -1377,10 +1424,20 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                     className="mt-1 w-4 h-4 rounded border-slate-600 text-sky-500 focus:ring-sky-500/40 bg-slate-900"
                   />
                   <div className="min-w-0">
-                    <p className="text-sm font-bold text-white">AI-generated images</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-bold text-white">AI-generated images</p>
+                      <SettingsInfoTip label="About AI-generated images">
+                        {AI_IMAGES_SETTINGS_TIP}
+                      </SettingsInfoTip>
+                    </div>
                     <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
                       Topic cover on Course Introduction, plus simple visuals on content slides and tabs when a picture adds value (e.g. a stop sign under “Red Signs”).
                     </p>
+                    {aiImagesOn && (
+                      <p className="text-xs text-sky-300/90 mt-1.5 leading-relaxed">
+                        {AI_IMAGES_SETTINGS_BLURB}
+                      </p>
+                    )}
                   </div>
                 </label>
 
@@ -1395,10 +1452,20 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
                     className="mt-1 w-4 h-4 rounded border-slate-600 text-sky-500 focus:ring-sky-500/40 bg-slate-900"
                   />
                   <div className="min-w-0">
-                    <p className="text-sm font-bold text-white">Images from uploaded file</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-bold text-white">Images from uploaded file</p>
+                      <SettingsInfoTip label="About images from the uploaded file">
+                        {SOURCE_IMAGES_SETTINGS_TIP}
+                      </SettingsInfoTip>
+                    </div>
                     <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
                       Extract embedded photos/diagrams from your PPTX or PDF and place them on content slides.
                     </p>
+                    {sourceImagesOn && (
+                      <p className="text-xs text-sky-300/90 mt-1.5 leading-relaxed">
+                        {SOURCE_IMAGES_SETTINGS_BLURB}
+                      </p>
+                    )}
                   </div>
                 </label>
               </div>
