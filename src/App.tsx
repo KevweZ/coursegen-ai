@@ -238,6 +238,8 @@ import {
   formatAddContentFailure,
   formatAnalysisFailure,
   formatDraftOpenFailure,
+  formatHydrateFailure,
+  formatOutlineFailure,
   isAnalysisTransient,
   REGEN_KEEP_SLIDE_MESSAGE,
   SERVER_WARMING_MESSAGE,
@@ -1578,6 +1580,7 @@ export default function App() {
     setActiveDraftId(null);
     previewDraftOpenIdRef.current = null;
     setIsSandboxMode(false);
+    setError(null);
     navigateTo(ROUTES.upload);
     if (!isLearnerPlayer) {
       applySavedSettings(resolveCourseSettings(user?.id));
@@ -1588,6 +1591,7 @@ export default function App() {
 
   /** Back from Course Settings / Review course — resume upload chooser if a file is still pending. */
   const backFromCourseSettings = () => {
+    setError(null);
     if (settingsMode !== 'defaults') {
       setOutlineDraft(null);
       setOutlineSourceFingerprint(null);
@@ -2003,8 +2007,14 @@ export default function App() {
       setIsSandboxMode(false);
       setMobileDesignDemo(false);
       setShowPlayerProperties(false);
+      setError(null);
       setSourceMode('raw');
       setExtractedFileText('');
+      setExtractQuality(null);
+      setUploadedFile(null);
+      setPendingUploadFile(null);
+      setOutlineDraft(null);
+      setOutlineSourceFingerprint(null);
       storyboardDecisionForFileRef.current = null;
       setStoryboardConfirmOpen(false);
       pendingStoryboardAnalysisRef.current = null;
@@ -2026,6 +2036,7 @@ export default function App() {
       setMobileDesignDemo(false);
       setActiveDraftId(null);
       setShowPlayerProperties(false);
+      setError(null);
       setStep('details');
       return;
     }
@@ -3557,6 +3568,7 @@ export default function App() {
     navigateTo(ROUTES.building, true);
     setIsAnalyzing(true);
     setAnalyzeError(null);
+    setError(null);
     setProgress(15);
     const analysisTimer = setInterval(() => {
       setProgress(prev => prev < 80 ? Math.min(80, prev + 5) : prev);
@@ -3650,6 +3662,7 @@ export default function App() {
         setIsAnalyzing(false);
         setIsGenerating(true);
         setProgress(20);
+        let quickOutline: CourseOutlineDraft | null = null;
         try {
           const draft = await generateCourseOutline(
             result.title || file.name,
@@ -3670,6 +3683,7 @@ export default function App() {
               ...fileSourceConfig(activeSourceMode, text),
             }
           );
+          quickOutline = draft;
           setOutlineDraft(draft);
           setProgress(45);
           const finalCourse = await hydrateCourseContent(
@@ -3701,7 +3715,7 @@ export default function App() {
             settingsOverride
           );
         } catch (e: any) {
-          setError(formatAddContentFailure(e) || 'Quick build failed.');
+          setError(quickOutline ? formatHydrateFailure(e) : formatOutlineFailure(e));
           setSettingsMode('session');
           setStep('details');
         } finally {
@@ -3765,7 +3779,7 @@ export default function App() {
         }));
       } catch (e: any) {
         console.warn('[runAnalysis] Outline generation failed:', e);
-        setError(formatAddContentFailure(e));
+        setError(formatOutlineFailure(e));
       } finally {
         clearInterval(outlineTimer);
         setIsGeneratingOutline(false);
@@ -3793,6 +3807,8 @@ export default function App() {
     e.target.value = '';
     const maxMb = 50;
     if (file.size > maxMb * 1024 * 1024) {
+      setUploadedFile(null);
+      setPendingUploadFile(null);
       setAnalyzeError(
         `File is ${(file.size / (1024 * 1024)).toFixed(1)}MB — max upload size is ${maxMb}MB. Compress or split the PDF/PPTX, then try again.`
       );
@@ -3919,7 +3935,7 @@ export default function App() {
       captureFoundationFingerprint();
       setProgress(100);
     } catch (e: any) {
-      setError(formatAddContentFailure(e));
+      setError(formatOutlineFailure(e));
     } finally {
       clearInterval(timer);
       setIsGeneratingOutline(false);
@@ -5244,7 +5260,7 @@ export default function App() {
       );
       await finalizeGeneratedCourse(finalCourse, settingsSnap);
     } catch (e: any) {
-      setError(formatAddContentFailure(e));
+      setError(formatHydrateFailure(e));
     } finally {
       setIsHydrating(false);
       setProgress(0);
@@ -7017,7 +7033,16 @@ export default function App() {
                          ) : (
                            <button
                              onClick={() => {
-                               if (!uploadedFile) return;
+                               if (!uploadedFile) {
+                                 setIsAnalyzing(false);
+                                 setAnalyzeError(null);
+                                 setAnalyzeErrorAction('retry');
+                                 setProgress(0);
+                                 clearColdStartCountdown();
+                                 setHomeRoutePath(ROUTES.upload);
+                                 navigateTo(ROUTES.upload, true);
+                                 return;
+                               }
                                if (lastUploadPath) {
                                  const override = resolveCourseSettings(user?.id);
                                  applySavedSettings(override);
@@ -7031,7 +7056,7 @@ export default function App() {
                              }}
                              className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-all"
                            >
-                             Try Again
+                             {uploadedFile ? 'Try Again' : 'Choose another file'}
                            </button>
                          )}
                          <button

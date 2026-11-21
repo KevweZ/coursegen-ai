@@ -17,8 +17,12 @@ export const ANALYSIS_NO_CREDITS_MESSAGE =
 export const SERVER_WARMING_MESSAGE =
   'Server is warming up — nothing is wrong with your file or account. Wait a moment and try again.';
 
-/** Empty / unparseable /api/ai JSON after a live brief — not “paste more source”. */
+/** Empty / unparseable /api/ai JSON after a live Add content brief — not “paste more source”. */
 export const ADD_CONTENT_EMPTY_MESSAGE =
+  'The generator did not return slides. Wait a moment, then click Generate in Add content — you do not need to start over.';
+
+/** Empty hydrate JSON on Review — retry Generate Course in place. */
+export const HYDRATE_EMPTY_MESSAGE =
   'The generator did not return slides. Wait a moment, then click Generate Course again — you do not need to start over or re-upload.';
 
 /** Outline JSON missing or unreadable — not a bad PPT. */
@@ -129,7 +133,7 @@ function isDraftFetchNoise(err: unknown): boolean {
   return /unexpected token|not valid JSON|SyntaxError|JSON\.parse|<!DOCTYPE|cloudflare|Could not load draft|may be corrupted|Failed to open draft/i.test(blob);
 }
 
-export function formatAddContentFailure(err: unknown): string {
+function formatAiGenerateFailure(err: unknown, emptyMessage: string): string {
   const blob = errBlob(err);
   if (isNoCreditsError(blob)) return ANALYSIS_NO_CREDITS_MESSAGE;
   if (isAiAuthOrCreditFailure(err) && /sign in|AI_AUTH_REQUIRED|\b401\b|\b403\b/i.test(blob)) {
@@ -139,12 +143,24 @@ export function formatAddContentFailure(err: unknown): string {
   if (/Critical Data Failure|Could not build the course structure/i.test(blob)) {
     return OUTLINE_PARSE_MESSAGE;
   }
-  if (isEmptyOrUnparseableAiPayload(err)) return ADD_CONTENT_EMPTY_MESSAGE;
+  if (isEmptyOrUnparseableAiPayload(err)) return emptyMessage;
   const msg = String(
     (err && typeof err === 'object' && 'message' in err && (err as { message?: string }).message)
       || (typeof err === 'string' ? err : ''),
   ).trim();
-  return msg || ADD_CONTENT_EMPTY_MESSAGE;
+  return msg || emptyMessage;
+}
+
+export function formatAddContentFailure(err: unknown): string {
+  return formatAiGenerateFailure(err, ADD_CONTENT_EMPTY_MESSAGE);
+}
+
+export function formatHydrateFailure(err: unknown): string {
+  return formatAiGenerateFailure(err, HYDRATE_EMPTY_MESSAGE);
+}
+
+export function formatOutlineFailure(err: unknown): string {
+  return formatAiGenerateFailure(err, OUTLINE_PARSE_MESSAGE);
 }
 
 export function formatDraftOpenFailure(err: unknown): string {

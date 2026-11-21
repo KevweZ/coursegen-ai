@@ -206,8 +206,14 @@ export function CourseReviewPage(props: CourseReviewPageProps) {
               {props.onGenerateCourse && (
                 <button
                   type="button"
-                  onClick={requestGenerate}
-                  disabled={!props.outlineDraft || !!isGeneratingOutline || !!isHydrating}
+                  onClick={() => {
+                    if (!props.outlineDraft) {
+                      void props.onRegenerateOutline();
+                      return;
+                    }
+                    requestGenerate();
+                  }}
+                  disabled={!!isGeneratingOutline || !!isHydrating}
                   className={cn(
                     'flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold hover:shadow-[0_0_30px_-8px_rgba(79,70,229,0.5)] transition-all disabled:opacity-50',
                     compactMobile ? 'px-3 py-1.5 text-[11px]' : 'px-5 py-2.5 text-sm'
@@ -218,7 +224,9 @@ export function CourseReviewPage(props: CourseReviewPageProps) {
                   ) : (
                     <ArrowRight className={cn(compactMobile ? 'w-3.5 h-3.5' : 'w-4 h-4')} />
                   )}
-                  {isSandboxMode ? 'Preview Course' : 'Generate Course'}
+                  {!props.outlineDraft
+                    ? (error ? 'Try again' : 'Generate Structure')
+                    : isSandboxMode ? 'Preview Course' : 'Generate Course'}
                 </button>
               )}
             </div>
@@ -249,9 +257,24 @@ export function CourseReviewPage(props: CourseReviewPageProps) {
         </div>
 
         {error && (
-          <div className="p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl flex items-center gap-3">
+          <div className="p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl flex items-center gap-3 flex-wrap">
             <AlertCircle className="w-5 h-5 shrink-0" />
-            <span className="text-sm font-bold">{error}</span>
+            <span className="text-sm font-bold flex-1 min-w-[12rem]">{error}</span>
+            {!isGeneratingOutline && !isHydrating && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (!props.outlineDraft) {
+                    void props.onRegenerateOutline();
+                    return;
+                  }
+                  requestGenerate();
+                }}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold"
+              >
+                {props.outlineDraft ? 'Generate Course' : 'Try again'}
+              </button>
+            )}
           </div>
         )}
 

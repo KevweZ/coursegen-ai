@@ -206,13 +206,11 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
     mode,
     isSandboxMode,
     compactMobile = false,
-    isGenerating,
     isHydrating,
     isSuggesting,
     isGeneratingOutline,
     progress,
     error,
-    renderProgressState,
   } = props;
 
   const isDefaults = mode === 'defaults';
@@ -241,16 +239,6 @@ export function CourseSettingsPage(props: CourseSettingsPageProps) {
       setActiveTab(tabs[0]?.id ?? 'objectives');
     }
   }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  if ((isGenerating || isHydrating) && renderProgressState) {
-    return (
-      <div className={cn('w-full relative z-10', compactMobile ? 'min-h-0 h-full' : 'min-h-[calc(100vh-80px)]')}>
-        <div className={cn('mx-auto space-y-8 relative z-10', compactMobile ? 'max-w-none pb-8 pt-4 px-3' : 'max-w-4xl pb-32 pt-16 px-6')}>
-          {renderProgressState()}
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className={cn('w-full relative z-10', compactMobile ? 'min-h-0 h-full' : 'min-h-[calc(100vh-80px)]')}>

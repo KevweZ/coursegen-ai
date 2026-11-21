@@ -10,6 +10,9 @@ import {
   formatAddContentFailure,
   formatAnalysisFailure,
   formatDraftOpenFailure,
+  formatHydrateFailure,
+  formatOutlineFailure,
+  HYDRATE_EMPTY_MESSAGE,
   isAiInfraFailure,
   isAnalysisTransient,
   isEmptyOrUnparseableAiPayload,
@@ -81,7 +84,7 @@ test('Generate / outline / Add content wait for health and do not stub cold-star
   const hydrate = app.slice(app.indexOf('const hydrateCourse = async'), app.indexOf('const handleCreateReviewLink'));
   assert.match(hydrate, /await waitForApiWarm/);
   assert.match(hydrate, /ANALYSIS_WARM_TIMEOUT_MS/);
-  assert.match(hydrate, /formatAddContentFailure/);
+  assert.match(hydrate, /formatHydrateFailure/);
   assert.match(hydrate, /SERVER_WARMING_MESSAGE/);
   assert.doesNotMatch(hydrate, /void waitForApiWarm/);
 
@@ -116,7 +119,7 @@ test('Add content empty JSON and draft-open fetch failures do not blame the auth
   assert.doesNotMatch(formatAddContentFailure('Paste more of the source text and try again.'), /paste more/i);
   assert.equal(formatAddContentFailure('Failed to fetch'), SERVER_WARMING_MESSAGE);
   assert.equal(formatAddContentFailure('AI_NO_CREDITS'), ANALYSIS_NO_CREDITS_MESSAGE);
-  assert.doesNotMatch(ADD_CONTENT_EMPTY_MESSAGE, /paste more|source text/i);
+  assert.doesNotMatch(ADD_CONTENT_EMPTY_MESSAGE, /paste more|source text|Generate Course/i);
 
   assert.equal(formatDraftOpenFailure('Failed to open draft. It may be corrupted.'), DRAFT_OPEN_RETRY_MESSAGE);
   assert.equal(formatDraftOpenFailure('Unexpected token < in JSON at position 0'), DRAFT_OPEN_RETRY_MESSAGE);
@@ -138,7 +141,9 @@ test('Add content empty JSON and draft-open fetch failures do not blame the auth
 test('hydrate empty JSON and regen failure do not plant placeholder slides', () => {
   assert.equal(formatAddContentFailure('Critical Data Failure: Outline could not be parsed.'), OUTLINE_PARSE_MESSAGE);
   assert.equal(formatAddContentFailure('No JSON structure found in AI response.'), ADD_CONTENT_EMPTY_MESSAGE);
-  assert.doesNotMatch(OUTLINE_PARSE_MESSAGE, /Critical Data Failure|your file/i);
+  assert.equal(formatHydrateFailure('No JSON structure found in AI response.'), HYDRATE_EMPTY_MESSAGE);
+  assert.equal(formatOutlineFailure('No JSON structure found in AI response.'), OUTLINE_PARSE_MESSAGE);
+  assert.doesNotMatch(OUTLINE_PARSE_MESSAGE, /Critical Data Failure|your file|Generate Course/i);
   assert.doesNotMatch(REGEN_KEEP_SLIDE_MESSAGE, /placeholder/i);
 
   const ai = readFileSync(resolve(process.cwd(), 'src/services/aiService.ts'), 'utf8');
@@ -154,9 +159,11 @@ test('hydrate empty JSON and regen failure do not plant placeholder slides', () 
 });
 
 test('Course Review hydrate failure stays on Review; Start Over does not leave a File Ready zombie', () => {
-  assert.match(ADD_CONTENT_EMPTY_MESSAGE, /Generate Course again/);
-  assert.match(ADD_CONTENT_EMPTY_MESSAGE, /do not need to start over/);
-  assert.doesNotMatch(ADD_CONTENT_EMPTY_MESSAGE, /busy server/i);
+  assert.match(HYDRATE_EMPTY_MESSAGE, /Generate Course again/);
+  assert.match(HYDRATE_EMPTY_MESSAGE, /do not need to start over/);
+  assert.doesNotMatch(HYDRATE_EMPTY_MESSAGE, /busy server/i);
+  assert.match(ADD_CONTENT_EMPTY_MESSAGE, /Generate in Add content/);
+  assert.doesNotMatch(ADD_CONTENT_EMPTY_MESSAGE, /Generate Course/i);
 
   const review = readFileSync(resolve(process.cwd(), 'src/components/builder/CourseReviewPage.tsx'), 'utf8');
   assert.doesNotMatch(review, /if \(\(isGenerating \|\| isHydrating\) && renderProgressState\)/);
@@ -164,9 +171,51 @@ test('Course Review hydrate failure stays on Review; Start Over does not leave a
   const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
   const hydrate = app.slice(app.indexOf('const hydrateCourse = async'), app.indexOf('const handleCreateReviewLink'));
   assert.match(hydrate, /setError\(null\)/);
+  assert.match(hydrate, /formatHydrateFailure/);
 
   const failed = app.slice(app.indexOf('Generation Failed'), app.indexOf('const TimelinePreviewDemo'));
   assert.match(failed, /Try again/);
   assert.match(failed, /setUploadedFile\(null\)/);
   assert.match(failed, /navigateTo\(ROUTES\.upload/);
+});
+
+test('outline failure retries on Review; leftover error and File Ready do not survive leave', () => {
+  assert.match(OUTLINE_PARSE_MESSAGE, /try again/i);
+  assert.doesNotMatch(OUTLINE_PARSE_MESSAGE, /Generate Course/i);
+
+  const review = readFileSync(resolve(process.cwd(), 'src/components/builder/CourseReviewPage.tsx'), 'utf8');
+  const header = review.slice(review.indexOf('props.onGenerateCourse &&'), review.indexOf('{error &&'));
+  assert.match(header, /onRegenerateOutline/);
+  assert.match(header, /Generate Structure/);
+  assert.match(header, /Try again/);
+  const banner = review.slice(review.indexOf('{error &&'), review.indexOf("{activeTab === 'foundation'"));
+  assert.match(banner, /onRegenerateOutline/);
+  assert.match(banner, /Try again/);
+
+  const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+  const analysis = app.slice(app.indexOf('const runAnalysis = async'), app.indexOf('const handleFileUpload'));
+  assert.match(analysis, /setError\(null\)/);
+  assert.match(analysis, /formatOutlineFailure/);
+  assert.match(analysis, /formatHydrateFailure/);
+  assert.match(analysis, /quickOutline/);
+
+  const regen = app.slice(app.indexOf('const regenerateOutlineForSettings'), app.indexOf('const handleGenerateCourseFromSettings'));
+  assert.match(regen, /formatOutlineFailure/);
+
+  const back = app.slice(app.indexOf('const backFromCourseSettings'), app.indexOf('viewCourseSettingsFromUploadPath'));
+  assert.match(back, /setError\(null\)/);
+  const home = app.slice(app.indexOf('const goHome ='), app.indexOf('backFromCourseSettings'));
+  assert.match(home, /setError\(null\)/);
+
+  const uploadNav = app.slice(app.indexOf("if (parsed.kind === 'upload')"), app.indexOf("if (parsed.kind === 'building')"));
+  assert.match(uploadNav, /setUploadedFile\(null\)/);
+  assert.match(uploadNav, /setError\(null\)/);
+
+  const oversized = app.slice(app.indexOf('const handleFileUpload'), app.indexOf('const handleStartDetails'));
+  assert.match(oversized, /setUploadedFile\(null\)/);
+  const overlay = app.slice(app.indexOf('analyzeError && isAnalyzing'), app.indexOf('Normal loading state'));
+  assert.match(overlay, /if \(!uploadedFile\)/);
+
+  const settings = readFileSync(resolve(process.cwd(), 'src/components/builder/CourseSettingsPage.tsx'), 'utf8');
+  assert.doesNotMatch(settings, /if \(\(isGenerating \|\| isHydrating\) && renderProgressState\)/);
 });
