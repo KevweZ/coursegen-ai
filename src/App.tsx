@@ -7019,7 +7019,6 @@ export default function App() {
                                setIsAnalyzing(false);
                                setAnalyzeError(null);
                                setAnalyzeErrorAction('retry');
-                               setUploadedFile(null);
                                setProgress(0);
                                clearColdStartCountdown();
                                dismissPlayerProperties();
@@ -10834,8 +10833,6 @@ export default function App() {
                             const courseTitle = course.title ?? '';
                             const typeToBuild = effectiveType;
                             pendingSlideRegenRef.current = async () => {
-                              editingSlideRef.current = null;
-                              setEditingSlide(null);
                               setIsRegenSlideRunning(true);
                               try {
                                 const result = await regenerateSlideData(
@@ -10851,6 +10848,8 @@ export default function App() {
                                     !(i.slideId === slideSnapshot.id && (i.type === 'interaction_empty' || i.fixActions?.includes('regenerate')))
                                   ),
                                 } : null);
+                                editingSlideRef.current = null;
+                                setEditingSlide(null);
                                 showDraftMessage(
                                   isTabOrientationSwap(slideSnapshot, typeToBuild)
                                     ? 'Tab layout switched — existing content kept ✓'
@@ -10858,12 +10857,7 @@ export default function App() {
                                 );
                               } catch (err: any) {
                                 console.error('[Edit Slide] Regenerate failed:', err);
-                                const msg = String(err?.message || err || '');
-                                const hint = /failed to fetch|networkerror|load failed|timeout/i.test(msg)
-                                  ? 'API unreachable (often a cold start). Wait ~20s and try Regenerate again.'
-                                  : (msg || 'Regeneration failed. Please try again.');
-                                showDraftMessage(hint);
-                                alert(hint);
+                                showDraftMessage(REGEN_KEEP_SLIDE_MESSAGE);
                               } finally {
                                 setIsRegenSlideRunning(false);
                               }

@@ -124,7 +124,12 @@ export function formatAnalysisFailure(raw: string | null | undefined): AnalysisF
 
 export function isEmptyOrUnparseableAiPayload(err: unknown): boolean {
   const blob = errBlob(err);
-  return /No JSON structure found|All JSON parse attempts failed|did not return any(?: new teaching)? slides|did not return slides|Paste more of the source|Missing or empty ['"]slides['"] array|Critical Data Failure|empty content or voiceOverText|Single slide response missing/i.test(blob);
+  return /No JSON structure found|All JSON parse attempts failed|did not return any(?: new teaching)? slides|did not return slides|Paste more of the source|Missing or empty ['"]slides['"] array|Critical Data Failure|empty content or voiceOverText|Single slide response missing|EMPTY_AI|Empty model response/i.test(blob);
+}
+
+/** Auth, credits, or a dead proxy — do not spend more hydrate tiers. Empty JSON still gets Tier 2 / per-slide. */
+export function shouldAbortHydrateLadder(err: unknown): boolean {
+  return isAiAuthOrCreditFailure(err) || isAnalysisTransient(err);
 }
 
 function isDraftFetchNoise(err: unknown): boolean {

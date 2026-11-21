@@ -893,7 +893,11 @@ app.post('/api/ai', aiRateLimit, async (req, res) => {
     }
 
     const data = await response.json();
-    const text = data?.content?.[0]?.text ?? '{}';
+    const text = String(data?.content?.[0]?.text ?? '').trim();
+    if (!text || text === '{}') {
+      console.error('[AI Proxy] Empty model response — not recording a credit');
+      return res.status(502).json({ error: 'Empty model response', code: 'EMPTY_AI' });
+    }
 
     await recordAiSuccess(authz.supabase, authz.billing);
 
@@ -3877,7 +3881,7 @@ app.get('/api/health', (_req, res) => {
     stripe_prices_configured: priceConfigured,
     resend_configured: !!resend,
     support_email: SUPPORT_EMAIL,
-    version: 'pilot-reliability-2',
+    version: 'pilot-reliability-3',
     image_gen: 'openai-first-mini',
     image_openai: !!OPENAI_API_KEY,
     image_openrouter: !!process.env.OPENROUTER_API_KEY,

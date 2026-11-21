@@ -27,7 +27,7 @@ import {
 import { applyAlignedQuizPrompt, quizQuestionList } from "../lib/knowledgeCheckOst";
 import { getSupabaseAccessTokenAsync } from "../lib/supabaseAccessToken";
 import { waitForApiWarm } from "../lib/apiWarmup";
-import { ADD_CONTENT_EMPTY_MESSAGE, OUTLINE_PARSE_MESSAGE, isAiInfraFailure, shouldRetryAiProxy, shouldRetryAiRateLimit } from "../lib/analysisErrors";
+import { ADD_CONTENT_EMPTY_MESSAGE, OUTLINE_PARSE_MESSAGE, isEmptyOrUnparseableAiPayload, shouldAbortHydrateLadder, shouldRetryAiProxy, shouldRetryAiRateLimit } from "../lib/analysisErrors";
 
 // ── Secure AI Proxy Client ───────────────────────────────────────────────────
 // API keys live ONLY in server.js — never in the browser bundle.
@@ -221,35 +221,47 @@ async function executeAnthropicAI(modelTier: 'complex' | 'bulk', systemPrompt: s
     }
 
     const data = await response.json();
-    return data.text ?? '{}';
+    const text = String(data.text ?? '').trim();
+    if (!text || text === '{}') {
+      const err = new Error('EMPTY_AI: Empty model response') as Error & { status?: number };
+      err.status = 502;
+      throw err;
+    }
+    return data.text;
   };
 
-  try {
-    return await executeCall();
-  } catch (err: any) {
-    if (shouldRetryAiRateLimit(err)) {
-      const retryMatch = String(err?.message || '').match(/retry after (\d+)/i)
-        || String(err?.message || '').match(/reset in (\d+)/i)
-        || String(err?.message || '').match(/(\d+)s/i);
-      let waitTime = 15000;
-      if (retryMatch) waitTime = (parseInt(retryMatch[1], 10) + 2) * 1000;
-      console.warn(`[AI Proxy] Rate limited — pausing ${waitTime / 1000}s then retrying...`);
-      await new Promise(resolve => setTimeout(resolve, waitTime));
+  const runOnce = async (allowEmptyRetry: boolean): Promise<string> => {
+    try {
       return await executeCall();
+    } catch (err: any) {
+      if (shouldRetryAiRateLimit(err)) {
+        const retryMatch = String(err?.message || '').match(/retry after (\d+)/i)
+          || String(err?.message || '').match(/reset in (\d+)/i)
+          || String(err?.message || '').match(/(\d+)s/i);
+        let waitTime = 15000;
+        if (retryMatch) waitTime = (parseInt(retryMatch[1], 10) + 2) * 1000;
+        console.warn(`[AI Proxy] Rate limited — pausing ${waitTime / 1000}s then retrying...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        return await executeCall();
+      }
+      if (shouldRetryAiProxy(err)) {
+        await waitForApiWarm({ timeoutMs: 40000 });
+        return await executeCall();
+      }
+      if (allowEmptyRetry && isEmptyOrUnparseableAiPayload(err)) {
+        return await runOnce(false);
+      }
+      const raw = String(err?.message || err || '');
+      // Browser TypeError when the server never answers (deploy restart, cold start, timeout).
+      if (/failed to fetch|networkerror|load failed|aborted/i.test(raw)) {
+        throw new Error(
+          'AI Proxy request failed to fetch (server unreachable or timed out — often right after a Render deploy). Wait ~30s and try again.'
+        );
+      }
+      throw new Error(`AI Proxy request failed: ${raw}`);
     }
-    if (shouldRetryAiProxy(err)) {
-      await waitForApiWarm({ timeoutMs: 40000 });
-      return await executeCall();
-    }
-    const raw = String(err?.message || err || '');
-    // Browser TypeError when the server never answers (deploy restart, cold start, timeout).
-    if (/failed to fetch|networkerror|load failed|aborted/i.test(raw)) {
-      throw new Error(
-        'AI Proxy request failed to fetch (server unreachable or timed out — often right after a Render deploy). Wait ~30s and try again.'
-      );
-    }
-    throw new Error(`AI Proxy request failed: ${raw}`);
-  }
+  };
+  return await runOnce(true);
 }
 
 /**
@@ -1320,7 +1332,7 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
       const raw = await executeAnthropicAI('bulk', systemInstruction, fullPrompt, 8192);
       parsedChunk = parseModuleChunk(raw);
     } catch (e1: any) {
-      if (isAiInfraFailure(e1)) throw e1;
+      if (shouldAbortHydrateLadder(e1)) throw e1;
       console.warn(`[${label}] Tier 1 failed: ${e1.message}`);
 
       // Tier 2: Simplified prompt
@@ -1328,7 +1340,7 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
         const raw2 = await executeAnthropicAI('bulk', systemInstruction, simplePrompt, 8192);
         parsedChunk = parseModuleChunk(raw2);
       } catch (e2: any) {
-        if (isAiInfraFailure(e2)) throw e2;
+        if (shouldAbortHydrateLadder(e2)) throw e2;
         console.warn(`[${label}] Tier 2 failed: ${e2.message}. Falling back to per-slide generation.`);
 
         // Tier 3: per-slide sequentially (avoid exploding concurrency when several chunks fail)
@@ -1338,7 +1350,7 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
             const hydratedSlide = await hydrateSingleSlide(slide, emptyModule.title);
             individualResults.push(hydratedSlide);
           } catch (e3: any) {
-            if (isAiInfraFailure(e3)) throw e3;
+            if (shouldAbortHydrateLadder(e3)) throw e3;
             console.error(`[Single slide "${slide.title}" in "${emptyModule.title}"] All tiers failed: ${e3.message}`);
             throw new Error(ADD_CONTENT_EMPTY_MESSAGE);
           }

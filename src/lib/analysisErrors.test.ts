@@ -19,6 +19,7 @@ import {
   OUTLINE_PARSE_MESSAGE,
   REGEN_KEEP_SLIDE_MESSAGE,
   SERVER_WARMING_MESSAGE,
+  shouldAbortHydrateLadder,
   shouldRetryAiProxy,
   shouldRetryAiRateLimit,
 } from './analysisErrors.ts';
@@ -77,7 +78,13 @@ test('Generate / outline / Add content wait for health and do not stub cold-star
   assert.equal(isAiInfraFailure('AI proxy error 401: Sign in required'), true);
   assert.equal(isAiInfraFailure('No JSON structure found in AI response.'), true);
   assert.equal(isAiInfraFailure("Missing or empty 'slides' array in response."), true);
+  assert.equal(isAiInfraFailure('EMPTY_AI: Empty model response'), true);
   assert.equal(isAiInfraFailure('Could not parse module JSON'), false);
+  assert.equal(shouldAbortHydrateLadder('No JSON structure found in AI response.'), false);
+  assert.equal(shouldAbortHydrateLadder("Missing or empty 'slides' array in response."), false);
+  assert.equal(shouldAbortHydrateLadder('EMPTY_AI: Empty model response'), false);
+  assert.equal(shouldAbortHydrateLadder('AI proxy error 401: Sign in required'), true);
+  assert.equal(shouldAbortHydrateLadder('Failed to fetch'), true);
   assert.match(SERVER_WARMING_MESSAGE, /warming up/i);
 
   const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
@@ -100,9 +107,12 @@ test('Generate / outline / Add content wait for health and do not stub cold-star
   assert.match(ai, /shouldRetryAiProxy/);
   assert.match(ai, /shouldRetryAiRateLimit/);
   assert.match(ai, /getSupabaseAccessTokenAsync/);
-  assert.match(ai, /if \(isAiInfraFailure\(e1\)\) throw e1/);
-  assert.match(ai, /if \(isAiInfraFailure\(e2\)\) throw e2/);
-  assert.match(ai, /if \(isAiInfraFailure\(e3\)\) throw e3/);
+  assert.match(ai, /if \(shouldAbortHydrateLadder\(e1\)\) throw e1/);
+  assert.match(ai, /if \(shouldAbortHydrateLadder\(e2\)\) throw e2/);
+  assert.match(ai, /if \(shouldAbortHydrateLadder\(e3\)\) throw e3/);
+  assert.match(ai, /EMPTY_AI: Empty model response/);
+  assert.match(ai, /allowEmptyRetry && isEmptyOrUnparseableAiPayload/);
+  assert.doesNotMatch(ai, /data\.text \?\? '\{\}'/);
 });
 
 test('Add content empty JSON and draft-open fetch failures do not blame the author', () => {
@@ -218,4 +228,36 @@ test('outline failure retries on Review; leftover error and File Ready do not su
 
   const settings = readFileSync(resolve(process.cwd(), 'src/components/builder/CourseSettingsPage.tsx'), 'utf8');
   assert.doesNotMatch(settings, /if \(\(isGenerating \|\| isHydrating\) && renderProgressState\)/);
+});
+
+test('empty hydrate JSON retries later tiers; empty /api/ai does not spend a credit', () => {
+  const ai = readFileSync(resolve(process.cwd(), 'src/services/aiService.ts'), 'utf8');
+  const chunk = ai.slice(ai.indexOf('async function hydrateOneChunk'), ai.indexOf('const chunkResults = await mapWithConcurrency'));
+  assert.match(chunk, /shouldAbortHydrateLadder\(e1\)/);
+  assert.doesNotMatch(chunk, /isAiInfraFailure\(e1\)/);
+  assert.match(chunk, /Tier 2: Simplified prompt/);
+  assert.match(chunk, /per-slide sequentially/);
+
+  const server = readFileSync(resolve(process.cwd(), 'server.js'), 'utf8');
+  const aiHandler = server.slice(
+    server.indexOf("app.post('/api/ai'"),
+    server.indexOf('Helper: verify caller is the admin'),
+  );
+  const emptyIdx = aiHandler.indexOf("code: 'EMPTY_AI'");
+  const deductIdx = aiHandler.indexOf('recordAiSuccess');
+  assert.ok(emptyIdx >= 0 && deductIdx > emptyIdx, 'empty /api/ai must not deduct credits');
+  assert.match(server, /version: 'pilot-reliability-3'/);
+
+  const help = readFileSync(resolve(process.cwd(), 'src/components/HelpWidget.tsx'), 'utf8');
+  assert.doesNotMatch(help, /refresh the page/i);
+  assert.match(help, /do not refresh/i);
+
+  const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+  const accountBtn = app.slice(app.indexOf("analyzeErrorAction === 'account'"), app.indexOf("{uploadedFile ? 'Try Again'"));
+  assert.doesNotMatch(accountBtn, /setUploadedFile\(null\)/);
+
+  const regen = app.slice(app.indexOf('pendingSlideRegenRef.current = async'), app.indexOf('setRegenConfirmOpen(true)'));
+  assert.match(regen, /REGEN_KEEP_SLIDE_MESSAGE/);
+  assert.ok(regen.indexOf('setEditingSlide(null)') > regen.indexOf('await applySlideRegenAndAudio'));
+  assert.doesNotMatch(regen, /alert\(/);
 });

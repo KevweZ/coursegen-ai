@@ -17,7 +17,7 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: 'Course generation is stuck — how long should it take?',
-    a: 'Generation typically takes 30–90 seconds depending on course length. If it\'s been over 3 minutes with no progress, refresh the page and try again. If the issue persists, submit a support ticket below.',
+    a: 'Generation typically takes 30–90 seconds, longer for a large deck. Stay on this page. If Generate Course fails, click it again — do not refresh (that drops the uploaded file). If it is still stuck after several minutes, submit a support ticket below.',
   },
   {
     q: 'How do I export my course to SCORM?',
