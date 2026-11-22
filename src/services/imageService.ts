@@ -470,6 +470,21 @@ export async function generateCourseCoverImage(
   });
 }
 
+/** Topic-related Main Menu backdrop — not a generic theme-archive still. */
+export async function generateHubBackdrop(
+  courseTitle: string,
+  description?: string
+): Promise<string> {
+  await waitForApiWarm({ timeoutMs: 40000, requireImageGen: true });
+  const subject = description?.trim() || courseTitle || 'professional workplace';
+  return groundedCall({
+    courseTitle: courseTitle || 'Course',
+    slideTitle: 'Main Menu',
+    panelLabel: 'course topic environment',
+    panelBody: `${subject}. Wide atmospheric environment matching this course subject. Unlabeled surfaces, no posters, no signs, no typography.`,
+  });
+}
+
 /**
  * Generate banner images for every module in the course (bounded concurrency).
  */

@@ -30,6 +30,9 @@ function isFullyBoldItem(raw: string): boolean {
   return false;
 }
 
+const BLOOM_VERB_ONLY =
+  /^(identify|recall|define|list|name|recognize|state|label|match|outline|describe|explain|summarize|classify|compare|select|apply|use|scan|maintain|anticipate)s?$/i;
+
 /** Short ALL-CAPS / fully-bold label — a section parent, not a teaching bullet. */
 export function looksLikeSectionHeader(raw: string): boolean {
   const plain = itemPlain(raw);
@@ -37,6 +40,10 @@ export function looksLikeSectionHeader(raw: string): boolean {
   if (plain.length > 72) return false;
   const words = plain.split(/\s+/).filter(Boolean);
   if (words.length < 1 || words.length > 10) return false;
+  const firstWord = words[0].replace(/:+$/, '');
+  if (BLOOM_VERB_ONLY.test(firstWord) && /^(and|or|to|the|a|an)\b/i.test(words[1] || '')) {
+    return false;
+  }
   if (/:[^:]{10,}/.test(plain) && !isFullyBoldItem(raw)) return false;
   const letters = plain.replace(/[^A-Za-z]/g, '');
   if (letters.length < 3) return false;
@@ -61,6 +68,10 @@ function splitColonTopic(raw: string): { heading: string; lead?: string } {
   if (m) {
     const label = m[1].trim();
     const rest = m[2].trim();
+    const first = label.split(/\s+/)[0]?.replace(/:+$/, '') || '';
+    if (BLOOM_VERB_ONLY.test(first) && /^(and|or|to|the|a|an)\b/i.test(rest)) {
+      return { heading: plain };
+    }
     if (label.split(/\s+/).length <= 8 && rest.split(/\s+/).length >= 3) {
       return { heading: label, lead: rest };
     }

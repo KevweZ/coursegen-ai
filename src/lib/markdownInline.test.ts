@@ -10,6 +10,7 @@ test('markdown lists still render with md-list discs', () => {
   assert.match(html, /<ul class="md-list">/);
   assert.match(html, /<li>/);
   assert.match(html, /Ethylene is the most widely produced/);
+  assert.match(html, /organic[\u00A0 ]chemical/);
 });
 
 test('TipTap HTML lists get md-list so player discs survive Save', () => {

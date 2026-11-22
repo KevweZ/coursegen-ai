@@ -1,5 +1,4 @@
 import { HUB_SLIDE_ID, isHubNavigation } from './interactionGate';
-import { pickStableBackground } from './backgrounds';
 import { hasPlayableImageUrl } from './draftMedia';
 
 export { HUB_SLIDE_ID };
@@ -78,10 +77,13 @@ export function isFirstSlideOfModule(slides: AnySlide[], index: number): boolean
   return !!range && index === range.start;
 }
 
+export function isThemeArchiveUrl(url?: string | null): boolean {
+  return /\/eLearning Template Backgrounds\//i.test(String(url || ''));
+}
+
 /**
- * Stamp one theme-archive still onto the Main Menu and keep it.
- * Do not call getRandomBackgroundForTheme here — that is what made the
- * menu photo change every time a draft was reopened.
+ * Keep an existing Main Menu photo (AI or author). Do not stamp a generic
+ * theme-archive still — the menu layout is complete without a stock photo.
  */
 export function ensureHubImage(course: any, navigationMode?: string): any {
   if (!course) return course;
@@ -90,10 +92,5 @@ export function ensureHubImage(course: any, navigationMode?: string): any {
   if (course.hubPanelHidden) return course;
   if (hasPlayableImageUrl(course.hubImage)) return course;
   if (Array.isArray(course.hubFloatingMedia) && course.hubFloatingMedia.length) return course;
-  const url = pickStableBackground(
-    course.visualTheme,
-    `${course.title || ''}|${course.visualTheme || ''}`,
-  );
-  if (!url) return course;
-  return { ...course, hubImage: url };
+  return course;
 }

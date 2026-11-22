@@ -8,6 +8,8 @@ import {
   resolveProcessSkin,
 } from './tabAccents.ts';
 import { sanitizeInteractionOstOnSave } from '../components/builder/EditSlideItemFields.tsx';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 test('Classic vs Blocks skins resolve independently of player theme', () => {
   assert.equal(resolveProcessSkin('blocks'), 'blocks');
@@ -45,4 +47,13 @@ test('Edit save keeps process skin and well colors on the slide', () => {
   assert.equal(saved.data.blocksWellColor, '#111827');
   assert.equal(saved.data.showProcessStepLabels, false);
   assert.match(saved.data.tabs[0].content, /Radical attack/);
+});
+
+test('Instruction well is white until a topic tab is selected', () => {
+  const vert = readFileSync(resolve(process.cwd(), 'src/components/interactions/TabbedContentVertical.tsx'), 'utf8');
+  assert.match(vert, /inIntro \? '#ffffff' : PROCESS_PANEL_DEFAULT/);
+  assert.match(vert, /TabIntroEmpty/);
+  const horiz = readFileSync(resolve(process.cwd(), 'src/components/interactions/TabbedContentHorizontal.tsx'), 'utf8');
+  assert.match(horiz, /inIntro && isLight && !blocks \? '#ffffff'/);
+  assert.match(horiz, /TabIntroEmpty/);
 });

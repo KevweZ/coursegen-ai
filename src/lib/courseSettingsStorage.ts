@@ -1,4 +1,5 @@
 import { ExamConfig, NavigationMode } from '../types/course';
+import { pickPreferredRecord } from './courseSettingsPick';
 import { normalizeImageMode, type CourseImageMode } from '../services/imageService';
 import { pushAccountPreferences } from './accountPreferences';
 import { stripParkedInteractionTypes } from './parkedInteractions';
@@ -46,6 +47,8 @@ export interface SavedCourseSettings {
   processSkin?: 'default' | 'blocks';
   /** Default for Process STEP 01 / STEP 02 labels. */
   processShowStepLabels?: boolean;
+  /** Epoch ms when this device last saved — used to beat a stale cloud copy. */
+  updatedAt?: number;
 }
 
 const STORAGE_KEY = 'nexcourse.courseSettings.v1';
@@ -145,10 +148,26 @@ export function resolveCourseSettings(userId?: string | null): SavedCourseSettin
   return loadCourseSettings(userId) ?? cloneDefaults();
 }
 
+export { settingsUpdatedAt } from './courseSettingsPick';
+
+/**
+ * Prefer the copy the author just saved on this device over a slower cloud
+ * round-trip that still has the previous multimedia / interaction picks.
+ */
+export function pickPreferredCourseSettings(
+  local: SavedCourseSettings | null | undefined,
+  cloud: SavedCourseSettings | null | undefined,
+  sessionSavedAt = 0,
+): SavedCourseSettings {
+  const picked = pickPreferredRecord(local, cloud, sessionSavedAt);
+  return picked ? normalizeSaved(picked) : cloneDefaults();
+}
+
 export function saveCourseSettings(settings: SavedCourseSettings, userId?: string | null): void {
   const next = {
     ...settings,
     interactionTypes: stripParkedInteractionTypes(settings.interactionTypes),
+    updatedAt: Date.now(),
   };
   try {
     localStorage.setItem(storageKey(userId), JSON.stringify(next));

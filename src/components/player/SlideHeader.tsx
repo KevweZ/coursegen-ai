@@ -1,6 +1,7 @@
 import React from 'react';
 import { cn } from '../../lib/utils';
 import { stripSlideTypePrefix } from '../../lib/stripSlideTypePrefix';
+import { preventWidow } from '../../lib/preventWidow';
 
 type Theme = 'light' | 'dark' | 'unified';
 
@@ -42,7 +43,7 @@ export const SlideHeader: React.FC<SlideHeaderProps> = ({ title, theme, classNam
           colorClass
         )}
       >
-        {stripSlideTypePrefix(title)}
+        {preventWidow(stripSlideTypePrefix(title))}
       </h2>
       {accentColor && (
         <div

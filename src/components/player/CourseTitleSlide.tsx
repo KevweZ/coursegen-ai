@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { AlignCenter, AlignLeft, AlignRight, Camera, ImageOff, Loader2, RefreshCw, X } from 'lucide-react';
 import { courseTitleForDisplay } from '../../lib/splitCourseTitle';
+import { preventWidow } from '../../lib/preventWidow';
 import { type CoverTitleAlign, resolveCoverTitleAlign } from '../../lib/promoteSlideImages';
 import { EnlargeableImage, type InFlowPromoteInfo } from './EnlargeableImage';
 
@@ -128,17 +129,17 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
   };
 
   const primaryLine = (
-    <div className="font-extrabold leading-tight tracking-tight" style={primaryStyle}>
-      {primary}
+    <div className="font-extrabold leading-tight tracking-tight slide-title-balanced" style={primaryStyle}>
+      {preventWidow(primary)}
     </div>
   );
 
   const secondaryLine = secondary ? (
     <div
-      className={`font-semibold leading-snug tracking-tight ${secondaryFirst ? 'mb-1' : 'mt-1'}`}
+      className={`font-semibold leading-snug tracking-tight slide-title-balanced ${secondaryFirst ? 'mb-1' : 'mt-1'}`}
       style={secondaryStyle}
     >
-      {secondary}
+      {preventWidow(secondary)}
     </div>
   ) : null;
 
@@ -224,9 +225,24 @@ export const CourseTitleSlide: React.FC<CourseTitleSlideProps> = ({
   if (!showImagePanel) {
     return (
       <div className="w-full h-full relative overflow-hidden" style={{ backgroundColor: leftBg }}>
+        <div className="absolute inset-0 pointer-events-none" aria-hidden>
+          <div
+            className="absolute top-10 left-10 w-24 h-24 border-t-4 border-l-4 rounded-tl-3xl opacity-55"
+            style={{ borderColor: accent }}
+          />
+          <div
+            className="absolute bottom-10 right-10 w-24 h-24 border-b-4 border-r-4 rounded-br-3xl opacity-45"
+            style={{ borderColor: accent }}
+          />
+        </div>
         {alignBar}
-        <div className={`flex-1 w-full h-full flex flex-col justify-center ${columnJustify} px-10 sm:px-16 py-10`}>
-          {titleBlock}
+        <div className="relative z-[1] h-full flex flex-col justify-center">
+          <div
+            className={`w-full px-10 sm:px-16 py-12 flex flex-col ${columnJustify}`}
+            style={{ background: `${accent}16` }}
+          >
+            {titleBlock}
+          </div>
         </div>
       </div>
     );

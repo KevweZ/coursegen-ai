@@ -160,6 +160,8 @@ import {
   resolveCourseSettings,
   saveCourseSettings,
   cacheCourseSettings,
+  pickPreferredCourseSettings,
+  settingsUpdatedAt,
   stripParkedInteractionTypes,
   SavedCourseSettings,
 } from './lib/courseSettingsStorage';
@@ -170,6 +172,8 @@ import { extractTextFromFile, extractImagesFromFile, EXTRACT_DEADLINE_MS, Source
 import { shouldOfferStoryboardChoice, fileSourceConfigFromExtract, defaultSourceModeFromFileName, type SourceMode } from './lib/storyboardSource';
 import { assessExtract, type ExtractQuality } from './lib/extractQuality';
 import { reformatObjectiveGroups } from './lib/objectiveFormat';
+import { splitInstructionalVerb } from './lib/instructionalVerb';
+import { preventWidowLines } from './lib/preventWidow';
 import { generateGameTemplate, generateStandaloneGame } from './services/aiGameService';
 import { GameContainer } from './components/game-templates/core/GameContainer';
 import { getRandomBackgroundForTheme, nextThemeBackground } from './lib/backgrounds';
@@ -177,6 +181,7 @@ import { getPresetOptions, getPresetConfig } from './lib/presetEngine';
 import { GameTemplateType } from './types/game';
 import {
   generateCourseCoverImage,
+  generateHubBackdrop,
   attachSourceImagesToCourse,
   generateContentSlideImages,
   imageModeFlags,
@@ -199,6 +204,7 @@ import {
   takeLegacyMedia,
   isAudioAssetPath,
   courseHasEmptyVisualSlots,
+  hasPlayableImageUrl,
 } from './lib/draftMedia';
 import { clearNarrationCache, stashAudioUrl, setLiveNarrationScope } from './lib/narrationCache';
 import { mergeRegenIntoSlide, patchCourseSlideById, slidesMatchId } from './lib/slideRegenMerge';
@@ -293,6 +299,7 @@ import {
   ensureHubImage,
   hubSlideIndex,
   isFirstSlideOfModule,
+  isThemeArchiveUrl,
   moduleIndexRange,
   moduleNumberForSlide,
   nextIndexAfterSlide,
@@ -369,11 +376,11 @@ const renderInstructionalText = (children: React.ReactNode, theme: string, isLis
   
   if (!textToParse) return null;
 
-  const match = textToParse.match(/^(Describe|Identify|Explain|Understand)[:\s]+(.*)/i);
+  const match = splitInstructionalVerb(textToParse, { inList: isList });
   if (!match) return null;
 
-  const verb = match[1];
-  const rest = match[2];
+  const verb = match.verb;
+  const rest = match.rest;
   const remainingChildren = Array.isArray(children) ? children.slice(1) : [];
 
   return (
@@ -405,7 +412,7 @@ const sanitizeContent = (content: string) => {
   // HTML content from the rich-text editor must never be run through markdown
   // cleanup regexes — return it untouched so SmartContent can render it correctly.
   if (isHTML(content)) return content;
-  return content
+  const cleaned = content
     .replace(/^[-*] \*\*.*\*\*:\s*$/gm, '') 
     .replace(/^[-*] \*\*\*\*:\s*/gm, '- ') 
     .replace(/\|\s*$/gm, '') 
@@ -416,6 +423,7 @@ const sanitizeContent = (content: string) => {
     .replace(/(^[-*+][ \t]+.+)\n(?!\n)(?![ \t]*[-*+][ \t])/gm, '$1\n\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+  return preventWidowLines(cleaned, 4);
 };
 
 /**
@@ -1609,7 +1617,6 @@ export default function App() {
   /** From upload chooser: open saved Course Settings without discarding the pending file. */
   const viewCourseSettingsFromUploadPath = () => {
     setShowUploadPathModal(false);
-    applySavedSettings(resolveCourseSettings(user?.id));
     setSettingsMode('defaults');
     setIsSandboxMode(false);
     setMobileDesignDemo(false);
@@ -3320,7 +3327,8 @@ export default function App() {
     clearColdStartCountdown();
     setAnalyzeError(null);
     if (lastUploadPath) {
-      const override = resolveCourseSettings(user?.id);
+      const override = collectCurrentSettings();
+      saveCourseSettings(override, user?.id);
       applySavedSettings(override);
       runAnalysis(uploadedFile, lastUploadPath, override);
     } else {
@@ -3461,24 +3469,21 @@ export default function App() {
       const localSettings = resolveCourseSettings(user.id);
       const localPlayer = loadPlayerProperties(user.id);
 
-      // Prefer this device's fresh Save for ~60s so a slow cloud round-trip cannot
-      // overwrite Course Settings the user just edited before Build now / Review.
-      let preferLocal = false;
+      let sessionSavedAt = 0;
       try {
-        const savedAt = Number(sessionStorage.getItem('nexcourse.courseSettings.savedAt') || 0);
-        preferLocal = !!savedAt && Date.now() - savedAt < 60_000;
+        sessionSavedAt = Number(sessionStorage.getItem('nexcourse.courseSettings.savedAt') || 0);
       } catch { /* ignore */ }
 
-      if (preferLocal && localSettings) {
-        applySavedSettings(localSettings);
-        void pushAccountPreferences({ courseSettings: localSettings });
-      } else if (cloud?.courseSettings && typeof cloud.courseSettings === 'object') {
-        cacheCourseSettings(cloud.courseSettings as SavedCourseSettings, user.id);
-        applySavedSettings(cloud.courseSettings as SavedCourseSettings);
-      } else {
-        applySavedSettings(localSettings);
-        // First-time migrate this device’s settings up to the account
-        void pushAccountPreferences({ courseSettings: localSettings });
+      const cloudSettings = (cloud?.courseSettings && typeof cloud.courseSettings === 'object')
+        ? cloud.courseSettings as SavedCourseSettings
+        : null;
+      const preferred = pickPreferredCourseSettings(localSettings, cloudSettings, sessionSavedAt);
+      applySavedSettings(preferred);
+      cacheCourseSettings(preferred, user.id);
+      const localWon = !cloudSettings
+        || Math.max(settingsUpdatedAt(localSettings), sessionSavedAt) >= settingsUpdatedAt(cloudSettings);
+      if (localWon) {
+        void pushAccountPreferences({ courseSettings: preferred });
       }
 
       if (cloud?.playerProperties && typeof cloud.playerProperties === 'object') {
@@ -3840,30 +3845,17 @@ export default function App() {
 
   const confirmUploadPath = async (choice: UploadPathChoice, chosenSourceMode: SourceMode = 'raw') => {
     const file = pendingUploadFile || uploadedFile;
-    // Capture before clearing — defaults mode means user just reviewed/edited Course Settings mid-upload.
-    const cameFromSettings = settingsMode === 'defaults';
     setShowUploadPathModal(false);
     setPendingUploadFile(null);
     setLastUploadPath(choice);
     if (!file) return;
-    // Both Build now and Review before build must honor Course Settings
-    // (interactions, knowledge-check types, multimedia). Prefer live React state when the
-    // user just edited/saved settings so we never regenerate from a stale localStorage/cloud copy.
-    let preferLive = cameFromSettings;
+    // Both Build now and Review before build must honor the live Course Settings
+    // (interactions, knowledge-check types, multimedia) no matter how Settings was opened.
+    const settingsOverride = collectCurrentSettings();
+    saveCourseSettings(settingsOverride, user?.id);
     try {
-      const savedAt = Number(sessionStorage.getItem('nexcourse.courseSettings.savedAt') || 0);
-      if (savedAt && Date.now() - savedAt < 60_000) preferLive = true;
+      sessionStorage.setItem('nexcourse.courseSettings.savedAt', String(Date.now()));
     } catch { /* ignore */ }
-    let settingsOverride: SavedCourseSettings;
-    if (preferLive) {
-      settingsOverride = collectCurrentSettings();
-      saveCourseSettings(settingsOverride, user?.id);
-      try {
-        sessionStorage.setItem('nexcourse.courseSettings.savedAt', String(Date.now()));
-      } catch { /* ignore */ }
-    } else {
-      settingsOverride = resolveCourseSettings(user?.id);
-    }
     applySavedSettings(settingsOverride);
     setSourceMode(chosenSourceMode);
     const fileKey = `${file.name}:${file.size}:${file.lastModified}`;
@@ -4658,6 +4650,19 @@ export default function App() {
               }
             } else if (wantsAi && !coverUrl) {
               console.warn('[ImageService] AI images enabled but no cover URL after cover phase');
+            }
+
+            if (wantsAi && isHubNavigation(navigationModeSnap) && stillActive()) {
+              const currentHub = working.hubImage;
+              if (!hasPlayableImageUrl(currentHub) || isThemeArchiveUrl(currentHub)) {
+                try {
+                  const hub = await generateHubBackdrop(working.title || 'Course', working.description);
+                  working = { ...working, hubImage: hub, hubPanelHidden: false };
+                  if (stillActive()) commitCourse(working);
+                } catch (hubErr) {
+                  console.warn('[ImageService] Hub backdrop failed:', hubErr);
+                }
+              }
             }
 
             showDraftMessage('Generating content visuals…');
@@ -6486,7 +6491,6 @@ export default function App() {
                       onClick={() => {
                         setAdminDropdownOpen(false);
                         dismissPlayerProperties();
-                        applySavedSettings(resolveCourseSettings(user?.id));
                         setSettingsMode('defaults');
                         setIsSandboxMode(false);
                         setMobileDesignDemo(false);
@@ -7043,7 +7047,8 @@ export default function App() {
                                  return;
                                }
                                if (lastUploadPath) {
-                                 const override = resolveCourseSettings(user?.id);
+                                 const override = collectCurrentSettings();
+                                 saveCourseSettings(override, user?.id);
                                  applySavedSettings(override);
                                  runAnalysis(uploadedFile, lastUploadPath, override);
                                } else {

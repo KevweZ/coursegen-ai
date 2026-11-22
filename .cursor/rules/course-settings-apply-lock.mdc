@@ -1,0 +1,21 @@
+---
+description: Saved Course Settings must drive generate no matter how Settings was opened.
+alwaysApply: true
+---
+
+# Course Settings apply lock (do not regress)
+
+Anthony (2026-11-22): multimedia and interaction changes were Saved, then Generate still used the old settings. AB was selected on Review but the terminal still had an ABCD passing-standard clause.
+
+`npm test` must stay green (`src/lib/courseSettingsApply.test.ts`, `src/lib/objectiveFormat.test.ts`).
+
+## Invariants (code, not comments)
+
+- **Live settings win.** Continue, analysis retry, Try Again, and Review Generate use [`collectCurrentSettings()`](src/App.tsx), then persist. Do not fall back to `resolveCourseSettings` for those paths.
+- **Do not reload storage over the working copy.** Opening Course Settings from the upload chooser or the header must not `applySavedSettings(resolveCourseSettings(...))`.
+- **Newer local beats stale cloud.** [`pickPreferredCourseSettings`](src/lib/courseSettingsStorage.ts) / [`pickPreferredRecord`](src/lib/courseSettingsPick.ts) compare `updatedAt` plus session `savedAt`. `saveCourseSettings` stamps `updatedAt: Date.now()`. Do not restore the 60-second-only preferLocal window.
+- **AB strips degree clauses.** [`DEGREE_CLAUSE`](src/lib/objectiveFormat.ts) includes `to a passing standard of 80% or higher` (and the other measurable-standard variants). AB must not leave ABC/ABCD accuracy language on the terminal.
+
+## How to change this
+
+Change the helpers and add a failing test first. Do not “fix” generate by telling the author to Save again.

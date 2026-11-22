@@ -2,7 +2,7 @@ import type { TerminalObjectiveGroup } from '../types/course';
 
 /** Real ABCD degree/standard clauses — not everyday "to/with" phrases like "common to PE". */
 const DEGREE_CLAUSE =
-  /\s+(?:with\s+at\s+least\s+\d+%\s+accuracy|with\s+\d+%\s+accuracy|to\s+a\s+measurable\s+standard|to\s+at\s+least\s+\d+%\s+accuracy)\.?$/i;
+  /\s+(?:with\s+at\s+least\s+\d+%\s+accuracy|with\s+\d+%\s+accuracy|to\s+a\s+measurable\s+standard|to\s+at\s+least\s+\d+%\s+accuracy|to\s+a\s+passing\s+standard(?:\s+of\s+\d+%\s+or\s+higher)?|scoring\s+at\s+least\s+\d+%|(?:at|with)\s+\d+%\s+or\s+higher)\.?$/i;
 
 const DANGLING_LAST = new Set([
   'according', 'common', 'associated', 'including', 'related', 'based', 'due',

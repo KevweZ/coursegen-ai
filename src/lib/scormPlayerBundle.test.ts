@@ -22,6 +22,6 @@ test('committed SCORM player includes the Overview / Instruction tab layout', ()
   assert.equal(existsSync(playerPath), true);
   const html = readFileSync(playerPath, 'utf8');
   assert.match(html, /children:"Instruction"/);
-  assert.match(html, /Select a topic tab to continue/);
+  assert.match(html, /Select a topic to continue/);
   assert.match(html, /data-float-stage/);
 });

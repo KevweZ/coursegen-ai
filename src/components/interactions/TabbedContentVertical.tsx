@@ -6,6 +6,7 @@ import { contrastTextOn } from '../../lib/colorContrast';
 import { Check, ChevronRight } from 'lucide-react';
 import { EnlargeableImage, type InFlowPromoteInfo } from '../player/EnlargeableImage';
 import InteractionIntroColumn from './InteractionIntroColumn';
+import { TabIntroEmpty } from './TabIntroEmpty';
 
 export interface VerticalTab {
   id: string;
@@ -279,7 +280,7 @@ export default function TabbedContentVertical({
           style={{
             height: PANEL_H,
             minHeight: PANEL_H,
-            ...(isLight ? { background: PROCESS_PANEL_DEFAULT } : {}),
+            ...(isLight ? { background: inIntro ? '#ffffff' : PROCESS_PANEL_DEFAULT } : {}),
           }}
         >
           {panelHighlighted && (
@@ -308,9 +309,7 @@ export default function TabbedContentVertical({
                       />
                     </div>
                   )}
-                  <p className="text-sm font-semibold" style={{ color: isLight ? '#64748b' : '#94a3b8' }}>
-                    Select a topic tab to continue →
-                  </p>
+                  <TabIntroEmpty theme={theme} />
                 </>
               ) : (
                 <>
@@ -322,7 +321,7 @@ export default function TabbedContentVertical({
                       dangerouslySetInnerHTML={{ __html: markdownToHtml(activeTab!.label) }}
                     />
                   </div>
-                  <div className={cn('text-sm leading-relaxed tab-ost-body w-full', isLight ? 'text-slate-700' : 'text-slate-200')} dangerouslySetInnerHTML={{ __html: markdownToHtml(formatTabOstBody(activeTab!.content) || formatTabOstBody(activeTab!.voiceOverText || '')) }} />
+                  <div className={cn('text-base leading-relaxed tab-ost-body w-full', isLight ? 'text-slate-700' : 'text-slate-200')} dangerouslySetInnerHTML={{ __html: markdownToHtml(formatTabOstBody(activeTab!.content) || formatTabOstBody(activeTab!.voiceOverText || '')) }} />
                   {activeTab!.imageUrl && (
                     <div className="mt-6 pt-4 border-t border-slate-200/80 w-full">
                       <EnlargeableImage
@@ -534,7 +533,7 @@ function VerticalTabsBlocksSkin({
         <div
           data-tab-drop-zone={dropZoneId || undefined}
           className={cn('flex-1 min-w-0 relative overflow-hidden', panelHighlighted && 'ring-4 ring-indigo-400/80 ring-inset')}
-          style={{ height: PANEL_H, minHeight: PANEL_H, background: well, color: wellInk }}
+          style={{ height: PANEL_H, minHeight: PANEL_H, background: inIntro && isLight ? '#ffffff' : well, color: wellInk }}
         >
           {panelHighlighted && (
             <div className="absolute inset-x-0 top-0 z-10 px-3 py-1.5 text-center text-[11px] font-bold pointer-events-none" style={{ color: '#fff', background: 'rgba(79,70,229,0.92)' }}>
@@ -553,18 +552,16 @@ function VerticalTabsBlocksSkin({
             >
               <div className="box-border w-full p-6 sm:p-7 text-left" style={{ color: wellInk }}>
                 {inIntro ? (
-                  <p className="text-sm font-semibold" style={{ color: muted }}>
-                    Select a topic tab to continue →
-                  </p>
+                  <TabIntroEmpty theme={isLight ? 'light' : 'dark'} />
                 ) : (
                   <>
                   <h3
-                    className="font-extrabold text-lg uppercase tracking-wide mb-4"
+                    className="font-extrabold text-xl uppercase tracking-wide mb-4"
                     style={{ color: wellInk }}
                     dangerouslySetInnerHTML={{ __html: headingHtml || '' }}
                   />
                 <div
-                  className="text-sm leading-relaxed tab-ost-body w-full"
+                  className="text-base leading-relaxed tab-ost-body w-full"
                   style={{ color: muted }}
                   dangerouslySetInnerHTML={{ __html: bodyHtml }}
                 />

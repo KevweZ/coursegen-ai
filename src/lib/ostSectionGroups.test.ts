@@ -92,6 +92,6 @@ test('section-group bullets render **ArtStation** as bold, not glyphs', () => {
   assert.doesNotMatch(html, /\*\*/);
 
   const view = readFileSync(resolve(process.cwd(), 'src/components/interactions/OstSectionGroupsView.tsx'), 'utf8');
-  assert.match(view, /markdownToInlineHtml\(g\.heading\)/);
-  assert.match(view, /markdownToInlineHtml\(b\)/);
+  assert.match(view, /markdownToInlineHtml\(preventWidow\(g\.heading\)\)/);
+  assert.match(view, /markdownToInlineHtml\(preventWidow\(b, 4\)\)/);
 });

@@ -23,6 +23,16 @@ test('AB keeps "common to" and "according to" instead of chopping the sentence',
   );
 });
 
+test('AB strips a leftover passing-standard degree clause', () => {
+  assert.equal(
+    applyObjectiveFormat(
+      'The learner will identify the correct application of traffic laws and right-of-way rules to a passing standard of 80% or higher.',
+      'AB',
+    ),
+    'The learner will identify the correct application of traffic laws and right-of-way rules.',
+  );
+});
+
 test('ABCD still strips a real accuracy clause then reapplies it', () => {
   const next = applyObjectiveFormat(
     'Given a case study, the learner will explain catalyst choice with at least 80% accuracy.',

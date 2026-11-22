@@ -32,7 +32,7 @@ export default function InteractionIntroColumn({
         </h3>
         {html ? (
           <div
-            className="text-sm leading-relaxed w-full tab-ost-body"
+            className="text-base leading-relaxed w-full tab-ost-body"
             style={{ color: muted }}
             dangerouslySetInnerHTML={{ __html: html }}
           />

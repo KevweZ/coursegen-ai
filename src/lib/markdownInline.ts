@@ -8,6 +8,7 @@
  */
 
 import { coerceOstText } from './formatTabIntroOst';
+import { preventWidow } from './preventWidow';
 
 const isHTML = (str: string): boolean => /<[a-z][\s\S]*>/i.test(str);
 
@@ -116,7 +117,7 @@ export function markdownToHtml(text: string | unknown): string {
     if (bulletMatch) {
       const indent = bulletMatch[1].replace(/\t/g, '  ').length;
       const depth = Math.min(3, Math.floor(indent / 2) + 1);
-      const body = bulletMatch[3];
+      const body = preventWidow(bulletMatch[3], 4);
       openList(depth);
       closeLists(depth);
       out.push(`<li>${inlineFormat(body)}</li>`);

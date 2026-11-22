@@ -2,6 +2,7 @@ import React from 'react';
 import { cn } from '../../lib/utils';
 import type { OstSectionGroup } from '../../lib/ostSectionGroups';
 import { markdownToInlineHtml } from '../../lib/markdownInline';
+import { preventWidow } from '../../lib/preventWidow';
 
 /** Parent topic as a heading; only child lines are bullets. */
 export function OstSectionGroupsView({
@@ -26,14 +27,14 @@ export function OstSectionGroupsView({
               light ? 'text-slate-800' : 'text-slate-100'
             )}
           >
-            <span dangerouslySetInnerHTML={{ __html: markdownToInlineHtml(g.heading) }} />
+            <span dangerouslySetInnerHTML={{ __html: markdownToInlineHtml(preventWidow(g.heading)) }} />
           </h3>
           <ul className={cn('pl-5 space-y-2 list-disc', light ? 'text-slate-800' : 'text-slate-200')}>
             {g.bullets.map((b, j) => (
               <li
                 key={j}
                 className="marker:[color:var(--slide-marker,#0f172a)] leading-relaxed"
-                dangerouslySetInnerHTML={{ __html: markdownToInlineHtml(b) }}
+                dangerouslySetInnerHTML={{ __html: markdownToInlineHtml(preventWidow(b, 4)) }}
               />
             ))}
           </ul>

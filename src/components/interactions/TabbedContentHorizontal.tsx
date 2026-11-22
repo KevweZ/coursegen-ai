@@ -9,6 +9,7 @@ import { TAB_INTRO_DEFAULT_HEX, tabAccentHex, PROCESS_PANEL_DEFAULT, resolveHexC
 import { contrastTextOn } from '../../lib/colorContrast';
 import { EnlargeableImage, type InFlowPromoteInfo } from '../player/EnlargeableImage';
 import InteractionIntroColumn from './InteractionIntroColumn';
+import { TabIntroEmpty } from './TabIntroEmpty';
 
 export { PROCESS_PANEL_DEFAULT };
 
@@ -192,7 +193,7 @@ export default function TabbedContentHorizontal({
     panelColor,
     wellColor,
   });
-  const panelBg = canvas.bg;
+  const panelBg = inIntro && isLight && !blocks ? '#ffffff' : canvas.bg;
   const ink = canvas.ink;
   const muted = canvas.muted;
   const labelInk = ink;
@@ -246,9 +247,11 @@ export default function TabbedContentHorizontal({
           >
             <div className="box-border w-full p-6 sm:p-7 text-left">
               {inIntro ? (
-                <p className="text-sm font-semibold" style={{ color: muted }}>
-                  {showStepLabels ? 'Select a step below to continue →' : 'Select below to continue →'}
-                </p>
+                <TabIntroEmpty
+                  theme={theme}
+                  prompt={showStepLabels ? 'Select a step to continue' : 'Select below to continue'}
+                  hint="Use the numbered steps to open this process"
+                />
               ) : (
                 <>
               {showStepLabels && (
@@ -260,18 +263,18 @@ export default function TabbedContentHorizontal({
                 </p>
               )}
                 <h3
-                  className="font-extrabold text-lg mb-4"
+                  className="font-extrabold text-xl mb-4"
                   style={{ color: ink }}
                   dangerouslySetInnerHTML={{ __html: headingHtml || '' }}
                 />
               <div
-                className="text-sm leading-relaxed tab-ost-body w-full"
+                className="text-base leading-relaxed tab-ost-body w-full"
                 style={{ color: muted }}
                 dangerouslySetInnerHTML={{ __html: bodyHtml }}
               />
               {activeTab!.expandedContent && (
                 <div
-                  className="mt-4 pt-4 border-t text-sm leading-relaxed tab-ost-body w-full"
+                  className="mt-4 pt-4 border-t text-base leading-relaxed tab-ost-body w-full"
                   style={{ borderColor: ink === '#ffffff' ? 'rgba(248,250,252,0.18)' : 'rgba(15,23,42,0.16)', color: muted }}
                   dangerouslySetInnerHTML={{ __html: markdownToHtml(formatTabOstBody(activeTab!.expandedContent)) }}
                 />

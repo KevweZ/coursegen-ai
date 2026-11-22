@@ -40,7 +40,7 @@ test('module ranges and completion check', () => {
   assert.equal(allContentModulesComplete(2, [1, 2]), true);
 });
 
-test('Main Menu stamps one theme-archive still and keeps it on reopen', () => {
+test('Main Menu does not stamp a generic theme-archive still', () => {
   const images = themeBackgroundImages('Neutral');
   assert.ok(images.length >= 2);
   assert.equal(pickStableBackground('Neutral', 'Polymers'), pickStableBackground('Neutral', 'Polymers'));
@@ -53,9 +53,18 @@ test('Main Menu stamps one theme-archive still and keeps it on reopen', () => {
     modules: [],
   });
   const b = ensureHubImage(a, 'hub');
-  assert.match(String(a.hubImage), /\/eLearning Template Backgrounds\//);
-  assert.equal(b.hubImage, a.hubImage);
+  assert.equal(a.hubImage, undefined);
+  assert.equal(b.hubImage, undefined);
   assert.equal(b, a);
+
+  const kept = ensureHubImage({
+    title: 'Safe Driving Skills for Today\'s Roads',
+    visualTheme: 'Neutral',
+    navigationMode: 'hub',
+    hubImage: 'data:image/png;base64,hub',
+    modules: [],
+  });
+  assert.equal(kept.hubImage, 'data:image/png;base64,hub');
 
   const hidden = ensureHubImage({
     title: 'Polymers: Chemistry and Processes',
@@ -90,6 +99,7 @@ test('Main Menu authoring uses hubImage, not a random courseBg fallback', () => 
   assert.match(app, /ensureHubImage/);
   assert.match(app, /applyHubMediaPatch/);
   assert.match(app, /hubImage/);
+  assert.match(app, /generateHubBackdrop/);
   assert.doesNotMatch(
     app,
     /isHubMenuSlide\(currentSlide\)[\s\S]{0,400}coverImage=\{\(course as any\)\?\.coverImage \|\| courseBg/,
@@ -98,6 +108,9 @@ test('Main Menu authoring uses hubImage, not a random courseBg fallback', () => 
   assert.match(hub, /EnlargeableImage/);
   assert.match(hub, /onSwap/);
   assert.match(hub, /Swap backdrop/);
+  assert.match(hub, /Unlock/);
   const lock = readFileSync(resolve(process.cwd(), '.cursor/rules/image-visual-lock.mdc'), 'utf8');
   assert.match(lock, /hubImage/);
+  assert.match(lock, /generateHubBackdrop/);
+  assert.doesNotMatch(lock, /ensureHubImage stamps one still/);
 });

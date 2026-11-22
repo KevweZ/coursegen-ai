@@ -1,0 +1,22 @@
+---
+description: Slides must look complete without images; no hanging titles; Instruction well starts white.
+alwaysApply: true
+---
+
+# Canvas occupancy lock (do not regress)
+
+Anthony (2026-11-22): demo recording showed stock Main Menu photos, hanging “Roads”, IDENTIFY: blue-colon splits, and bare tab wells that looked unfinished without AI/extracted pictures.
+
+`npm test` must stay green (`src/lib/preventWidow.test.ts`, `src/lib/instructionalVerb.test.ts`, `src/lib/hubNavigation.test.ts`, `src/lib/tabAccents.test.ts`, `src/lib/ostSectionGroups.test.ts`).
+
+## Invariants (code, not comments)
+
+- **Main Menu is not a 50/50 stock photo.** [`HubMenuSlide`](src/components/player/HubMenuSlide.tsx) uses large module cards plus a right-side padlock quiz (Unlock when every module is complete). [`ensureHubImage`](src/lib/hubNavigation.ts) must **not** stamp `/eLearning Template Backgrounds/`. When AI images are on, [`generateHubBackdrop`](src/services/imageService.ts) fills `course.hubImage`. Author Crop / Move / Delete / Swap stay.
+- **Covers look finished without a photo.** Course intro and module covers use a mid-slide banner and generic corner frames. Do not reserve half the canvas for an empty image well. Respect `coverTitleAlign` when the cover panel is hidden — do not auto-center.
+- **No hanging last words.** [`preventWidow`](src/lib/preventWidow.ts) glues the last two words on titles and bullets. Hub title stays one line. Do not restore Module Cover `maxWidth: 18ch`.
+- **Instruction well is white until a topic is selected.** [`TabIntroEmpty`](src/components/interactions/TabIntroEmpty.tsx) occupies the empty canvas. Selected topic/process wells keep `PROCESS_PANEL_DEFAULT` (or Blocks). Do not paint the unselected Instruction canvas `#eef2ff`.
+- **Bloom-verb bullets stay one sentence.** [`splitInstructionalVerb`](src/lib/instructionalVerb.ts) must not split list items into `IDENTIFY:` + hanging rest. [`looksLikeSectionHeader`](src/lib/ostSectionGroups.ts) must not promote `Identify: and avoid…`.
+
+## How to change this
+
+Change the helpers and add a failing test first. Do not fill empty canvas by auto-stamping stock photos.

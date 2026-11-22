@@ -422,10 +422,17 @@ ol.md-list li[style*="color"]::marker,
 /* text-wrap: balance distributes text evenly (Chrome 114+, Firefox 121+, Safari 17.4+) */
 /* text-wrap: pretty prevents single trailing word (Chrome 117+) */
 .slide-title-balanced {
-  text-wrap: balance;       /* broad support — even line distribution */
+  text-wrap: balance;       /* even line distribution where pretty is missing */
+  text-wrap: pretty;        /* avoid a hanging last word when supported */
   overflow-wrap: break-word;
   word-break: normal;       /* don't break mid-word with hyphen */
   hyphens: none;            /* explicitly disable auto-hyphenation on titles */
+}
+
+.prose li,
+.rich-slide-content li,
+.tab-ost-body li {
+  text-wrap: pretty;
 }
 
 /* ── Markdown lists from markdownToHtml (tab OST, timelines, etc.) ─────── */
