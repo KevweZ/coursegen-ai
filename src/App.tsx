@@ -86,6 +86,7 @@ import {
   shuffleQuizQuestionOptions,
   optionsWithCorrectFlags,
   isQuizKnowledgeCheckType,
+  knowledgeCheckSeqNav,
 } from './lib/knowledgeCheckOst';
 import { isKeyTakeawaysType } from './lib/keyTakeawayOst';
 import {
@@ -8446,6 +8447,41 @@ export default function App() {
                                  const currentQ = questions[qIndex];
                                  const qKey = questions.length > 1 ? `${currentSlide.id}-q-${qIndex}` : currentSlide.id;
                                  const qs = quizState[qKey] || { selectedIdx: null, submitted: false };
+                                 const seqNav = knowledgeCheckSeqNav({
+                                   questionCount: questions.length,
+                                   qIndex,
+                                   currentSubmitted: !!qs.submitted,
+                                 });
+                                 const goKcQuestion = (nextIndex: number) => setQuizState(s => ({ ...s, [seqKey]: { qIndex: nextIndex } }));
+                                 const kcSeqNavButtons = (seqNav.showPrev || seqNav.showNext) ? (
+                                   <div className="flex flex-wrap gap-3">
+                                     {seqNav.showPrev && (
+                                       <button
+                                         type="button"
+                                         onClick={() => goKcQuestion(qIndex - 1)}
+                                         className={cn(
+                                           'inline-flex items-center gap-1 px-6 py-2.5 font-bold rounded-xl transition-all border-2',
+                                           theme === 'light'
+                                             ? 'bg-white border-slate-300 text-slate-700 hover:border-indigo-400'
+                                             : 'bg-slate-800 border-slate-600 text-slate-200 hover:border-indigo-400',
+                                         )}
+                                       >
+                                         <ChevronLeft className="w-4 h-4" />
+                                         Previous question
+                                       </button>
+                                     )}
+                                     {seqNav.showNext && (
+                                       <button
+                                         type="button"
+                                         onClick={() => goKcQuestion(qIndex + 1)}
+                                         className="inline-flex items-center gap-1 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-all"
+                                       >
+                                         Next question
+                                         <ChevronRight className="w-4 h-4" />
+                                       </button>
+                                     )}
+                                   </div>
+                                 ) : null;
 
                                  if (!currentQ) return (
                                    <div className={cn('p-6 rounded-xl border', theme === 'light' ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-amber-900/20 border-amber-600/30 text-amber-300')}>
@@ -8502,6 +8538,7 @@ export default function App() {
                                        })}
                                      </div>
                                      {!qs.submitted ? (
+                                       <div className="space-y-3">
                                        <button
                                          disabled={qs.selectedIdx === null}
                                          onClick={() => {
@@ -8510,6 +8547,8 @@ export default function App() {
                                          }}
                                          className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-bold rounded-xl transition-all"
                                        >Submit Answer</button>
+                                       {kcSeqNavButtons}
+                                       </div>
                                      ) : (
                                        <div className="space-y-3">
                                        <div className={cn('p-4 rounded-xl font-bold flex flex-col gap-2', qs.selectedIdx === correctIdx ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-red-50 text-red-800 border border-red-200')}>
@@ -8522,15 +8561,7 @@ export default function App() {
                                          )}
                                          {(currentQ.feedback || quiz.feedback) && <p className="text-sm font-medium opacity-80">{currentQ.feedback || quiz.feedback}</p>}
                                        </div>
-                                       {qIndex < questions.length - 1 && (
-                                         <button
-                                           type="button"
-                                           onClick={() => setQuizState(s => ({ ...s, [seqKey]: { qIndex: qIndex + 1 } }))}
-                                           className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-all"
-                                         >
-                                           Next question
-                                         </button>
-                                       )}
+                                       {kcSeqNavButtons}
                                        </div>
                                      )}
                                    </div>

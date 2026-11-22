@@ -402,6 +402,21 @@ export function shuffleKnowledgeCheckOptions<T>(options: T[] | undefined, seed: 
   return next;
 }
 
+/** Previous / Next on a multi-question KC so revisit and Edit review are not stuck on the last item. */
+export function knowledgeCheckSeqNav(opts: {
+  questionCount: number;
+  qIndex: number;
+  currentSubmitted: boolean;
+}): { showPrev: boolean; showNext: boolean } {
+  const count = Math.max(0, Number(opts.questionCount) || 0);
+  const qIndex = Math.min(Math.max(0, Number(opts.qIndex) || 0), Math.max(0, count - 1));
+  if (count <= 1) return { showPrev: false, showNext: false };
+  return {
+    showPrev: qIndex > 0,
+    showNext: qIndex < count - 1 && !!opts.currentSubmitted,
+  };
+}
+
 /** Shuffle each knowledge-check question's choices. Mastery exam is a separate renderer. */
 export function shuffleQuizQuestionOptions(questions: QuizQuestionItem[], seed: string): QuizQuestionItem[] {
   if (!Array.isArray(questions) || !questions.length) return questions || [];

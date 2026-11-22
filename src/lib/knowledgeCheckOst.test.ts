@@ -10,6 +10,7 @@ import {
   setKnowledgeCheckCorrect,
   shuffleKnowledgeCheckOptions,
   shuffleQuizQuestionOptions,
+  knowledgeCheckSeqNav,
 } from './knowledgeCheckOst.ts';
 
 test('knowledge-check options shuffle stably and keep the correct flag', () => {
@@ -108,6 +109,21 @@ test('single-select toggle marks one correct; multiple-answers can mark two', ()
   assert.deepEqual(multi[0].options.filter(o => o.isCorrect).map(o => o.id).sort(), ['b', 'c']);
 });
 
+test('multi-question KC can page backward after the last item is submitted', () => {
+  const last = knowledgeCheckSeqNav({ questionCount: 3, qIndex: 2, currentSubmitted: true });
+  assert.equal(last.showPrev, true);
+  assert.equal(last.showNext, false);
+  const firstDone = knowledgeCheckSeqNav({ questionCount: 3, qIndex: 0, currentSubmitted: true });
+  assert.equal(firstDone.showPrev, false);
+  assert.equal(firstDone.showNext, true);
+  const middleOpen = knowledgeCheckSeqNav({ questionCount: 3, qIndex: 1, currentSubmitted: false });
+  assert.equal(middleOpen.showPrev, true);
+  assert.equal(middleOpen.showNext, false);
+  const one = knowledgeCheckSeqNav({ questionCount: 1, qIndex: 0, currentSubmitted: true });
+  assert.equal(one.showPrev, false);
+  assert.equal(one.showNext, false);
+});
+
 test('Edit Slide hides leftover KC OST and binds question fields', () => {
   const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
   assert.match(app, /isQuizKnowledgeCheckType\(editingSlide\.type\) \? null/);
@@ -115,4 +131,6 @@ test('Edit Slide hides leftover KC OST and binds question fields', () => {
   assert.match(fields, /knowledgeCheckEditQuestions/);
   assert.match(fields, /applyKnowledgeCheckEdits/);
   assert.match(fields, /setKnowledgeCheckCorrect/);
+  assert.match(app, /knowledgeCheckSeqNav/);
+  assert.match(app, /Previous question/);
 });
