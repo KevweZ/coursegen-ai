@@ -99,7 +99,7 @@ test('Main Menu authoring uses hubImage, not a random courseBg fallback', () => 
   assert.match(app, /ensureHubImage/);
   assert.match(app, /applyHubMediaPatch/);
   assert.match(app, /hubImage/);
-  assert.match(app, /generateHubBackdrop/);
+  assert.doesNotMatch(app, /generateHubBackdrop\(/);
   assert.doesNotMatch(
     app,
     /isHubMenuSlide\(currentSlide\)[\s\S]{0,400}coverImage=\{\(course as any\)\?\.coverImage \|\| courseBg/,
@@ -109,8 +109,11 @@ test('Main Menu authoring uses hubImage, not a random courseBg fallback', () => 
   assert.match(hub, /onSwap/);
   assert.match(hub, /Swap backdrop/);
   assert.match(hub, /Unlock/);
+  assert.match(hub, /hub-menu-stage/);
   const lock = readFileSync(resolve(process.cwd(), '.cursor/rules/image-visual-lock.mdc'), 'utf8');
   assert.match(lock, /hubImage/);
-  assert.match(lock, /generateHubBackdrop/);
+  assert.doesNotMatch(lock, /When AI images are on, .*generateHubBackdrop/);
   assert.doesNotMatch(lock, /ensureHubImage stamps one still/);
+  const occupancy = readFileSync(resolve(process.cwd(), '.cursor/rules/canvas-occupancy-lock.mdc'), 'utf8');
+  assert.doesNotMatch(occupancy, /When AI images are on, .*generateHubBackdrop fills/);
 });

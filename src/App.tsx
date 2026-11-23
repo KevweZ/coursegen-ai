@@ -182,7 +182,6 @@ import { getPresetOptions, getPresetConfig } from './lib/presetEngine';
 import { GameTemplateType } from './types/game';
 import {
   generateCourseCoverImage,
-  generateHubBackdrop,
   attachSourceImagesToCourse,
   generateContentSlideImages,
   imageModeFlags,
@@ -301,7 +300,6 @@ import {
   ensureHubImage,
   hubSlideIndex,
   isFirstSlideOfModule,
-  isThemeArchiveUrl,
   moduleIndexRange,
   moduleNumberForSlide,
   nextIndexAfterSlide,
@@ -4652,19 +4650,6 @@ export default function App() {
               }
             } else if (wantsAi && !coverUrl) {
               console.warn('[ImageService] AI images enabled but no cover URL after cover phase');
-            }
-
-            if (wantsAi && isHubNavigation(navigationModeSnap) && stillActive()) {
-              const currentHub = working.hubImage;
-              if (!hasPlayableImageUrl(currentHub) || isThemeArchiveUrl(currentHub)) {
-                try {
-                  const hub = await generateHubBackdrop(working.title || 'Course', working.description);
-                  working = { ...working, hubImage: hub, hubPanelHidden: false };
-                  if (stillActive()) commitCourse(working);
-                } catch (hubErr) {
-                  console.warn('[ImageService] Hub backdrop failed:', hubErr);
-                }
-              }
             }
 
             showDraftMessage('Generating content visuals…');

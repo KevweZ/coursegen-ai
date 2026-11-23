@@ -110,11 +110,7 @@ export const HubMenuSlide: React.FC<Props> = ({
           />
           <div
             className="absolute inset-0 pointer-events-none"
-            style={{
-              background: theme === 'light'
-                ? 'linear-gradient(90deg, rgba(255,255,255,0.94) 0%, rgba(255,255,255,0.86) 58%, rgba(255,255,255,0.55) 100%)'
-                : 'linear-gradient(90deg, rgba(15,23,42,0.92) 0%, rgba(15,23,42,0.78) 58%, rgba(15,23,42,0.45) 100%)',
-            }}
+            style={{ background: theme === 'light' ? 'rgba(248,250,252,0.28)' : 'rgba(15,23,42,0.38)' }}
           />
         </div>
       ) : hasFloatingHub ? null : (
@@ -138,7 +134,18 @@ export const HubMenuSlide: React.FC<Props> = ({
         </div>
       )}
 
-      <div className="relative z-[1] h-full flex flex-row items-stretch px-10 sm:px-12 py-8 gap-8">
+      <div
+        className={`relative z-[1] h-full flex ${displayImage ? 'items-center justify-center px-8 py-8 pointer-events-none' : 'flex-row items-stretch px-10 sm:px-12 py-8 gap-8'}`}
+      >
+        <div
+          className={displayImage
+            ? 'hub-menu-stage pointer-events-auto w-full max-w-[1040px] max-h-full overflow-hidden rounded-[1.75rem] border shadow-sm px-8 py-7 flex flex-row items-stretch gap-8'
+            : 'contents'}
+          style={displayImage ? {
+            background: theme === 'light' ? '#ffffff' : theme === 'unified' ? '#1e1b4b' : '#0f172a',
+            borderColor: theme === 'light' ? '#e2e8f0' : 'rgba(148,163,184,0.28)',
+          } : undefined}
+        >
         <div className="flex flex-col justify-center min-h-0 min-w-0" style={{ width: quizEnabled ? '62%' : '100%' }}>
           <p className="text-[11px] font-black uppercase tracking-[0.2em] mb-2" style={{ color: accentColor }}>
             Main Menu
@@ -218,6 +225,7 @@ export const HubMenuSlide: React.FC<Props> = ({
             </button>
           </div>
         )}
+        </div>
       </div>
 
       {canAuthor && !displayImage && (
