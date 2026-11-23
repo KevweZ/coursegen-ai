@@ -844,7 +844,8 @@ export async function hydrateCourseContent(
   - Optional scenarioText: a short situation paragraph the learner reads BEFORE the question (carrier alert, workplace vignette, yellow-box story). Not the question itself. Omit when there is no situation.
   - Must have EXACTLY 4 options: 1 correct (isCorrect: true) + 3 plausible distractors. STORYBOARD EXCEPTION: copy the spec's option count (3 is valid). Do not invent extra distractors to reach 4.
   - Exactly ONE question per Knowledge Check slide — including storyboards that say "Question 1 of 3". Do not emit data.questions. Do not write "Question 1 of 2". The outline already reserved N slides when a source listed multiple numbered questions. Do not collapse three single-selects into one multiple-answers item.
-  - options[].text must be meaningful (10+ chars). NEVER: "A", "B", "True", "False" unless it's genuinely a T/F slide
+  - options[].text must be meaningful. NEVER: "A", "B", "True", "False" unless it's genuinely a T/F slide
+  - If the stem asks which color / sign / type / category, options are THAT LABEL ONLY ("White signs", "Red signs") — 2–6 words. Do NOT restate the definition or the stem in the choice. Put the explanation in feedback after submit. FAIL: "White signs display rules and regulations that drivers must obey" when the question already asked which color is for rules.
   - feedback: string explaining why the correct answer is right (this is where teaching detail goes AFTER submit)
   - Slide-level content: 1 framing bullet about what is being tested. voiceOverText MUST be "" (empty). Knowledge checks have no spoken narration — same as Mastery Quiz questions. Do not give away the answer on screen.
   - mediaPrompt describes a photograph with NO text, letters, or labels in the image. Use the technical meaning of any short label (polymer termination, not a job firing).
@@ -861,8 +862,9 @@ export async function hydrateCourseContent(
   - Use for 1–4 tappable tiles/cards on a content screen. 5+ clickable items → click-reveal instead.
   - Two modes:
     • "explore" (click-to-reveal): click-to-explore, [DEV] reveal callouts, "select each", visit-all. data.mode = "explore". cards: [{ id, label, body, reveal }] with a UNIQUE reveal per card. Do NOT set isCorrect. No Check.
-    • "select" (pick then Check): decision-sort / which measures apply / accepted tiles. data.mode = "select". cards: [{ id, label, body, isCorrect }]. data.feedback after Check. data.selectMode multi|single.
-    • data.prompt for select mode MUST say the learner is choosing the CORRECT card(s) and then clicks Check. Example: "Select the correct process conditions, then click Check." NEVER "Select the process conditions…" (that reads as exploratory). Explore mode may use "Select each…".
+    • "select" (pick then Check): ONE prompt, PARALLEL answer cards the learner could choose (e.g. four responses to the same situation, or which grades apply). data.mode = "select". cards: [{ id, label, body, isCorrect }]. data.feedback after Check. data.selectMode multi|single.
+    • If the source lists several SCENARIOS to explore (tailgating, rude gestures, blocking traffic) rather than parallel answers to one question, that is explore — NOT select. Do not mix "another driver honks" tiles with one "let them pass" tile and ask Check.
+    • data.prompt for select mode MUST say the learner is choosing the CORRECT card(s) and then clicks Check. Example: "Select the correct process conditions, then click Check." NEVER "Select the process conditions…" (that reads as exploratory). NEVER "Select the correct response to each scenario" when the cards are the scenarios. Explore mode may use "Select each…".
   - data.prompt: the on-screen prompt (one sentence).
   - Card FACE: label (short title) plus at most ONE short teaser line in body (≤12 words). Spec facts (Reaction conditions:, Catalyst:, Key product:, Density:) go in reveal as bullets, then any paragraph. Do NOT stack four labeled rows on the tile.
   - voiceOverText: the storyboard narration. Never empty.
@@ -1530,6 +1532,7 @@ RULES:
 5. Prefer questions that each test a different enabling objective. Only write a second question on the same enabling after every enabling in that module already has one.
 6. Each question must have a 1-sentence explanation.
 7. Test a TECHNICAL FACT (cause, property, condition, sequence, outcome). NEVER ask whether a topic is a core idea / key topic / covered / discussed in this module or course. NEVER prefix questions with [Draft]. NEVER use options like "An unrelated topic", "A concept from another module", "None of the above", or "A core concept from the course".
+8. If the stem asks which color / sign / type / category, options are THAT LABEL ONLY (2–6 words). Do not restate the definition in the choice — put it in explanation.
 OUTPUT: Return ONLY valid JSON: { "questions": [{ "id": "q1", "type": "mc", "question": "...", "options": [...], "correctAnswer": 0, "explanation": "...", "moduleIndex": 0 }] }`;
 
   const objectivesJson = JSON.stringify(course.learningObjectives ?? []);

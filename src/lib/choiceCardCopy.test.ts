@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { compactChoiceCardCopy, inferChoiceCardsMode, choiceCardsPromptForMode } from './choiceCardCopy.ts';
+import { compactChoiceCardCopy, inferChoiceCardsMode, choiceCardsPromptForMode, choiceCardsAreSituationTiles } from './choiceCardCopy.ts';
 
 test('spec-table rows leave the choice-card face and join the reveal', () => {
   const next = compactChoiceCardCopy({
@@ -39,6 +39,20 @@ test('all-correct or oversized choice-cards are explore, not Check-all-green', (
     choiceCardsPromptForMode('Select the correct card pairs, then click Check.', 'explore'),
     'Select each card to explore this topic.',
   );
+});
+
+test('incident tiles with a response-to-each prompt are explore, not Check', () => {
+  const data = {
+    mode: 'select' as const,
+    prompt: 'Select the correct response to each aggressive driver scenario, then click Check.',
+    cards: [
+      { label: 'TAILGATING & HONKING', body: 'Another driver tailgates closely and honks.', isCorrect: false },
+      { label: 'RUDE GESTURES', body: 'A driver makes rude gestures at you.', isCorrect: false },
+      { label: 'SAFE PASSING', body: 'Let aggressive drivers pass and avoid eye contact.', isCorrect: true },
+    ],
+  };
+  assert.equal(choiceCardsAreSituationTiles(data), true);
+  assert.equal(inferChoiceCardsMode(data), 'explore');
 });
 
 test('short teasers stay on the card face', () => {

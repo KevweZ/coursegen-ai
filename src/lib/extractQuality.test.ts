@@ -133,6 +133,8 @@ test('Question 1 of 3 knowledge checks become one slide per question', () => {
   const ai = readFileSync(resolve(process.cwd(), 'src/services/aiService.ts'), 'utf8');
   assert.match(ai, /expandStoryboardMultiQuestionSlides/);
   assert.match(ai, /Do not emit data\.questions/);
+  assert.match(ai, /THAT LABEL ONLY/);
+  assert.match(ai, /rather than parallel answers to one question, that is explore/);
   assert.doesNotMatch(ai, /sourceMode === 'storyboard' && list\.length >= 2/);
   const edits = readFileSync(resolve(process.cwd(), 'src/lib/courseSlideEdits.ts'), 'utf8');
   assert.match(edits, /expandStoryboardMultiQuestionSlides\(course\.modules\)/);

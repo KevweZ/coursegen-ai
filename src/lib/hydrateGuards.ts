@@ -9,7 +9,7 @@
 
 import { isKnowledgeCheckSlide, stripSlideNarration } from './enablingCoverage';
 import { coerceOstText, isSymbolOnlyOstLine, sanitizeOstText } from './formatTabIntroOst';
-import { compactChoiceCardsList } from './choiceCardCopy';
+import { compactChoiceCardsList, inferChoiceCardsMode, choiceCardsPromptForMode } from './choiceCardCopy';
 import { quizQuestionList } from './knowledgeCheckOst';
 import { formatOstSectionGroups } from './ostSectionGroups';
 import { sanitizeMermaidCode } from './mermaidNodes';
@@ -121,6 +121,36 @@ export function ensureSelectChoicePrompt(prompt: unknown, correctCount = 0): str
     p = p.replace(/[.?!]?\s*$/, ', then click Check.');
   }
   return p;
+}
+
+/** Persist label-only options so generate JSON matches what the player shows. */
+export function stampCompactedQuizPayload(slide: any): any {
+  if (!isKnowledgeCheckSlide(slide)) return slide;
+  const listed = quizQuestionList(slide.interactions?.[0] || slide.data || slide);
+  if (listed.length !== 1) return slide;
+  const first = listed[0];
+  const next = { ...slide };
+  if (slide.data && typeof slide.data === 'object') {
+    next.data = {
+      ...slide.data,
+      questionText: first.questionText,
+      options: first.options,
+      feedback: first.feedback != null ? first.feedback : slide.data.feedback,
+    };
+  }
+  if (Array.isArray(slide.interactions) && slide.interactions[0] && typeof slide.interactions[0] === 'object') {
+    const ix0 = slide.interactions[0];
+    next.interactions = [
+      {
+        ...ix0,
+        questionText: first.questionText,
+        options: first.options,
+        feedback: first.feedback != null ? first.feedback : ix0.feedback,
+      },
+      ...slide.interactions.slice(1),
+    ];
+  }
+  return next;
 }
 
 export function quizHasLearnerPayload(slide: any): boolean {
@@ -607,17 +637,24 @@ export function finalizeHydratedSlide(slide: any, moduleTitle = ''): any {
     const correctCount = list.filter(
       (c: any) => c?.isCorrect === true || c?.accepted === true,
     ).length;
-    const allAccepted = list.length >= 2 && correctCount === list.length;
-    const scored = !allAccepted && (next.data?.mode === 'select' || correctCount > 0);
+    const inferred = inferChoiceCardsMode({
+      mode: next.data?.mode,
+      prompt: collapsed.prompt,
+      cards: list,
+      selectMode: next.data?.selectMode,
+    });
+    const scored = inferred === 'select';
     next = {
       ...next,
       content: collapsed.content,
       data: {
         ...(next.data || {}),
         mode: scored ? 'select' : 'explore',
-        prompt: scored ? ensureSelectChoicePrompt(collapsed.prompt, correctCount) : collapsed.prompt,
+        prompt: scored
+          ? ensureSelectChoicePrompt(collapsed.prompt, correctCount)
+          : choiceCardsPromptForMode(collapsed.prompt, 'explore'),
         cards: compactChoiceCardsList(list).map((c: any) => (
-          allAccepted ? { ...c, isCorrect: undefined, accepted: undefined } : c
+          scored ? c : { ...c, isCorrect: undefined, accepted: undefined }
         )),
       },
     };
@@ -647,6 +684,7 @@ export function finalizeHydratedSlide(slide: any, moduleTitle = ''): any {
   next = degradeIncompleteInteraction(next, moduleTitle);
   next = normalizeKeyTakeaways(next, { max: GENERATED_KEY_TAKEAWAY_MAX });
   next = ensureKnowledgeCheckPayload(next, moduleTitle);
+  next = stampCompactedQuizPayload(next);
 
   if ((next.type === 'content' || next.type === 'summary') && isThinTeachingContent(next.content)) {
     next = { ...next, content: fallbackTeachingContent(next.title, moduleTitle) };

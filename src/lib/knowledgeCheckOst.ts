@@ -1,4 +1,5 @@
 import { coerceOstText } from './formatTabIntroOst';
+import { compactLeakingQuizQuestion } from './scoredChoiceQuality';
 
 /** Player-chrome hint for sorting (and drop-targets rendered as sorting). Never a learning bullet. */
 export const SORTING_REORDER_HINT = 'Drag items or use ↑ ↓ arrows to reorder.';
@@ -231,12 +232,12 @@ function packQuizQuestion(q: any, fallbackScenario?: string): QuizQuestionItem |
   const questionText = String(q.questionText || q.prompt || q.question || '').trim();
   if (!questionText || options.length < 2) return null;
   const scenarioText = quizScenarioText(q) || fallbackScenario || '';
-  return {
+  return compactLeakingQuizQuestion({
     questionText: alignQuizSelectPrompt(questionText, options),
     options,
     feedback: q.feedback != null ? String(q.feedback) : undefined,
     scenarioText: scenarioText || undefined,
-  };
+  });
 }
 
 /** One or more scored questions on a quiz / multiple-answers slide. */

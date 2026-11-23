@@ -5,6 +5,7 @@
 
 import { isKnowledgeCheckSlide, isTeachingSlide } from './enablingCoverage';
 import { isMetaKnowledgeCheckText, isNonAssessableFactText } from './hydrateGuards';
+import { compactLeakingExamQuestion } from './scoredChoiceQuality';
 import type { ExamConfig, ExamQuestion } from '../types/course';
 
 export type ExamFact = {
@@ -269,7 +270,7 @@ export function sanitizeMasteryExamQuestions(
   for (let i = 0; i < total; i++) {
     const next = kept[i] || grounded[i] || grounded[i % Math.max(1, grounded.length)];
     if (!next) continue;
-    out.push({ ...next, id: `q-${out.length + 1}` });
+    out.push({ ...compactLeakingExamQuestion(next), id: `q-${out.length + 1}` });
   }
   return out;
 }
