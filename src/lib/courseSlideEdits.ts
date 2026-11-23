@@ -5,6 +5,7 @@ import { moveArrayItem } from './objectiveOrder';
 import { collapseDuplicateModuleSummaries } from './enablingCoverage';
 import { ensureTabListIds, isTabbedNarrationType } from './narrationAudio';
 import { groundModuleKnowledgeChecks } from './knowledgeCheckGround';
+import { expandStoryboardMultiQuestionSlides } from './storyboardSource';
 
 function slideBodyText(slide: any): string {
   const question = String(
@@ -221,7 +222,10 @@ export function newCourseEntityId(prefix = 'slide'): string {
 
 /** Later copies of a reused id get a new id so clips cannot land on two slides. */
 export function ensureUniqueSlideIds(course: any): any {
-  const deduped = dedupeIdenticalModuleSlides(course);
+  const expanded = course?.modules
+    ? { ...course, modules: expandStoryboardMultiQuestionSlides(course.modules) }
+    : course;
+  const deduped = dedupeIdenticalModuleSlides(expanded);
   if (!deduped?.modules) return deduped;
   const seen = new Set<string>();
   return {

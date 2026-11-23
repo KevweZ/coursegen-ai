@@ -99,6 +99,43 @@ test('identical copies already in a module are dropped, distinct knowledge check
   assert.equal(next.modules[0].slides.length, 4);
 });
 
+test('ensureUniqueSlideIds splits a packed multi-question knowledge check', () => {
+  const course = ensureUniqueSlideIds({
+    modules: [{
+      slides: [{
+        id: 'kc-pack',
+        type: 'quiz',
+        title: 'Knowledge Check: Olefins',
+        data: {
+          questions: [
+            {
+              questionText: 'Which product is ethylene in steam cracking?',
+              options: [
+                { id: 'a', text: 'The primary C2 olefin', isCorrect: true },
+                { id: 'b', text: 'A quench oil fraction', isCorrect: false },
+              ],
+            },
+            {
+              questionText: 'Which product is propylene in steam cracking?',
+              options: [
+                { id: 'a', text: 'The primary C3 olefin', isCorrect: true },
+                { id: 'b', text: 'A dilution steam impurity', isCorrect: false },
+              ],
+            },
+          ],
+        },
+      }],
+    }],
+  });
+  const slides = course.modules[0].slides;
+  assert.equal(slides.length, 2);
+  assert.equal(slides[0].id, 'kc-pack');
+  assert.notEqual(slides[1].id, slides[0].id);
+  assert.match(slides[0].data.questionText, /ethylene/i);
+  assert.match(slides[1].data.questionText, /propylene/i);
+  assert.equal(slides[0].data.questions, undefined);
+});
+
 test('ensureUniqueSlideIds also drops identical content copies', () => {
   const course = ensureUniqueSlideIds({
     modules: [{ slides: [dilution('same'), dilution('same'), dilution('other')] }],

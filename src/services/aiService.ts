@@ -19,7 +19,6 @@ import {
   remapStoryboardScenarioModules,
   remapStoryboardScenarioSlide,
   expandStoryboardMultiQuestionSlides,
-  expandOneMultiQuestionSlide,
   expandStoryboardQuizOutlineFromSource,
   dedupeStoryboardModuleSlides,
   type SourceMode,
@@ -665,6 +664,8 @@ export async function generateCourseOutline(
         ) as any,
         configParams.sourceContent || '',
       ) as any;
+    } else {
+      parsedOutline.modules = expandStoryboardMultiQuestionSlides(parsedOutline.modules as any) as any;
     }
     parsedOutline.modules = coerceInteractionTypes(parsedOutline.modules, outlineInteractions, {
       includeDiagrams,
@@ -842,8 +843,7 @@ export async function hydrateCourseContent(
   - NEVER use the stem "Which statement about [topic] is most accurate?" with placeholder options such as "The primary role or definition of…", "A common mix-up with a different process than…", "A condition that does not apply to…", or "A result that … never produces". Those are incomplete. Options must be complete technical claims from the source — the same thoroughness as Mastery Quiz items.
   - Optional scenarioText: a short situation paragraph the learner reads BEFORE the question (carrier alert, workplace vignette, yellow-box story). Not the question itself. Omit when there is no situation.
   - Must have EXACTLY 4 options: 1 correct (isCorrect: true) + 3 plausible distractors. STORYBOARD EXCEPTION: copy the spec's option count (3 is valid). Do not invent extra distractors to reach 4.
-  - When THIS slide is already a Knowledge Check and the storyboard lists 2+ numbered questions on one screen, emit data.questions: [{ questionText, options, feedback }] — one object per numbered question, exact stems and Keys. Do not invent a different wrapping question. Do not collapse them into one multiple-answers item.
-  - RAW / lecture conversion: exactly ONE question per Knowledge Check slide. Do not emit data.questions. Do not write "Question 1 of 2".
+  - Exactly ONE question per Knowledge Check slide — including storyboards that say "Question 1 of 3". Do not emit data.questions. Do not write "Question 1 of 2". The outline already reserved N slides when a source listed multiple numbered questions. Do not collapse three single-selects into one multiple-answers item.
   - options[].text must be meaningful (10+ chars). NEVER: "A", "B", "True", "False" unless it's genuinely a T/F slide
   - feedback: string explaining why the correct answer is right (this is where teaching detail goes AFTER submit)
   - Slide-level content: 1 framing bullet about what is being tested. voiceOverText MUST be "" (empty). Knowledge checks have no spoken narration — same as Mastery Quiz questions. Do not give away the answer on screen.
@@ -1159,27 +1159,15 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
         : (cards.some((c: any) => c?.isCorrect === true || c?.accepted === true) ? 'select' : 'explore');
       slide.data = { ...slide.data, mode };
     }
-    else if (slide.type === 'quiz' || slide.type === 'multiple-choice' || slide.type === 'multiple-answers' || slide.type === 'true-false') {
+    else if (slide.type === 'quiz' || slide.type === 'multiple-choice' || slide.type === 'multiple-answers' || slide.type === 'true-false' || slide.type === 'knowledge-check') {
       const list = quizQuestionList(slide.interactions?.[0] || slide.data || slide);
-      if (sourceMode === 'storyboard' && list.length >= 2) {
-        return expandOneMultiQuestionSlide(slide);
-      }
-      if (list.length >= 2) {
-        const first = list[0];
-        slide.data = {
-          ...(slide.data || {}),
-          questionText: first.questionText,
-          options: first.options,
-          feedback: first.feedback,
-          scenarioText: first.scenarioText,
-        };
-        if (slide.data) delete slide.data.questions;
-      } else if (list.length === 1) {
+      // Packed 2+ stems stay until expandStoryboardMultiQuestionSlides (after KC budget).
+      if (list.length === 1) {
         if (slide.data) slide.data = applyAlignedQuizPrompt({ ...slide.data, options: list[0].options, questionText: list[0].questionText });
         if (Array.isArray(slide.interactions) && slide.interactions[0]) {
           slide.interactions[0] = applyAlignedQuizPrompt({ ...slide.interactions[0], options: list[0].options });
         }
-      } else if (!isKnowledgeCheckSlide(slide)) {
+      } else if (!list.length && !isKnowledgeCheckSlide(slide)) {
         slide.type = 'content';
         slide.content = slide.content || `**${slide.title || 'Knowledge Check'}**\n\nReview this topic, then continue. (Interactive question options were incomplete and were converted to content.)`;
       }
@@ -1450,12 +1438,13 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     }).modules as any;
   }
 
+  fullCourse.modules = expandStoryboardMultiQuestionSlides(
+    sourceMode === 'storyboard'
+      ? remapStoryboardScenarioModules(fullCourse.modules as any) as any
+      : fullCourse.modules as any,
+  ) as any;
   if (sourceMode === 'storyboard') {
-    fullCourse.modules = dedupeStoryboardModuleSlides(
-      expandStoryboardMultiQuestionSlides(
-        remapStoryboardScenarioModules(fullCourse.modules as any) as any
-      ) as any
-    ) as any;
+    fullCourse.modules = dedupeStoryboardModuleSlides(fullCourse.modules as any) as any;
   }
   if (hydrateInteractions.length) {
     const allow = sourceMode === 'storyboard'

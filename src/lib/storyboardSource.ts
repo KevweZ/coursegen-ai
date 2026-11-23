@@ -316,7 +316,7 @@ export function remapStoryboardScenarioModules<T extends { slides?: any[] }>(mod
   }));
 }
 
-const QUIZ_SLIDE_TYPES = new Set(['quiz', 'multiple-choice', 'multiple-answers', 'true-false']);
+const QUIZ_SLIDE_TYPES = new Set(['quiz', 'multiple-choice', 'multiple-answers', 'true-false', 'knowledge-check']);
 
 function quizTypeFromQuestion(q: { options?: any[] }, fallback: string): string {
   const correct = (q.options || []).filter((o: any) => o?.isCorrect === true || o?.correct === true).length;

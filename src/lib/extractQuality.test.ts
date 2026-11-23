@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { assessExtract, extractBusyCopy } from './extractQuality.ts';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { looksLikeStoryboard, shouldOfferStoryboardChoice, defaultSourceModeFromFileName, fileSourceConfigFromExtract, CONTENT_FILE_SOURCE_CHARS, CONTENT_FILE_COVERAGE_CHARS, contentFileCoverageWindow, contentFileHydrateExcerpt } from './storyboardSource.ts';
+import { looksLikeStoryboard, shouldOfferStoryboardChoice, defaultSourceModeFromFileName, fileSourceConfigFromExtract, CONTENT_FILE_SOURCE_CHARS, CONTENT_FILE_COVERAGE_CHARS, contentFileCoverageWindow, contentFileHydrateExcerpt, expandOneMultiQuestionSlide, expandStoryboardMultiQuestionSlides } from './storyboardSource.ts';
 
 test('Content file extract is passed into outline and hydrate, not title-only', () => {
   const raw = 'Ethylene-vinyl acetate copolymerization kinetics. '.repeat(80);
@@ -85,6 +85,57 @@ test('busy extract copy names the file', () => {
   assert.match(copy.heading, /Polymers Course\.pptx/);
   assert.match(copy.detail, /storyboard/i);
   assert.doesNotMatch(copy.detail, /unlock|Continue stays/i);
+});
+
+test('Question 1 of 3 knowledge checks become one slide per question', () => {
+  const packed = {
+    id: 'kc-feed',
+    type: 'quiz',
+    title: 'Knowledge Check: Feedstock',
+    data: {
+      questions: [
+        {
+          questionText: 'What is naphtha used for in steam cracking?',
+          options: [
+            { id: 'a', text: 'A liquid hydrocarbon feed', isCorrect: true },
+            { id: 'b', text: 'A quench medium only', isCorrect: false },
+          ],
+        },
+        {
+          questionText: 'What is ethane used for in steam cracking?',
+          options: [
+            { id: 'a', text: 'A gaseous hydrocarbon feed', isCorrect: true },
+            { id: 'b', text: 'A dilution steam source', isCorrect: false },
+          ],
+        },
+        {
+          questionText: 'What is LPG in this process?',
+          options: [
+            { id: 'a', text: 'A mix of C3 and C4 feed', isCorrect: true },
+            { id: 'b', text: 'A compressor lubricant', isCorrect: false },
+          ],
+        },
+      ],
+    },
+  };
+  const out = expandOneMultiQuestionSlide(packed);
+  assert.equal(out.length, 3);
+  assert.equal(out[0].id, 'kc-feed');
+  assert.equal(out[1].id, 'kc-feed-q2');
+  assert.equal(out[2].id, 'kc-feed-q3');
+  assert.equal(out[0].data.questions, undefined);
+  assert.match(out[0].data.questionText, /naphtha/i);
+  assert.match(out[1].data.questionText, /ethane/i);
+  assert.match(out[2].data.questionText, /LPG/i);
+  const modules = expandStoryboardMultiQuestionSlides([{ slides: [packed] }]);
+  assert.equal(modules[0].slides.length, 3);
+
+  const ai = readFileSync(resolve(process.cwd(), 'src/services/aiService.ts'), 'utf8');
+  assert.match(ai, /expandStoryboardMultiQuestionSlides/);
+  assert.match(ai, /Do not emit data\.questions/);
+  assert.doesNotMatch(ai, /sourceMode === 'storyboard' && list\.length >= 2/);
+  const edits = readFileSync(resolve(process.cwd(), 'src/lib/courseSlideEdits.ts'), 'utf8');
+  assert.match(edits, /expandStoryboardMultiQuestionSlides\(course\.modules\)/);
 });
 
 test('thin and image-only extracts get a warning line', () => {

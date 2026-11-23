@@ -16,7 +16,7 @@ Anthony (2026-11-01): Edit on a Knowledge Check still showed leftover “Test yo
 - **Correct answers are togglable.** Radio for single-select; checkbox for multiple-answers (`setKnowledgeCheckCorrect`). Do not require Regenerate to change a word or the keyed answer.
 - **Mastery Quiz is the same.** Edit Slide on `mastery-exam` hides leftover OST ([`isMasteryExamType`](src/lib/masteryExam.ts)). Stem and choices come from `examQuestions` via [`masteryExamEditQuestions`](src/lib/masteryExam.ts). Save writes [`persistMasteryExamQuestions`](src/lib/masteryExam.ts) onto `examQuestions` / `course.examQuestions` so the quiz the learner sees updates. Do not shuffle options in the editor. Do not require Regenerate to change a word or the keyed answer.
 - **Keep the player layout.** Do not put “Test your understanding” back on the KC canvas.
-- **Multi-question review stays reachable.** A KC with `data.questions` keeps its seq index, but after an item is submitted (and on revisit / after Edit) [`knowledgeCheckSeqNav`](src/lib/knowledgeCheckOst.ts) shows **Previous question** / **Next question** so learners and authors are not stuck on 3 of 3. Next stays gated until the current item is submitted. Do not reset to question 1 on every slide enter.
+- **Packed checks become separate slides.** Generate and draft load split `data.questions` into one KC slide each, so the player Next button is the only continue. [`knowledgeCheckSeqNav`](src/lib/knowledgeCheckOst.ts) is leftover-only if a packed payload still reaches the canvas.
 
 ## How to change this
 
