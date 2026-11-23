@@ -104,6 +104,30 @@ test('this-slide option only collects jobs for that slide', () => {
   assert.ok(tabs.length <= MAX_SLIDE_AI_IMAGES);
 });
 
+test('tab picture jobs are exclusive and do not reuse the intro body', () => {
+  const jobs = collectContentImageJobs(courseWithSlides([{
+    id: 'signs',
+    type: 'tabbed-vertical',
+    title: 'Traffic Sign Color Categories',
+    content: 'All four sign colors lined up from left to right.',
+    data: {
+      tabs: [
+        { id: 'red', label: 'Red signs', content: 'Octagonal stop signs and yield triangles.' },
+        { id: 'white', label: 'White signs', content: 'Regulatory speed and lane rules.' },
+        { id: 'yellow', label: 'Yellow signs', content: 'Warning diamonds for hazards ahead.' },
+      ],
+    },
+  }]), { skipBenefitHeuristic: true });
+  const red = jobs.find((j) => j.kind === 'tab' && /red/i.test(j.panelLabel));
+  assert.ok(red);
+  assert.equal(red?.exclusive, true);
+  assert.match(String(red?.panelBody), /octagonal stop/i);
+  assert.doesNotMatch(String(red?.panelBody), /lined up from left to right/i);
+  assert.ok((red?.siblingLabels || []).some((s) => /white signs/i.test(s)));
+  const intro = jobs.find((j) => j.kind === 'intro');
+  assert.equal(intro?.exclusive, undefined);
+});
+
 test('skips quizzes, objectives, and slides that already have in-flow or floating visuals', () => {
   assert.ok(slideTypeSkipsAiContentImages('knowledge-check'));
   assert.ok(slideTypeSkipsAiContentImages('mastery-exam'));

@@ -744,13 +744,17 @@ export async function enrichHotspotAndCarouselImages(
             const url = nextSrc(buildItemPanelText(slide, c));
             if (url) return { ...c, imageUrl: url };
             if (opts.generateAi) {
+              const siblingLabels = cards
+                .map((other: any) => String(other?.label || other?.title || '').trim())
+                .filter((n: string) => n && n.toLowerCase() !== String(c.label || c.title || '').toLowerCase());
               const grounded = buildGroundedVisualPrompt({
                 courseTitle: course.title,
                 moduleTitle: m.title,
                 slideTitle: slide.title,
                 panelLabel: c.label || c.title || 'topic',
                 panelBody: c.description || c.expandedContent || c.content || '',
-                mediaPrompt: slide.mediaPrompt,
+                exclusive: true,
+                siblingLabels,
               });
               aiJobs.push({
                 kind: 'carousel',
@@ -996,6 +1000,8 @@ export async function generateContentSlideImages(
     panelLabel: job.panelLabel,
     panelBody: job.panelBody,
     mediaPrompt: job.mediaPrompt,
+    exclusive: job.exclusive,
+    siblingLabels: job.siblingLabels,
   });
   const attemptOnce = (job: ContentImageJob) =>
     groundedCall(visualInput(job), {

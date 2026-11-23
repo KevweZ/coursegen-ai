@@ -10,6 +10,7 @@
 import { isKnowledgeCheckSlide, stripSlideNarration } from './enablingCoverage';
 import { coerceOstText, isSymbolOnlyOstLine, sanitizeOstText } from './formatTabIntroOst';
 import { compactChoiceCardsList, inferChoiceCardsMode, choiceCardsPromptForMode } from './choiceCardCopy';
+import { contentPromisesCarousel, ensureCarouselCards, listCarouselCards } from './carouselCards';
 import { quizQuestionList } from './knowledgeCheckOst';
 import { formatOstSectionGroups } from './ostSectionGroups';
 import { sanitizeMermaidCode } from './mermaidNodes';
@@ -457,6 +458,10 @@ export function teachingSlideNeedsRetry(slide: any): boolean {
   }
   const type = String(slide.type || 'content');
   if (type === 'choice-cards') return !interactionHasItems(slide, 'cards', 2);
+  if (type === 'carousel-panel') return listCarouselCards(slide).length < 2;
+  if (type === 'content' && contentPromisesCarousel(slide) && listCarouselCards(slide).length < 2) {
+    return true;
+  }
   if (type === 'click-reveal') return !interactionHasItems(slide, 'items', 2);
   if (type === 'tabbed-horizontal' || type === 'tabbed-vertical') {
     return !interactionHasItems(slide, 'tabs', 2);
@@ -685,6 +690,7 @@ export function finalizeHydratedSlide(slide: any, moduleTitle = ''): any {
   next = normalizeKeyTakeaways(next, { max: GENERATED_KEY_TAKEAWAY_MAX });
   next = ensureKnowledgeCheckPayload(next, moduleTitle);
   next = stampCompactedQuizPayload(next);
+  next = ensureCarouselCards(next, moduleTitle);
 
   if ((next.type === 'content' || next.type === 'summary') && isThinTeachingContent(next.content)) {
     next = { ...next, content: fallbackTeachingContent(next.title, moduleTitle) };

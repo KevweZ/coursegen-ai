@@ -80,6 +80,40 @@ test('prompts always carry the no-text rule and never ask to typeset titles', ()
   assert.doesNotMatch(prompt, /typeset the course title onto the image/i);
 });
 
+test('exclusive tab pictures are this panel only, not a lineup of sibling topics', () => {
+  const input = {
+    courseTitle: 'Safe Driving Skills for Today\'s Roads',
+    moduleTitle: 'Traffic Laws and Signs',
+    slideTitle: 'Traffic Sign Color Categories',
+    panelLabel: 'Red signs',
+    panelBody: 'Red octagonal stop signs and yield triangles tell drivers to stop or give way.',
+    exclusive: true,
+    siblingLabels: ['White signs', 'Yellow signs', 'Green signs'],
+  };
+  const { visual, forbid } = resolveVisualSubject(input);
+  assert.match(visual, /ONLY this one subject/i);
+  assert.match(visual, /Red signs/i);
+  assert.doesNotMatch(visual, /White signs display|all signs lined/i);
+  assert.ok(forbid.some((f) => /lineup|collection/i.test(f)));
+  assert.ok(forbid.some((f) => /White signs/i.test(f)));
+
+  const { prompt } = buildGroundedVisualPrompt(input);
+  assert.match(prompt, /single subject/i);
+  assert.match(prompt, /White signs/i);
+  assert.match(prompt, /blank shape and color/i);
+  assert.match(prompt, /never a row of mixed signs/i);
+});
+
+test('intro pictures may still show the whole set', () => {
+  const { visual } = resolveVisualSubject({
+    courseTitle: 'Safe Driving Skills',
+    slideTitle: 'Traffic Sign Color Categories',
+    panelLabel: 'Traffic Sign Color Categories',
+    panelBody: 'Red, white, yellow, and green signs each have a job.',
+  });
+  assert.doesNotMatch(visual, /ONLY this one subject/i);
+});
+
 test('generic mediaPrompt fallbacks are ignored in favor of panel body', () => {
   assert.equal(isGenericMediaPrompt('Professional illustration related to EVA'), true);
   const { visual } = resolveVisualSubject({

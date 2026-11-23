@@ -6,6 +6,7 @@ import { collapseDuplicateModuleSummaries } from './enablingCoverage';
 import { ensureTabListIds, isTabbedNarrationType } from './narrationAudio';
 import { groundModuleKnowledgeChecks } from './knowledgeCheckGround';
 import { expandStoryboardMultiQuestionSlides } from './storyboardSource';
+import { ensureCarouselCards } from './carouselCards';
 
 function slideBodyText(slide: any): string {
   const question = String(
@@ -233,14 +234,15 @@ export function ensureUniqueSlideIds(course: any): any {
     modules: deduped.modules.map((m: any) => groundModuleKnowledgeChecks({
       ...m,
       slides: (m.slides || []).map((s: any) => {
-        const id = String(s?.id || '').trim();
+        const healed = ensureCarouselCards(s, m.title);
+        const id = String(healed?.id || '').trim();
         if (id && !seen.has(id)) {
           seen.add(id);
-          return s;
+          return healed;
         }
         const nextId = newCourseEntityId();
         seen.add(nextId);
-        return { ...s, id: nextId };
+        return { ...healed, id: nextId };
       }),
     })),
   };

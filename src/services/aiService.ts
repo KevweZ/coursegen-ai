@@ -1,5 +1,4 @@
 import { CourseOutline, TerminalObjectiveGroup, ExamConfig, ExamQuestion } from "../types/course";
-import { coerceCarouselColor } from "../lib/colorContrast";
 import { ensureEnablingSlideCoverage, preserveEnablingIndex, normalizeTerminalGroups, slideSkipsNarration, stripSlideNarration, isKnowledgeCheckSlide, isSummarySlide, collapseDuplicateModuleSummaries } from "../lib/enablingCoverage";
 import { allocateKnowledgeCheckSlots, alignHydratedSlidesToOutline, ensureKnowledgeCheckBudget } from "../lib/knowledgeCheckBudget";
 import { finalizeHydratedSlide, teachingSlideNeedsRetry, normalizeKeyTakeaways } from "../lib/hydrateGuards";
@@ -24,6 +23,7 @@ import {
   type SourceMode,
 } from "../lib/storyboardSource";
 import { applyAlignedQuizPrompt, quizQuestionList } from "../lib/knowledgeCheckOst";
+import { listCarouselCards } from "../lib/carouselCards";
 import { getSupabaseAccessTokenAsync } from "../lib/supabaseAccessToken";
 import { waitForApiWarm } from "../lib/apiWarmup";
 import { ADD_CONTENT_EMPTY_MESSAGE, OUTLINE_PARSE_MESSAGE, isEmptyOrUnparseableAiPayload, shouldAbortHydrateLadder, shouldRetryAiProxy, shouldRetryAiRateLimit } from "../lib/analysisErrors";
@@ -1138,12 +1138,9 @@ Return ONLY a JSON object for this single slide with all fields: id, type, title
     }
 
     if (slide.type === 'carousel-panel') {
-      const cards = slide.data?.cards || slide.data?.items;
-      if (Array.isArray(cards)) {
-        slide.data = {
-          ...(slide.data || {}),
-          cards: cards.map((c: any, i: number) => ({ ...c, color: coerceCarouselColor(c?.color, i) })),
-        };
+      const cards = listCarouselCards(slide);
+      if (cards.length) {
+        slide.data = { ...(slide.data || {}), cards };
       }
     }
 
@@ -1736,10 +1733,8 @@ function normalizeInsertedSlide(slide: any, fallbackTitle: string): any {
 
   const data = slide.data && typeof slide.data === 'object' ? { ...slide.data } : {};
   if (type === 'carousel-panel') {
-    const cards = data.cards || data.items;
-    if (Array.isArray(cards)) {
-      data.cards = cards.map((c: any, i: number) => ({ ...c, color: coerceCarouselColor(c?.color, i) }));
-    }
+    const cards = listCarouselCards({ ...slide, type, data });
+    if (cards.length) data.cards = cards;
   }
   if ((type === 'quiz' || type === 'multiple-answers' || type === 'true-false') && !data.questionText && slide.questionText) {
     data.questionText = slide.questionText;

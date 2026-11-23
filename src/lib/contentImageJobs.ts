@@ -77,6 +77,9 @@ export type ContentImageJob = {
   panelLabel: string;
   panelBody: string;
   mediaPrompt?: string;
+  /** Tab/item pictures are this panel only — not a lineup of the whole slide. */
+  exclusive?: boolean;
+  siblingLabels?: string[];
 };
 
 export type ContentImageJobStatus = 'pending' | 'generating' | 'done' | 'skipped';
@@ -216,10 +219,13 @@ export function collectContentImageJobs(
           }
         }
         if (Array.isArray(tabs)) {
+          const siblingLabels = tabs
+            .map((t: any) => String(t?.label || t?.title || '').trim())
+            .filter(Boolean);
           tabs.forEach((tab: any, tabIndex: number) => {
             if (tabHasVisual(s, tab)) return;
             const label = tab?.label || tab?.title || `Tab ${tabIndex + 1}`;
-            const body = `${tab?.content || ''} ${tab?.voiceOverText || ''} ${s.title || ''}`;
+            const body = `${tab?.content || ''} ${tab?.voiceOverText || ''}`;
             if (!benefits(label, body) && !benefits(s.title || '', tab?.content || '')) return;
             const panelLabel = /^(introduction|overview|summary)$/i.test(String(label).trim())
               ? (s.title || label)
@@ -234,8 +240,10 @@ export function collectContentImageJobs(
               slideTitle: s.title || label,
               moduleTitle: m.title || '',
               panelLabel,
-              panelBody: tab?.content || tab?.voiceOverText || s.content || '',
-              mediaPrompt: tab?.mediaPrompt || s.mediaPrompt,
+              panelBody: body.trim(),
+              mediaPrompt: tab?.mediaPrompt,
+              exclusive: true,
+              siblingLabels: siblingLabels.filter((n: string) => n.toLowerCase() !== String(label).toLowerCase()),
             });
           });
         }
@@ -245,6 +253,9 @@ export function collectContentImageJobs(
       if (s.type === 'click-reveal' || s.type === 'accordion') {
         const items = s.data?.items || [];
         if (!Array.isArray(items)) continue;
+        const siblingLabels = items
+          .map((it: any) => String(it?.title || it?.label || it?.term || '').trim())
+          .filter(Boolean);
         items.forEach((item: any, tabIndex: number) => {
           if (tabHasVisual(s, item) || item?.imageUrl) return;
           const label = item?.title || item?.label || item?.term || `Item ${tabIndex + 1}`;
@@ -261,7 +272,9 @@ export function collectContentImageJobs(
             moduleTitle: m.title || '',
             panelLabel: label,
             panelBody: body,
-            mediaPrompt: item?.mediaPrompt || s.mediaPrompt,
+            mediaPrompt: item?.mediaPrompt,
+            exclusive: true,
+            siblingLabels: siblingLabels.filter((n: string) => n.toLowerCase() !== String(label).toLowerCase()),
           });
         });
       }

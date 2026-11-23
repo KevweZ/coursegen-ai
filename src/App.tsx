@@ -227,6 +227,7 @@ import {
   resolveInsertModuleIndex,
   applySyntheticChromeSave,
 } from './lib/courseSlideEdits';
+import { contentPromisesCarousel, ensureCarouselCards } from './lib/carouselCards';
 import {
   ROUTES,
   parseAppPath,
@@ -2670,6 +2671,10 @@ export default function App() {
     if (!slide) return [];
     const d = slide.data || {};
     const ix = slide.interactions?.[0] || {};
+    if (slide.type === 'carousel-panel' || (slide.type === 'content' && contentPromisesCarousel(slide))) {
+      const cards = ensureCarouselCards(slide).data?.cards || [];
+      return cards.map((c: any, i: number) => normItemId(c.id, `card-${i}`));
+    }
     switch (slide.type) {
       case 'hotspot':
         return (d.points || d.hotspots || ix.points || ix.hotspots || []).map((p: any, i: number) =>
@@ -2688,10 +2693,6 @@ export default function App() {
       case 'tabbed-vertical':
         return (d.tabs || d.items || ix.tabs || ix.items || []).map((t: any, i: number) =>
           normItemId(t.id, `tab-${i}`)
-        );
-      case 'carousel-panel':
-        return (d.cards || d.items || ix.cards || ix.items || []).map((c: any, i: number) =>
-          normItemId(c.id, `card-${i}`)
         );
       case 'flashcards':
         return (d.cards || ix.cards || []).map((c: any, i: number) =>
@@ -8270,7 +8271,7 @@ export default function App() {
                                   );
                                })()}
 
-                               {(currentSlide?.type === 'content' || currentSlide?.type === 'summary') && (() => {
+                               {(currentSlide?.type === 'content' || currentSlide?.type === 'summary') && !contentPromisesCarousel(currentSlide) && (() => {
                                  const typeLabel = currentSlide.type === 'summary' ? 'Summary' : 'Overview';
                                  const body = (currentSlide.content || '').trim();
                                  const isEmpty = body.length < 8;
@@ -9042,18 +9043,21 @@ export default function App() {
                                     </div>
                                   </div>
                                 )}
-                               {currentSlide?.type === 'carousel-panel' && (
+                               {(currentSlide?.type === 'carousel-panel' || (currentSlide?.type === 'content' && contentPromisesCarousel(currentSlide))) && (() => {
+                                 const carousel = ensureCarouselCards(currentSlide);
+                                 return (
                                  <div className="space-y-6 w-full">
-                                   <SlideHeader title={currentSlide.title} theme={theme} accentColor={slideAccentColor} />
-                                   <SmartContent content={sanitizeContent(currentSlide.content)} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
+                                   <SlideHeader title={carousel.title} theme={theme} accentColor={slideAccentColor} />
+                                   <SmartContent content={sanitizeContent(carousel.content)} theme={theme} accentColor={slideAccentColor} className={cn('prose max-w-none', theme !== 'light' ? 'prose-invert' : '')} />
                                    <div className={cn(theme === 'dark' || theme === 'unified' ? 'interaction-dark-override' : 'interaction-light-fix')}>
                                      <CarouselPanel
-                                       cards={currentSlide.data?.cards || currentSlide.data?.items || currentSlide.interactions?.[0]?.cards || currentSlide.interactions?.[0]?.items || []}
+                                       cards={carousel.data?.cards || carousel.data?.items || []}
                                        onCardView={(id) => markInteractionExplored(currentSlide.id, id)}
                                      />
                                    </div>
                                  </div>
-                               )}
+                                 );
+                               })()}
 
                                {/* CLICK & REVEAL INTERACTION */}
                                {currentSlide?.type === 'click-reveal' && (() => {

@@ -130,6 +130,9 @@ export type VisualPromptInput = {
   panelLabel?: string;
   panelBody?: string;
   mediaPrompt?: string;
+  /** This picture is for one tab/card — not the whole slide set. */
+  exclusive?: boolean;
+  siblingLabels?: string[];
 };
 
 export type GroundedVisualPrompt = {
@@ -212,6 +215,22 @@ export function resolveVisualSubject(input: VisualPromptInput): {
     };
   }
 
+  const siblings = (input.siblingLabels || [])
+    .map(stripToPlain)
+    .filter(s => s && s.toLowerCase() !== label.toLowerCase());
+
+  if (input.exclusive) {
+    const heading = GENERIC_PANEL_LABEL.test(label) ? slide || course : label || slide || course;
+    const extra = bodySnippet(body);
+    const subject = extra ? `${heading}: ${extra}` : (heading || extra || 'this panel’s subject');
+    forbid.push('a lineup, grid, row, montage, or collection of related items');
+    if (siblings.length) forbid.push(`other items from this slide (${siblings.slice(0, 8).join('; ')})`);
+    return {
+      visual: `ONLY this one subject, filling the frame: ${subject}`,
+      forbid,
+    };
+  }
+
   if (mediaUsable) {
     return { visual: clip(media, 280), forbid };
   }
@@ -249,12 +268,29 @@ export function buildGroundedVisualPrompt(input: VisualPromptInput): GroundedVis
     ? 'Do not show people, faces, office drama, handshakes, or staged workplace acting. Show materials, equipment, or a lab/plant setting.'
     : 'No close-up faces. People only if the lesson is clearly about human skills or safety culture.';
 
+  const siblings = (input.siblingLabels || [])
+    .map(stripToPlain)
+    .filter(s => s && s.toLowerCase() !== stripToPlain(input.panelLabel).toLowerCase());
+  const exclusiveRule = input.exclusive
+    ? [
+        'Show a single subject filling most of the frame. Do not show a lineup, grid, montage, or set of related items.',
+        siblings.length
+          ? `Other panels on this slide cover: ${clip(siblings.slice(0, 8).join('; '), 220)}. Do not include those subjects.`
+          : '',
+      ].filter(Boolean).join(' ')
+    : '';
+  const signRule = input.exclusive && /\b(signs?|signals?)\b/i.test(`${input.panelLabel || ''} ${input.panelBody || ''}`)
+    ? 'If this is a traffic or safety sign, show that one sign’s distinctive blank shape and color only (for example a red octagon, yellow diamond, or white rectangle) with a completely blank face — never a row of mixed signs.'
+    : '';
+
   const prompt = withImageNoTextRule(
     [
       `Photorealistic educational photograph of: ${clip(visual, 360)}.`,
       domainLine
         ? `Course domain (for meaning only — never typeset these words): ${clip(domainLine, 180)}.`
         : '',
+      exclusiveRule,
+      signRule,
       `Show that technical/industrial meaning only — not a metaphor, acronym joke, or everyday-English pun on a short label.`,
       peopleRule,
       `Wide landscape, clean professional lighting, the subject filling most of the frame.`,
