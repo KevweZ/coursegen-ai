@@ -131,7 +131,8 @@ export default {
       // /assets/*.js is rewritten to HTML.
       if (
         url.pathname.startsWith('/assets/')
-        || /\.(js|mjs|css|map|woff2?|png|jpe?g|gif|webp|svg|json)$/i.test(url.pathname)
+        || url.pathname.startsWith('/marketing/')
+        || /\.(js|mjs|css|map|woff2?|png|jpe?g|gif|webp|svg|json|mp4|webm|mp3)$/i.test(url.pathname)
       ) {
         return assetResponse;
       }

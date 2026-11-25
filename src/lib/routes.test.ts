@@ -27,6 +27,8 @@ test('/account aliases My Account for Stripe portal return', () => {
 test('worker does not SPA-fallback hashed /assets bundles to index.html', () => {
   const worker = readFileSync(resolve(process.cwd(), 'worker.js'), 'utf8');
   assert.match(worker, /url\.pathname\.startsWith\('\/assets\/'\)/);
+  assert.match(worker, /url\.pathname\.startsWith\('\/marketing\/'\)/);
+  assert.match(worker, /mp4/);
   assert.match(worker, /Failed to fetch dynamically imported module/);
 });
 

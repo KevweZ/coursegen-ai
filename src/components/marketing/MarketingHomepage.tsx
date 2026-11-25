@@ -234,6 +234,52 @@ function smoothScrollTo(id: string) {
   window.scrollTo({ top, behavior: 'smooth' });
 }
 
+/** Product demo under the hero — click-to-play so the 20MB file is not fetched until someone watches. */
+function HeroWalkthrough() {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [started, setStarted] = useState(false);
+
+  const play = () => {
+    const el = videoRef.current;
+    if (!el) return;
+    void el.play();
+    setStarted(true);
+  };
+
+  return (
+    <div
+      id="walkthrough"
+      className="relative w-full rounded-2xl overflow-hidden border border-slate-700/80 bg-black shadow-2xl shadow-indigo-950/50 aspect-video"
+    >
+      <video
+        ref={videoRef}
+        className="w-full h-full object-contain bg-black"
+        playsInline
+        preload="metadata"
+        controls={started}
+        onPlay={() => setStarted(true)}
+      >
+        <source src="/marketing/nexcourse-walkthrough.mp4" type="video/mp4" />
+      </video>
+      {!started && (
+        <button
+          type="button"
+          onClick={play}
+          className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-slate-950/40 hover:bg-slate-950/25 transition-colors group"
+          aria-label="Play NexCourse walkthrough, 1 minute 40 seconds"
+        >
+          <span className="w-16 h-16 rounded-full bg-indigo-600 group-hover:bg-indigo-500 text-white flex items-center justify-center shadow-xl shadow-indigo-500/40 transition-colors">
+            <Play className="w-7 h-7 ml-0.5" fill="currentColor" />
+          </span>
+          <span className="text-white text-sm font-bold tracking-tight drop-shadow-md">
+            Watch the 1:40 walkthrough
+          </span>
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onViewPricing, onExamples }: Props) {
   const [menuOpen, setMenuOpen]           = useState(false);
@@ -339,6 +385,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
 
           <div className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-400">
             <button onClick={() => smoothScrollTo('features')}  className="hover:text-white transition-colors cursor-pointer">Features</button>
+            <button onClick={() => smoothScrollTo('walkthrough')} className="hover:text-white transition-colors cursor-pointer">Watch</button>
             <button onClick={() => onExamples?.()}              className="hover:text-white transition-colors cursor-pointer">Examples</button>
             <button onClick={() => smoothScrollTo('tracks')}    className="hover:text-white transition-colors cursor-pointer">Who It's For</button>
             <button onClick={() => onViewPricing?.()}           className="hover:text-white transition-colors cursor-pointer">Pricing</button>
@@ -374,6 +421,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
               className="md:hidden border-t border-slate-800 bg-slate-950 px-6 py-4 flex flex-col gap-1 text-sm font-medium text-slate-300 overflow-hidden">
               {([
                 { label: 'Features',     scrollId: 'features'  },
+                { label: 'Watch',        scrollId: 'walkthrough' },
                 { label: 'Interactions', scrollId: null        },
                 { label: "Who It's For", scrollId: 'tracks'   },
                 { label: 'Pricing',      scrollId: null        },
@@ -399,9 +447,9 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
         </AnimatePresence>
       </nav>
 
-      {/* ── Hero — brand first, one clear promise, one supporting line ───────── */}
-      <section className="relative min-h-[88vh] flex flex-col items-center justify-center text-center px-6 pt-10 pb-20 overflow-hidden">
-        <div className="relative z-10 flex flex-col items-center w-full max-w-4xl">
+      {/* ── Hero — brand first, one clear promise, then the product demo ──────── */}
+      <section className="relative flex flex-col items-center text-center px-6 pt-12 pb-16 md:pt-16 md:pb-20 overflow-hidden">
+        <div className="relative z-10 flex flex-col items-center w-full max-w-5xl">
           <motion.div initial={{ opacity:0, y:-10 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.45 }}
             className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-widest text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-4 py-2 rounded-full mb-6">
             <Sparkles className="w-3.5 h-3.5" /> Upload a file. Publish to your LMS.
@@ -415,16 +463,16 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
 
           <motion.p initial={{ opacity:0, y:14 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.5, delay:0.12 }}
             className="text-xl md:text-2xl font-bold text-white tracking-tight mb-4 max-w-3xl leading-snug">
-            Turn a PPT, PDF, or Word file into an editable SCORM course for your LMS — without needing an authoring tool.
+            Turn a PPT, PDF, or Word file into an editable eLearning course for your LMS — without needing an authoring tool.
           </motion.p>
 
           <motion.p initial={{ opacity:0, y:12 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.5, delay:0.2 }}
-            className="text-slate-400 text-base md:text-lg max-w-2xl mb-10 leading-relaxed">
+            className="text-slate-400 text-base md:text-lg max-w-2xl mb-8 leading-relaxed">
             Review and edit slides, narration, and interactions, then export SCORM 1.2 or 2004 for your company LMS.
           </motion.p>
 
           <motion.div initial={{ opacity:0, y:14 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.5, delay:0.26 }}
-            className="flex flex-col sm:flex-row gap-4">
+            className="flex flex-col sm:flex-row gap-4 mb-10">
             <button onClick={onGetStarted}
               className="group flex items-center justify-center gap-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black text-base px-8 py-4 rounded-2xl shadow-2xl shadow-indigo-500/30 hover:shadow-indigo-500/40 transition-all">
               Start Building Free <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
@@ -433,6 +481,11 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
               className="flex items-center justify-center gap-2 border border-slate-700 hover:border-slate-500 bg-slate-900/60 hover:bg-slate-800/60 text-slate-200 font-bold text-base px-8 py-4 rounded-2xl transition-all">
               Sign In
             </button>
+          </motion.div>
+
+          <motion.div initial={{ opacity:0, y:18 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.55, delay:0.32 }}
+            className="w-full max-w-5xl">
+            <HeroWalkthrough />
           </motion.div>
         </div>
       </section>
