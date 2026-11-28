@@ -58,4 +58,6 @@ test('Worker applies canonical redirect before API proxy or assets', () => {
   assert.match(wrangler, /"pattern": "nexcourse\.ai"/);
   assert.match(wrangler, /www\.nexcourse\.ai/);
   assert.match(wrangler, /custom_domain/);
+  assert.match(wrangler, /"run_worker_first": true/);
+  assert.match(wrangler, /"workers_dev": true/);
 });

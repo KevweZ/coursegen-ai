@@ -6,8 +6,10 @@
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
     "directory": "./dist",
-    "binding": "ASSETS"
+    "binding": "ASSETS",
+    "run_worker_first": true
   },
+  "workers_dev": true,
   "routes": [
     { "pattern": "nexcourse.ai", "custom_domain": true },
     { "pattern": "www.nexcourse.ai", "custom_domain": true }
