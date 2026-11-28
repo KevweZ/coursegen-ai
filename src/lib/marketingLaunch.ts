@@ -1,13 +1,10 @@
 /** Public launch copy. Numbers here must be current product facts, not placeholders. */
 
-export const REQUEST_ACCESS_LABEL = 'Request early access';
+export const GET_STARTED_LABEL = 'Get Started';
 
-/** What an invited trial actually includes (admin invite, role=trial). */
-export const TRIAL_WHAT_YOU_GET =
-  'We’ll email a signup invite. Typical trial is 7 days, with weekly AI and narration limits. You get the full editor and SCORM 1.2 / 2004 export. Creating an account without an invite does not include generation credits.';
-
+/** Matches checkout: create an account, subscribe, spend credits. */
 export const TRIAL_FAQ =
-  'Access is invitation-only during this pilot. Request early access and we’ll send a signup invite. Typical trial is 7 days with weekly AI and narration limits — full editor, then Creator or Team when you subscribe. There is no public self-serve free trial, and we do not ask for a card to request access.';
+  'Plans are credit-based. Create an account and subscribe from Pricing (Creator or Team). AI credits cover generation and pictures; TTS credits cover narration. SCORM 1.2 / 2004 export is included on paid plans.';
 
 export const SOURCE_QUALITY_EXPECTATION =
   'Slide-per-screen PowerPoint with speaker notes is the most reliable source. Word and PDF depend on extractable text — review the outline if the file uses tables or a layout that is not one screen per slide.';
@@ -23,7 +20,7 @@ export const SCORM_VERSION_EXPLAINER =
   'SCORM 1.2 is the most widely accepted package and is the usual first choice. SCORM 2004 is the newer data model some LMS admins require. NexCourse exports both; pick the version your LMS test catalog accepts. Completion and score live in the LMS, not in NexCourse.';
 
 export const PRE_PURCHASE_TEST =
-  'Before you buy: request access (or sign in with an invite), generate from a short 5–10 slide PPT with notes, edit one slide, export SCORM 1.2, and upload the zip to your LMS test catalog (or SCORM Cloud). Confirm the LMS shows completion and score.';
+  'Before you buy: create an account, generate from a short 5–10 slide PPT with notes, edit one slide, export SCORM 1.2, and upload the zip to your LMS test catalog (or SCORM Cloud). Confirm the LMS shows completion and score.';
 
 /** Static homepage facts — never animate from 0. */
 export const HOMEPAGE_STATS: { text: string; label: string }[] = [

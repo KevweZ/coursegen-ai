@@ -15,7 +15,7 @@ export function PrivacyPolicyPage({ onBack }: { onBack: () => void }) {
           <li>Account data: email, name, authentication identifiers (including Google sign-in if you choose it).</li>
           <li>Content you provide: uploaded documents, typed topics, course drafts, media you add, and generated slide/narration text.</li>
           <li>Billing data: processed by Stripe (card details never stored on our servers). We store Stripe customer and subscription IDs and credit balances.</li>
-          <li>Usage needed to run the product: AI/TTS credit consumption, trial weekly caps, support tickets, and basic logs (errors, IP for rate limits).</li>
+          <li>Usage needed to run the product: AI/TTS credit consumption, support tickets, and basic logs (errors, IP for rate limits).</li>
         </ul>
       </section>
 

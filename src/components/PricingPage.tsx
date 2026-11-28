@@ -24,7 +24,6 @@ import { planDisplayName } from '../lib/planEntitlements';
 import {
   CREDIT_EXAMPLES,
   PRE_PURCHASE_TEST,
-  REQUEST_ACCESS_LABEL,
   SCORM_VERSION_EXPLAINER,
   TRUST_POINTS,
 } from '../lib/marketingLaunch';
@@ -550,8 +549,7 @@ export function PricingPage() {
           ))}
         </ul>
         <p className="text-center text-slate-500 text-xs max-w-2xl mx-auto mb-10 leading-relaxed">
-          Invited already? Sign in, then subscribe. Otherwise{' '}
-          <a href="/#contact" className="text-indigo-400 hover:text-indigo-300 font-semibold">{REQUEST_ACCESS_LABEL.toLowerCase()}</a>.
+          Create an account or sign in, then subscribe. Generation uses the AI and TTS credits on your plan.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">

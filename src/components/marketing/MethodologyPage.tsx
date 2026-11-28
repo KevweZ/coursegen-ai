@@ -5,7 +5,7 @@ import {
   GraduationCap, Layers, Sparkles, Target, Users, Zap,
   BarChart3, Building2, ChevronRight, Award, FileText,
 } from 'lucide-react';
-import { REQUEST_ACCESS_LABEL } from '../../lib/marketingLaunch';
+import { GET_STARTED_LABEL } from '../../lib/marketingLaunch';
 
 interface Props {
   onGetStarted: () => void;
@@ -97,7 +97,7 @@ export function MethodologyPage({ onGetStarted, onBack, signedIn }: Props) {
             onClick={onGetStarted}
             className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm px-5 py-2 rounded-xl transition-all"
           >
-            {signedIn ? 'Open app' : REQUEST_ACCESS_LABEL} <ArrowRight className="w-4 h-4" />
+            {signedIn ? 'Open app' : GET_STARTED_LABEL} <ArrowRight className="w-4 h-4" />
           </button>
         </div>
       </header>
@@ -459,7 +459,7 @@ export function MethodologyPage({ onGetStarted, onBack, signedIn }: Props) {
             onClick={onGetStarted}
             className="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black px-10 py-4 rounded-2xl shadow-lg shadow-indigo-500/25 transition-all text-lg"
           >
-            {signedIn ? 'Open app' : REQUEST_ACCESS_LABEL} <ArrowRight className="w-5 h-5" />
+            {signedIn ? 'Open app' : GET_STARTED_LABEL} <ArrowRight className="w-5 h-5" />
           </button>
         </FadeIn>
       </section>

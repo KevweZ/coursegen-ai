@@ -10,11 +10,10 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import {
+  GET_STARTED_LABEL,
   HOMEPAGE_STATS,
-  REQUEST_ACCESS_LABEL,
   SOURCE_QUALITY_EXPECTATION,
   TRIAL_FAQ,
-  TRIAL_WHAT_YOU_GET,
   TRUST_POINTS,
   scrollToMarketingContact,
 } from '../../lib/marketingLaunch';
@@ -205,9 +204,9 @@ function SignInDropdown({ onClose, onGetStarted }: { onClose: () => void; onGetS
         </button>
 
         <p className="text-center text-xs text-slate-600">
-          Have an invite?{' '}
+          Don't have an account?{' '}
           <button type="button" onClick={() => { onClose(); onGetStarted(); }} className="text-indigo-400 hover:text-indigo-300 font-bold transition-colors">
-            Create your account →
+            Create one →
           </button>
         </p>
       </form>
@@ -290,7 +289,6 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
   const [contactError, setContactError]   = useState('');
 
   const CONTACT_SUBJECTS = [
-    'Early access / pilot',
     'General Inquiry',
     'Pricing & Plans',
     'Technical Issue',
@@ -302,7 +300,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
     { q: 'How does NexCourse AI work?', a: 'Upload a PDF, Word doc, PowerPoint, or technical document. NexCourse AI analyzes the file, applies instructional design structure, and builds an interactive course with slides, knowledge checks, and narration. You review and edit, then export a SCORM package for the LMS you already use.' },
     { q: 'What file types does it support?', a: `PDF, Microsoft PowerPoint (.pptx), and Microsoft Word (.docx). You can also type a topic if you do not have a file yet. ${SOURCE_QUALITY_EXPECTATION}` },
     { q: 'Do I need experience with authoring tools?', a: 'No. Subject matter experts and corporate teams can publish without authoring-tool expertise. Instructional designers get extra Course Settings controls—objectives, assessments, interactions, and structure—then can edit everything before publishing.' },
-    { q: 'Is there a free trial?', a: TRIAL_FAQ },
+    { q: 'How do credits and plans work?', a: TRIAL_FAQ },
     { q: 'What is SCORM and which LMS platforms does it work with?', a: 'SCORM is the standard package format for eLearning. NexCourse AI exports SCORM 1.2 and 2004 packages you upload to the LMS you already use — for example Moodle, Canvas, Blackboard, Cornerstone, TalentLMS, Docebo, and SuccessFactors when SCORM is enabled. SCORM 1.2 is the usual first choice; use 2004 if your LMS admin requires it. Completion and score reporting stay in the LMS after you upload the zip.' },
     { q: 'Can I edit the AI-generated course?', a: 'Yes. Every slide is editable after generation—text, structure, images, quizzes, narration, and interactions—before you export.' },
     { q: 'Is my data and content private?', a: 'Yes. Uploaded files and generated courses stay private to your account or Team workspace. We do not use your content to train AI models.' },
@@ -343,21 +341,14 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
             { icon: BarChart3,  title: 'Quizzes & Tracking',      description: 'Knowledge checks and a mastery quiz in the course. After you upload the SCORM package, your LMS records completion and scores.',          color: 'from-rose-600/20 to-red-600/20',      delay: 0.25 },
   ];
 
-  const requestAccess = () => {
-    setContactSubject('Early access / pilot');
-    scrollToMarketingContact();
-  };
-
   const primaryCta = () => {
-    if (user) onGetStarted();
-    else requestAccess();
+    onGetStarted();
   };
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const go = () => {
       if (window.location.hash !== '#contact') return;
-      setContactSubject('Early access / pilot');
       window.setTimeout(() => scrollToMarketingContact(), 50);
     };
     go();
@@ -414,7 +405,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
 
             <button onClick={primaryCta}
               className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition-all shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30">
-              {user ? 'Open app' : REQUEST_ACCESS_LABEL} <ArrowRight className="w-4 h-4" />
+              {user ? 'Open app' : GET_STARTED_LABEL} <ArrowRight className="w-4 h-4" />
             </button>
             <button className="md:hidden text-slate-400" onClick={() => setMenuOpen(o => !o)}>
               {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -483,21 +474,16 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
           </motion.p>
 
           <motion.div initial={{ opacity:0, y:14 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.5, delay:0.26 }}
-            className="flex flex-col sm:flex-row gap-4 mb-4">
+            className="flex flex-col sm:flex-row gap-4 mb-8">
             <button onClick={primaryCta}
               className="group flex items-center justify-center gap-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black text-base px-8 py-4 rounded-2xl shadow-2xl shadow-indigo-500/30 hover:shadow-indigo-500/40 transition-all">
-              {user ? 'Open app' : REQUEST_ACCESS_LABEL} <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              {user ? 'Open app' : GET_STARTED_LABEL} <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
             <button onClick={onSignIn}
               className="flex items-center justify-center gap-2 border border-slate-700 hover:border-slate-500 bg-slate-900/60 hover:bg-slate-800/60 text-slate-200 font-bold text-base px-8 py-4 rounded-2xl transition-all">
               Sign In
             </button>
           </motion.div>
-          {!user && (
-            <p className="text-slate-500 text-xs max-w-xl mb-8 leading-relaxed">
-              {TRIAL_WHAT_YOU_GET}
-            </p>
-          )}
 
           <motion.div initial={{ opacity:0, y:18 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.55, delay:0.32 }}
             className="w-full max-w-5xl">
@@ -661,10 +647,9 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
               onClick={primaryCta}
               className="inline-flex items-center gap-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black text-base px-10 py-4 rounded-2xl shadow-2xl shadow-indigo-500/30 hover:shadow-indigo-500/40 transition-all group"
             >
-              {user ? 'Open app' : REQUEST_ACCESS_LABEL}
+              {user ? 'Open app' : GET_STARTED_LABEL}
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
-            {!user && <p className="text-slate-500 text-xs mt-4 max-w-xl mx-auto">{TRIAL_WHAT_YOU_GET}</p>}
           </motion.div>
         </div>
       </section>
@@ -745,7 +730,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
           <motion.div initial={{ opacity:0, y:16 }} whileInView={{ opacity:1, y:0 }} viewport={{ once:true }} transition={{ duration:0.45 }}
             className="text-center">
             <button onClick={primaryCta} className="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black text-sm px-8 py-3 rounded-xl shadow-lg shadow-indigo-500/20 transition-all">
-              {user ? 'Open app' : REQUEST_ACCESS_LABEL} <ArrowRight className="w-4 h-4" />
+              {user ? 'Open app' : GET_STARTED_LABEL} <ArrowRight className="w-4 h-4" />
             </button>
             {onMethodology && (
               <button onClick={onMethodology} className="ml-0 sm:ml-4 mt-3 sm:mt-0 inline-flex items-center gap-2 text-slate-400 hover:text-indigo-300 text-sm font-semibold transition-colors">
@@ -952,7 +937,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <button onClick={primaryCta}
                 className="group flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black text-base px-10 py-4 rounded-2xl shadow-2xl shadow-indigo-500/30 transition-all">
-                {user ? 'Open app' : REQUEST_ACCESS_LABEL} <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                {user ? 'Open app' : GET_STARTED_LABEL} <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </button>
               <button onClick={() => setShowSignIn(true)}
                 className="flex items-center justify-center gap-2 border border-slate-700 hover:border-slate-500 text-slate-300 hover:text-white font-bold text-base px-10 py-4 rounded-2xl transition-all">

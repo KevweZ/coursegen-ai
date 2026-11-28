@@ -6253,18 +6253,10 @@ export default function App() {
       if (user) setStep('marketing');
       navigateTo(ROUTES.home);
     };
-    const requestAccess = () => {
-      setPublicView('homepage');
-      if (user) setStep('marketing');
-      navigateTo(ROUTES.home);
-      window.setTimeout(() => {
-        window.location.hash = 'contact';
-        const el = document.getElementById('contact');
-        if (el) {
-          const top = el.getBoundingClientRect().top + window.scrollY - 64;
-          window.scrollTo({ top, behavior: 'smooth' });
-        }
-      }, 80);
+    const goSignup = () => {
+      setAuthInitialMode('signup');
+      setPublicView('auth');
+      navigateTo(ROUTES.signup);
     };
 
     if (!user && publicView === 'auth') {
@@ -6278,7 +6270,7 @@ export default function App() {
     if (publicView === 'methodology') {
       return (
         <MethodologyPage
-          onGetStarted={user ? enterApp : requestAccess}
+          onGetStarted={user ? enterApp : goSignup}
           onBack={goMarketing}
           signedIn={!!user}
         />
@@ -6299,9 +6291,9 @@ export default function App() {
                 </div>
                 <span className="font-extrabold text-lg text-white">NexCourse <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">AI</span></span>
               </div>
-              <button onClick={user ? enterApp : requestAccess}
+              <button onClick={user ? enterApp : goSignup}
                 className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold px-4 py-2 rounded-xl transition-all shadow-lg shadow-indigo-500/20 whitespace-nowrap shrink-0">
-                {user ? 'Go to App' : 'Request early access'} <ArrowRight className="w-4 h-4" />
+                {user ? 'Go to App' : 'Get Started'} <ArrowRight className="w-4 h-4" />
               </button>
             </div>
           </nav>
@@ -6313,7 +6305,7 @@ export default function App() {
       return (
         <ExamplesPage
           onBack={goMarketing}
-          onGetStarted={user ? enterApp : requestAccess}
+          onGetStarted={user ? enterApp : goSignup}
           signedIn={!!user}
         />
       );

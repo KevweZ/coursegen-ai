@@ -4,13 +4,12 @@ import { readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   CREDIT_EXAMPLES,
+  GET_STARTED_LABEL,
   HOMEPAGE_STATS,
   PRE_PURCHASE_TEST,
-  REQUEST_ACCESS_LABEL,
   SCORM_VERSION_EXPLAINER,
   SOURCE_QUALITY_EXPECTATION,
   TRIAL_FAQ,
-  TRIAL_WHAT_YOU_GET,
   TRUST_POINTS,
 } from './marketingLaunch.ts';
 import { TEAM_VOICES } from './planEntitlements.ts';
@@ -44,35 +43,43 @@ test('homepage stats are static verified facts, not 0+ counters', () => {
   assert.doesNotMatch(home, /Try It Now — It's Free/);
   assert.doesNotMatch(home, /No credit card required/);
   assert.match(home, /HOMEPAGE_STATS/);
-  assert.match(home, /REQUEST_ACCESS_LABEL/);
+  assert.match(home, /GET_STARTED_LABEL/);
   assert.equal(HOMEPAGE_STATS.length, 4);
   assert.equal(TEAM_VOICES.length, 6);
   assert.equal(HOMEPAGE_STATS.some((s) => s.text === '6' && /voices/i.test(s.label)), true);
   assert.equal(HOMEPAGE_STATS.some((s) => /1\.2/.test(s.text)), true);
 });
 
-test('trial copy is invitation-only and says what the invite includes', () => {
+test('public site matches checkout: subscribe for credits, no invite-only or free-trial claim', () => {
   const home = src('src/components/marketing/MarketingHomepage.tsx');
   const examples = src('src/components/marketing/ExamplesPage.tsx');
   const methodology = src('src/components/marketing/MethodologyPage.tsx');
   const app = src('src/App.tsx');
   const auth = src('src/components/auth/AuthPage.tsx');
   const terms = src('src/components/legal/TermsOfServicePage.tsx');
+  const pricing = src('src/components/PricingPage.tsx');
+  const launch = src('src/lib/marketingLaunch.ts');
 
-  assert.match(TRIAL_FAQ, /invitation-only/i);
-  assert.match(TRIAL_WHAT_YOU_GET, /7 days/);
-  assert.match(TRIAL_WHAT_YOU_GET, /does not include generation credits/);
+  assert.equal(GET_STARTED_LABEL, 'Get Started');
+  assert.match(TRIAL_FAQ, /Pricing/);
+  assert.match(TRIAL_FAQ, /Creator or Team/);
+  assert.doesNotMatch(TRIAL_FAQ, /invitation|pilot|early access/i);
+  assert.doesNotMatch(launch, /REQUEST_ACCESS_LABEL|TRIAL_WHAT_YOU_GET/);
   assert.match(home, /TRIAL_FAQ/);
-  assert.match(home, /TRIAL_WHAT_YOU_GET/);
-  assert.match(examples, /REQUEST_ACCESS_LABEL/);
-  assert.match(methodology, /REQUEST_ACCESS_LABEL/);
+  assert.match(home, /How do credits and plans work\?/);
+  assert.doesNotMatch(home, /Is there a free trial\?/);
+  assert.match(home, /GET_STARTED_LABEL/);
+  assert.match(examples, /GET_STARTED_LABEL/);
+  assert.match(methodology, /GET_STARTED_LABEL/);
+  assert.doesNotMatch(home + examples + methodology + app + auth + terms + pricing, /Request early access|invitation-only|Have an invite/i);
   assert.doesNotMatch(examples, /Start Building Free/);
   assert.doesNotMatch(examples, /No credit card required/);
   assert.doesNotMatch(methodology, /Start Building for Free/);
   assert.doesNotMatch(methodology, /Try It Free/);
-  assert.match(app, /requestAccess/);
-  assert.match(auth, /Have an invite/);
-  assert.match(terms, /invitation/);
+  assert.match(auth, /subscribe on Pricing/);
+  assert.match(terms, /Subscribe from Pricing/);
+  assert.match(PRE_PURCHASE_TEST, /create an account/);
+  assert.doesNotMatch(PRE_PURCHASE_TEST, /invite|request access/i);
 });
 
 test('pricing explains credits with three measured examples plus LMS trust', () => {
