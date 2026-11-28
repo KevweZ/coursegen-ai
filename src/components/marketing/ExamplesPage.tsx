@@ -6,6 +6,7 @@ import {
   Layers, Globe, BookOpen, Image, Crop,
   Move
 } from 'lucide-react';
+import { REQUEST_ACCESS_LABEL, TRIAL_WHAT_YOU_GET } from '../../lib/marketingLaunch';
 
 // ── Animated Click & Reveal Preview ───────────────────────────────────────────
 function ClickRevealPreview() {
@@ -455,9 +456,10 @@ const SLIDES = ALL_SLIDES.filter(s => s.id !== 'branching');
 interface Props {
   onBack: () => void;
   onGetStarted: () => void;
+  signedIn?: boolean;
 }
 
-export function ExamplesPage({ onBack, onGetStarted }: Props) {
+export function ExamplesPage({ onBack, onGetStarted, signedIn }: Props) {
   const [activeIndex, setActiveIndex] = useState(0);
   const current = SLIDES[activeIndex];
   const progress = ((activeIndex + 1) / SLIDES.length) * 100;
@@ -499,7 +501,7 @@ export function ExamplesPage({ onBack, onGetStarted }: Props) {
           </div>
           <button onClick={onGetStarted}
             className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition-all shadow-lg shadow-indigo-500/20">
-            Try It Free <ArrowRight className="w-4 h-4" />
+            {signedIn ? 'Open app' : REQUEST_ACCESS_LABEL} <ArrowRight className="w-4 h-4" />
           </button>
         </div>
       </nav>
@@ -683,9 +685,9 @@ export function ExamplesPage({ onBack, onGetStarted }: Props) {
           <p className="text-slate-300 font-semibold mb-6">Ready to build your own?</p>
           <button onClick={onGetStarted}
             className="group inline-flex items-center gap-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black text-base px-10 py-4 rounded-2xl shadow-2xl shadow-indigo-500/30 hover:shadow-indigo-500/40 transition-all">
-            Start Building Free <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            {signedIn ? 'Open app' : REQUEST_ACCESS_LABEL} <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
           </button>
-          <p className="text-slate-600 text-xs mt-4">No credit card required to get started.</p>
+          {!signedIn && <p className="text-slate-500 text-xs mt-4 max-w-xl mx-auto">{TRIAL_WHAT_YOU_GET}</p>}
         </motion.div>
       </div>
     </div>

@@ -184,7 +184,7 @@ export function AuthPage({ onBackToHome, initialMode = 'login' }: { onBackToHome
                 </h1>
                 <p className="text-slate-400 text-sm mt-1">
                   {mode === 'login'  && 'Sign in to access your courses.'}
-                  {mode === 'signup' && 'Get started — it only takes a moment.'}
+                  {mode === 'signup' && 'Have an invite? Create your account here. Public signup does not include generation credits — request early access from the homepage.'}
                   {mode === 'forgot' && "Enter your email and we'll send you a reset link."}
                 </p>
               </div>

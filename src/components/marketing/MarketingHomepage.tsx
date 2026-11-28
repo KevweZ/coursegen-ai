@@ -9,6 +9,15 @@ import {
   AlertCircle, Lock, MessageSquare, Send, Loader2, Mail
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import {
+  HOMEPAGE_STATS,
+  REQUEST_ACCESS_LABEL,
+  SOURCE_QUALITY_EXPECTATION,
+  TRIAL_FAQ,
+  TRIAL_WHAT_YOU_GET,
+  TRUST_POINTS,
+  scrollToMarketingContact,
+} from '../../lib/marketingLaunch';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Props {
@@ -17,25 +26,6 @@ interface Props {
   onMethodology?: () => void;
   onViewPricing?: () => void;
   onExamples?: () => void;
-}
-
-// ── Animated Counter ──────────────────────────────────────────────────────────
-function AnimatedCounter({ target, suffix = '' }: { target: number; suffix?: string }) {
-  const [count, setCount] = useState(0);
-  const ref = useRef<HTMLSpanElement>(null);
-  const inView = useInView(ref, { once: true });
-  useEffect(() => {
-    if (!inView) return;
-    const step = target / 60;
-    let current = 0;
-    const timer = setInterval(() => {
-      current = Math.min(current + step, target);
-      setCount(Math.floor(current));
-      if (current >= target) clearInterval(timer);
-    }, 16);
-    return () => clearInterval(timer);
-  }, [inView, target]);
-  return <span ref={ref}>{count.toLocaleString()}{suffix}</span>;
 }
 
 // ── Feature Card ──────────────────────────────────────────────────────────────
@@ -215,9 +205,9 @@ function SignInDropdown({ onClose, onGetStarted }: { onClose: () => void; onGetS
         </button>
 
         <p className="text-center text-xs text-slate-600">
-          Don't have an account?{' '}
+          Have an invite?{' '}
           <button type="button" onClick={() => { onClose(); onGetStarted(); }} className="text-indigo-400 hover:text-indigo-300 font-bold transition-colors">
-            Create one →
+            Create your account →
           </button>
         </p>
       </form>
@@ -282,6 +272,7 @@ function HeroWalkthrough() {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onViewPricing, onExamples }: Props) {
+  const { user } = useAuth();
   const [menuOpen, setMenuOpen]           = useState(false);
   const [showSignIn, setShowSignIn]       = useState(false);
 
@@ -299,6 +290,7 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
   const [contactError, setContactError]   = useState('');
 
   const CONTACT_SUBJECTS = [
+    'Early access / pilot',
     'General Inquiry',
     'Pricing & Plans',
     'Technical Issue',
@@ -308,12 +300,12 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
 
   const MARKETING_FAQS = [
     { q: 'How does NexCourse AI work?', a: 'Upload a PDF, Word doc, PowerPoint, or technical document. NexCourse AI analyzes the file, applies instructional design structure, and builds an interactive course with slides, knowledge checks, and narration. You review and edit, then export a SCORM package for the LMS you already use.' },
-    { q: 'What file types does it support?', a: 'PDF, Microsoft PowerPoint (.pptx), and Microsoft Word (.docx). You can also type a topic if you do not have a file yet. Slide-per-screen PowerPoint with speaker notes is the most reliable way to match a specified storyboard. Word and PDF: NexCourse follows the text it can extract; review the outline before generate if the file uses tables or a layout that is not one screen per slide.' },
+    { q: 'What file types does it support?', a: `PDF, Microsoft PowerPoint (.pptx), and Microsoft Word (.docx). You can also type a topic if you do not have a file yet. ${SOURCE_QUALITY_EXPECTATION}` },
     { q: 'Do I need experience with authoring tools?', a: 'No. Subject matter experts and corporate teams can publish without authoring-tool expertise. Instructional designers get extra Course Settings controls—objectives, assessments, interactions, and structure—then can edit everything before publishing.' },
-    { q: 'Is there a free trial?', a: 'We offer trial access by invitation—contact us to request early access. Paid plans are credit-based and cover course generation, AI narration, and interactive content.' },
-    { q: 'What is SCORM and which LMS platforms does it work with?', a: 'SCORM is the standard package format for eLearning. NexCourse AI exports SCORM 1.2 and 2004 packages you upload to the LMS you already use — for example Moodle, Canvas, Blackboard, Cornerstone, TalentLMS, Docebo, and SuccessFactors when SCORM is enabled.' },
+    { q: 'Is there a free trial?', a: TRIAL_FAQ },
+    { q: 'What is SCORM and which LMS platforms does it work with?', a: 'SCORM is the standard package format for eLearning. NexCourse AI exports SCORM 1.2 and 2004 packages you upload to the LMS you already use — for example Moodle, Canvas, Blackboard, Cornerstone, TalentLMS, Docebo, and SuccessFactors when SCORM is enabled. SCORM 1.2 is the usual first choice; use 2004 if your LMS admin requires it. Completion and score reporting stay in the LMS after you upload the zip.' },
     { q: 'Can I edit the AI-generated course?', a: 'Yes. Every slide is editable after generation—text, structure, images, quizzes, narration, and interactions—before you export.' },
-    { q: 'Is my data and content private?', a: 'Yes. Uploaded files and generated courses stay private to your account. We do not use your content to train AI models.' },
+    { q: 'Is my data and content private?', a: 'Yes. Uploaded files and generated courses stay private to your account or Team workspace. We do not use your content to train AI models.' },
     { q: 'How do I cancel my subscription?', a: 'Cancel anytime from My Account & Billing. No cancellation fees; your plan stays active until the end of the billing period.' },
   ];
 
@@ -348,15 +340,30 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
     { icon: Mic,        title: 'AI Voice-Over',            description: 'Professional narration generated for each slide. Choose voices and speeds, then edit scripts anytime.',        color: 'from-cyan-600/20 to-blue-600/20',     delay: 0.1 },
     { icon: FileOutput, title: 'SCORM for Your LMS',       description: 'Export SCORM 1.2 or 2004 and upload the package to the LMS you already use — including SuccessFactors, Moodle, Canvas, and others that accept SCORM.', color: 'from-emerald-600/20 to-teal-600/20', delay: 0.15 },
     { icon: Image,      title: 'Edit Before You Publish',  description: 'Refine text, images, quizzes, and interactions in preview—full control without rebuilding from scratch.',         color: 'from-amber-600/20 to-orange-600/20',  delay: 0.2 },
-    { icon: BarChart3,  title: 'Quizzes & Tracking',      description: 'Mastery checks with completion and score reporting that align with your LMS.',          color: 'from-rose-600/20 to-red-600/20',      delay: 0.25 },
+            { icon: BarChart3,  title: 'Quizzes & Tracking',      description: 'Knowledge checks and a mastery quiz in the course. After you upload the SCORM package, your LMS records completion and scores.',          color: 'from-rose-600/20 to-red-600/20',      delay: 0.25 },
   ];
 
-  const stats: Array<{ label: string; value?: number; suffix?: string; text?: string }> = [
-    { label: 'Interaction Types',  value: 20,  suffix: '+' },
-    { label: 'Knowledge Checks',   value: 8,   suffix: '+' },
-    { label: 'SCORM export',       text: '1.2 / 2004' },
-    { label: 'AI Voice Options',   value: 6,   suffix: ''  },
-  ];
+  const requestAccess = () => {
+    setContactSubject('Early access / pilot');
+    scrollToMarketingContact();
+  };
+
+  const primaryCta = () => {
+    if (user) onGetStarted();
+    else requestAccess();
+  };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const go = () => {
+      if (window.location.hash !== '#contact') return;
+      setContactSubject('Early access / pilot');
+      window.setTimeout(() => scrollToMarketingContact(), 50);
+    };
+    go();
+    window.addEventListener('hashchange', go);
+    return () => window.removeEventListener('hashchange', go);
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-950 font-sans overflow-x-hidden">
@@ -405,9 +412,9 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
               </AnimatePresence>
             </div>
 
-            <button onClick={onGetStarted}
+            <button onClick={primaryCta}
               className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition-all shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30">
-              Get Started <ArrowRight className="w-4 h-4" />
+              {user ? 'Open app' : REQUEST_ACCESS_LABEL} <ArrowRight className="w-4 h-4" />
             </button>
             <button className="md:hidden text-slate-400" onClick={() => setMenuOpen(o => !o)}>
               {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -470,23 +477,40 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
             className="text-slate-400 text-base md:text-lg max-w-2xl mb-8 leading-relaxed">
             Review and edit slides, narration, and interactions, then export SCORM 1.2 or 2004 for your company LMS.
           </motion.p>
+          <motion.p initial={{ opacity:0, y:10 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.45, delay:0.22 }}
+            className="text-slate-500 text-sm max-w-2xl mb-8 leading-relaxed">
+            {SOURCE_QUALITY_EXPECTATION}
+          </motion.p>
 
           <motion.div initial={{ opacity:0, y:14 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.5, delay:0.26 }}
-            className="flex flex-col sm:flex-row gap-4 mb-10">
-            <button onClick={onGetStarted}
+            className="flex flex-col sm:flex-row gap-4 mb-4">
+            <button onClick={primaryCta}
               className="group flex items-center justify-center gap-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black text-base px-8 py-4 rounded-2xl shadow-2xl shadow-indigo-500/30 hover:shadow-indigo-500/40 transition-all">
-              Start Building Free <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              {user ? 'Open app' : REQUEST_ACCESS_LABEL} <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
             <button onClick={onSignIn}
               className="flex items-center justify-center gap-2 border border-slate-700 hover:border-slate-500 bg-slate-900/60 hover:bg-slate-800/60 text-slate-200 font-bold text-base px-8 py-4 rounded-2xl transition-all">
               Sign In
             </button>
           </motion.div>
+          {!user && (
+            <p className="text-slate-500 text-xs max-w-xl mb-8 leading-relaxed">
+              {TRIAL_WHAT_YOU_GET}
+            </p>
+          )}
 
           <motion.div initial={{ opacity:0, y:18 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.55, delay:0.32 }}
             className="w-full max-w-5xl">
             <HeroWalkthrough />
           </motion.div>
+          <ul className="mt-8 grid sm:grid-cols-2 gap-2.5 text-left max-w-3xl text-slate-400 text-xs leading-relaxed">
+            {TRUST_POINTS.map((point) => (
+              <li key={point} className="flex items-start gap-2">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                {point}
+              </li>
+            ))}
+          </ul>
         </div>
       </section>
 
@@ -516,13 +540,9 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
             </button>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center border-t border-slate-800/60 mt-16 pt-10">
-            {stats.map((stat) => (
+            {HOMEPAGE_STATS.map((stat) => (
               <div key={stat.label}>
-                <div className="text-3xl font-black text-white mb-1">
-                  {'text' in stat && stat.text
-                    ? stat.text
-                    : <AnimatedCounter target={stat.value ?? 0} suffix={stat.suffix || ''} />}
-                </div>
+                <div className="text-3xl font-black text-white mb-1">{stat.text}</div>
                 <p className="text-slate-500 text-xs font-medium">{stat.label}</p>
               </div>
             ))}
@@ -638,13 +658,13 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
             className="text-center mt-14"
           >
             <button
-              onClick={onGetStarted}
+              onClick={primaryCta}
               className="inline-flex items-center gap-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black text-base px-10 py-4 rounded-2xl shadow-2xl shadow-indigo-500/30 hover:shadow-indigo-500/40 transition-all group"
             >
-              Try It Now — It's Free
+              {user ? 'Open app' : REQUEST_ACCESS_LABEL}
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
-            <p className="text-slate-500 text-xs mt-4">No credit card required · SCORM export included</p>
+            {!user && <p className="text-slate-500 text-xs mt-4 max-w-xl mx-auto">{TRIAL_WHAT_YOU_GET}</p>}
           </motion.div>
         </div>
       </section>
@@ -724,8 +744,8 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
           </div>
           <motion.div initial={{ opacity:0, y:16 }} whileInView={{ opacity:1, y:0 }} viewport={{ once:true }} transition={{ duration:0.45 }}
             className="text-center">
-            <button onClick={onGetStarted} className="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black text-sm px-8 py-3 rounded-xl shadow-lg shadow-indigo-500/20 transition-all">
-              Try It Free <ArrowRight className="w-4 h-4" />
+            <button onClick={primaryCta} className="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black text-sm px-8 py-3 rounded-xl shadow-lg shadow-indigo-500/20 transition-all">
+              {user ? 'Open app' : REQUEST_ACCESS_LABEL} <ArrowRight className="w-4 h-4" />
             </button>
             {onMethodology && (
               <button onClick={onMethodology} className="ml-0 sm:ml-4 mt-3 sm:mt-0 inline-flex items-center gap-2 text-slate-400 hover:text-indigo-300 text-sm font-semibold transition-colors">
@@ -930,9 +950,9 @@ export function MarketingHomepage({ onGetStarted, onSignIn, onMethodology, onVie
             <h2 className="text-4xl md:text-5xl font-black text-white mb-5 leading-tight">Upload a document.<br />Publish to your LMS.</h2>
             <p className="text-slate-400 text-lg mb-10 max-w-xl mx-auto">Turn the files you already have into interactive, SCORM-ready eLearning—without becoming an eLearning developer.</p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <button onClick={onGetStarted}
+              <button onClick={primaryCta}
                 className="group flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black text-base px-10 py-4 rounded-2xl shadow-2xl shadow-indigo-500/30 transition-all">
-                Get Started Free <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                {user ? 'Open app' : REQUEST_ACCESS_LABEL} <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </button>
               <button onClick={() => setShowSignIn(true)}
                 className="flex items-center justify-center gap-2 border border-slate-700 hover:border-slate-500 text-slate-300 hover:text-white font-bold text-base px-10 py-4 rounded-2xl transition-all">

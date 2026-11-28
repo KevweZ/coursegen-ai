@@ -5,10 +5,12 @@ import {
   GraduationCap, Layers, Sparkles, Target, Users, Zap,
   BarChart3, Building2, ChevronRight, Award, FileText,
 } from 'lucide-react';
+import { REQUEST_ACCESS_LABEL } from '../../lib/marketingLaunch';
 
 interface Props {
   onGetStarted: () => void;
   onBack: () => void;
+  signedIn?: boolean;
 }
 
 // ── Fade-in section wrapper ───────────────────────────────────────────────────
@@ -74,7 +76,7 @@ function Pill({ label, color }: { label: string; color: string }) {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export function MethodologyPage({ onGetStarted, onBack }: Props) {
+export function MethodologyPage({ onGetStarted, onBack, signedIn }: Props) {
   return (
     <div className="min-h-screen bg-slate-950 font-sans text-white selection:bg-indigo-500/30">
 
@@ -95,7 +97,7 @@ export function MethodologyPage({ onGetStarted, onBack }: Props) {
             onClick={onGetStarted}
             className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm px-5 py-2 rounded-xl transition-all"
           >
-            Try It Free <ArrowRight className="w-4 h-4" />
+            {signedIn ? 'Open app' : REQUEST_ACCESS_LABEL} <ArrowRight className="w-4 h-4" />
           </button>
         </div>
       </header>
@@ -457,7 +459,7 @@ export function MethodologyPage({ onGetStarted, onBack }: Props) {
             onClick={onGetStarted}
             className="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black px-10 py-4 rounded-2xl shadow-lg shadow-indigo-500/25 transition-all text-lg"
           >
-            Start Building for Free <ArrowRight className="w-5 h-5" />
+            {signedIn ? 'Open app' : REQUEST_ACCESS_LABEL} <ArrowRight className="w-5 h-5" />
           </button>
         </FadeIn>
       </section>

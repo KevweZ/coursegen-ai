@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { FileUp, Sparkles, ListChecks, X, ArrowRight, SlidersHorizontal, FileText, LayoutList } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { SourceMode } from '../../lib/storyboardSource';
+import { SOURCE_QUALITY_EXPECTATION, TRUST_POINTS } from '../../lib/marketingLaunch';
 
 export type UploadPathChoice = 'quick' | 'customize';
 
@@ -167,8 +168,16 @@ export function UploadPathModal({
           )}
 
           <p className="text-[11px] text-slate-500 leading-relaxed">
-            PDF, Word, and PowerPoint are all accepted. A slide-per-screen PowerPoint with speaker notes is the most reliable match for a specified storyboard. Word and PDF: we follow the text we can extract — review the outline if you pick Review before build.
+            {SOURCE_QUALITY_EXPECTATION}
           </p>
+          <ul className="space-y-1.5 pt-1">
+            {TRUST_POINTS.map((point) => (
+              <li key={point} className="text-[11px] text-slate-500 leading-relaxed flex items-start gap-1.5">
+                <span className="text-emerald-400 mt-px">•</span>
+                {point}
+              </li>
+            ))}
+          </ul>
         </div>
 
         <div className="flex items-center justify-end gap-3 p-5 border-t border-slate-800 bg-slate-900/80">

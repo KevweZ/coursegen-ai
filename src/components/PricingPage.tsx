@@ -21,6 +21,13 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { getPaymentStatus, openBillingPortal, redirectToCheckout, type StripePlanId } from '../services/paymentService';
 import { planDisplayName } from '../lib/planEntitlements';
+import {
+  CREDIT_EXAMPLES,
+  PRE_PURCHASE_TEST,
+  REQUEST_ACCESS_LABEL,
+  SCORM_VERSION_EXPLAINER,
+  TRUST_POINTS,
+} from '../lib/marketingLaunch';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -126,7 +133,7 @@ function buildPlans(billing: 'annual' | 'monthly'): PricingPlan[] {
 const faqItems = [
   {
     q: 'How do credits work?',
-    a: 'AI credits are spent on successful generation calls (analysis, outline, slide hydrate) and on each AI image that is returned. A short overview uses fewer credits than a full multi-module course. Narration uses TTS credits per successful clip. Your plan refreshes AI and TTS credits each billing cycle.',
+    a: 'AI credits are spent on successful generation calls (analysis, outline, slide hydrate) and on each AI image that is returned. A short overview uses fewer credits than a full multi-module course. Narration uses TTS credits per successful clip. Your plan refreshes AI and TTS credits each billing cycle. The three examples on this page are typical ranges from that metering — not a quote.',
   },
   {
     q: 'Do unused credits roll over?',
@@ -138,7 +145,11 @@ const faqItems = [
   },
   {
     q: 'Is SCORM export included?',
-    a: 'Yes. Creator and Team both include SCORM 1.2 and 2004 packages you upload to your LMS. Completion and score reporting are handled by your LMS after you publish the package — not a separate NexCourse analytics product.',
+    a: `Yes. Creator and Team both include SCORM 1.2 and 2004 packages you upload to your LMS. ${SCORM_VERSION_EXPLAINER}`,
+  },
+  {
+    q: 'How should we test before we buy?',
+    a: PRE_PURCHASE_TEST,
   },
   {
     q: 'Can I cancel or get a refund?',
@@ -180,7 +191,7 @@ const CtaButton = ({ plan }: { plan: PricingPlan }) => {
     }
     if (!plan.stripePlanId || plan.price === '$0') return;
     if (!user) {
-      window.location.href = '/#auth';
+      window.location.assign('/login');
       return;
     }
     setError(null);
@@ -339,7 +350,7 @@ const CreditPackButtons = () => {
   const [packError, setPackError] = useState<string | null>(null);
 
   const handleBuyPack = async (packId: 'credits_standard' | 'credits_volume') => {
-    if (!user) { window.location.href = '/#auth'; return; }
+    if (!user) { window.location.assign('/login'); return; }
     setPackError(null);
     setLoadingPack(packId === 'credits_standard' ? 'standard' : 'volume');
     try {
@@ -526,15 +537,69 @@ export function PricingPage() {
       <ManageBillingBanner />
 
       <div className="max-w-6xl mx-auto px-6 pb-20">
-        <div className="flex items-center justify-center gap-2.5 mb-10 px-5 py-3 rounded-xl border text-sm font-semibold mx-auto max-w-xl bg-indigo-500/5 border-indigo-500/20 text-indigo-400">
+        <div className="flex items-center justify-center gap-2.5 mb-6 px-5 py-3 rounded-xl border text-sm font-semibold mx-auto max-w-2xl bg-indigo-500/5 border-indigo-500/20 text-indigo-300 text-center">
           <Building2 className="w-4 h-4 shrink-0" />
           All paid plans include SCORM 1.2 / 2004 export for your LMS.
         </div>
+        <ul className="grid sm:grid-cols-2 gap-2 max-w-3xl mx-auto mb-10 text-slate-400 text-xs leading-relaxed">
+          {TRUST_POINTS.map((point) => (
+            <li key={point} className="flex items-start gap-2">
+              <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+              {point}
+            </li>
+          ))}
+        </ul>
+        <p className="text-center text-slate-500 text-xs max-w-2xl mx-auto mb-10 leading-relaxed">
+          Invited already? Sign in, then subscribe. Otherwise{' '}
+          <a href="/#contact" className="text-indigo-400 hover:text-indigo-300 font-semibold">{REQUEST_ACCESS_LABEL.toLowerCase()}</a>.
+        </p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
           {plans.map((plan, i) => (
             <PlanCard key={`${plan.id}-${billing}`} plan={plan} index={i} />
           ))}
+        </div>
+      </div>
+
+      <div className="max-w-6xl mx-auto px-6 pb-20">
+        <div className="text-center mb-8">
+          <h2 className="text-2xl md:text-3xl font-extrabold text-white mb-2">What 500 AI + 500 TTS credits buy</h2>
+          <p className="text-slate-400 text-sm max-w-2xl mx-auto leading-relaxed">
+            Typical ranges from how credits are metered (1 AI credit per successful generation or picture, 1 TTS credit per clip). Retries and extra pictures add credits. Not a quote.
+          </p>
+        </div>
+        <div className="grid md:grid-cols-3 gap-5">
+          {CREDIT_EXAMPLES.map((ex) => (
+            <div key={ex.title} className="rounded-2xl border border-slate-700/60 bg-slate-900/70 p-6 text-left">
+              <p className="text-xs font-black uppercase tracking-widest text-indigo-400 mb-2">{ex.title}</p>
+              <dl className="space-y-3 text-sm">
+                <div>
+                  <dt className="text-slate-500 text-xs font-bold uppercase tracking-wide">Source</dt>
+                  <dd className="text-slate-200 mt-0.5">{ex.source}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500 text-xs font-bold uppercase tracking-wide">Output</dt>
+                  <dd className="text-slate-200 mt-0.5">{ex.output}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500 text-xs font-bold uppercase tracking-wide">AI credits</dt>
+                  <dd className="text-slate-200 mt-0.5">{ex.ai}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500 text-xs font-bold uppercase tracking-wide">TTS credits</dt>
+                  <dd className="text-slate-200 mt-0.5">{ex.tts}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500 text-xs font-bold uppercase tracking-wide">Regen</dt>
+                  <dd className="text-slate-400 mt-0.5">{ex.regen}</dd>
+                </div>
+              </dl>
+            </div>
+          ))}
+        </div>
+        <div className="mt-8 rounded-2xl border border-slate-700/50 bg-slate-900/50 p-6 text-sm text-slate-400 leading-relaxed space-y-3">
+          <p><span className="font-bold text-slate-200">SCORM 1.2 vs 2004. </span>{SCORM_VERSION_EXPLAINER}</p>
+          <p><span className="font-bold text-slate-200">Try before you buy. </span>{PRE_PURCHASE_TEST}</p>
         </div>
       </div>
 

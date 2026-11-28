@@ -22,8 +22,9 @@ export function TermsOfServicePage({ onBack }: { onBack: () => void }) {
         <h2>2. Accounts</h2>
         <p>
           You must provide accurate account information and keep your login secure. You are responsible for activity
-          under your account, including Team seats you invite. Trial access is by invitation and may be limited or ended
-          as described in the product.
+          under your account, including Team seats you invite. Trial access is by invitation (typically 7 days, with
+          weekly generation limits) and may be limited or ended as described in the product. Creating an account without
+          an invite does not include generation credits.
         </p>
       </section>
 
