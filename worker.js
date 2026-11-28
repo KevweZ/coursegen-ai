@@ -2,10 +2,13 @@
  * worker.js — NexCourse AI Edge Worker
  *
  * Runs at Cloudflare's edge (nexcourse.ai). Responsibilities:
+ *  - Canonicalize www / HTTP / workers.dev onto https://nexcourse.ai
  *  - Proxy /api/* requests to the Render backend (server.js)
  *  - Serve all other requests from the static Vite build (via env.ASSETS)
  *  - SPA fallback: serve index.html for unknown paths (React Router)
  */
+
+import { canonicalLocation, canonicalRedirectStatus } from './src/lib/canonicalHost.ts';
 
 const RENDER_API = 'https://nexcourse-ai-api.onrender.com';
 
@@ -103,6 +106,11 @@ async function proxyToRender(request, pathnameSearch) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    const canonical = canonicalLocation(request.url);
+    if (canonical) {
+      return Response.redirect(canonical, canonicalRedirectStatus(request.method));
+    }
 
     // ── Proxy all /api/* requests to Render backend ────────────────────────
     if (url.pathname.startsWith('/api/')) {
